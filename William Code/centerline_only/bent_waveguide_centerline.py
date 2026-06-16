@@ -78,6 +78,7 @@ NO_RUN = ("--no-run" in sys.argv) or (os.getenv("CENTERLINE_NO_RUN") == "1")
 EXPORT_ONLY = ("--export-only" in sys.argv) or (os.getenv("CENTERLINE_EXPORT_ONLY") == "1")
 DEBUG_GEOMETRY = ("--debug-geometry" in sys.argv) or (os.getenv("CENTERLINE_DEBUG_GEOMETRY") == "1")
 RUN_DIAGNOSTIC_ONLY = ("--diagnose-only" in sys.argv) or (os.getenv("CENTERLINE_DIAGNOSE_ONLY") == "1")
+GEOMETRY_INIT_ONLY = ("--geometry-init-only" in sys.argv) or (os.getenv("CENTERLINE_GEOMETRY_INIT_ONLY") == "1")
 
 Footprint = cli_value("--footprint", os.getenv("CENTERLINE_FOOTPRINT", DEFAULT_FOOTPRINT), float)
 Thickness = cli_value("--thickness", os.getenv("CENTERLINE_THICKNESS", DEFAULT_THICKNESS), float)
@@ -357,6 +358,61 @@ def print_geometry_report(params, label):
         raise RuntimeError("Geometry validation failed: %s" % report["failures"])
 
 
+def _lsf_matrix(points):
+    rows = ["%.16e, %.16e" % (x, y) for x, y in points]
+    return "[\n" + ";\n".join(rows) + "\n]"
+
+
+def geometry_init_only(params, base_script):
+    """Open FDTD, load components, insert the centerline polygon, and stop."""
+
+    if lumapi is None:
+        raise RuntimeError("geometry-init-only requires lumapi/Lumerical.")
+
+    print("GEOMETRY_INIT_ONLY enabled.")
+    print("Opening FDTD, loading components, and inserting one manual centerline core polygon.")
+    print("No FOM calculation, adjoint solve, forward solve, or optimizer run will be called.")
+
+    with open(base_script, "r") as f:
+        script_text = f.read()
+
+    fdtd = lumapi.FDTD(hide=False)
+    fdtd.eval(script_text)
+
+    points = optimizer_polygon(params)
+    polygon_script = """
+switchtolayout;
+v = %s;
+addpoly;
+set('name','manual_centerline_core_preview');
+set('x',0);
+set('y',0);
+set('z',%.16e);
+set('z span',%.16e);
+set('vertices',v);
+set('material','Lithium Niobate');
+set('override mesh order from material database',true);
+set('mesh order',2);
+""" % (_lsf_matrix(points), Thickness - 0.5*etch_depth, etch_depth)
+
+    fdtd.eval(polygon_script)
+
+    try:
+        fdtd.eval("stop; clearjobs; switchtolayout;")
+    except Exception as exc:
+        print("FDTD stop/switchtolayout cleanup warning:", exc)
+
+    try:
+        object_names = fdtd.getobjectnames()
+        print("Top-level FDTD objects:")
+        for object_name in object_names:
+            print("  " + str(object_name))
+    except Exception as exc:
+        print("Could not list FDTD object names:", exc)
+
+    input("FDTD is open with manual centerline core preview. Press Enter here to close Python...")
+
+
 def run_optimization(base_script):
     opt = build_optimization(base_script)
     results = opt.run()
@@ -378,13 +434,16 @@ print("SHAPE_DX =", SHAPE_DX)
 print("WG_width optimizer =", WG_width)
 print("WG_top_width export =", WG_top_width)
 print("USING_CUSTOM_LUMOPT =", USING_CUSTOM_LUMOPT)
+print("GEOMETRY_INIT_ONLY =", GEOMETRY_INIT_ONLY)
 
 print_geometry_report(initial_params, "initial")
 runtime_script = write_runtime_base_script(initial_params)
 
-if DEBUG_GEOMETRY or RUN_DIAGNOSTIC_ONLY:
+if GEOMETRY_INIT_ONLY:
+    geometry_init_only(initial_params, runtime_script)
+elif DEBUG_GEOMETRY or RUN_DIAGNOSTIC_ONLY:
     raise SystemExit
-if WRITE_BASE_ONLY:
+elif WRITE_BASE_ONLY:
     print("WRITE_BASE_ONLY enabled; optimization was not started.")
 elif EXPORT_ONLY or NO_RUN:
     print("Export/no-run mode enabled; optimization was not started.")
