@@ -1,0 +1,15 @@
+.next
+node_modules
+.env
+.env*.local
+dist
+coverage
+*.tsbuildinfo
+.vercel
+.supabase
+supabase/.temp
+.playwright-mcp
+.DS_Store
+
+.vercel
+.env*
