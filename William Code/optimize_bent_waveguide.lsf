@@ -1,0 +1,193 @@
+switchtolayout;
+selectall;
+delete;
+
+# ============================================================
+# GOSPEL BASE.LSF FOR LUMOPT INVERSE DESIGN
+# TFLN stack follows final verification script:
+# air background + 300 nm LN ridge + 300 nm LN slab + 4.7 um SiO2 BOX
+#
+# LumOpt injects the optimized bend polygon. This base only creates:
+# substrate stack, input/output straight access ridges, source, FOM monitor,
+# field monitor, and mesh.
+# ============================================================
+
+um = 1e-6;
+
+# ---------- SIM PARAMS ----------
+R = 25e-6;
+
+W_top = 0.9e-6;
+H = 0.3e-6;
+theta = 70;
+
+T_LN_slab = 0.3e-6;
+T_BOX = 4.7e-6;
+
+n_air = 1.00;
+n_SiO2 = 1.44;
+n_ln = 2.20;
+
+# For Layer Builder sidewall angle later:
+# if GDS stores the bottom footprint, this gives top width = 0.9 um.
+W_bot = W_top + 2*H/tan(theta*pi/180);
+
+L_in = 8e-6;
+L_out = 8e-6;
+wg_overlap = 0.2e-6;
+
+mesh_size = 50e-9;
+
+lambda0 = 1.55e-6;
+
+# ---------- LN MATERIAL ----------
+# Safe scalar LN approximation for optimization.
+mat = addmaterial("(n,k) Material");
+setmaterial(mat,"name","Lithium Niobate - LN");
+setmaterial("Lithium Niobate - LN","Refractive Index",n_ln);
+setmaterial("Lithium Niobate - LN","Imaginary Refractive Index",0);
+
+# ---------- POSITION VARIABLES FROM OPTIMIZE.PY ----------
+WG_OUT_X = __WG_OUT_X__;
+WG_OUT_Y = __WG_OUT_Y__;
+
+FOM_X = __FOM_X__;
+FOM_Y = __FOM_Y__;
+
+FIELD_X = __FIELD_X__;
+FIELD_Y = __FIELD_Y__;
+
+FDTD_X = __FDTD_X__;
+FDTD_Y = __FDTD_Y__;
+FDTD_X_SPAN = __FDTD_X_SPAN__;
+FDTD_Y_SPAN = __FDTD_Y_SPAN__;
+
+MESH_X = __MESH_X__;
+MESH_Y = __MESH_Y__;
+MESH_X_SPAN = __MESH_X_SPAN__;
+MESH_Y_SPAN = __MESH_Y_SPAN__;
+
+# ---------- Z LIMITS ----------
+z_min = -(T_LN_slab + T_BOX) - 0.5e-6;
+z_max = H + 1.5e-6;
+
+# ---------- varFDTD REGION ----------
+addvarfdtd;
+set("x",FDTD_X);
+set("y",FDTD_Y);
+set("x span",FDTD_X_SPAN);
+set("y span",FDTD_Y_SPAN);
+set("z",(z_min+z_max)/2);
+set("z span",z_max-z_min);
+set("simulation time",3000e-15);
+set("background index",n_air);
+
+# ---------- SiO2 BOX ----------
+addrect;
+set("name","SiO2_BOX");
+set("x",FDTD_X);
+set("x span",FDTD_X_SPAN);
+set("y",FDTD_Y);
+set("y span",FDTD_Y_SPAN);
+set("z",-(T_LN_slab + T_BOX/2));
+set("z span",T_BOX);
+set("material","<Object defined dielectric>");
+set("index",n_SiO2);
+
+# ---------- LN SLAB ----------
+addrect;
+set("name","LN_slab");
+set("x",FDTD_X);
+set("x span",FDTD_X_SPAN);
+set("y",FDTD_Y);
+set("y span",FDTD_Y_SPAN);
+set("z",-T_LN_slab/2);
+set("z span",T_LN_slab);
+set("material","<Object defined dielectric>");
+set("index",n_ln);
+
+# ---------- INPUT STRAIGHT TFLN RIDGE ----------
+# Uses addwaveguide so the access ridge matches W_top/H/theta instead of old 1.83 um x 1.0 um rectangle.
+input_poles = [-L_in,0; wg_overlap,0];
+
+addwaveguide;
+set("name","input wg");
+set("x",0);
+set("y",0);
+set("z",H/2);
+set("base width",W_bot);
+set("base height",H);
+set("base angle",theta);
+set("poles",input_poles);
+set("material","<Object defined dielectric>");
+set("index",n_ln);
+
+# ---------- OUTPUT STRAIGHT TFLN RIDGE ----------
+# Output section is vertical. The LumOpt bend endpoint sets WG_OUT_X/WG_OUT_Y.
+output_y_span = L_out + wg_overlap;
+output_y_min = WG_OUT_Y - output_y_span/2;
+output_y_max = WG_OUT_Y + output_y_span/2;
+output_poles = [WG_OUT_X,output_y_min; WG_OUT_X,output_y_max];
+
+addwaveguide;
+set("name","output wg");
+set("x",0);
+set("y",0);
+set("z",H/2);
+set("base width",W_bot);
+set("base height",H);
+set("base angle",theta);
+set("poles",output_poles);
+set("material","<Object defined dielectric>");
+set("index",n_ln);
+
+# ---------- INPUT MODE SOURCE ----------
+addmodesource;
+set("name","source");
+set("injection axis","x-axis");
+set("direction","Forward");
+set("x",-L_in + 1e-6);
+set("y",0);
+set("z",0.1e-6);
+set("y span",4e-6);
+set("z span",2e-6);
+set("wavelength start",lambda0);
+set("wavelength stop",lambda0);
+set("mode selection","fundamental mode");
+
+# ---------- FOM MONITOR ----------
+# varFDTD equivalent of a Y-normal output monitor:
+# fixed y plane with x span across the vertical output waveguide.
+adddftmonitor;
+set("name","fom");
+set("monitor type","Linear X");
+set("x",FOM_X);
+set("x span",4e-6);
+set("y",FOM_Y);
+set("z",0.1e-6);
+
+# ---------- OPTIMIZATION FIELD MONITOR ----------
+adddftmonitor;
+set("name","opt_fields");
+set("monitor type","2D Z-normal");
+set("x",FIELD_X);
+set("y",FIELD_Y);
+set("z",H/2);
+set("x span",FDTD_X_SPAN);
+set("y span",FDTD_Y_SPAN);
+
+# ---------- MESH OVER DESIGN REGION ----------
+addmesh;
+set("name","design_mesh");
+set("x",MESH_X);
+set("y",MESH_Y);
+set("z",0);
+set("x span",MESH_X_SPAN);
+set("y span",MESH_Y_SPAN);
+set("z span",1.4e-6);
+set("set maximum mesh step",true);
+set("override x mesh",true);
+set("override y mesh",true);
+set("override z mesh",false);
+set("dx",mesh_size);
+set("dy",mesh_size);

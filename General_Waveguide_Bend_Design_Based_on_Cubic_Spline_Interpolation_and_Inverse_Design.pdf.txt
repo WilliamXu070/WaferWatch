@@ -1,0 +1,895 @@
+4614 JOURNAL OF LIGHTWAVE TECHNOLOGY , VOL. 42, NO. 13, JULY 1, 2024
+General Waveguide Bend Design Based on Cubic
+Spline Interpolation and Inverse Design
+Enge Zhang , Graduate Student Member, IEEE, Shanglin Yang , and Lei Zhang , Member, IEEE
+Abstract—Silicon waveguide bends are key components that
+affect the packing density and scalability of photonic integrated
+circuits. Traditional bend design methods rely on well-established
+functions such as Euler spirals or Bezier curves, which have lim-
+ited parameter spaces, limiting the discovery of compact bends
+with higher performance. Here, we propose a general approach to
+waveguide bend design. For a given radius, our method uses cubic
+spline interpolation with an inverse design algorithm to obtain
+an optimal bend geometry to support a given number of modes.
+We reﬁne the particle swarm optimization algorithm to reduce
+the need for parameter tuning and increase its ability to avoid
+local optima. As a result of these modiﬁcations, the design process
+becomes less complicated and more efﬁcient. To demonstrate the
+effectiveness of the proposed method, we design and fabricate three
+waveguide bends supporting one, two, and three modes with radii
+of 2.5 µm, 4 µm, and 5 µm, respectively. The measured (simulated)
+insertion losses of the three bends are less than 0.012 (0.009) dB, 0.04
+(0.028) dB and 0.059 (0.048) dB per 9 ◦, respectively. The measured
+(simulated) crosstalk between the modes of the latter two bends
+is less than −23.6 ( −36.1) dB and −19.7 ( −26.5) dB per 9 ◦,
+respectively. The proposed method provides an effective tool for
+designing compact multimode bends for future photonic integrated
+circuits.
+Index Terms—Compact bend, cubic spline interpolation, inverse
+design.
+I. INTRODUCTION
+L
+ARGE-SCALE photonic integrated circuits (PICs) have
+attracted increasing attention and applications in vari-
+ous ﬁelds such as high-performance computing systems[1],
+high-speed communications [2], quantum technology [3] and
+biosensing [4]. To achieve a more compact layout and reduce
+cost, high-density integration is required for PICs. Waveguide
+Manuscript received 26 October 2023; revised 6 February 2024; accepted
+24 February 2024. Date of publication 27 February 2024; date of current
+version 8 July 2024. This work was supported in part by the National Natural
+Science Foundation of China under Grant 61975198, in part by the State Key
+Laboratory of Information Photonics and Optical Communications under Grant
+IPOC2021ZT11, and in part by the Fundamental Research Funds for the Central
+Universities under Grant XJSJ23177.(Corresponding author: Lei Zhang.)
+Enge Zhang and Lei Zhang are with the State Key Laboratory of Informa-
+tion Photonics and Optical Communications, Beijing University of Posts and
+Telecommunications, Beijing 100876, China, and also with the School of Inte-
+grated Circuits, Beijing University of Posts and Telecommunications, Beijing
+100876, China (e-mail: zhangenge@bupt.edu.cn; zhang-lei@bupt.edu.cn).
+Shanglin Yang is with the School of Optoelectronic Engineering, Xidian
+University, Xi’an 710126, China (e-mail: yangshanglin@xidian.edu.cn).
+Color versions of one or more ﬁgures in this article are available at
+https://doi.org/10.1109/JLT.2024.3370675.
+Digital Object Identiﬁer 10.1109/JLT.2024.3370675
+bending, a key component of interconnect wiring in PICs, sig-
+niﬁcantly impacts the integration density and signal integrity of
+the system. A smaller bend radius enables higher layout density,
+allowing for more devices to ﬁt in a limited space. Fig.1 presents
+a schematic of an on-chip tunable optical delay line. To achieve
+a desired amount of delay time while minimizing the system
+footprint, a large number of waveguide bends are required to
+achieve a compact layout[5], [6], [7], [8], [9].
+Simultaneously, mode division multiplexing (MDM) tech-
+nology is an effective method for increasing the capacity of
+optical interconnect links[6]. MDM technology uses multimode
+channels in multimode waveguides to signiﬁcantly enhance the
+transmission capacity of the system. In recent years, various
+multimode silicon photonic devices have been developed and
+applied to MDM systems. These include multichannel mode
+multiplexers [10], [11], [12], multimode waveguide crossings
+[13], [14], [15], multimode power splitters[16], [17], and multi-
+mode chip-ﬁbre couplers[18], [19]. These devices are crucial to
+MDM systems and enable the realization of efﬁcient and reliable
+optical interconnections.
+Waveguide bend is a fundamental on-chip interconnect el-
+ement in PICs and MDM systems. It directly affects the per-
+formance, size, and density of the overall photonic device.
+The performance and radius of waveguide bends are becoming
+increasingly important due to growing research and application
+requirements [6], [20]. Therefore, small-sized and multi-mode
+bent waveguide devices are highly signiﬁcant and valuable
+for use in both photonic integrated circuits and mode division
+multiplexing systems. However, the design and fabrication of
+waveguide bends are limited by the minimum bend radius of the
+waveguide [20], [21], [22]. The conventional method of design-
+ing small-radius bends typically involves the use of established
+curve functions, such as the Euler spiral[23], [24], [25], [26] or
+the Bessel curve[27], [28]. Various other bend geometries, such
+as the hybrid bend (Euler-circle)[29], N-bend[30], Y-junction
+[31], corner bend[32], subwavelength grating[33], and many
+other methods [34], [35], [36], [37] can be used to achieve
+different bends. Fig.2 illustrates some of them. However, most
+of these geometries use well-deﬁned curve functions, which
+limits the parameter space. The shape constraint imposed by
+the established curve function limits the discovery of compact
+bends with higher performance.
+In contrast, the cubic spline interpolation method is capable of
+deﬁning any curves with irregular shapes. This method provides
+great ﬂexibility to accommodate different bend radii and mode
+0733-8724 © 2024 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 
+
+ZHANG et al.: GENERAL W A VEGUIDE BEND DESIGN BASED ON CUBIC SPLINE INTERPOLATION AND INVERSE DESIGN 4615
+Fig. 1. Schematic of an on-chip tunable optical delay line with waveguide bends for interconnection and routing.
+Fig. 2. Schematic of different waveguide bends reported in literature. (a) Circle
+bend, (b) Euler bend, (c) Euler–Circle–Euler bend, (d) Bessel bend, (e) N-bend,
+(f) Corner bend.
+numbers and increases the likelihood of ﬁnding a bend geometry
+with lower insertion loss. The cubic spline interpolation method
+for curve ﬁtting is based on the number of different interpolation
+points, which signiﬁcantly affects the ﬁnal shape of the curve.
+When selecting multiple interpolation points to design the curve
+shape, the traditional parameter scanning method requires con-
+siderable time and effort.
+Therefore, we choose the inverse design approach to ﬁnd the
+optimal curve shape, which is suitable for such a task with a
+large parameter space.
+Recently, the inverse design method has become a widely
+used approach for developing high-performance nanophotonic
+devices. The inverse design method uses automated design
+algorithms [38], [39], [40] to alleviate the challenges of manual
+design, thus freeing designers from tedious work. The inverse
+design methodology has also been used to design waveguide
+bends [41], [42]. At present, inverse design algorithms mainly
+consist of heuristic algorithms, gradient algorithms, neural net-
+work algorithms, etc.[11], [43], [44], [45], [46], [47]. The latter
+two methods are typically complex and require a considerable
+amount of time and effort to master. In practical applications,
+both methods require signiﬁcant parameter tuning, and the latter
+method also requires the acquisition of a large amount of data. In
+contrast, heuristic algorithms are characterized by their elegant
+simplicity and easy mastery. Particle swarm optimization (PSO)
+is a heuristic algorithm that has found many applications in
+various ﬁelds due to its simplicity and ease of use[48]. However,
+the PSO algorithm is prone to get trapped in local optima, has low
+search precision, and requires considerable tuning in practical
+design.
+To overcome the above problems, we reﬁne the traditional
+PSO algorithm to balance its local and global search capabilities.
+After modiﬁcation, it has the ability to escape local optima and
+converge to the global optimum even in cases where suboptimal
+parameters are used (at the cost of additional iterations). We refer
+to our improved algorithm as the self-adaptive particle swarm
+optimization (SAPSO) algorithm.
+We have combined the cubic spline interpolation method
+with the SAPSO algorithm, which allows the design of low-loss
+bends of arbitrary width, radius and given mode. To verify the
+effectiveness of the method, we designed and experimentally
+veriﬁed single, single mode, dual mode and triple mode silicon
+waveguide bends with widths of 500 nm, 900 nm and 1400 nm,
+respectively. The effective radii of the three bends are 2.5μm,
+4 μm, and 5μm, respectively.
+The rest of this article is organized as follows. SectionII
+describes the design principles. SectionII-A explains the prin-
+ciple of cubic spline interpolation. SectionII-B explains how
+to construct the waveguide bending structure using the cubic
+spline interpolation curves. SectionII-C describes the improved
+particle swarm algorithm. Finally, SectionII-D summarizes the
+steps for designing the waveguide bending using the SAPSO
+algorithm and the cubic spline interpolation method. SectionIII
+presents the simulation and experimental results. Lastly, Sec-
+tion IV provides a summary of our work.
+II. DESIGN PRINCIPLE
+A. Cubic Spline Interpolation
+Cubic spline interpolation is a popular ﬁtting method for
+creating a smooth curve that passes through a set of deﬁned
+points. This curve is made up of a sequence of cubic polynomials.
+Compared to other interpolation polynomials, such as Lagrange
+polynomials and Newton polynomials, the interpolation polyno-
+mials generated by this method are smoother and have smaller
+errors.
+Given a set ofn+1 data points (xi, yi), that followx0 <x 1 <
+...<x n, the formula for the cubic spline interpolation function
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 
+
+4616 JOURNAL OF LIGHTWAVE TECHNOLOGY, VOL. 42, NO. 13, JULY 1, 2024
+S(x) is as follows:
+S(x)=
+⎧
+⎪⎪⎪⎨
+⎪⎪⎪⎩
+S1(x),x 0 ≤ x<x 1
+S2(x),x 1 ≤ x<x 2
+...
+...
+Sn(x),x n−1 ≤ x<x n
+(1)
+For each interval between the points(xi−1,yi−1) and (xi,yi),
+the cubic polynomialSi(x),i =1 ,2,...,n is:
+Si(x)= ai + bi(x−xi)+ ci(x−xi)2 + di(x−xi)3, (2)
+where ai,bi,ci and di are the coefﬁcients of the cubic polyno-
+mial Si(x). Since there arencubic polynomials, the total number
+of coefﬁcients is 4n. When two cubic polynomial functions
+describe adjacent intervals, continuity at the common endpoints
+and equality of their ﬁrst and second derivatives are required.
+This statement can be expressed as follows:
+⎧
+⎪⎪⎨
+⎪⎪⎩
+Si(xi)= yi
+Si(xi)= Si+1(xi)
+S′
+i(xi)= S′
+i+1(xi)
+S′′
+i (xi)= S′′
+i+1(xi),
+(3)
+We derive 4n−4 equations from (3) for the n−1 inter-
+mediate data points. We have two additional equations at the
+two end points (x0,y0) and (xn,yn), i.e., S0(x0)= y0 and
+Sn(xn)= yn. Thus, we have a total of4n−2 equations in
+total. Since there are 4n unknown coefﬁcients in(2), we need
+two more equations to calculate all the coefﬁcients. The cubic
+spline interpolation uses three forms of boundary conditions
+that produce the two ﬁnal equations. The boundary conditions
+include clamped, natural, and not-a-knot conditions. Here are
+their formulas:
+S′
+1(x0)= P,S ′
+n(xn)= Q (4a)
+S′′
+1(x0)=0 ,S′′
+n(xn)=0 (4b)
+S
+′′′
+1 (x0)= S
+′′′
+2 (x1),S
+′′′
+n−1(xn−1)= S
+′′′
+n(xn), (4c)
+where P and Qcan be chosen arbitrarily. Eq(4a) through (4c) are
+the formulas for the clamped, natural, and not-a-knot conditions,
+respectively.
+Selecting one of the three boundary conditions results in a
+total of 4n equations. All the coefﬁcients can be determined
+from these equations, resulting in a unique determination of the
+spline interpolation functions.
+Equation (4a) shows that the clamped boundary condition,
+unlike the other two boundary conditions mentioned, requires
+two additional parameters (P and Q) that represent the ﬁrst
+derivatives at the endpoints. When designing a low-loss wave-
+guide bend, our goal is to achieve a smooth transition from
+the straight waveguide to the curved waveguide, with minimal
+variation in direction, to reduce the mismatch between the two
+modes. Therefore, at the junction, we make sure that the ﬁrst
+derivatives at the ends of the curved waveguides match those of
+the corresponding ends of the straight waveguides. To illustrate
+this, we have constructed the model shown in Fig.3.I nt h e
+ﬁgure, the solid line represents a straight line, while the dashed
+Fig. 3. Schematic diagram of interconnecting curves and lines.
+line represents a circular arc. The connection points, A and B,
+are located at (R,- π/2) and (R, 0), respectively.
+Fig. 3 shows the device structure represented in polar coordi-
+nates. The waveguides with arc degrees between -πand -π/2 are
+input (output) waveguides, while those with arc degrees greater
+than 0 and less thanπ/2 are output (input) waveguides. The
+bending waveguides to be designed have radians between -π/2
+and 0. The function of these three segments can be described by
+the following equation.
+⎧
+⎨
+⎩
+r = R
+cos(θ+π/2) −π<θ ≤− π
+2
+r = R −π
+2 <θ< 0
+r = R
+cos(θ) 0 ≤ θ< π
+2
+(5)
+In polar coordinates, the ﬁrst derivative of the curve function
+at point B with respect to the polar angleθ can be expressed as
+follows:
+dr
+dθ|θ=0 = Rsin(θ)
+cos2(θ) |θ=0 =0 (6)
+The same process can be done for the line connected to point
+A, where the ﬁrst derivative is also zero. This indicates that
+the curves do not make sudden turns at the connection points.
+In the subsequent calculations that use the clamped boundary
+conditions in this paper, the ﬁrst derivative is assigned a value
+of zero at both endpoints. In other words, the two parametersP
+and Q in (4a) are set to zero.
+B. Waveguide Bend Design
+Fig. 4 shows that the waveguide bend has two curves, AB
+and DC, which correspond to the inner and outer curves of the
+bend, respectively. The four solid lines represent the sidewalls
+of two straight waveguides connected to the waveguide bend,
+where the input waveguide width is the same as the output
+waveguide width, i.e.,Winput = Woutput. The structure of the
+waveguide bend can be modiﬁed by changing the trajectories of
+curves AB and DC. The effective radius of the waveguide bend
+is Rinner + Winput/2. The cubic spline interpolation method
+is used to describe the AB and DC curves. Equations(1) to (4)
+show that to construct curves using the cubic spline interpolation
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 
+
+ZHANG et al.: GENERAL W A VEGUIDE BEND DESIGN BASED ON CUBIC SPLINE INTERPOLATION AND INVERSE DESIGN 4617
+Fig. 4. Schematic diagram of the geometries of bends.
+method, a group of points with established coordinates and
+boundary conditions is required. A sample of known points is
+shown in Fig.4, which includes solid circle points placed on
+the curve AB. Together with the endpoints A and B, they form a
+group of known points located on the inner curve. In addition, the
+solid hexagons and points C and D deﬁne another set of known
+points located on the outer curve. By adjusting the positions of
+these points, waveguide structures with different geometries can
+be achieved.
+To achieve a seamless connection between the curved and
+straight waveguides, it is necessary to keep the endpoints of the
+curved waveguides ﬁxed. For example, when dealing with the
+inner curve, it’s crucial to keep both endpoints A and B stationary
+while focusing only on optimizing the locations of the movable
+points (MPs), which are marked in blue. The same approach
+applies to the outer curves, where the green dots also represent
+MPs. In addition, the 90-degree bend has symmetry along the
+angle bisector OF, so that points below (or above) the line OF
+can be directly mirrored by those above (or below) it without
+any additional setup. To provide sufﬁcient parameter space, the
+range of motion of the MP is chosen to be from zero to twice
+the target radius.
+Choosing the appropriate number of MPs is a critical issue.
+Fig. 5 shows some examples of the ﬁtted curves with different
+numbers of MPs. It can be seen that as the number of MPs
+increases, the geometric structure of the curve becomes more
+complex. Potentially, a complex curve with a larger parameter
+space may result in geometries that have superior performance,
+but also result in a larger number of less efﬁcient structures, thus
+complicating our search process. In addition, the ﬁne structures
+on the waveguide sidewall can be a manufacturing challenge.
+Therefore, in the actual design, we choose to start with a small
+number of MPs for the waveguide bend design, for example,
+one MP on each side of the inner and outer curves of the bend,
+and then increase the number of MPs as needed to meet our
+insertion loss and number of supported modes requirements.
+To guarantee successful production of the designed bend, the
+minimum size of the current structure required to meet the
+Fig. 5. Shapes of the ﬁtted curves with (a) 1, (b) 4, (c) 16, (d) 64 moving
+points.
+processing requirements of the factory can be determined by
+measuring the distance between two neighbouring MPs.
+When designing the bend geometry using cubic spline in-
+terpolation, explicit boundary conditions must be speciﬁed. As
+shown in(4), there are three boundary conditions. The following
+analysis examines the effect of these conditions on the shape of
+the curve, which varies depending on the position of the MPs.
+For example, consider a single MP as shown in Fig.6, where
+the left and right points ((R,– π/2) and (R, 0)) are ﬁxed points.
+As shown in the ﬁgure, the closer the radius coordinate is to that
+of the ﬁxed point, the smaller the discrepancy between the lines
+under different boundary conditions. Therefore, we choose to
+analyze the case most affected by boundary conditions, that is,
+those with the farthest radius coordinates (0 or 2R).
+In addition to the position of the MPs, the boundary conditions
+have different effects on the shape of the curve for different num-
+bers of MPs. As shown in Fig.7, the inﬂuence of the boundary
+conditions on the shape of the curve is mainly concentrated on
+the leftmost and rightmost segments, while the inﬂuence on the
+inner segments is minimal and decreases as the number of MPs
+increases. When the number of MPs is large, we can optimize
+the placement of MPs near the ends of the curved waveguide to
+mitigate the effects of boundary conditions. As shown in Fig.8,
+by adjusting the position of the MPs, three lines with different
+boundary conditions are aligned.
+The results in Fig.8 show that if we have enough MPs, the
+choice of boundary conditions is trivial. For a curve ﬁtted under
+one boundary condition, it can be reproduced under another
+boundary condition if we place close unequally spaced moving
+points on the target curve near the two ﬁxed points. This means
+that with enough MPs, we can choose any of the three boundary
+conditions for the waveguide bend design.
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 
+
+4618 JOURNAL OF LIGHTWAVE TECHNOLOGY, VOL. 42, NO. 13, JULY 1, 2024
+Fig. 6. Inﬂuence of boundary conditions on the shape of the curves at different positions of the moving points with polar coordinates of (a) (0, –π/4), (b) (R,
+π/4), (c) (2R, –π/4).
+Fig. 7. Inﬂuence of boundary conditions on the shape of the curves with equally spaced moving points and moving point numbers of (a) 1, (b) 7, (c) 13, (d) 19.
+Fig. 8. Inﬂuence of boundary conditions on the shape of the curves with specially designed moving points near two ﬁxed points and moving point numbers of
+(a) 1, (b) 7, (c) 13, (d) 19.
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 
+
+ZHANG et al.: GENERAL W A VEGUIDE BEND DESIGN BASED ON CUBIC SPLINE INTERPOLATION AND INVERSE DESIGN 4619
+Fig. 9. Schematic diagram of MPs movement.
+According to the above analysis, the effect of boundary
+conditions on the shape of the bend becomes more signiﬁcant
+when the number of MPs is small. To directly observe the effect
+of different boundary conditions on the waveguide bend, we
+perform an analysis using a bend with an input and output
+waveguide width of 500 nm and an effective radius of 2.5μm,
+while selecting one MP on each side of the bend. This waveguide
+bend is for single mode transmission. The results are shown in
+Fig. 9, whereR1 is the radius coordinate of the MP on the inside
+of the bend andR2 is the radius coordinate of the MP on the
+outside of the bend, and the insertion loss (IL) can be calculated
+by the following equation:
+IL = 10log10
+(Pout
+Pin
+)
+(7)
+To prevent the intersection of two curves, the following con-
+ditions must be met:
+R2 ≥ R1 (8)
+As shown in Fig. 10, insertion loss below 0.1 dB can be
+achieved for single mode bending regardless of the selected
+boundary condition combination. Fig.11 shows the percentage
+of insertion loss below 0.1 dB asR1 and R2 are varied for
+different boundary condition combinations. As shown in the
+ﬁgure, the probability of obtaining a device with insertion loss
+< 0.1 dB is greater when the clamped boundary condition is
+selected for the inner curve. The boundary condition on the outer
+curve has no signiﬁcant effect in this example.
+We also perform the same analysis using a bend with a width
+of 900 nm and an effective radius of 4 μm for dual mode
+transmission, while selecting one MP on each side. The results
+are shown in Figs.12 and 13. As shown in Fig.13, the probability
+of obtaining a device with insertion loss<0.5 dB is greater than
+3.2% when the clamped boundary condition is selected for the
+inner curve and the natural or clamped boundary condition is
+selected for the outer curve.
+Based on the above analysis, in the following designs, we
+will ﬁrst select clamped and natural boundary conditions for the
+inner and outer curves, respectively. If the design results do not
+meet the requirements, we adopt the clamped-clamped boundary
+Fig. 10. Statistical analysis of single mode bending losses with different
+moving point positions and different boundary condition combinations (one MP
+for each of the inner and outer curves). The boundary conditions used for the
+inner & outer curves are (a) natural & natural, (b) natural & clamped, (c) natural
+& not-a-knot, (d) clamped & natural, (e) clamped & clamped, (f) clamped &
+not-a-knot, (g) not-a-knot & natural, (h) not-a-knot & clamped, and (i) not-a-knot
+& not-a-knot boundary conditions.
+Fig. 11. Percentage of insertion loss below 0.1 dB for single mode bend as
+R1 and R2 are varied for different combinations of boundary conditions. The
+natural, clamped and not-a-knot boundary conditions are represented by 1, 2, 3,
+respectively.
+condition. If the design result still fails to meet the requirements,
+we try other combinations.
+We have analyzed the inﬂuence of MP number and boundary
+condition on the bend performance. The design of the waveguide
+bend requires given parameters such as waveguide width, effec-
+tive radius, number of MPs, boundary condition, and number of
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 
+
+4620 JOURNAL OF LIGHTWAVE TECHNOLOGY, VOL. 42, NO. 13, JULY 1, 2024
+Fig. 12. Statistical analysis of dual mode bending losses with different moving
+point positions and different boundary condition combinations (one MP for each
+of the inner and outer curves). The boundary conditions used for the inner & outer
+curves are (a) natural & natural, (b) natural & clamped, (c) natural & not-a-knot,
+(d) clamped & natural, (e) clamped & clamped, (f) clamped & not-a-knot, (g)
+not-a-knot & natural, (h) not-a-knot & clamped, and (i) not-a-knot & not-a-knot
+boundary conditions.
+Fig. 13. Percentage of insertion loss below 0.5 dB for dual mode bend as
+R1 and R2 are varied for different combinations of boundary conditions. The
+natural, clamped and not-a-knot boundary conditions are represented by 1, 2, 3,
+respectively.
+supporting modes. Finding the optimal positions for the moving
+points is the task of the optimization algorithm.
+C. Algorithm Analysis
+Particle swarm optimization (PSO) was proposed by Eberhart
+and Kennedy in 1995[48]. PSO simulates the foraging behavior
+of birds. It maps the search space for a speciﬁc problem to the
+ﬂight space of a ﬂock of birds. Each bird is regarded as a particle
+without mass and volume, which represents a possible solution
+to the problem. The process of ﬁnding the optimal solution of
+the optimization problem is just like the process of birds looking
+for food, which is the result of a candidate solution. PSO regards
+individuals in the population as particles in the N-dimensional
+search space. Each particle moves in the space at a certain
+speed and realizes the evolution of candidate solutions under the
+guidance of its own experience and the experience of the group.
+In our design, each particle represents a speciﬁc type of curved
+geometry. The position of each particle indicates the value of
+MP, while the velocity reﬂects the rate at which MP changes.
+The goal of the particle swarm optimization is to identify the
+curve geometry that yields the minimum insertion loss in the
+current conﬁguration.
+The formulas for PSO are as follows,
+vi(n+1 )= ωvi(n)+ c1r1(pi
+best −xi(n))
++ c2r2(gbest −xi(n)) (9)
+xi(n+1 )= xi(n)+ vi(n+1 ), (10)
+Where i is the current particle, n is the current number of
+iterations, v is the speed of particle movement,x is the current
+position of the particle, pbest is the optimal position of the
+individual, gbest is the optimal position of the group,ω is the
+inertia constant,c1 is the personal best weight,c2 is the global
+best weight,r1 and r2 are random numbers from 0 to 1.
+PSO starts from the random locations given at the beginning.
+In the iterative process, it evaluates whether the current solution
+is good or not according to the ﬁgure of merit (FOM) of the prob-
+lem to be solved. Finally, it iteratively ﬁnds the global optimal
+solution. In each iteration, the optimal value and corresponding
+position found in the history of a single particle will be recorded
+as the individual experience of the particle. The optimal values
+and corresponding positions found in the history of all particles
+will also be recorded as the experience of the population. The
+direction of motion of each particle will be determined by indi-
+vidual experience and population experience. Among them, the
+proportion of individual experience and population experience in
+each movement speed will change randomly due to the existence
+of random numbersr1 and r2, thus bringing certain randomness
+to the algorithm.
+In order to ensure a comprehensive search of the parameter
+space, the algorithm must possess global search capabilities to
+locate the range where optimal values reside, which necessitates
+greater speed. However, once the optimal value range has been
+determined, the algorithm must employ local search abilities
+to pinpoint its exact location, requiring slightly less speed.
+Regarding the particle search process, the algorithm’s early stage
+should exhibit strong global search capabilities but weak local
+search abilities. Conversely, in the algorithm’s later stages, its
+local search abilities are robust, while its global search capabil-
+ities weaken. However, in traditional PSO, the global and local
+search abilities are ﬁxed once the algorithm parameters are set.
+Therefore, achieving good FOM requires extensive parameter
+tuning.
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 
+
+ZHANG et al.: GENERAL W A VEGUIDE BEND DESIGN BASED ON CUBIC SPLINE INTERPOLATION AND INVERSE DESIGN 4621
+In addition to the aforementioned issue,(9) reveals that as
+the number of iterations increases, the individual experience
+gradually approaches group experience, leading to a decline in
+velocity. If the swarm consistently fails to locate a new popu-
+lation optimal position, which means the group has fallen into
+a local optimum, velocity will approach zero and the algorithm
+will converge on its current population optimal position. Hence,
+it is indeterminate whether the ultimate outcome attains local
+optimality or global optimality. We have introduced a simple
+modiﬁcation to the traditional PSO algorithm and proposed a
+self-adapted particle swarm optimization (SAPSO) algorithm,
+which address the aforementioned issues. The revised formula
+is presented below.
+vi(n+1 )= ωvi(n)+ c1r1(pi
+best −xi(n))
++ c2r2(gbest −xi(n)) +Gr (11)
+xi(n+1 )= αgbest +( 1−α)xi(n)+ vi(n+1 ) (12)
+ω =
+{
+ωs +( ωe −ωs) fg
+faim
+fg ≤ faim
+0 fg >f aim
+(13)
+Where G is the random factor,α is the global best weight,r
+is a random vector in which each dimension is a random number
+from –1 to 1,fg is the group optimum,faim is the value we set
+close to our target FOM,ωs is the start of inertia weight,ωe is
+the end of inertia weight, which satisﬁesfg = faim. The random
+factor G and global best weightα are deﬁned as follows:
+G = Gs +( Ge −Gs) fg
+ftarget
+(14)
+α = i−1
+N −1 (15)
+where ftarget is our target FOM,Gs is the start of inertia weight,
+Ge is the inertia weight designated for the iteration, which
+satisﬁes fg = ftarget and N is the total number of particles in the
+population. By comparing(9) with (11), it can be observed that
+the latter contains an additional stochastic term, which prevents
+the velocity from approaching zero and thus endows the particle
+to escape local optima. By comparing(10) and (12), it can be ob-
+served that the starting position of each particle in every iteration
+is not merely the end position of its previous iteration, but rather
+a combination of the group’s optimal position and its own last
+iteration’s position. This point also violates the traditional PSO
+algorithm’s simulation of real-world behaviour. In a computer
+simulation, particles do not need to be in continuous motion, and
+the starting position of the next moment does not need to be the
+ending position of the previous moment. Instead, particles can
+start from a position that is more likely to yield a good result. To
+prevent the algorithm from falling into a local optimum, each
+particle should have a different a, as shown in(15). Additionally,
+this approach prevents the algorithm from getting stuck in a local
+optimum as a result of group experience dominance.This model
+improves the algorithm’s efﬁciency, particularly for particles
+with sub-optimal results in the previous iteration, by relying on
+both group and individual experience. This prevents them from
+converging to a speciﬁc position. Concerning about the potential
+deterioration of global search capability resulting from group
+experience is unnecessary. Firstly, the iteration process involves
+different particles with varying starting positions, thereby ex-
+panding the search scope. Secondly,(11) incorporates a random
+factor Gthat further enhances the algorithm’s ability to conduct
+global searches. Equations(13) and (14) ensure that the algo-
+rithm possesses automatic adjustment capabilities. Parameters
+will be automatically adjusted based on the current calculation
+progress to optimize search capabilities for different stages of
+computation. The algorithm thus requires minimal parameter
+tuning, resulting in signiﬁcant time and effort savings.
+D. Design Methodology
+The design of curve shape using cubic spline interpolation
+requires two prerequisites: explicit boundary conditions and
+MPs. The analysis in SectionII-B indicates that the clamped
+boundary condition is employed for curves located on the inner
+side of the bend, while the not-a-knot boundary condition is
+utilized for curves situated on the outer side of the bend. If it
+is determined that the design requirements cannot be fulﬁlled,
+adjustments will be made in accordance with the value size
+relationship depicted in Fig.5. Based on our design expertise,
+it is generally unnecessary to adjust the boundary conditions.
+According to the analysis in SectionII-C, the known points
+consist of MPs and endpoints, with the algorithm optimizing
+the coordinates of MPs. To simplify algorithm design, polar
+coordinates are adopted for representing MP coordinates while
+only modifying their radius coordinates by ﬁxing their angle
+coordinates. Initially, a small number of MPs is selected and in-
+creased if necessary to meet design requirements. To summarize,
+the design process for a waveguide bend is as follows:
+1) Determine the width, radius, and number of modes of the
+bend to be designed.
+2) Set an initial number of MPs, such as one MP each on
+the inside and outside of the bend, and set the clamped
+and not-a-knot boundary conditions inside and outside the
+bend respectively.
+3) Establish the model structure and the MPs’ coordinates
+automatically through SAPSO.
+4) If the design outcome fails to meet the requirements,
+increase the number of MPs and repeat step (3). If the
+requirements are still not satisﬁed, adjust the boundary
+conditions as indicated in the aforementioned analysis.
+It is worth noting that the deﬁnition of FOM employs a
+simplistic approach whereby the average insertion loss of all
+target modes is calculated.
+III. SIMULATION ANDEXPERIMENTAL RESULTS
+We use the above method to design three small-radius 90-
+degree bends: a radius of 2.5μm and a width of 500 nm, which
+supports only TE0 mode; a radius of 4 μm and a width of
+900 nm, which supports both TE0 and TE1 modes; and a
+radius of 5μm and a width of 1.4μm, which accommodates
+TE0, TE1, and TE2 modes. We use the 3D ﬁnite-difference
+time-domain (FDTD) method for simulation design. The results
+of our optimization process using SAPSO and PSO algorithms
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 
+
+4622 JOURNAL OF LIGHTWAVE TECHNOLOGY, VOL. 42, NO. 13, JULY 1, 2024
+Fig. 14. Results of the optimization process using SAPSO (top) and PSO
+(bottom) algorithms for the three bends.
+for the three bends are shown in Fig.14. The ﬁgure clearly shows
+the superior performance of the SAPSO algorithm compared to
+the traditional PSO algorithm in terms of the ﬁnal insertion loss.
+In addition, during the design process of three waveguide bends,
+the SAPSO algorithm continues to improve iteratively, while the
+traditional PSO algorithm converges to a local optimum within
+50 iterations.
+We have also employed circular, Euler, Bessel and hybrid
+curves to design waveguide bends with the same width, equiv-
+alent radius and number of modes. We compared the outcomes
+produced by our cubic spline interpolation approach to those
+obtained using the conventional method. Figs.15, 16, and 17
+display the comparison results for waveguide bend with single-
+mode, dual-mode, and triple-mode, correspondingly. Based on
+the ﬁgures, it is apparent that the
+waveguide bends designed utilizing the cubic spline interpola-
+tion method exhibit the smallest loss and lowest crosstalk among
+all three cases. The ﬁgure portrays outcomes for the greatest
+insertion loss and the highest crosstalk. During the simulation
+stage, 11 wavelength points in the C-band are chosen for the
+simulation. Note that the markers on the lines in the ﬁgure serve
+solely to distinguish the different curves.
+Fig. 15. Comparison results for waveguide bend with single-mode using cubic
+spline interpolation, circular, Euler, Bessel and hybrid curves.
+Fig. 16. Comparison results for waveguide bend with dual-mode using cubic
+spline interpolation, circular, Euler, Bessel and hybrid curves. (a) Maximum
+transmission loss, (b) Maximum crosstalk.
+The devices are fabricated by e-beam lithography and dry
+etching. Figs. 18, 19 and 20 show the simulated and experi-
+mental results of the three bends, where the number of MPs
+used in the design process is 1, 1 and 10, respectively. The
+measured (simulated) insertion losses of the single-mode bend,
+the dual-mode bend and the triple-mode bend are less than
+0.012 (0.009) dB, 0.04 (0.028) dB and 0.059 (0.048) dB per
+9◦, respectively. The measured (simulated) crosstalk between
+modes of the last two bends is less than−23.6 (−36.1) dB and
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 
+
+ZHANG et al.: GENERAL W A VEGUIDE BEND DESIGN BASED ON CUBIC SPLINE INTERPOLATION AND INVERSE DESIGN 4623
+Fig. 17. Comparison results for waveguide bend with triple-mode using cubic spline interpolation, circular, Euler, Bessel and hybrid curves. (a) Maximum
+transmission loss, (b) Maximum crosstalk.
+Fig. 18. Simulated and experimental results for a waveguide width of 500 nm and an equivalent bending radius of 2.5μm. (a) Simulated electric ﬁeld distribution.
+(b) The SEM image of the waveguide bend with the dotted line indicating a circular arc. (c) Comparison between simulated and experimental results.
+Fig. 19. Simulated and measured results were obtained for a waveguide width of 900 nm and an equivalent bending radius of 4μm. Simulated electric ﬁelds of
+(a) theTE0 mode and (b) theTE1 mode. (c) The SEM image of the waveguide bend with the dotted line indicating a circular arc, (d) Simulated and experimental
+results.
+−19.7 (−26.5) dB per 9◦, respectively. Among the three bends,
+the shapes of the single-mode and dual-mode bends resemble
+circular arcs. We have shown the shape of an arc with a red dotted
+line. It is clear that our waveguide is different from the shape of a
+circular arc.
+As can be seen from Figs.18–20, the results of simulation and
+experiment are quite consistent, and the designed three bends
+can maintain exceptional performance throughout the C-band,
+demonstrating wavelength insensitivity characteristics. We also
+compared our results with those of other researchers, as shown in
+TableI. As shown in the table, our device exhibits lower insertion
+loss when considering waveguide bends with the same number
+of modes and similar radius. In addition, our proposed design
+method shows broader applicability and can be used to design
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 
+
+4624 JOURNAL OF LIGHTWAVE TECHNOLOGY, VOL. 42, NO. 13, JULY 1, 2024
+Fig. 20. Simulated and measured results were obtained for a waveguide width of 900 nm and an equivalent bend radius of 5μm. Simulated electric ﬁelds of
+(a) theTE0 mode, (b) theTE1 mode and (c) theTE2 mode (d) The SEM image of the waveguide bend. (e) Simulated and experimental results.
+TABLE I
+COMPARISON OFCOMPACT WA VEGUIDEBENDS
+waveguide bends with arbitrary radius, width, and number of
+supported modes using the same design ﬂow.
+IV . CONCLUSION
+In conclusion, we propose an efﬁcient approach to waveguide
+curve design that uses cubic spline interpolation and an improved
+particle swarm optimization algorithm to determine the curve
+geometry. The proposed method not only provides a larger
+parameter space compared to traditional design methods, but
+also exhibits remarkable ﬂexibility in designing waveguides
+with arbitrary widths, radii, and mode numbers (supported by the
+waveguide) according to the speciﬁc requirements. Meanwhile,
+the SAPSO algorithm based on the traditional PSO algorithm
+proposed in this paper avoids the problem of falling into local
+extremums, and can still ﬁnd the global optimal value when the
+algorithm parameters are not appropriate (at the cost of requiring
+more iterations). This feature makes the design process very
+simple compared to other inverse design methods. At the same
+time, due to the simplicity of the structure, the algorithm can also
+reach the optimal result quickly. Using the design method, we
+have successfully designed single-mode, dual-mode, and triple-
+mode waveguide bends with radii of 2.5μm, 4μm, and 5μm,
+respectively. The device was fabricated by e-beam lithography,
+which gives excellent experimental results and is in agreement
+with simulations.
+The proposed method is simple, efﬁcient, and versatile in ac-
+commodating different widths, radii, and modes for waveguide
+bending. Its potential for large-scale photon integration makes
+it a signiﬁcant contribution to the advancement of this ﬁeld.
+IV . ACKNOWLEDGMENT
+The authors acknowledge the use of the AE8600 optical
+spectrum analyzer, and associated support services provided by
+Tianjin Deviser Electronics Instrument Company, Ltd.
+REFERENCES
+[1] S. Rumley, D. Nikolova, R. Hendry, Q. Li, D. Calhoun, and K. Bergman,
+“Silicon photonics for exascale systems,”J. Lightw. Technol., vol. 33, no. 3,
+pp. 547–562, Feb. 2015, doi:10.1109/JLT.2014.2363947.
+[2] C. R. Doerr, “Silicon photonic integration in telecommunications,”Front.
+Phys., vol. 3, pp. 137–179, 2015, doi:10.3389/fphy.2015.00037.
+[3] J. W. Silverstone, D. Bonneau, J. L. O’Brien, and M. G. Thompson, “Sili-
+con quantum photonics,”IEEE J. Sel. Topics Quantum Electron., vol. 22,
+no. 6, pp. 390–402, Nov./Dec. 2016, doi:10.1109/JSTQE.2016.2573218.
+[4] K. de V os, I. Bartolozzi, E. Schacht, P. Bienstman, and R. Baets,
+“Silicon-on-insulator microring resonator for sensitive and label-
+free biosensing,” Opt. Exp., vol. 15, no. 12, pp. 7610–7615, 2007,
+doi: 10.1364/OE.15.007610.
+[5] D. Richardson, J. Fini, and L. Nelson, “Space-division multiplexing
+in optical ﬁbres,” Nature Photon, vol. 7, no. 5, pp. 354–362, 2013,
+doi: 10.1038/nphoton.2013.94.
+[6] C. Li, D. Liu, and D. Dai, “Multimode silicon photonics,”Nanophotonics,
+vol. 8, no. 2, pp. 227–247, 2019, doi:10.1515/nanoph-2018-0161 .
+[7] G. Li, N. Bai, N. Zhao, and C. Xia, “Space-division multiplexing: The
+next frontier in optical communication,”Adv. Opt. Photon., vol. 6, no. 4,
+pp. 413–487, 2014, doi:10.1364/AOP.6.000413.
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 
+
+ZHANG et al.: GENERAL W A VEGUIDE BEND DESIGN BASED ON CUBIC SPLINE INTERPOLATION AND INVERSE DESIGN 4625
+[8] G. Chen, Y . Yu, and X. Zhang, “Monolithically mode division multiplexing
+photonic integrated circuit for large-capacity optical interconnection,”Opt.
+Lett., vol. 41, no. 15, pp. 3543–3546, 2016, doi:10.1364/OL.41.003543.
+[9] H. Jia et al., “WDM-compatible multimode optical switching
+system-on-chip,” Nanophotonics, vol. 8, no. 5, pp. 889–898, 2019,
+doi: 10.1515/nanoph-2019-0005.
+[10] C. L. Sun, Y . Yu, G. Y . Chen, and X. L. Zhang, “Silicon mode multiplexer
+processing dual-path mode-division multiplexing signals,” Opt. Lett.,
+vol. 41, no. 23, pp. 5511–5514, Dec. 2016, doi:10.1364/OL.41.005511.
+[11] W. Chang et al., “Ultra-compact mode (de) multiplexer based on subwave-
+length asymmetric y-junction,”Opt. Exp., vol. 26, no. 7, pp. 8162–8170,
+Apr. 2018, doi:10.1364/OE.26.008162.
+[12] D. Dai et al., “10-channel mode (de)multiplexer with dual polariza-
+tions,” in Laser Photon. Rev., vol. 12, no. 1, 2018, Art. no. 1700109.
+doi: 10.1002/lpor.201700109.
+[13] S. Y . Li et al., “Universal multimode waveguide crossing based on trans-
+formation optics,” Optica, vol. 5, no. 12, pp. 1549–1556, Dec. 2018,
+doi: 10.1364/OPTICA.5.001549.
+[14] H. Xu and Y . Shi, “Metamaterial-based Maxwell’s ﬁsheye lens for mul-
+timode waveguide crossing,”Laser Photon. Rev., vol. 12, no. 10, 2018,
+Art. no. 1800094, doi:10.1002/lpor.201800094.
+[15] W. Chang et al., “Ultracompact dual-mode waveguide crossing based on
+subwavelength multimode-interference couplers,”Photon. Res.,v o l .6 ,
+no. 7, pp. 660–665, Jul. 2018, doi:10.1364/PRJ.6.000660.
+[16] L. Han, B. P. Kuo, N. Alic, and S. Radic, “Ultra-broadband multimode 3 dB
+optical power splitter using an adiabatic coupler and a y-branch,”Opt. Exp.,
+vol. 26, no. 11, pp. 14800–14809, May 2018, doi:10.1364/OE.26.014800.
+[17] H. Xu and Y . Shi, “Ultra-broadband dual-mode 3 dB power splitter based
+on a y-junction assisted with mode converters,”Opt. Lett., vol. 41, no. 21,
+pp. 5047–5050, Nov. 2016, doi:10.1364/OL.41.005047.
+[18] B. Wohlfeil, G. Rademacher, C. Stamatiadis, K. V oigt, L. Zimmermann,
+and K. Petermann, “A two-dimensional ﬁber grating coupler on SOI for
+mode division multiplexing,”IEEE Photon. Technol. Lett., vol. 28, no. 11,
+pp. 1241–1244, Jun. 2016, doi:10.1109/LPT.2016.2514712.
+[19] Y . X. Lai, Y . Yu, S. N. Fu, J. Xu, P. P. Shum, and X. L. Zhang, “Compact
+double-part grating coupler for higher-order mode coupling,”Opt. Lett.,
+vol. 43, no. 13, pp. 3172–3175, Jul. 2018, doi:10.1364/OL.43.003172.
+[20] D. Dai and J. E. Bowers, “Silicon-based on-chip multiplexing technologies
+and devices for peta-bit optical interconnects,”Nanophotonics,v o l .3 ,
+no. 4/5, pp. 283–311, 2014, doi:10.1515/nanoph-2013-0021.
+[21] A. J. Zilkie et al., “Multi-micron silicon photonics platform for highly
+manufacturable and versatile photonic integrated circuits,” inIEEE J. Sel.
+Topics Quantum Electron., vol. 25, no. 5, Sep./Oct. 2019, Art. no. 8200713,
+doi: 10.1109/JSTQE.2019.2911432.
+[22] T. Aalto et al., “Open-access 3-μm SOI waveguide platform for dense
+photonic integrated circuits,” inIEEE J. Sel. Topics Quantum Electron.„
+vol. 25, no. 5, 2019, Art. no. 8201109, doi:10.1109/JSTQE.2019.2908551.
+[23] M. Cherchi, S. Ylinen, M. Harjanne, M. Kapulainen, and T. Aalto,
+“Dramatic size reduction of waveguide bends on a micron-scale silicon
+photonic platform,”Opt. Exp., vol. 21, no. 15, pp. 17814–17823, 2013,
+doi: 10.1364/OE.21.017814.
+[24] T. Aalto, M. Harjanne, M. Cherchi, and S. Ylinen, “Euler bends and TIR
+mirrors for ultra-dense PIC integration on SOI,” inProc. 18th Eur. Conf.
+Integr. Opt., 2016. [Online]. Available: http://www.ecio-conference.org/
+wp-content/uploads/2016/06/ECIO-o-20.pdf
+[25] X. Ji et al., “Compact, spatial-mode-interaction-free, ultralow-loss, non-
+linear photonic integrated circuits,” inProc. Eur. Conf. Opt. Commun.,
+Basel, Switzerland, 2022, pp. 1–4.
+[26] F. Gao et al., “Low-loss and compact bends on multi-layer
+SiN-on-SOI platform for photonic integrated circuits,” IEEE Pho-
+ton. Technol. Lett. , vol. 33, no. 20, pp. 1131–1134, Oct. 2021,
+doi: 10.1109/LPT.2021.3107865.
+[27] H. P. Bazargani, J. Flueckiger, L. Chrostowski, and J. Azaña, “Micror-
+ing resonator design with improved quality factors using quarter Bezier
+curves,” inProc. Conf. Lasers Electro-Optics, San Jose, CA, USA, 2015,
+pp. 1–2, doi:10.1364/CLEO_AT.2015.JTu5A.58.
+[28] C. L. Manganelli et al., “Design of coupled micro-ring resonators for sili-
+con photonic switching matrices,” inProc. IEEE Opt. Interconnects Conf.,
+San Diego, CA, USA, 2016, pp. 84–85, doi:10.1109/OIC.2016.7483008.
+[29] T. Fujisawa, S. Makino, T. Sato, and K. Saitoh, “Low-loss compact and
+fabrication-tolerant Si-wire 90◦ waveguide bend using clothoid and normal
+curves for large scale photonic integrated circuits,”Opt. Exp., vol. 25, no. 8,
+pp. 9150–9159, 2017, doi:10.1364/OE.25.009150.
+[30] L. Zhang et al., “Ultra-compact low-loss modiﬁed n-adjustable bends,”
+J. Lightw. Technol. , vol. 41, no. 9, pp. 2792–2800, May 2023,
+doi: 10.1109/JLT.2023.3237571.
+[31] Y . A. Vlasov and S. J. McNab, “Losses in single-mode silicon-on-insulator
+strip waveguides and bends,”Opt. Exp., vol. 12, no. 8, pp. 1622–1631,
+2004, doi:10.1364/OPEX.12.001622.
+[32] Y . Wang and D. Dai, “Multimode silicon photonic waveguide
+corner-bend,” Opt. Exp. , vol. 28, no. 7, pp. 9062–9071, 2020,
+doi: 10.1364/OE.387978.
+[33] H. Wu et al., “Ultra-sharp multimode waveguide bends with sub-
+wavelength gratings,” in Laser Photon. Rev., vol. 13, no. 2, 2019,
+Art. no. 1800119, doi:10.1002/lpor.201800119.
+[34] S. Sun et al., “Ultra-sharp silicon multimode waveguide bends based on
+double free-form curves,”Photon. Res., vol. 10, no. 6, pp. 1484–1490,
+2022, doi:10.1364/PRJ.445529.
+[35] S. Sun et al., “Inverse design of ultra-compact multimode waveguide bends
+based on the free-form curves,” inLaser Photon. Rev., vol. 15, no. 9, 2021,
+Art. no. 2100162, doi:10.1002/lpor.202100162.
+[36] S. Yang et al., “CMOS-compatible ultra-compact silicon multimode wave-
+guide bend based on inverse design method,” inOpt. Commun., vol. 523,
+2022, Art. no. 128733, doi:10.1016/j.optcom.2022.128733.
+[37] S. Li et al., “Compact and broadband multimode waveguide bend by
+shape-optimizing with transformation optics,”Photon. Res., vol. 8, no. 12,
+pp. 1843–1849, 2020, doi:10.1364/PRJ.403818.
+[38] A. Y . Piggott et al., “Inverse design and demonstration of a compact and
+broadband on-chip wavelength demultiplexer,”Nature Photon.,v o l .9 ,
+no. 6, pp. 374–377, 2015, doi:10.1038/nphoton.2015.69.
+[39] Z. Liu et al., “Integrated nanophotonic wavelength router based on
+an intelligent algorithm,”Optica, vol. 6, no. 10, pp. 1367–1373, 2019,
+doi: 10.1364/OPTICA.6.001367.
+[40] S. Yang et al., “Gradient-probability-driven discrete search algorithm
+for on-chip photonics inverse design,” Opt. Exp., vol. 29, no. 18,
+pp. 28751–28766, 2021, doi:10.1364/OE.432313.
+[41] Z. Zhang et al., “Design of compact, broadband, and low-loss silicon
+waveguide bends with radius under 500 nm,” inPhotonics, vol. 9, no. 9,
+2022, Art. no. 616, doi:10.3390/photonics9090616.
+[42] C. Sun, Y . Yu, G. Chen, and X. Zhang, “Ultra-compact bent multimode
+silicon waveguide with ultralow inter-mode crosstalk,”Opt. Lett., vol. 42,
+no. 15, pp. 3004–3007, 2017, doi:10.1364/OL.42.003004.
+[43] D. Liu, Y . Tan, E. Khoram, and Z. Yu, “Training deep neural networks for
+the inverse design of nanophotonic structures,”ACS Photon., vol. 5, no. 4,
+pp. 1365–1369, 2018, doi:10.1021/acsphotonics.7b01377.
+[44] K. Wang et al., “Inverse design of digital nanophotonic devices using
+the adjoint method,” Photon. Res., vol. 8, no. 4, pp. 528–533, 2020,
+doi: 10.1364/PRJ.383887.
+[45] B. Shen, P. Wang, R. Polson, and R. Menon, “An integrated-nanophotonics
+polarization beamsplitter with 2.4×2.4 μm2 footprint,” Nature Photon.,
+vol. 9, no. 6, pp. 378–382, 2015, doi:10.1038/nphoton.2015.80.
+[46] J. Huang et al., “Implementation of on-chip multi-channel focusing wave-
+length demultiplexer with regularized digital metamaterials,”Nanopho-
+tonics, vol. 9, no. 1, pp. 159–166, 2020, doi:10.1515/nanoph-2019-0368.
+[47] S. Molesky et al., “Inverse design in nanophotonics,”Nature Photon.,
+vol. 12, no. 11, pp. 659–670, 2018, doi:10.1038/s41566-018-0246-9.
+[48] J. Kennedy and R. Eberhart, “Particle swarm optimization,” in Proc.
+Int. Conf. Neural Netw., Perth, W A, Australia, 1995, pp. 1942–1948.
+doi: 10.1109/ICNN.1995.488968.
+Authorized licensed use limited to: McMaster University. Downloaded on May 28,2026 at 18:05:26 UTC from IEEE Xplore.  Restrictions apply. 

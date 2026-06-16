@@ -1,0 +1,427 @@
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13481
+High performance B-spline multimode
+waveguide bends in lithium niobate on insulator
+BINHANG XU,1,2, †TIANHENG ZHANG ,1,†
+ MIN LIU,1,2
+YU ZHANG ,1,2
+ JING DU,1,2,3 JUNQIANG SUN ,1,4
+AND JIAN WANG 1,2
+1Wuhan National Laboratory for Optoelectronics and School of Optical and Electronic Information,
+Huazhong University of Science and Technology, Wuhan 430074, Hubei, China
+2Optics Valley Laboratory, Wuhan 430074, Hubei, China
+3jing_du@hust.edu.cn
+4jqsun@hust.edu.cn
+†These authors contribute equally to this work.
+Abstract: Lithium niobate on insulator (LNOI) has emerged as a transformative platform for
+integrated photonics, combining the exceptional material properties of lithium niobate with the
+compactness and scalability of modern photonic technologies. While traditional waveguide
+bend designs for LNOI face challenges such as bending losses, mode mismatch, and fabrication
+complexity,thisstudyintroducesanapproachleveragingB-splinecurvesformultimodewaveguide
+bend optimization. B-spline curves offer unparalleled design flexibility, enabling precise control
+ofcurvatureprofiles,smoothtransitions,andsimultaneousoptimizationofinsertionloss(IL)and
+mode crosstalk (CT). Experimental results demonstrate that 90° B-spline-based waveguide bends
+achieve ultra-low insertion losses of 0.05dB, 0.10dB, and 0.29dB for TE0, TE1, and TE2 modes,
+respectively, with crosstalk below -16.71dB across all modes for cascaded bends. These results
+suggest that B-spline-based designs hold promise for enabling high-performance multimode
+waveguides, offering a potential solution to key challenges in LNOI photonic integrated circuits.
+© 2025 Optica Publishing Group under the terms of the Optica Open Access Publishing Agreement
+1. Introduction
+Lithium niobate (LN) has emerged as a highly competitive material for integrated photonics,
+owing to its wide transparency window, strong electro-optic effect, and high nonlinear optical
+coefficient [1–3]. These advantages place LN ahead of conventional materials such as silicon
+[4–6], silicon nitride [7–9], and indium phosphide [10,11]. However, traditional bulk LN devices
+face limitations in terms of integration density and fabrication scalability, primarily due to their
+relatively large device footprints and the challenges associated with precision microfabrication.
+The advent of lithium niobate on insulator (LNOI) technology has revolutionized the field,
+enabling the development of thin-film LN devices that combine the superior material properties
+of LN with the compactness and integration capabilities of modern photonic platforms [12–14].
+LNOI offers enhanced optical confinement, reduced power consumption, and compatibility
+with advanced nanofabrication techniques, making it a highly promising candidate for high-
+performance photonic integrated circuits (PICs) [15]. This technological leap has spurred the
+creation of a diverse range of high-performance integrated photonic structures and devices,
+includingelectro-opticmodulators[16–20],opticalfrequencycombgenerators[21–23],microring
+resonators [24–26], couplers [27–30], interleavers [31,32], frequency shifters [33,34], rare earth
+ion-doped waveguides [35,36], mode (de)multiplexers [37,38], and so forth.
+In the quest for PICs that mimic electronic integrated circuits by transmitting and processing
+opticalsignalswithincompactfootprintswithoutcompromisingperformance,waveguidebending
+is an inevitable design challenge. To date, several approaches have been proposed for designing
+bent waveguides, including circular bends [39], lateral offset [40], subwavelength gratings
+#555409 https://doi.org/10.1364/OE.555409
+Journal © 2025 Received 9 Jan 2025; revised 5 Mar 2025; accepted 5 Mar 2025; published 14 Mar 2025
+
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13482
+[41,42], inverse design [43,44], Euler bends [45,46], free-form curves (FFCs) [47] and Bézier
+bends [48,49]. Circular bends are straightforward to fabricate; however, they typically suffer
+from significant bending losses, particularly in multimode waveguides. Lateral offsets can
+mitigate mode mismatch between straight and bent waveguides, though they depend heavily on
+high-precisionfabrication. Subwavelengthgratingsandinversedesignapproachescaneffectively
+reduce the bend radius, but they introduce additional scattering losses and impose stringent
+fabrication requirements. Euler bends, designed to minimize curvature variation and reduce
+bending losses, cannot effectively address the problem of mode mismatch caused by variations
+in the effective refractive index during bending in anisotropic materials. Bézier bends provide
+enhanced control over the bending profile but are constrained in their ability to simultaneously
+optimize both insertion loss (IL) and mode crosstalk due to their nature as globally controlled
+curves. While these existing approaches address specific aspects of waveguide bend design, they
+often involve trade-offs between fabrication complexity, bending losses, and mode crosstalk.
+To overcome these limitations, a design method is required that combines flexibility, smooth
+curvature transitions, and the ability to optimize multiple performance metrics simultaneously.
+B-spline curves offer several distinct advantages over traditional waveguide bend design
+approaches. Their inherent design flexibility allows precise control of the curvature profile
+through adjustable control points [50], enabling the simultaneous optimization of insertion loss
+and mode crosstalk. Furthermore, B-spline curves provide smooth curvature transitions, which
+helpminimizescatteringlossesandreducemodemismatch,particularlyinmultimodewaveguides
+[51]. The local control properties of B-splines also make them highly adaptable for addressing
+complex design constraints, enhancing their suitability for advanced photonic integrated circuits,
+especially by providing greater design freedom and potential solutions for waveguide design in
+anisotropic materials, which is difficult to achieve with Euler curves due to their lack of local
+control properties. Despite these benefits, the application of B-spline curves in the design of
+bent waveguides for LNOI platforms has not yet been thoroughly investigated. Considering
+the critical importance of achieving high-performance multimode waveguides for LNOI-based
+PICs, a laudable goal would be to explore the design and optimization of B-spline-based bent
+waveguides for LNOI.
+In this paper, we propose an approach for designing multimode waveguide bends on an LNOI
+platform utilizing B-spline curves [52]. Compared to traditional design methods, B-spline curves
+provide enhanced flexibility in shaping the bend profile, enabling better optimization of bending
+radius, insertion loss, and mode crosstalk. Our experimental results demonstrate that a 90°
+B-spline-based waveguide bend achieves ultra-low insertion losses of 0.05dB, 0.10dB, and
+0.29dB for the TE0, TE1, and TE2 modes, respectively. Additionally, the crosstalk for cascaded
+90° bends remains below -16.71dB across all three modes. This low-loss waveguide bend
+provides an effective solution for achieving low-loss multimode transmission in LNOI-based
+PICs.
+2. Principle and design
+WeselectedtheX-cutLNOIplatformfordesigningandfabricatinglow-lossmultimodewaveguide
+bends. The X-cut LNOI wafer features a 600nm thick LN core layer, and with the chosen
+manufacturing process, the slab thicknesshs was set to 300nm, while the waveguide sidewall
+angle θ is approximately 70°. Figure 1(a). illustrates the 90° waveguide bend designed using
+B-spline curves, while Fig. 1(b). depicts the cross-section of the LN waveguide. In conventional
+approaches, most waveguide bends are optimized based on a fixed waveguide width. However,
+in anisotropic materials such as LN, the effective refractive index of the quasi-TE mode varies
+continuously along the bend [53]. Under these conditions, a more effective method to minimize
+loss involves independently optimizing the inner and outer curves of the waveguide bend. To
+achieve this, we employed B-spline curves, which offer a higher degree of freedom compared to
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13483
+Euler and Bézier curves, the latter two having been widely used in previous studies for bend loss
+optimization. The equation of the B-spline curve is given by.
+P(u)=
+∑︂n
+i=0 PiNi,k(u),u ∈[uk−1,un+1] (1)
+where Pi is the point on the curve andN(i,k)(u) is the B-spline basis function of degreek. In
+general, the B-spline basis function is defined by de Boor-Cox recursion and can be expressed as:
+Fig. 1.(a) The schematic of the B-spline multimode waveguide bend. (b) Cross-section of
+the B-spline multimode waveguide bend, (c) The structural design diagram of the B-spline
+multimode waveguide bend, (d) the structural comparison of three commonly used curves
+for waveguide bends.
+Ni,0 (u)=
+{︄
+1, if ui ≤u<ui+1
+0, otherwise (2)
+Ni,k(u)= (u−ui)Ni,k−1
+ui+k −ui
++ (ui+k+1 −u)Ni+1,k−1(u)
+ui+k+1 −ui+1
+(3)
+As shown in Fig. 1(c), we selected two different sets of B-spline curves to design the 90°
+waveguide bend. PointsP1 (Reff -W/2, 0) andP6 (Reff + W/2, 0) are the starting points of the
+innerandoutersides, respectively. Where Reff istheeffectiveradiusofthemultimodewaveguide
+bend, andW is the waveguide width at the start and end points of the multimode waveguide
+bend. PointsP5 (0,Reff -W/2) andP10 (0,Reff + W/2) are the endpoints of the inner and outer
+sides, respectively. The control points for the inner and outer B-spline curves areP2 [Reff -
+W/2, A (Reff - W/2)], P3 [B (Reff - W/2), B (Reff - W/2)], P4 [C (Reff - W/2), Reff - W/2], P7
+[Reff + W/2,D(Reff + W/2)],P8 [E (Reff + W/2),E (Reff + W/2)], andP9 [F (Reff + W/2),Reff
++ W/2], respectively. The adjustment of these control points is intended to modify the shape
+of the B-spline curve, thereby achieving the objective of reducing the transmission loss of the
+waveguide bend. To simplify the optimization process, certain constraints are applied to the
+control points: thex-coordinates of control pointsP2 and P7 are fixed, allowing adjustments
+only to theiry-coordinates; control pointsP3 andP8 are adjusted along the liney= x; and control
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13484
+pointsP4 andP9 have fixedy-coordinates, with adjustments limited to theirx-coordinates. The
+optimization ranges for each parameter are determined based on the specified radius and width
+of the waveguide in the given design scenario. Consequently, six parameters (A, B, C, D, E
+and F) need to be optimized. Since individually scanning each parameter would produce an
+overwhelming volume of data, the Equilibrium Optimizer (EO) algorithm is employed to achieve
+efficient and rapid optimization [54]. Figure 2. shows the convergence process of the B-spline
+waveguide bends optimized using the EO algorithm under three different radius. The number of
+iterations was set to 50, and the number of particles was set to 10. The optimization results for
+radiusof30 µm, 35µm, and40µmareshowninFig.2(a),wherethefitnessfunctionisdefinedas:
+Fitness= T0−0 + T1−1 + T2−2 (4)
+Fig. 2.(a) The EO optimization of the B-spline multimode waveguide bend with radius of
+30µm, 35µm, and 40µm, schematic diagrams of the structure in (b) the 1st iteration, (c) the
+25th iteration, and (d) the 50th iteration.
+T0−0, T1−1, andT2−2 represent the transmission of the B-spline multimode waveguide bends
+for the TE0, TE1, and TE2 modes, respectively. Figures 2(b-d). respectively present schematic
+diagrams of the B-spline waveguide bend structures with a radius of 40µm. Figure 1(d). shows a
+structural comparison of four commonly used waveguide bend curves under the same radius.
+Using the finite-difference time-domain (FDTD) method, Table 1. compares the insertion losses
+for TE0, TE1, and TE2 modes across four types of curves: Arc, Euler, Bézier, and B-spline, for
+radius of 30µm, 35µm, and 40µm. It is evident that for effective radius of 30µm,35µm, and
+40µm, B-spline curves exhibit lower insertion losses across all three modes. To compare the
+structural differences at the best performance for the four curves at the same radius, we have
+plottedthestructuralcomparisoncorrespondingtotheoptimalparametersat Reff = 30µm,35 µm,
+and 40µm, as shown in Fig. 3. Furthermore, we simulated the optimal performance of the four
+curves asReff varies from 10µm to 100µm, with the results shown in Fig. 4. It can be observed
+that B-spline curves perform well across different radius, especially for the TE1 and TE2 modes.
+Additionally, it can be inferred that asReff increases further, the bending performance of the
+B-spline waveguide multimode bend will improve even more.
+With the determined structural parametersh= 300nm, w= 3.5µm andReff = 100µm, we
+simulated and optimized the transmission performance of the multimode waveguide bend. The
+simulation results in Fig. 5 show that, compared to the traditional arc-shaped waveguide bend,
+Eulerwaveguidebend,andBézierwaveguidebend,theoptimizedB-splinemultimodewaveguide
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13485
+Fig. 3. The structural comparison of the best performance for Arc, Euler, Bézier, and
+B-spline curves at differentReff, (a)Reff =30µm, (b)Reff =35µm, (c)Reff =40µm.
+Table 1. Comparison of simulated bending losses in waveguides with different bend types at
+radius of 30 µm, 35 µm, and 40 µm,w = 3.5 µm
+Reff Mode Bend type
+Arc Euler Bézier B-spline
+30 µm
+TE0 IL (dB/90°) 1.47 1.19 0.51 0.23
+TE1 IL (dB/90°) 3.82 3.79 1.27 0.92
+TE2 IL (dB/90°) 6.97 9.62 7.10 4.36
+35 µm
+TE0 IL (dB/90°) 3.57 1.43 0.34 0.14
+TE1 IL (dB/90°) 6.93 3.24 0.65 0.44
+TE2 IL (dB/90°) 6.08 8.24 4.79 3.41
+40 µm
+TE0 IL (dB/90°) 6.09 2.21 0.21 0.13
+TE1 IL (dB/90°) 13.36 2.60 0.40 0.48
+TE2 IL (dB/90°) 8.12 6.91 4.32 2.27
+bendexhibitssuperiorperformance, withinsertionlossesfortheTE 0, TE1, andTE2 modesbeing
+lower than 0.04dB, 0.07dB, and 0.18dB, respectively. Additionally, the crosstalk performance
+is excellent, with the crosstalk for the TE0, TE1, and TE2 modes all being no higher than -26dB.
+Figure 6 also compares the mode field distributions of the traditional arc-shaped waveguide,
+Euler waveguide bend, Bézier waveguide bend, and B-spline multimode waveguide bend for
+the TE0, TE1, and TE2 modes. The simulation results clearly indicate that, compared to the
+traditionalarc-shapedwaveguide,Eulerwaveguidebend,andBézierwaveguidebend,theB-spline
+waveguidebendsignificantlyreducesinter-modecrosstalkandmodeleakage. AlthoughtheEuler
+Fig. 4.The simulated performance of the Arc, Euler, Bézier, and B-spline waveguide bends
+at different radius, (a) TE0 input, (b) TE1 input, and (c) TE2 input.
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13486
+Fig. 5.The simulated transmission spectrum of the traditional arc-shaped waveguide bend
+with (a) TE0 input, (b) TE1 input, (c) TE2 input, Euler waveguide bend with (d) TE0 input,
+(e) TE1 input, (f) TE2 input, Bézier waveguide bend with (g) TE0 input, (h) TE1 input, (i)
+TE2 input, B-spline multimode waveguide bend with (j) TE0 input, (k) TE1 input, (l) TE2
+input. IL: insert loss. CT: crosstalk.
+and Bézier waveguides perform well in the TE0 mode, the B-spline waveguide exhibits better
+performance in the TE1 and TE2 modes. Additionally, as shown in this figure, Arc, Euler and
+Bézier waveguides exhibit relatively low leakage for the TE0 mode whereas the TE1 and TE2
+modes suffer from significant leakage. This phenomenon arises from the birefringence of lithium
+niobatem which causes variations in the effective refractive index during bending, leading to
+mode mismatch in the curved waveguide. Furthermore, TE-TM mode hybridization may also
+occur, however noticeable hybridization typically requires a sufficiently long coupling length
+[55]. Therefore, the primary source of loss can be attributed to mode mismatch caused by the
+birefringence of lithium niobate during the bending process.
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13487
+Fig. 6.The simulated field distribution of the traditional arc-shaped waveguide bend with
+(a) TE0 input, (b) TE1 input, (c) TE2 input, Euler waveguide bend with (d) TE0 input, (e)
+TE1 input, (f) TE2 input, Bézier waveguide bend with (g) TE0 input, (h) TE1 input, (i) TE2
+input, B-spline multimode waveguide bend with (j) TE0 input, (k) TE1 input, (l) TE2 input.
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13488
+To further demonstrate the advantages of the width variability of the B-spline multimode
+waveguide bend mentioned earlier, we analyze the width-fixed Arc-shaped multimode waveguide
+bend and the B-spline multimode waveguide bend at a 1550nm as shown in Fig. 7. The
+comparison shows that, overall, the B-spline multimode waveguide bend exhibits a higher
+effectiverefractiveindexforthesamemode. Ahighereffectiverefractiveindexindicatesstronger
+mode confinement, which helps to better confine the optical wave within the waveguide and
+reduce scattering losses outside the bend.
+Fig. 7.Effective refractive indices for TE0, TE1, and TE2 modes between the width-fixed
+arc-shaped waveguide bend and the width-variable B-spline multimode waveguide bend for
+different ϕat 1550nm. The dashed lines represent the width-fixed arc-shaped waveguide,
+while the solid lines represent the width-variable B-spline waveguide.
+3. Results
+The device is fabricated on a 600nm thick X-cut LN film with a 4.7µm buried silicon oxide
+layer (NANOLN). The chip fabrication process begins with a thorough cleaning of the LNOI
+wafer. The wafer undergoes ultrasonic cleaning using acetone, methanol, and isopropanol to
+remove any organic contaminants from the surface. Next, a layer of CSAR 62 is spin-coated onto
+the cleaned wafer. The LN waveguides are patterned using electron beam lithography (EBL)
+and formed through inductively coupled plasma (ICP) etching. The etched waveguides have
+a depth of 300nm and a sidewall angle of 70 degrees. Finally, a protective upper cladding of
+approximately 1µm of dense silicon oxide is deposited using plasma enhanced chemical vapor
+deposition (PECVD) at 300°C.
+Themeasurementsetupconsistsofsingle-modefibers,apolarizationcontroller,atunablelaser
+(1525-1575nm), and a multi-channel optical power meter. As shown in Fig. 8(a), we cascaded
+differentnumbersofwaveguidebendsforlinearfitting. Tocharacterizethemultimodewaveguide
+bends, we used a pair of 3-channel mode division multiplexers (MDMs) with grating couplers on
+both sides of the bend, as shown in Fig. 8(b). This setup allows us to excite the modes of interest
+in the multimode waveguide. The three input ports are labeled I1, I2, and I3, used for coupling
+the TE0, TE1, and TE2 modes, respectively, and the corresponding output ports are labeled O1,
+O2, and O3 for measurement.
+As shown in Figs. 9(a-c), the results of the two cascaded 90° waveguide bends clearly
+demonstrate that the B-spline-based waveguide bends have very low insertion loss and mode
+crosstalk. At a wavelength of 1550nm, the insertion losses for the TE0, TE1, and TE2 modes in
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13489
+Fig. 8.(a) The microscope image of the fabricated multimode waveguide bend, (b) SEM
+image of MDM, (c) SEM image of B-spline multimode waveguide bends.
+Fig. 9.The measured transmission spectra of two cascaded B-spline multimode waveguide
+bends for (a) TE0 input, (b) TE1 input, and (c) TE2 input. The transmission measurement
+diagram of two cascaded traditional arc-shaped multimode waveguide bends for (d) TE0
+input, (e) TE1 input, and (f) TE2 input.
+the two cascaded B-spline waveguide bends are approximately 1.46dB, 0.38dB, and 2.17dB,
+respectively, representing a marked improvement over traditional arc-shaped waveguide. To
+more accurately characterize the performance of multimode curved waveguides, we cascaded
+different numbers of curved waveguides for linear fitting to eliminate the measurement error
+introduced by the grating coupler. Specifically, 0, 90, 158, and 226 curved waveguides were
+cascaded for measuring the transmission in the TE0 mode, 0, 34, 58, and 110 curved waveguides
+for the TE1 mode, and 0, 20, 38, and 62 curved waveguides for the TE2 mode. Through linear
+fitting, the insertion losses for the three modes were calculated, with the TE0, TE1, and TE2
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13490
+modes having insertion losses of approximately 0.05, 0.10, and 0.29dB at 1550nm, respectively,
+as shown in Fig. 10. For comparison, we fabricated traditional arc-shaped waveguide bends of
+thesamedimensions. Thetransmissionspectracorrespondingtodifferentmodeinputsareshown
+in Figs. 9(d-f). Within the 1525nm to 1575nm wavelength range, the traditional waveguide
+bends exhibit significantly higher insertion loss and crosstalk. The performance of the fabricated
+B-spline waveguide bends is slightly lower than the simulation results, which may be due to
+fabrication-induced errors in waveguide width and depth.
+Fig. 10.Measured average insertion losses of the TE0, TE1, and TE2 modes for different
+numbers of B-spline multimode waveguide bends at 1550nm.
+AsshowninFig.11,wesimulatedthedeviceperformancewithwidthvariationsof ∆w= ±25nm
+and etch depth variations of∆h= ±25nm. The results indicate that, even with these dimensional
+discrepancies,theinsertionlossremainsalmostunchanged,withonlyaslightincreaseincrosstalk.
+However,wealsoobservethatwithinthe1500-1600nmwavelengthrange,thesimulatedcrosstalk
+remains below -18dB, demonstrating that the device can tolerate fabrication errors.
+Fig. 11.The simulated transmission spectrum of the B-spline multimode waveguide bend
+with (a-c)∆h= ±25nm, (d-f)∆w= ±25nm.
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13491
+4. Conclusion
+In summary, we proposed and experimentally demonstrated a multimode waveguide bend
+supporting three modes, designed based on a B-spline curve. This multimode waveguide bend,
+with an effective radius of 100µm, a waveguide width of 3.5µm, a ridge height of 300nm, a slab
+thickness of 300nm, and a sidewall angleθ≈70°, achieved an insertion loss of less than 0.29dB
+and crosstalk below -16.71dB for two cascaded bends. Compared to traditional arc-shaped
+waveguides, this high-performance multimode waveguide bend significantly reduces the bend
+radiuswhilemaintainingsimilarperformance,therebyenhancingthedesignflexibilityofon-chip
+integration. This structure provides an effective solution for improving the integration density of
+LNOI-based photonic circuits. Additionally, the B-spline curve, as a smooth and highly flexible
+curve, can be applied not only to the waveguide bends discussed in this paper but also to the
+design of various other passive devices, such as waveguide crossings, edge couplers, MDMs,
+polarization beam splitters (PBSs), add-drop optical filters, and microring resonators. It offers
+new insights for the design of high-performance on-chip devices.
+Funding. National Key Research and Development Program of China (2021YFB2800102); National Natural Science
+Foundation of China (62101198); International Cooperation Projects in Hubei Province (2024EHA040); Key Research
+and Development Program of Hubei Province (2022BAA005); JD Key Project of of Hubei Province (2023BAA012);
+Innovation Project of Optics Valley Laboratory (OVL2023ZD004).
+Acknowledgments. Thanks to engineers Chenglin Shang, Zhiwen Li, and Panpan Zheng in the Center of
+Optoelectronic Micro & Nano Fabrication and Characterizing Facility, Wuhan National Laboratory for Optoelectronics
+of Huazhong University of Science and Technology, for the support in device fabrication.
+Disclosures. The authors declare no conflict of interest.
+Data availability.The data that support the findings of this study are available from the corresponding author upon
+reasonable request.
+References
+1. Y. Qi and Y. Li, “Integrated lithium niobate photonics,” Nanophotonics9(6), 1287–1320 (2020).
+2. G. Chen, N. Li, J. D. Ng,et al., “Advances in lithium niobate photonics: development status and perspectives,” Adv.
+Photon. 4(03), 034003 (2022).
+3. L. Arizmendi, “Photonic applications of lithium niobate crystals,” phys. stat. sol. (a)201(2), 253–283 (2004).
+4. A. E.-J. Lim, J. Song, Q. Fang,et al., “Review of silicon photonics foundry efforts,” IEEE J. Select. Topics Quantum
+Electron. 20(4), 405–416 (2014).
+5. L. Pavesi, “Will silicon be the photonic material of the third millenium,” J. Phys.: Condens. Matter15(26),
+R1169–R1196 (2003).
+6. J. Leuthold, C. Koos, and W. Freude, “Nonlinear silicon photonics,” Nature Photon4(8), 535–544 (2010).
+7. C. G. H. Roeloffzen, L. Zhuang, C. Taddei,et al., “Silicon nitride microwave photonic circuits,” Opt. Express21(19),
+22937 (2013).
+8. J. S. Levy, A. Gondarenko, M. A. Foster,et al., “CMOS-compatible multiple-wavelength oscillator for on-chip
+optical interconnects,” Nat. Photonics4(1), 37–40 (2010).
+9. Y. Okawachi, K. Saha, J. S. Levy,et al., “Octave-spanning frequency comb generation in a silicon nitride chip,” Opt.
+Lett. 36(17), 3398 (2011).
+10. Y. Ogiso, J. Ozaki, Y. Ueda,et al., “Over 67GHz Bandwidth and 1.5V Vπ InP-Based Optical IQ Modulator With
+n-i-p-n Heterostructure,” J. Lightwave Technol.35(8), 1450–1455 (2017).
+11. R. Nagarajan, M. Kato, D. Lambert,et al., “Terabit/s class InP photonic integrated circuits,” Semicond. Sci. Technol.
+27(9), 094003 (2012).
+12. D. Zhu, L. Shao, M. Yu,et al., “Integrated photonics on thin-film lithium niobate,” Adv. Opt. Photonics13(2), 242
+(2021).
+13. J. Lin, F. Bo, Y. Cheng,et al., “Advances in on-chip photonic devices based on lithium niobate on insulator,”
+Photonics Res.8(12), 1910 (2020).
+14. A. Boes, L. Chang, C. Langrock,et al., “Lithium niobate photonics: Unlocking the electromagnetic spectrum,”
+Science 379(6627), eabj4396 (2023).
+15. A. Honardoost, K. Abdelsalam, and S. Fathpour, “Rejuvenating a versatile photonic material: thin-film lithium
+niobate,” Laser &amp; Photonics Reviews14(9), 2000088 (2020).
+16. M. He, M. Xu, Y. Ren,et al., “High-performance hybrid silicon and lithium niobate Mach–Zehnder modulators for
+100 Gbit s−1 and beyond,” Nat. Photonics13(5), 359–364 (2019).
+17. C. Wang, M. Zhang, X. Chen,et al., “Integrated lithium niobate electro-optic modulators operating at CMOS-
+compatible voltages,” Nature562(7725), 101–104 (2018).
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13492
+18. M. Li, J. Ling, Y. He,et al., “Lithium niobate photonic-crystal electro-optic modulator,” Nat. Commun.11(1), 4123
+(2020).
+19. C. Wang, M. Zhang, B. Stern,et al., “Nanophotonic lithium niobate electro-optic modulators,” Opt. Express26(2),
+1547 (2018).
+20. T. Ren, M. Zhang, C. Wang,et al., “An integrated low-voltage broadband lithium niobate phase modulator,” IEEE
+Photon. Technol. Lett.31(11), 889–892 (2019).
+21. K. Zhang, W. Sun, Y. Chen,et al., “A power-efficient integrated lithium niobate electro-optic comb generator,”
+Commun Phys6(1), 17 (2023).
+22. M.Xu,M.He,Y.Zhu, etal.,“Flatopticalfrequencycombgeneratorbasedonintegratedlithiumniobatemodulators,”
+J. Lightwave Technol.40(2), 339–345 (2022).
+23. R. Cheng, M. Yu, A. Shams-Ansari,et al., “Frequency comb generation via synchronous pumpedχ(3) resonator on
+thin-film lithium niobate,” Nat. Commun.15(1), 3921 (2024).
+24. M. Zhang, C. Wang, R. Cheng,et al., “Monolithic ultra-high-Q lithium niobate microring resonator,” Optica4(12),
+1536 (2017).
+25. S. Y. Siew, S. S. Saha, M. Tsang,et al., “Rib microring resonators in lithium niobate on insulator,” IEEE Photonics
+Technol. Lett.28(5), 573–576 (2016).
+26. Y. He, H. Liang, R. Luo,et al., “Dispersion engineered high quality lithium niobate microring resonators,” n.d.
+27. Z. Ruan, J. Hu, Y. Xue,et al., “Metal based grating coupler on a thin-film lithium niobate waveguide,” Opt. Express
+28(24), 35615 (2020).
+28. B. Chen, Z. Ruan, J. Hu,et al., “Two-dimensional grating coupler on an X-cut lithium niobate thin-film,” Opt.
+Express 29(2), 1289 (2021).
+29. I. Krasnokutska, J.-L. J. Tambasco, and A. Peruzzo, “Nanostructuring of LNOI for efficient edge coupling,” Opt.
+Express 27(12), 16578 (2019).
+30. C. Hu, A. Pan, T. Li,et al., “High-efficient coupler for thin-film lithium niobate waveguide devices,” Opt. Express
+29(4), 5397 (2021).
+31. X. Li, M. Wang, J. Li,et al., “Monolithic 1×4 reconfigurable electro-optic tunable interleaver in lithium niobate thin
+film,” IEEE Photon. Technol. Lett.31(20), 1611–1614 (2019).
+32. X. P. Li, K. X. Chen, and L. F. Wang, “Compact and electro-optic tunable interleaver in lithium niobate thin film,”
+Opt. Lett.43(15), 3610 (2018).
+33. Y. Hu, M. Yu, D. Zhu,et al., “On-chip electro-optic frequency shifters and beam splitters,” Nature599(7886),
+587–593 (2021).
+34. L. Shao, N. Sinclair, J. Leatham,et al., “Integrated lithium niobate acousto-optic frequency shifter,” inConference
+on Lasers and Electro-Optics(Optica Publishing Group, 2020), p. STh1F.5.
+35. S.Wang,L.Yang,R.Cheng, etal.,“Incorporationoferbiumionsintothin-filmlithiumniobateintegratedphotonics,”
+Appl. Phys. Lett.116(15), 151103 (2020).
+36. S. Dutta, E. A. Goldschmidt, S. Barik,et al., “Integrated photonic platform for rare-earth ions in thin film lithium
+niobate,” Nano Lett.20(1), 741–747 (2020).
+37. Z. Yu, Y. Tong, H. K. Tsang,et al., “High-dimensional communication on etchless lithium niobate platform with
+photonic bound states in the continuum,” Nat. Commun.11(1), 2602 (2020).
+38. X. Han, Y. Jiang, A. Frigg,et al., “Mode and polarization-division multiplexing based on silicon nitride loaded
+lithium niobate on insulator platform,” Laser &amp; Photonics Reviews16(1), 2100529 (2022).
+39. A. Melloni, P. Monguzzi, R. Costa,et al., “Design of curved waveguides: the matched bend,” J. Opt. Soc. Am. A
+20(1), 130 (2003).
+40. T. Kitoh, N. Takato, M. Yasu,et al., “Bending loss reduction in silica-based waveguides by using lateral offsets,” J.
+Lightwave Technol.13(4), 555–562 (1995).
+41. H. Wu, C. Li, L. Song,et al., “Ultra-sharp multimode waveguide bends with subwavelength gratings,” Laser &amp;
+Photonics Reviews13(2), 1800119 (2019).
+42. K. K. MacKay, S. Wang, P. Cheben,et al., “Subwavelength grating metamaterial multimode bend for silicon
+waveguides,” Adv. Mater. Technol.7(8), 2200038 (2022).
+43. Y. Liu, W. Sun, H. Xie,et al., “Very sharp adiabatic bends based on an inverse design,” Opt. Lett.43(11), 2482
+(2018).
+44. S. Irfan, J.-Y. Kim, and H. Kurt, “Ultra-compact and efficient photonic waveguide bends with different configurations
+designed by topology optimization,” Sci. Rep.14(1), 6453 (2024).
+45. F. Vogelbacher, S. Nevlacsil, M. Sagmeister,et al., “Analysis of silicon nitride partial Euler waveguide bends,” Opt.
+Express 27(22), 31394 (2019).
+46. X. Jiang, H. Wu, and D. Dai, “Low-loss and low-crosstalk multimode waveguide bend on silicon,” Opt. Express
+26(13), 17680 (2018).
+47. X. Liu, Z. Ruan, S. Sun,et al., “Sharp bend and large FSR ring resonator based on the free-form curves on a thin-film
+lithium niobate platform,” Opt. Express32(6), 9433 (2024).
+48. T. Sun and M. Xia, “Low loss modified Bezier bend waveguide,” Opt. Express30(7), 10293 (2022).
+49. D. Yi, Y. Zhang, and H. K. Tsang, “Optimal Bezier curve transition for low-loss ultra-compact S-bends,” Opt. Lett.
+46(4), 876 (2021).
+50. L. A. Piegl and Wayne. Tiller,The NURBS book(Springer Science & Business Media, 2012).
+
+Research Article Vol. 33, No. 6 / 24 Mar 2025 /Optics Express 13493
+51. X. Yu, J. Deng, W. Cao,et al., “Method for synthesis of TE01 TE11 mode converter for gyrotron by the NURBS
+technique,” IEEE Trans. Microwave Theory Techn.63(2), 326–330 (2015).
+52. B. Xu, M. Liu, G. Meng,et al., “Design and simulation of low-loss multimode B-spline waveguide bends based on
+lithium niobate on insulator,” in2023 Asia Communications and Photonics Conference/2023 International Photonics
+and Optoelectronics Meetings (ACP/POEM)(IEEE, 2023), pp. 1–3.
+53. J. Wang, P. Chen, D. Dai,et al., “Polarization coupling of X-cut thin film lithium niobate based waveguides,” IEEE
+Photonics J.12(6), 1–12 (2020).
+54. A. Faramarzi, M. Heidarinejad, B. Stephens,et al., “Equilibrium optimizer: A novel optimization algorithm,”
+Knowledge-Based Systems191, 105190 (2020).
+55. H. Luo, Z. Chen, H. Li,et al., “High-performance polarization splitter-rotator based on lithium niobate-on-insulator
+platform,” IEEE Photonics Technol. Lett.33(24), 1423–1426 (2021).

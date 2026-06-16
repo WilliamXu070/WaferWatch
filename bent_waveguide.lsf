@@ -1,0 +1,222 @@
+switchtolayout;
+selectall;
+delete;
+
+## SIM PARAMS
+wavelength=1.55e-6;
+Thickness=0.6e-6;
+mesh=50e-9;
+etch_depth=0.3e-6;
+WG_top_width=0.8e-6;
+WG_width=1.01838214055972e-6;
+WG_bottom_width=1.01838214055972e-6;
+WG_effective_width=0.90919107027986e-6;
+BOX=4.7e-6;
+Angle=70;
+
+# Bent waveguide geometry controls.
+# In Option A, this LSF does not create the optimizable ridge/core.
+# LumOpt's FunctionDefinedPolygon owns the only ridge geometry during optimization.
+# WG_top_width is the fabrication/top GDS width. WG_width is the selected
+# vertical surrogate width used for LumOpt bounds/mesh when sidewalls are
+# approximated by one extruded polygon.
+Footprint=50e-6;
+input_arm_length=5e-6;
+output_arm_length=5e-6;
+layout_padding=5e-6;
+
+# Fixed port faces for later FDTD/source/monitor placement.
+input_port_x=-input_arm_length;
+input_port_y=0;
+output_port_x=Footprint;
+output_port_y=Footprint+output_arm_length;
+
+core_x_min=input_port_x;
+core_x_max=Footprint+WG_width/2;
+core_y_min=-WG_width/2;
+core_y_max=output_port_y;
+
+layout_x_min=core_x_min-layout_padding;
+layout_x_max=core_x_max+layout_padding;
+layout_y_min=core_y_min-layout_padding;
+layout_y_max=core_y_max+layout_padding;
+layout_x_span=layout_x_max-layout_x_min;
+layout_y_span=layout_y_max-layout_y_min;
+layout_x_center=(layout_x_min+layout_x_max)/2;
+layout_y_center=(layout_y_min+layout_y_max)/2;
+
+A0=[1;1;1];
+B1=[2.9804;2.6734;2.6734];
+C1=[0.02047;0.01764;0.01764];
+B2=[0.5981;1.229;1.229];
+C2=[0.0666;0.05914;0.05914];
+B3=[8.9543;12.614;12.614];
+C3=[414.08;474.6;474.6];
+
+air_material=addmaterial('Dielectric');
+setmaterial(air_material,'name','Air_Custom');
+setmaterial('Air_Custom','Refractive Index',1);
+
+#deletematerial('Lithium Niobate');
+opt_material=addmaterial('Sellmeier');
+setmaterial(opt_material,'name','Lithium Niobate');
+setmaterial('Lithium Niobate','Anisotropy','Diagonal');
+setmaterial('Lithium Niobate','A0',A0);
+setmaterial('Lithium Niobate','B1',B1);
+setmaterial('Lithium Niobate','C1',C1);
+setmaterial('Lithium Niobate','B2',B2);
+setmaterial('Lithium Niobate','C2',C2);
+setmaterial('Lithium Niobate','B3',B3);
+setmaterial('Lithium Niobate','C3',C3);
+
+#############################################
+#####################################
+addlayerbuilder;
+set('name', 'WG_builder');
+# Set background geometry
+set('x', layout_x_center);
+set('y', layout_y_center);
+set('z', 0);
+set('x span', layout_x_span);
+set('y span', layout_y_span);
+set('gds position reference', 1);
+set('base mesh order', 1);
+# add layers from scratch
+addlayer('Si_Substrate');
+addlayer('BOX');
+addlayer('TFLN-film');
+addlayer('MMI-core');
+
+
+setlayer('Si_Substrate', 'start position', -BOX);
+setlayer('Si_Substrate', 'thickness', -10e-6);
+setlayer('Si_Substrate', 'process', 'background');
+setlayer('Si_Substrate', 'background material', 'Si (Silicon) - Palik');
+set('base mesh order', 1);
+
+setlayer('BOX', 'start position', -BOX);
+setlayer('BOX', 'thickness', BOX);
+setlayer('BOX', 'process', 'background');
+setlayer('BOX', 'background material', 'SiO2 (Glass) - Palik');
+set('base mesh order', 1);
+
+setlayer('TFLN-film', 'start position', 0);
+setlayer('TFLN-film', 'thickness', Thickness - etch_depth);
+setlayer('TFLN-film', 'process', 'background');
+setlayer('TFLN-film', 'background material', 'Lithium Niobate');
+set('base mesh order', 1);
+
+setlayer('MMI-core', 'layer number', '1:0');
+setlayer('MMI-core', 'start position', Thickness - etch_depth);
+setlayer('MMI-core', 'thickness', etch_depth);
+setlayer('MMI-core', 'process', 'grow');
+setlayer('MMI-core', 'pattern material', 'Lithium Niobate');
+set('gds sidewall angle position reference', 'Top');
+setlayer('MMI-core', 'sidewall angle', Angle);
+set('base mesh order', 1);
+
+# No MMI-core geometry is created in the base script. LumOpt injects one
+# single continuous polygon containing the 5 um input arm, bend, and 5 um
+# output arm. Final top-width GDS can be loaded onto layer 1:0 above to get
+# the process-grow sidewall for verification/fabrication.
+
+###########################################
+############## FDTD REGION ################
+###########################################
+
+addfdtd;
+set('dimension','3D');
+set('index',1);
+set('x', layout_x_center);
+set('x span', layout_x_span);
+set('y', layout_y_center);
+set('y span', layout_y_span);
+set('z', 0.3e-6);
+set('z span', 3e-6);
+set('mesh type','auto non-uniform');
+set('mesh accuracy',2);
+set('mesh refinement','conformal variant 0');
+set('x min bc','PML');
+set('x max bc','PML');
+set('y min bc','PML');
+set('y max bc','PML');
+set('z min bc','PML');
+set('z max bc','PML');
+set('auto scale pml parameters',1);
+set('snap pec to yee cell boundary',1);
+set('pml layers', 16);
+set('simulation time',3e-12);
+set('background material','Air_Custom');
+setglobalsource('wavelength start',wavelength);
+setglobalsource('wavelength stop',wavelength);
+
+###########################################
+############## TE MODE SOURCE #############
+###########################################
+
+addmode;
+set('direction','Forward');
+set('injection axis','x-axis');
+set('x',input_port_x+1e-6);
+set('y',input_port_y);
+set('y span',5e-6);
+set('z',0.3e-6);
+set('z span',5e-6);
+set('override global source settings',false);
+set('mode selection','fundamental TE mode');
+set('auto update',1);
+set('override global source settings',1);
+set('wavelength start',wavelength);
+set('wavelength stop',wavelength);
+
+###########################################
+############## MONITORS ###################
+###########################################
+
+addpower;
+set('name','opt_fields');
+set('monitor type','3D');
+set('x',layout_x_center);
+set('x span',layout_x_span);
+set('y',layout_y_center);
+set('y span',layout_y_span);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+addpower;
+set('name','fom');
+set('monitor type','2D Y-normal');
+set('x',output_port_x);
+set('x span',5e-6);
+set('y',output_port_y-1e-6);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+addprofile;
+set('name', 'XY-profile_monitor');
+set('monitor type','2D Z-normal');
+set('z', 0.3e-6);
+set('x', layout_x_center);
+set('x span', layout_x_span);
+set('y', layout_y_center);
+set('y span', layout_y_span);
+
+###########################################
+############## DESIGN MESH ################
+###########################################
+
+addmesh;
+set('name','design_mesh');
+set('x',layout_x_center);
+set('x span',layout_x_span);
+set('y',layout_y_center);
+set('y span',layout_y_span);
+set('z',0.3e-6);
+set('z span',1.2e-6);
+set('set maximum mesh step',true);
+set('override x mesh',true);
+set('override y mesh',true);
+set('override z mesh',true);
+set('dx',mesh);
+set('dy',mesh);
+set('dz',mesh);

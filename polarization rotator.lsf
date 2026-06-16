@@ -1,0 +1,539 @@
+switchtolayout;
+selectall;
+delete;
+
+## SIM PARAMS
+wavelength=1.55e-6;
+WG_length=5e-6;
+WG_width=0.6e-6;
+In_width=2e
+Thickness=0.6e-6;
+mesh=50e-9;
+etch_depth=0.3e-6;
+Length=100e-6;
+Second_length=60e-6;
+Sep=4e-6;
+Width=15e-6;
+BOX=4.7e-6;
+Device_length=2*WG_length+Length+Second_length;
+x_min=-Device_length/2;
+x_max=-Device_length/2+WG_length;
+y_min=-WG_width/2;
+y_max=WG_width/2;
+x2_min=Device_length/2-WG_length;
+x2_max=Device_length/2;
+y2_min=-(WG_width)/2;
+y2_max=(WG_width)/2;
+Angle=70;
+A0=[1;1;1];
+B1=[2.9804;2.6734;2.6734];
+C1=[0.02047;0.01764;0.01764];
+B2=[0.5981;1.229;1.229];
+C2=[0.0666;0.05914;0.05914];
+B3=[8.9543;12.614;12.614];
+C3=[414.08;474.6;474.6];
+#deletematerial('Lithium Niobate');
+opt_material=addmaterial('Sellmeier');
+setmaterial(opt_material,'name','Lithium Niobate');
+setmaterial('Lithium Niobate','Anisotropy','Diagonal');
+setmaterial('Lithium Niobate','A0',A0);
+setmaterial('Lithium Niobate','B1',B1);
+setmaterial('Lithium Niobate','C1',C1);
+setmaterial('Lithium Niobate','B2',B2);
+setmaterial('Lithium Niobate','C2',C2);
+setmaterial('Lithium Niobate','B3',B3);
+setmaterial('Lithium Niobate','C3',C3);
+
+#############################################
+#####################################
+addlayerbuilder;
+set('name', 'WG_builder');
+# Set background geometry
+set('x', Device_length / 2);
+set('y', 0);
+set('z', 0);
+set('x span', Device_length);
+set('y span', 50e-6);
+set('gds position reference', 1);
+set('base mesh order', 1);
+# add layers form scratch
+addlayer('Si_Substrate');
+addlayer('BOX');
+addlayer('TFLN-film');
+addlayer('MMI-core');
+
+
+setlayer('Si_Substrate', 'start position', -BOX);
+setlayer('Si_Substrate', 'thickness', -10e-6);
+setlayer('Si_Substrate', 'process', 'background');
+setlayer('Si_Substrate', 'background material', 'Si (Silicon) - Palik');
+set('base mesh order', 1);
+
+setlayer('BOX', 'start position', -BOX);
+setlayer('BOX', 'thickness', BOX);
+setlayer('BOX', 'process', 'background');
+setlayer('BOX', 'background material', 'SiO2 (Glass) - Palik');
+set('base mesh order', 1);
+
+setlayer('TFLN-film', 'start position', 0);
+setlayer('TFLN-film', 'thickness', Thickness - etch_depth);
+setlayer('TFLN-film', 'process', 'background');
+setlayer('TFLN-film', 'background material', 'Lithium Niobate');
+set('base mesh order', 1);
+
+
+setlayer('MMI-core', 'layer number', '1:0');
+setlayer('MMI-core', 'start position', Thickness - etch_depth);
+setlayer('MMI-core', 'thickness', etch_depth);
+setlayer('MMI-core', 'process', 'grow');
+setlayer('MMI-core', 'pattern material', 'Lithium Niobate');
+set('gds sidewall angle position reference', 'Top');
+setlayer('MMI-core', 'sidewall angle', Angle); 
+set('base mesh order', 1);
+
+set('geometry', {'1:0':{[[x_min,y_min];[x_max,y_min];[x_max,y_max];[x_min,y_max];[x_min,y_min]]}});
+#####################################
+addlayerbuilder;
+set('name', 'WG_builder2');
+# Set background geometry
+set('x',Device_length / 2);
+set('y',0);
+set('z',0);
+set('x span', Device_length);
+set('y span', 50e-6);
+set('gds position reference', 1);
+set('base mesh order',1);
+# add layers form scratch
+addlayer('Si_Substrate');
+addlayer('BOX');
+addlayer('TFLN-film');
+addlayer('MMI-core');
+
+
+setlayer('Si_Substrate','start position',-BOX);
+setlayer('Si_Substrate','thickness',-10e-6);
+setlayer('Si_Substrate','process', 'background');
+setlayer('Si_Substrate','background material','Si (Silicon) - Palik');
+set('base mesh order',1);
+
+setlayer('BOX','start position',-BOX);
+setlayer('BOX','thickness',BOX);
+setlayer('BOX','process', 'background');
+setlayer('BOX','background material','SiO2 (Glass) - Palik');
+set('base mesh order',1);
+
+setlayer('TFLN-film','start position',0);
+setlayer('TFLN-film','thickness',Thickness - etch_depth);
+setlayer('TFLN-film','process', 'background');
+setlayer('TFLN-film','background material','Lithium Niobate');
+set('base mesh order',1);
+
+
+setlayer('MMI-core','layer number', '1:0');
+setlayer('MMI-core','start position',Thickness - etch_depth);
+setlayer('MMI-core','thickness',etch_depth);
+setlayer('MMI-core','process', 'grow');
+setlayer('MMI-core','pattern material','Lithium Niobate');
+set('gds sidewall angle position reference', 'Top');
+setlayer('MMI-core','sidewall angle', 70);
+set('base mesh order',1);
+# --- Calculate the vertices of the rectangle ---
+# Vertices will be defined starting from the bottom-left corner and moving counter-clockwise
+set('geometry', {"1:0":{[[x2_min,y2_min + Sep/2];[x2_max,y2_min + Sep/2];[x2_max,y2_max + Sep/2];[x2_min,y2_max + Sep/2]]}});
+#######################################
+addlayerbuilder;
+set('name', 'WG_builder3');
+# Set background geometry
+set('x',Device_length / 2);
+set('y',0);
+set('z',0);
+set('x span', Device_length);
+set('y span', 50e-6);
+set('gds position reference', 1);
+set('base mesh order',1);
+# add layers form scratch
+addlayer('Si_Substrate');
+addlayer('BOX');
+addlayer('TFLN-film');
+addlayer('MMI-core');
+
+
+setlayer('Si_Substrate','start position',-BOX);
+setlayer('Si_Substrate','thickness',-10e-6);
+setlayer('Si_Substrate','process', 'background');
+setlayer('Si_Substrate','background material','Si (Silicon) - Palik');
+set('base mesh order',1);
+
+setlayer('BOX','start position',-BOX);
+setlayer('BOX','thickness',BOX);
+setlayer('BOX','process', 'background');
+setlayer('BOX','background material','SiO2 (Glass) - Palik');
+set('base mesh order',1);
+
+setlayer('TFLN-film','start position',0);
+setlayer('TFLN-film','thickness',Thickness - etch_depth);
+setlayer('TFLN-film','process', 'background');
+setlayer('TFLN-film','background material','Lithium Niobate');
+set('base mesh order',1);
+
+
+setlayer('MMI-core','layer number', '1:0');
+setlayer('MMI-core','start position',Thickness - etch_depth);
+setlayer('MMI-core','thickness',etch_depth);
+setlayer('MMI-core','process', 'grow');
+setlayer('MMI-core','pattern material','Lithium Niobate');
+set('gds sidewall angle position reference', 'Top');
+setlayer('MMI-core','sidewall angle', 70);
+set('base mesh order',1);
+# --- Calculate the vertices of the rectangle ---
+# Vertices will be defined starting from the bottom-left corner and moving counter-clockwise
+set('geometry', {"1:0":{[[x2_min,y2_min - Sep/2];[x2_max,y2_min - Sep/2];[x2_max,y2_max - Sep/2];[x2_min,y2_max - Sep/2]]}});
+##########################################
+addlayerbuilder;
+set('name', 'WG_builder4');
+# Set background geometry
+set('x',0);
+set('y',0);
+set('z',0);
+set('x span', 300e-6);
+set('y span', 50e-6);
+set('gds position reference', 1);
+set('base mesh order',1);
+# add layers form scratch
+
+addlayer('MMI-core');
+
+setlayer('MMI-core','layer number', '1:0');
+setlayer('MMI-core','start position',Thickness - etch_depth);
+setlayer('MMI-core','thickness',etch_depth);
+setlayer('MMI-core','process', 'grow');
+setlayer('MMI-core','pattern material','Lithium Niobate');
+set('gds sidewall angle position reference', 'Top');
+setlayer('MMI-core','sidewall angle', 70);
+set('base mesh order',1);
+# --- Calculate the vertices of the rectangle ---
+# Vertices will be defined starting from the bottom-left corner and moving counter-clockwise
+
+rect_vertices = [
+    0.00010501,1.4e-06;
+    0.000104,1.27309e-06;
+    0.000102989,1.2158e-06; 
+    0.000101979,1.19726e-06; 
+    0.000100969,1.04178e-06; 
+    9.99585e-05,8.60774e-07; 
+    9.89482e-05,6.63287e-07;
+    9.79379e-05,6.84408e-07; 
+    9.69276e-05,8.31815e-07; 
+    9.59173e-05,9.55727e-07; 
+    9.4907e-05,1.03029e-06;
+    9.38967e-05,1.07099e-06; 
+    9.28864e-05,1.07681e-06; 
+    9.18761e-05,1.05665e-06; 
+    9.08658e-05,1.0021e-06;
+    8.98555e-05,9.23621e-07; 
+    8.88452e-05,8.26837e-07; 
+    8.78348e-05,7.69808e-07; 
+    8.68245e-05,7.9917e-07; 
+    8.58142e-05,8.6693e-07; 
+    8.48039e-05,9.30251e-07; 
+    8.37936e-05,9.76247e-07; 
+    8.27833e-05,9.99358e-07; 
+    8.1773e-05,9.99251e-07;
+    8.07627e-05,9.96662e-07; 
+    7.97524e-05,9.81735e-07; 
+    7.87421e-05,9.60635e-07;
+    7.77318e-05,9.38338e-07;  
+    7.67215e-05,9.28081e-07; 
+    7.57112e-05,9.32089e-07; 
+    7.47009e-05,9.48283e-07; 
+    7.36906e-05,9.69908e-07; 
+    7.26803e-05,9.97595e-07; 
+    7.167e-05,1.02265e-06; 
+    7.06597e-05,1.03921e-06; 
+    6.96494e-05,1.04383e-06; 
+    6.86391e-05,1.04267e-06; 
+    6.76288e-05,1.03756e-06;
+    6.66185e-05,1.00939e-06;
+    6.56082e-05,9.72628e-07; 
+    6.45979e-05,9.28309e-07; 
+    6.35876e-05,8.88604e-07;
+    6.25773e-05,8.62385e-07;
+    6.1567e-05,8.62295e-07;
+    6.05567e-05,8.69873e-07; 
+    5.95464e-05,9.10865e-07; 
+    5.85361e-05,9.45951e-07; 
+    5.75258e-05,9.76692e-07; 
+    5.65155e-05,9.98572e-07;
+    5.55052e-05,1.01895e-06; 
+    5.44948e-05,1.03798e-06; 
+    5.34845e-05,1.04132e-06; 
+    5.24742e-05,1.04394e-06;
+    5.14639e-05,1.05248e-06; 
+    5.04536e-05,1.05265e-06; 
+    4.94433e-05,1.04144e-06; 
+    4.8433e-05,1.03877e-06;
+    4.74227e-05,1.03293e-06;
+    4.64124e-05,1.01799e-06; 
+    4.54021e-05,1.00199e-06; 
+    4.43918e-05,9.95465e-07;
+    4.33815e-05,9.96303e-07;
+    4.23712e-05,9.96428e-07; 
+    4.13609e-05,9.95453e-07; 
+    4.03506e-05,9.97153e-07; 
+    3.93403e-05,9.94668e-07; 
+    3.833e-05,9.96737e-07;
+    3.73197e-05,1.00128e-06; 
+    3.63094e-05,9.97636e-07; 
+    3.52991e-05,9.77292e-07; 
+    3.42888e-05,9.54998e-07; 
+    3.32785e-05,9.34348e-07; 
+    3.22682e-05,9.08567e-07; 
+    3.12579e-05,8.80722e-07 ; 
+    3.02476e-05,8.53925e-07;  
+    2.92373e-05,8.20168e-07; 
+    2.8227e-05,8.16685e-07; 
+    2.72167e-05,7.74749e-07; 
+    2.62064e-05,7.74733e-07; 
+    2.51961e-05,7.3951e-07; 
+    2.41858e-05,7.30644e-07;  
+    2.31755e-05,7.03885e-07; 
+    2.21652e-05,6.90772e-07;  
+    2.11548e-05,6.67116e-07; 
+    2.01445e-05,6.45457e-07; 
+    1.91342e-05,6.30162e-07;  
+    1.81239e-05,6.27901e-07; 
+    1.71136e-05,6.30871e-07; 
+    1.61033e-05,6.33063e-07; 
+    1.5093e-05,6.27727e-07; 
+    1.40827e-05,6.15711e-07; 
+    1.30724e-05,5.88985e-07; 
+    1.20621e-05,5.75676e-07; 
+    1.10518e-05,5.69328e-07; 
+    1.00415e-05,5.61419e-07; 
+    9.03121e-06,5.44276e-07; 
+    8.02091e-06,5.38834e-07; 
+    7.01061e-06,4.9958e-07; 
+    6.0003e-06,4.33764e-07; 
+    4.99e-06,3e-07 ;
+    4.99e-06,-3e-07 ;
+    6.0003e-06,-4.33764e-07; 
+    7.01061e-06,-4.9958e-07; 
+    8.02091e-06,-5.38834e-07; 
+    9.03121e-06,-5.44276e-07;
+    1.00415e-05,-5.61419e-07;
+    1.10518e-05,-5.69328e-07;
+    1.20621e-05,-5.75676e-07;
+    1.30724e-05,-5.88985e-07;
+    1.40827e-05,-6.15711e-07;
+    1.5093e-05,-6.27727e-07;
+    1.61033e-05,-6.33063e-07;
+    1.71136e-05,-6.30871e-07;
+    1.81239e-05,-6.27901e-07;
+    1.91342e-05,-6.30162e-07;
+    2.01445e-05,-6.45457e-07;
+    2.11548e-05,-6.67116e-07;
+    2.21652e-05,-6.90772e-07;
+    2.31755e-05,-7.03885e-07;
+    2.41858e-05,-7.30644e-07;
+    2.51961e-05,-7.3951e-07;
+    2.62064e-05,-7.74733e-07;
+    2.72167e-05,-7.74749e-07;
+    2.8227e-05,-8.16685e-07;
+    2.92373e-05,-8.20168e-07;
+    3.02476e-05,-8.53925e-07;
+    3.12579e-05,-8.80722e-07;
+    3.22682e-05,-9.08567e-07;
+    3.32785e-05,-9.34348e-07;
+    3.42888e-05,-9.54998e-07; 
+    3.52991e-05,-9.77292e-07;
+    3.63094e-05,-9.97636e-07;
+    3.73197e-05,-1.00128e-06;
+    3.833e-05,-9.96737e-07;
+    3.93403e-05,-9.94668e-07;
+    4.03506e-05,-9.97153e-07;
+    4.13609e-05,-9.95453e-07;
+    4.23712e-05,-9.96428e-07;
+    4.33815e-05,-9.96303e-07;
+    4.43918e-05,-9.95465e-07;
+    4.54021e-05,-1.00199e-06;
+    4.64124e-05,-1.01799e-06;
+    4.74227e-05,-1.03293e-06;
+    4.8433e-05,-1.03877e-06;
+    4.94433e-05,-1.04144e-06;
+    5.04536e-05,-1.05265e-06;
+    5.14639e-05,-1.05248e-06;
+    5.24742e-05,-1.04394e-06;
+    5.34845e-05,-1.04132e-06;
+    5.44948e-05,-1.03798e-06;
+    5.55052e-05,-1.01895e-06;
+    5.65155e-05,-9.98572e-07;
+    5.75258e-05,-9.76692e-07;
+    5.85361e-05,-9.45951e-07;
+    5.95464e-05,-9.10865e-07;
+    6.05567e-05,-8.69873e-07;
+    6.1567e-05,-8.62295e-07;
+    6.25773e-05,-8.62385e-07; 
+    6.35876e-05,-8.88604e-07;
+    6.45979e-05,-9.28309e-07;
+    6.56082e-05,-9.72628e-07;
+    6.66185e-05,-1.00939e-06;
+    6.76288e-05,-1.03756e-06;
+    6.86391e-05,-1.04267e-06 ; 
+    6.96494e-05,-1.04383e-06; 
+    7.06597e-05,-1.03921e-06;
+    7.167e-05,-1.02265e-06;
+    7.26803e-05,-9.97595e-07; 
+    7.36906e-05,-9.69908e-07; 
+    7.47009e-05,-9.48283e-07; 
+    7.57112e-05,-9.32089e-07;
+    7.67215e-05,-9.28081e-07; 
+    7.77318e-05,-9.38338e-07;
+    7.87421e-05,-9.60635e-07; 
+    7.97524e-05,-9.81735e-07;
+    8.07627e-05,-9.96662e-07;
+    8.1773e-05,-9.99251e-07;
+    8.27833e-05,-9.99358e-07;
+    8.37936e-05,-9.76247e-07;
+    8.48039e-05,-9.30251e-07;
+    8.58142e-05,-8.6693e-07;
+    8.68245e-05,-7.9917e-07;
+    8.78348e-05,-7.69808e-07; 
+    8.88452e-05,-8.26837e-07; 
+    8.98555e-05,-9.23621e-07;
+    9.08658e-05,-1.0021e-06;
+    9.18761e-05,-1.05665e-06;
+    9.28864e-05,-1.07681e-06;
+    9.38967e-05,-1.07099e-06;
+    9.4907e-05,-1.03029e-06;
+    9.59173e-05,-9.55727e-07; 
+    9.69276e-05,-8.31815e-07; 
+    9.79379e-05,-6.84408e-07;
+    9.89482e-05,-6.63287e-07; 
+    9.99585e-05,-8.60774e-07; 
+    0.000100969,-1.04178e-06; 
+    0.000101979,-1.19726e-06; 
+    0.000102989,-1.2158e-06;  
+    0.000104,-1.27309e-06; 
+    0.00010501,-1.4e-06;
+    0.00010501,1.4e-06
+];
+
+set("geometry", {"1:0": {rect_vertices}});
+#######################################
+###########################################
+###############################
+##############
+
+addfdtd;
+set('dimension','3D');
+set('index',1);
+set('x', Device_length/2 );
+set('x span', Device_length);
+set('y', 0);
+set('y span', 7e-6);
+set('z', 0.3e-6);
+set('z span', 3e-6);
+set('mesh type','auto non-uniform');
+set('mesh accuracy',2);
+set('mesh refinement','conformal variant 0');
+set('x min bc','PML');
+set('x max bc','PML');
+set('y min bc','PML');
+set('y max bc','PML');
+set('z min bc','PML');
+set('z max bc','PML');
+set('auto scale pml parameters',1);
+set('snap pec to yee cell boundary',1);
+set('pml layers', 16);
+set('simulation time',3e-12);
+set('background material','SiO2 (Glass) - Palik');
+setglobalsource('wavelength start',wavelength);
+setglobalsource('wavelength stop',wavelength);
+#SOURCE
+addmode;
+set('direction','Forward');
+set('injection axis','x-axis');
+set('y',0);
+set('y span',5e-6);
+set('x',1e-6);
+set('z',0.3e-6);
+set('z span',5e-6);
+set('override global source settings',false);
+set('mode selection','fundamental TE mode');
+set('auto update',1);
+set('override global source settings',1);
+set('wavelength start',wavelength);
+set('wavelength stop',wavelength);
+
+
+#addmesh;
+#set('x',Device_length / 2);
+#set('x span',Length + 3e-6);
+#set('y',0);
+#set('y span',6e-6);
+#set('z',0.3e-6);
+#set('z span',4e-6);
+#set('dx',mesh);
+#set('dy',mesh);
+#set('dz',mesh);
+
+addpower;
+set('name','opt_fields');
+set('monitor type','3D');
+set('x',WG_length + Length + Second_length/2);
+set('x span',Second_length);
+set('y',0);
+set('y span',7e-6);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+
+addpower;
+set('name','fom_up');
+set('monitor type','2D X-normal');
+set('x',WG_length + Length + Second_length + 0.5e-6);
+set('y',Sep/2);
+set('y span',2.5e-6);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+addpower;
+set('name','fom_down');
+set('monitor type','2D X-normal');
+set('x',WG_length + Length + Second_length + 0.5e-6);
+set('y',-Sep/2);
+set('y span',2.5e-6);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+addpower;
+set('name','fom_up2');
+set('monitor type','2D X-normal');
+set('x',WG_length + Length + Second_length + 1.2e-6);
+set('y',Sep/2);
+set('y span',2.5e-6);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+addpower;
+set('name','fom_down2');
+set('monitor type','2D X-normal');
+set('x',WG_length + Length + Second_length + 1.2e-6);
+set('y',-Sep/2);
+set('y span',2.5e-6);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+addprofile;
+set('name', 'XY-profile_monitor');
+set('monitor type','2D Z-normal');
+set('z', 0.3e-6);         # Center position in x-direction
+set('y', 0);         # Center position in y-direction
+set('y span', 5e-6); # Span in y-direction
+set('x', Device_length/2);         # Center position in z-direction
+set('x span', Device_length ); # Span in z-direction
+
+
+
+
+

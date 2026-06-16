@@ -1,0 +1,208 @@
+switchtolayout;
+selectall;
+delete;
+
+# ============================================================
+# 3D FDTD base for LumOpt inverse design.
+# The optimized polygon is injected by FunctionDefinedPolygon.
+# Coordinate contract:
+#   bend centerline starts at (0,0)
+#   bend centerline ends at (R,R)
+#   input arm length = 5 um, from (-L_in,0) to (0,0)
+#   output arm length = 5 um, from (R,R) to (R,R+L_out)
+# ============================================================
+
+um = 1e-6;
+
+# ---------- SIM PARAMS ----------
+lambda0 = 1.55e-6;
+
+R = 50e-6;
+WG_width = 0.8e-6;
+Thickness = 0.6e-6;
+etch_depth = 0.3e-6;
+BOX = 4.7e-6;
+Angle = 70;
+T_LN_slab = Thickness - etch_depth;
+
+L_in = 5e-6;
+L_out = 5e-6;
+layout_padding = 5e-6;
+mesh_size = 50e-9;
+report_fom_loss_db = 1;
+
+n_air = 1.00;
+n_SiO2 = 1.44;
+n_ln = 2.20;
+
+# ---------- RUNTIME POSITIONS FROM OPTIMIZE_FDTD.PY ----------
+INPUT_PORT_X = __INPUT_PORT_X__;
+INPUT_PORT_Y = __INPUT_PORT_Y__;
+SOURCE_X = __SOURCE_X__;
+SOURCE_Y = __SOURCE_Y__;
+
+OUTPUT_PORT_X = __OUTPUT_PORT_X__;
+OUTPUT_PORT_Y = __OUTPUT_PORT_Y__;
+FOM_X = __FOM_X__;
+FOM_Y = __FOM_Y__;
+
+FIELD_X = __FIELD_X__;
+FIELD_Y = __FIELD_Y__;
+FIELD_X_SPAN = __FIELD_X_SPAN__;
+FIELD_Y_SPAN = __FIELD_Y_SPAN__;
+
+FDTD_X = __FDTD_X__;
+FDTD_Y = __FDTD_Y__;
+FDTD_X_SPAN = __FDTD_X_SPAN__;
+FDTD_Y_SPAN = __FDTD_Y_SPAN__;
+
+MESH_X = __MESH_X__;
+MESH_Y = __MESH_Y__;
+MESH_X_SPAN = __MESH_X_SPAN__;
+MESH_Y_SPAN = __MESH_Y_SPAN__;
+
+# ---------- MATERIALS ----------
+air_material=addmaterial('Dielectric');
+setmaterial(air_material,'name','Air_Custom');
+setmaterial('Air_Custom','Refractive Index',n_air);
+
+# Lithium Niobate definition copied from the polarization-rotator reference.
+A0=[1;1;1];
+B1=[2.9804;2.6734;2.6734];
+C1=[0.02047;0.01764;0.01764];
+B2=[0.5981;1.229;1.229];
+C2=[0.0666;0.05914;0.05914];
+B3=[8.9543;12.614;12.614];
+C3=[414.08;474.6;474.6];
+#deletematerial('Lithium Niobate');
+opt_material=addmaterial('Sellmeier');
+setmaterial(opt_material,'name','Lithium Niobate');
+setmaterial('Lithium Niobate','Anisotropy','Diagonal');
+setmaterial('Lithium Niobate','A0',A0);
+setmaterial('Lithium Niobate','B1',B1);
+setmaterial('Lithium Niobate','C1',C1);
+setmaterial('Lithium Niobate','B2',B2);
+setmaterial('Lithium Niobate','C2',C2);
+setmaterial('Lithium Niobate','B3',B3);
+setmaterial('Lithium Niobate','C3',C3);
+
+# ---------- LAYER BUILDER BACKGROUND STACK ----------
+addlayerbuilder;
+set("name", "WG_builder");
+set("x", FDTD_X);
+set("y", FDTD_Y);
+set("z", 0);
+set("x span", FDTD_X_SPAN);
+set("y span", FDTD_Y_SPAN);
+set("gds position reference", 1);
+set("base mesh order", 1);
+
+addlayer("Si_Substrate");
+addlayer("BOX");
+addlayer("TFLN-film");
+
+setlayer("Si_Substrate", "start position", -BOX);
+setlayer("Si_Substrate", "thickness", -10e-6);
+setlayer("Si_Substrate", "process", "background");
+setlayer("Si_Substrate", "background material", "Si (Silicon) - Palik");
+
+setlayer("BOX", "start position", -BOX);
+setlayer("BOX", "thickness", BOX);
+setlayer("BOX", "process", "background");
+setlayer("BOX", "background material", "SiO2 (Glass) - Palik");
+
+setlayer("TFLN-film", "start position", 0);
+setlayer("TFLN-film", "thickness", Thickness - etch_depth);
+setlayer("TFLN-film", "process", "background");
+setlayer("TFLN-film", "background material", "Lithium Niobate");
+
+# ---------- 3D FDTD REGION ----------
+addfdtd;
+set("dimension", "3D");
+set("index", n_air);
+set("x", FDTD_X);
+set("x span", FDTD_X_SPAN);
+set("y", FDTD_Y);
+set("y span", FDTD_Y_SPAN);
+set("z", 0.3e-6);
+set("z span", 3e-6);
+set("mesh type", "auto non-uniform");
+set("mesh accuracy", 2);
+set("mesh refinement", "conformal variant 0");
+set("x min bc", "PML");
+set("x max bc", "PML");
+set("y min bc", "PML");
+set("y max bc", "PML");
+set("z min bc", "PML");
+set("z max bc", "PML");
+set("auto scale pml parameters", 1);
+set("snap pec to yee cell boundary", 1);
+set("pml layers", 16);
+set("simulation time", 3e-12);
+set("background material", "Air_Custom");
+setglobalsource("wavelength start", lambda0);
+setglobalsource("wavelength stop", lambda0);
+
+# ---------- INPUT MODE SOURCE ----------
+addmode;
+set("name", "source");
+set("direction", "Forward");
+set("injection axis", "x-axis");
+set("x", SOURCE_X);
+set("y", SOURCE_Y);
+set("y span", 5e-6);
+set("z", 0.3e-6);
+set("z span", 5e-6);
+set("mode selection", "fundamental TE mode");
+set("auto update", 1);
+set("override global source settings", 1);
+set("wavelength start", lambda0);
+set("wavelength stop", lambda0);
+
+# ---------- FOM MONITOR ----------
+addpower;
+set("name", "fom");
+set("monitor type", "2D Y-normal");
+set("x", FOM_X);
+set("x span", 5e-6);
+set("y", FOM_Y);
+set("z", 0.3e-6);
+set("z span", 3e-6);
+
+# ---------- OPTIMIZATION FIELD MONITOR ----------
+addpower;
+set("name", "opt_fields");
+set("monitor type", "3D");
+set("x", FIELD_X);
+set("x span", FIELD_X_SPAN);
+set("y", FIELD_Y);
+set("y span", FIELD_Y_SPAN);
+set("z", 0.3e-6);
+set("z span", 3e-6);
+
+# ---------- XY PROFILE MONITOR ----------
+addprofile;
+set("name", "XY-profile_monitor");
+set("monitor type", "2D Z-normal");
+set("x", FIELD_X);
+set("x span", FIELD_X_SPAN);
+set("y", FIELD_Y);
+set("y span", FIELD_Y_SPAN);
+set("z", 0.3e-6);
+
+# ---------- MESH OVER DESIGN REGION ----------
+addmesh;
+set("name", "design_mesh");
+set("x", MESH_X);
+set("y", MESH_Y);
+set("z", 0.3e-6);
+set("x span", MESH_X_SPAN);
+set("y span", MESH_Y_SPAN);
+set("z span", 1.2e-6);
+set("set maximum mesh step", true);
+set("override x mesh", true);
+set("override y mesh", true);
+set("override z mesh", true);
+set("dx", mesh_size);
+set("dy", mesh_size);
+set("dz", mesh_size);

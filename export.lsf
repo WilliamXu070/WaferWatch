@@ -1,0 +1,20 @@
+# Export each Layer Builder separately
+
+# Output folder
+out_dir = "D:\data\lumerical\polarization rotator\my simulations\second section\L=50um\opts_0";
+
+
+# Name of the polygon object in your FSP
+poly_name = "polygon_17352783529125656943";
+
+# Get polygon vertices
+v = getnamed(poly_name, "vertices");
+
+# Export to GDS
+f = gdsopen("optimized_polygon.gds", 1e-6, 1e-9);
+gdsbegincell(f, "TOP");
+gdsaddpoly(f, 1, v);
+gdsendcell(f);
+gdsclose(f);
+
+?("Exported polygon to optimized_polygon.gds");

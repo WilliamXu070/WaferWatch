@@ -1,0 +1,47 @@
+# Paper PDFs / references
+*.pdf
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Lumerical generated / heavy simulation outputs
+*.fsp
+*.ldf
+*.mat
+*.h5
+*.hdf5
+*.dat
+*.log
+
+# Generated runtime scripts and exported artifacts
+base_runtime*.lsf
+*_runtime*.lsf
+centerline_runtime*.lsf
+*_final.gds
+*.gds
+*.npy
+*.npz
+*.csv
+*.png
+
+# Local diagnostic/output folders
+core_polygon_boundary_plots*/
+core_polygon_test_outputs*/
+centerline_diagnostic_outputs*/
+William Code/core_polygon_boundary_plots*/
+William Code/core_polygon_test_outputs*/
+William Code/centerline_diagnostic_outputs*/
+William Code/centerline_only/diagnostic_*/
+
+# OS/editor/local files
+.DS_Store
+*.swp
+*.tmp
+# Generated parameter/polygon/result text outputs
+*_params.txt
+*_polygon*.txt
+*_centerline*.txt
+*_points*.txt
+initial_bent_waveguide_*.txt

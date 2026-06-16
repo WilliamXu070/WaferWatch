@@ -1,0 +1,998 @@
+Inverse-designed compact and low-loss bending waveguides on anisotropic 
+LNOI platform with mode-field analysis
+Lingxiao Zhang , Minjun Xie , Yalong Yu , Juzheng Li , Wei Ma
+*
+, Tao Chu , Bo Xiong
+**
+College of Information Science and Electronic Engineering, Zhejiang University, 38 Zheda Road, Hangzhou, 310027, China
+ARTICLE INFO
+Keywords:
+Low-loss bending waveguide
+Anisotropy LNOI platform
+Mode-field analysis
+ABSTRACT
+Compact and low-loss bends are crucial for achieving high-density photonic integration on the Lithium niobate 
+on insulator (LNOI) platform. Traditional design usually utilizes random search to minimize the transmission 
+loss, which is time-consuming for large structures and limits further loss reduction by considering anisotropy on 
+the LNOI platform. Here we propose a Fast Directional Bisection with Mode-Field Analysis for the design of 
+bending waveguides on anisotropic LNOI platform. The bends are realized through adjusting the geometric 
+parameters of the cascaded Generalized Euler segments with careful consideration of the anisotropic refractive 
+index variation. Three bends with different equivalent radii are designed to demonstrate the versatility of the 
+proposed method. A low-loss at 1550 nm (0.008 dB) and compact SWB ( R
+eq 
+= 40.5 μ m) has been experimentally 
+demonstrated for the first time. Employing the same approach, we realize a compact and low-loss Optical delay 
+line (ODL), with a total length of 3.64 cm and a footprint of 0.5 × 0.5 mm
+2
+, achieving an average transmission 
+loss of 0.43 dB/cm. It represents an 80 % reduction in comparison to the Euler-bend ODLs. The proposed design 
+method and low-loss SWBs/ODLs held potential for advancing the future development of LNOI photonic inte -
+grated devices and circuits.
+1. Introduction
+Lithium niobate (LN) is renowned for its high refractive index, wide 
+spectral transparency, efficient electro-optic effect, and significant χ (2) 
+nonlinearity, making it an ideal material for a wide range of optical and 
+electronic applications [ 1 , 2 ]. In recent years, with the Thin-film lithium 
+niobite (TFLN) technology and the rapid advancements in micro-nano 
+fabrication techniques, the Lithium niobate on insulator (LNOI) plat -
+form has become a key foundation for integrated photonic devices 
+[ 3 – 5 ]. LNOI-based devices have demonstrated exceptional performance 
+in electro-optic modulation [ 6 – 10 ], acoustic-optic modulation [ 11 , 12 ], 
+as well as frequency conversion [ 13 – 15 ], offering distinct advantages 
+such as high speed, high miniaturization and low power consumption. 
+However, as the demand for optoelectronic systems with higher inte -
+gration level and larger scale level grows, a critical challenge for LNOI 
+platforms is how to minimize the transmission losses and footprints in 
+various optical components [ 16 – 19 ]. As one typical component in 
+photonic systems, bending waveguides are widely used to alter light 
+propagation paths, reducing the physical space required for straight 
+waveguides and enabling more compact optical circuit layouts, 
+including optical delay lines (ODLs) [ 20 – 24 ], large-scale photonic 
+switches [ 25 – 28 ], and on-chip photonic processors [ 29 – 31 ]. To realize a 
+highly efficient large-scale optoelectronic system, a compact and 
+ultra-low-loss bending waveguide is highly required on LNOI platform 
+[ 16 ].
+Traditional bending waveguide designs, often based on circular arcs, 
+typically require large bending radii to maintain low-loss transmission. 
+While this design strategy minimizes bending losses, it significantly in -
+creases the waveguide ’ s footprint, limiting the overall integration den -
+sity [ 20 – 24 ]. To address this limitation, recent innovations, such as 
+subwavelength-assisted structures [ 32 – 34 ], air trenches [ 35 , 36 ], and 
+inverse design Based on Directional Binary Search (DBS) [ 37 ], have 
+sought to create more compact bends. However, these methods demand 
+high-precision photolithography and tend to introduce extra scattering 
+losses due to the complex subwavelength structures, which will accu -
+mulate in large-scale systems and ultimately decrease the overall per -
+formance. Alternative solutions, including continuous transition curves 
+such as Euler bends [ 38 ] and Bezier bends [ 39 ], allow for more compact 
+* Corresponding author.
+** Corresponding author.
+E-mail addresses: ma_wei@zju.edu.cn (W. Ma), bo.xiong@zju.edu.cn (B. Xiong). 
+Contents lists available at ScienceDirect
+Optics Communications
+journal homepag e: www.else vier.com/loc ate/optcom
+https://doi.org/10.1016/j.optcom.2025.132032
+Received 8 March 2025; Received in revised form 30 April 2025; Accepted 24 May 2025  
+Optics Communications 589 (2025) 132032 
+Available online 27 May 2025 
+0030-4018/© 2025 Elsevier B.V. All rights are reserved, including those for text and data mining, AI training, and similar technologies. 
+
+designs while maintaining low-loss transmission and better fabrication 
+tolerance. Despite their advantages, the optimization of such curves is 
+often limited by specific mathematical expressions such as Euler func -
+tion and Bezier function. To overcome this limit, the concept of 
+continuous free-form curve (FFC) has emerged, enabling the design of 
+bending waveguides composed of multiple segments with indepen -
+dently adjustable curvatures [ 40 – 42 ]. The curves not only provide 
+smaller dimensions but also achieve similar low-loss performance. 
+However, these designs typically rely on random optimization tech -
+niques, which is time-consuming and computationally expensive [ 43 ]. 
+To reduce the computation cost, a symmetric curve model has been 
+applied to the FFCs design on the X-cut LNOI platforms [ 40 ], which 
+however does not align with LN ’ s inherent anisotropy. The anisotropic 
+refractive index variations have a great influence on the bending loss, 
+which brings about further challenges in achieving compact and 
+low-loss design on LNOI platform.
+In this work, we propose a Fast Directional Bisection with Mode- 
+Field Analysis (FDB-MFA) method for the design of compact and low- 
+loss single-mode bending waveguide (SWB) on anisotropic LNOI plat -
+form. Using the method, The SWB based on the FFC structure is achieved 
+by adjusting the geometric parameters of cascaded Generalized Euler 
+segments through mode-field analysis, while simultaneously accounting 
+for the impact of refractive index variations on bending. We propose 
+three FFC designs with different equivalent radii on the X-cut LNOI 
+platform, featuring a slab thickness of 200 nm and a rib height of 200 
+nm. These designs outperform traditional Bezier, Euler, and Arc bending 
+counterparts of same dimensions, demonstrating significant advantages 
+in loss reduction. Experimental results show that the 90-degree single- 
+mode bent waveguide with an equivalent radius of 40.5 μ m has a 
+remarkably low loss of only 0.008 dB at 1550 nm wavelength. The 
+design allows for a manufacturing tolerance of up to ± 200 nm. Addi -
+tionally, we extend our investigation to a compact and low-loss FFC- 
+bend ODLs on the same platform, featuring a footprint of approximately 
+0.5 × 0.5 mm
+2 
+and a total length of 3.64 cm. The results show that the 
+average transmission loss is as low as 0.43 dB/cm, which represents an 
+80 % reduction in comparison to the Euler-bend ODLs of the same size. It 
+is expected that our study can play an important role in advancing the 
+development of photonic integrated devices and circuits on anisotropic 
+LNOI platform.
+2. Design principle of FFC
+Fig. 1 (a) shows the perspective view of the proposed 90-degree 
+bending waveguide based on FFC structure, designed using the FDB- 
+MFA method. The waveguide structure is fabricated on a regular X-cut 
+LNOI platform, with a LN core layer surrounded by a silica cladding. To 
+better visualize the FFC structures, the upper oxide cladding is ignored. 
+The FFC is divided into three key regions: two mode matching regions 
+and one radiation suppression region. The mode matching region is 
+designed to ensure efficient coupling between the straight and bending 
+waveguides, in which the curvature radius is reduced from infinite to 
+finite value by carefully shaping the curve in this region, the light 
+smoothly transitions into the bending waveguide with minimal loss. 
+Typically, a smaller curvature radius will cause more radiation leakage 
+and thus results in higher losses. The radiation suppression region pri -
+marily addresses this issue by balancing the trade-off between mini -
+mizing the curvature radius and suppressing radiation losses, thereby 
+ensuring efficient mode propagation within the small-radius region of 
+the bending waveguide. The cross-section of the waveguide is illustrated 
+in the inset of Fig. 1 (a), where it is defined by a total film thickness T , an 
+etch depth H , a bottom width W , and a sidewall angle α .
+The schematic diagram of the FFC structure is illustrated in Fig. 1 (b). 
+The angle between the propagation direction of the light and the optical 
+axis Y of the LN material is θ . The two edge lengths of the quadrilateral 
+region occupied by the bending waveguide are labeled as R
+y 
+and R
+z
+. Due 
+to the anisotropic properties of the LNOI platform, the symmetry of the 
+FFC is broken, so R
+y 
+and R
+z 
+are not always equal. Therefore, the 
+equivalent radius R
+eq 
+is defined as the maximum of R
+y 
+and R
+z
+, providing 
+a consistent metric for comparison with conventional bending wave -
+guide. The entire FFC is discretized into a series of cascaded segments, 
+with the terminal curvature radius of each segment monotonically 
+decreasing from the start of the bend to shrink the overall bending 
+radius. Unlike previous circular arc structures, our proposed curve 
+segment model is based on the Generalized Euler spiral, which will be 
+explained in details latter. This new kind of curvature can provide 
+greater design flexibility, allowing for the exploration of curvature dis -
+tributions that cannot be realized with traditional arc-based designs, 
+which is especially advantageous for the development of compact and 
+low-loss bending free-form waveguides. As shown in Fig. 1 (c), the i th 
+segment is parameterized by its starting curvature radius RS
+i
+, terminal 
+curvature radius RT
+i
+, the corresponding curvature center O
+is 
+and O
+it
+, the 
+turning angle Δ θ
+i
+, along with a constant length Δ L and width W .
+A detailed description of the construction of the Generalized Euler 
+spiral is presented below. For modified Euler spiral, the curvature is 
+defined as [ 39 ]. 
+d θ
+/
+dl = 1
+/
+r = l
+/
+A
+2
++ 1
+/
+R
+max
+, (1) 
+where l represents the curve length from the starting point (0, 0) with a 
+curvature radius of R
+max 
+to position ( p , q ) with a curvature radius of R
+min
+. 
+r denotes the curvature radius. A is a positive constant, which is given by 
+A =
+̅̅̅̅̅̅̅̅̅̅̅̅̅̅ ̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅ ̅̅̅ ̅
+Δ L / ( 1 / R
+min
+  1 / R
+max
+)
+√
+,
+(2) 
+Fig. 1. (a) Perspective view of the proposed FFC design implemented using the FDB-MFA method on the LNOI platform. The inset illustrates the schematic of the 
+waveguide cross-section. (b) Schematic diagram of the FFC structure, with equivalent radius R
+eq 
+defined as the maximum of R
+y 
+and R
+z
+, representing the equivalent 
+radius. (c) Schematic diagram of the Generalized Euler segment comprising the FFC structure.
+L. Zhang et al.                                                                                                                                                                                                                                   Optics Communications 589 (2025) 132032 
+2 
+
+which means that the curvature is always linearly increasing with curve 
+length. Building on the concept of the modified Euler spiral, we develop 
+the Generalized Euler spiral, which enables curvature to vary line -
+arly — either increasing or decreasing — along the curve length. The 
+curvature of the i th segment is expressed as 
+d θ / dl = 1 / r = l / a
+i
++ 1 / RS
+i
+. (3) 
+The value of the constant a
+i 
+is given by 
+a
+i
+= Δ L / ( 1 / RT
+i
+  1 / RS
+i
+) . (4) 
+When RT
+i
+< RS
+i
+, the curve segment is a modified Euler spiral. It can be 
+transformed to be with the Cartesian coordinate system, as shown in the 
+following equations: 
+p =
+∫
+l
+0
+cos
+ 
+s
+2
+/
+2 a
+i
++ s
+/
+RS
+i
+)
+ds , (5) 
+Fig. 2. (a) TE0 mode profile and (b) TE0 mode propagation in the bending waveguide with a curvature radius of 25 μ m when the angle θ is 0
+◦
+at 1550 nm 
+wavelength. (c, d) TE0 mode field distribution along the r -axis with various curvature radii when the angle θ is 0
+◦
+at 1550 nm wavelength. (e) Calculated mloss 
+between the mode fields for R = 25 μ m and R = 30 μ m when the angle θ is 0
+◦
+at 1550 nm wavelength. The inset illustrates the schematic of the axis displacement Δ r . 
+(f) Calculated r loss for different R when the angle θ is 0
+◦
+at 1550 nm wavelength. A linear behavior is observed on a logarithmic scale of r loss . (g) Calculated mloss 
+for Δ r = 0.04 μ m between the mode fields for R = 25 μ m and R = 30 μ m and (h) calculated r loss for R = 25 μ m at 1550 nm wavelength for different θ .
+L. Zhang et al.                                                                                                                                                                                                                                   Optics Communications 589 (2025) 132032 
+3 
+
+q =
+∫
+l
+0
+sin
+ 
+s
+2
+/
+2 a
+i
++ s
+/
+RS
+i
+)
+ds . (6) 
+Unlike previous studies that focus on optimizing the overall loss of 
+bending waveguides by directly refining the three-dimensional model 
+[ 40 – 42 ], our approach performs an optimization by calculating the loss 
+contributions of each individual segment, which will be fast for further 
+loss reduction by overlooking material anisotropy on the LNOI platform. 
+Therefore, analyzing the loss sources in the bending waveguide is crucial 
+for the optimization process. It is well known that the main loss in 
+curved waveguides are mode mismatch loss and radiation loss when 
+material absorption and sidewall scattering are neglected [ 44 ]. In order 
+to further investigate these losses, we performed a detailed analysis by 
+using the Finite Difference Eigenmode (FDE) solver and 
+three-dimensional finite-difference time-domain (3D FDTD) solver. All 
+designs in the study were based on an X-cut TFLN platform with a total 
+film thickness T of 400 nm, and a buried oxide layer thickness of 4.7 μ m. 
+The waveguide sidewall angle α is approximately 70
+◦
+, with the etching 
+depth of 200 nm, determined by the fabrication process. The bottom 
+width W of the bending waveguide is chosen to be 1.8 μ m. At θ = 0
+◦
+, we 
+set the curvature radius of the bending waveguide to 25 μ m, and con -
+ducted simulations of the TE0 mode field distribution and the optical 
+propagation mode within the bending waveguide at 1550 nm wave -
+length. The results are presented in Fig. 2 (a) and 2(b). It is clear that the 
+peak of TE0 mode in the bending waveguide is displaced along the 
+positive r -axis relative to the center of the waveguide cross-section, 
+which leads to mode mismatch loss. Moreover, during the bending 
+process, a portion of the energy deviates from the original propagation 
+path and radiates out of the waveguide, thereby contributing to radia -
+tion loss.
+To quantitatively analyze these two losses on the X-cut LNOI plat -
+form, the TE0 mode intensity distribution was extracted along the r -axis 
+at the center of the waveguide. By varying the curvature radius, we 
+obtained different mode field intensity distributions. As shown in Fig. 2
+(c), the mode field displacement varies with the curvature radius, 
+leading to different mode field distributions. Specifically, a smaller 
+curvature radius corresponds to a larger mode field displacement. Based 
+on the above analysis, we conclude that the transition between bending 
+waveguides with different curvature radius introduces additional mode 
+mismatch loss. We define the mode mismatch loss ( mloss
+i , j
+) between two 
+arbitrary mode fields, E
+i
+( r , x ) and E
+j
+( r , x ) , using the mode field overlap 
+integral [ 45 ], as given by the following expression: 
+mloss
+i , j
+= 10 lg
+{
+[ ∫ ∫
+E
+i
+ 
+r   Δ r
+i , j
+, x
+)
+E
+j
+( r , x ) drdx
+]
+2
+[
+∫ ∫
+E
+2
+i
+ 
+r   Δ r
+i , j
+, x
+)
+drdx *
+∫ ∫
+E
+2
+j
+( r , x ) drdx
+]
+}/
+Δ L ,
+(7) 
+where Δ r
+i , j 
+represents the axis displacement of the waveguide corre -
+sponding to E
+i
+( r , x ) relative to that of E
+j
+( r , x ) , as shown in the inset of 
+Fig. 2 (e). Notably, the spatial distributions of two mode fields in a 
+bending waveguide are typically misaligned along the transmission axis, 
+which significantly impacts mloss . In the FDE solver, the axis displace -
+ment is directly set as a parameter, referred to as shift . Using Equation 
+(7) , we calculated mloss between the mode fields for R = 25 μ m and R =
+30 μ m with respect to Δ r when the angle θ is 0
+◦
+at 1550 nm wavelength 
+as illustrated in Fig. 2 (e). It can be seen that there exists an optimal Δ r 
+with a value of 0.04 μ m (denoted as Δ r
+opt
+) that effectively compensates 
+for the mode field displacement, ensuring optimal overlap between the 
+two mode fields and minimizing mloss .
+As shown in Fig. 2 (d), the radiation field intensity is presented in 
+logarithmic scale for ease of analysis. In the bending waveguide, the TE0 
+mode field no longer exhibits the typical exponentially decaying 
+evanescent field along the positive r -axis, as seen in straight waveguides 
+(bending radius is infinite). Instead, it manifests as an oscillatory radi -
+ative field. The smaller the curvature radius, the stronger the radiative 
+field, leading to an increased radiation loss. According to bent 
+waveguide theory [ 45 ], the expression of the radiation loss ( rloss ) with a 
+bending radius of R is determined by 
+rloss ( R ) = C
+1
+* exp (  C
+2
+* R ) , (8) 
+where C
+1 
+and C
+2 
+are constants independent of R . In the FDE solver, for a 
+certain structure of waveguide, rloss ( R ) can be directly calculated by 
+substituting R as shown in Fig. 2 (f). On a logarithmic scale of rloss , its 
+relationship with R can be approximated as linear. Fig. 2 (g) and 2(h) 
+present the variations in mloss for Δ r = 0.04 μ m and rloss ( R ) as θ ranges 
+from 0
+◦
+to 90
+◦
+. The trends of mloss and rloss ( R ) closely resemble those of 
+the refractive index variation. This similarity arises from the anisotropic 
+properties of the LNOI platform, where the refractive index varies with 
+the propagation direction of light within the bending waveguide, 
+resulting in the curvature-dependent mode field distribution influenced 
+by the propagation angle θ .
+According to the analysis of bending waveguide losses above, we 
+propose the FDB-MFA method to modify and optimize the bending 
+waveguide on the LNOI platform. Due to the anisotropic properties of 
+the LNOI platform, we do not impose symmetry constraints. Instead, two 
+separate optimization processes, using the FDE solver, are performed at 
+the input and output ports of the bending waveguide, which are con -
+nected to the straight waveguides as shown in Fig. 3 (a). As shown in 
+Fig. 3 (b), each optimization step only focuses on a single curve segment, 
+progressively shaping the entire bending waveguide structure through 
+iterative processes. To further reduce mode mismatch loss at the junc -
+tion between the curves obtained from these two optimizations when 
+they converge at a certain point along the bending waveguide, it is 
+essential to satisfy the condition | RT
+i 1
+  RT
+i 2
+|≤ Δ R , where Δ R represents 
+the curvature radius search precision, set to 100 nm to account for the 
+manufacturing tolerance. Fig. 3 (c) shows two scenarios in which the 
+termination condition is not met. Taking RT
+i
+1
+  RT
+i
+2
+> Δ R as an 
+example, optimization2 terminates prematurely, while optimization1 
+continues, progressively overwriting the results of optimization1 until 
+the optimization termination condition is satisfied. The second scenario 
+follows a similar optimization process. After finalizing these two opti -
+mization processes, we use a Generalized Euler to smoothly connect the 
+endpoints of the two curves, as illustrated in Fig. 3 (d).
+As shown in Fig. 3 (e), the FDB-MFA method is used to optimize the i 
+th segment of FFC by finding the zero of the figure-of-merit ( FOM
+i
+) 
+function, which is defined related with the losses. 
+FOM
+i
+=
+ 
+mloss
+i , i   1
+< ML
+)
+× ( rloss ( RT
+i
+) < RL )   0 . 5 , (9) 
+where ML and RL are the predefined thresholds for mloss
+i , i   1 
+and 
+rloss ( RT
+i
+) , respectively. In our implementation, the FOM is defined as a 
+binary logic function that returns 1 when both the mloss
+i , i   1 
+and 
+rloss ( RT
+i
+) are below their respective thresholds, and 0 otherwise. To 
+enable zero-point detection using a bisection method, we subtract 0.5 
+from the binary result, such that the FOM only takes two values:   0.5 
+and 0.5. Although this constant has no direct physical meaning, it pro -
+vides a symmetric value range centered around zero, which simplifies 
+the search process. More generally, any value pair with opposite signs (e. 
+g., in the range [   a, b], with a, b > 0) could serve the same purpose.
+To ensure that the curvature radius RT
+i 
+decreases, a suitable mini -
+mum curvature radius R
+min 
+is set ( R
+min 
+= 20 μ m typically, or lower), and 
+RT
+i 
+is then optimized within the initial interval [ R
+min
+, RT
+i   1
+] using a 
+bisection search algorithm. For the optimization of RT
+1
+, RT
+0 
+is set to a 
+larger value ( RT
+0 
+= 10000 μ m typically, or more). For clarity, the i th 
+curve segment is denoted as S
+i
+T
+i
+. Although cross-sections S
+i 
+and T
+i   1 
+overlap, their corresponding curvature radii differ and must be treated 
+as distinct. For each new value of RT
+i
+, the mode mismatch loss occurs as 
+the light enters from the cross-section T
+i   1 
+and propagates through the 
+S
+i
+T
+i 
+curve. This is caused by the field displacement of E
+i
+( r , x ) relative to 
+E
+i   1
+( r , x ) . Notably, the variation in the RT results in a corresponding axis 
+displacement of E
+i
+( r , x ) relative to E
+i   1
+( r , x ) , represented by Δ r
+i , i   1
+. By 
+adjusting Δ r
+i , i   1
+, the optimal value of Δ r
+i , i   1 
+can be determined to 
+L. Zhang et al.                                                                                                                                                                                                                                   Optics Communications 589 (2025) 132032 
+4 
+
+minimize mloss
+i , i   1
+, as illustrated in Fig. 2 (e). In the FDE solver, a 
+sequential scan is conducted over a wide interval [   100 nm, 100 nm] 
+with a precision of 10 p.m. to ensure comprehensive search and deter -
+mine the optimal value of Δ r
+i , i   1
+. To determine the parameters of the i th 
+curve segment using Δ r
+i , i   1
+, the corresponding geometric model was 
+established. Taking RT
+i   1 
+as the radius and Δ θ
+i 
+as the angle, a circular 
+arc S
+i
+T
+ʹ
+i 
+is constructed. Since Δ θ
+i 
+is small, the refractive index is assumed 
+to remain constant. The mode field at cross-section T
+ʹ
+i 
+can be considered 
+as the projection of the mode field at cross-section S
+i
+. Therefore, Δ r
+i , i   1 
+is 
+defined as the distance between the tangents at T
+i 
+and T
+ʹ
+i
+, which is 
+calculated by the following equation (See Supplementary Note 1 in 
+Supporting Information for the proofs): 
+Δ r
+i , i   1
+= f ( RT
+i   1
+, RS
+i
+, RT
+i
+, Δ θ
+i
+) . (10) 
+To ensure that RT
+i 
+does not decrease to the curvature radius asso -
+ciated with strong radiation fields, rloss ( RT
+i
+) is also calculated. We 
+employ a bisection search method to locate the zero of FOM
+i
+, iteratively 
+refining the search until the interval for RT
+i 
+reaches Δ R , at which point 
+the result for the optimized i th curve segment is obtained and output.
+The optimization process naturally divides into two stages. The first 
+stage focuses on optimizing the mode matching region, where the pri -
+mary objective is to reduce the bending size with minimal mode 
+mismatch loss. During this phase, mloss
+i , i   1 
+approaches the threshold 
+ML , and the mode mismatch loss becomes the dominant factor in the 
+optimization. The second stage focuses on optimizing the radiation 
+suppression region, where the goal is to minimize radiation loss. As the 
+curvature radius decreases, rloss ( RT
+i
+) approaches the threshold RL , and 
+the radiation loss becomes the primary optimization criterion.
+3. Low-loss bend structures
+Using the proposed design method, we optimize three low-loss 
+bending waveguides with different dimensions by setting various 
+values for ML and RL . The resulting equivalent radii are 33.9 μ m, 40.5 
+Fig. 3. (a – d) Schematic diagram of the optimization process. (e) The design flow of the FDB-MFA method.
+L. Zhang et al.                                                                                                                                                                                                                                   Optics Communications 589 (2025) 132032 
+5 
+
+μ m and 45.5 μ m, respectively (See Supplementary Note 2 in Supporting 
+Information for the influence of ML and RL on the equivalent radius. See 
+Supplementary Note 3 in the Supporting Information for the values of 
+the design parameters for the optimized FFC). The FDE simulation for 
+bending waveguide losses takes approximately 30 s per iteration, with 
+mesh sizes set to 20 nm to ensure high-precision optimization. The final 
+optimization results for each curve segment typically require around 15 
+min on a 24-core CPU server. In our designs, the number of segments 
+ranges from 14 to 23 depending on the target bending radius, resulting 
+in a total optimization time of approximately 1.8 – 3 h per structure. For 
+comparison, an inverse-designed bend on the SOI platform [ 42 ] 
+employed a 64-core server and required approximately 18 h of 
+FDTD-based optimization, even for a bend with an equivalent radius of 
+only 9.35 μ m. These results demonstrate the computational efficiency 
+and scalability of our proposed FDB-MFA method. The performance of 
+the curves is verified through 3D FDTD simulations. Fig. 4 (a)-4(c) show 
+the simulation results for the transmission efficiency of the optimized 
+FFC bending waveguides with different sizes. The inset shows the 
+dimensional model of the corresponding FFC bends. We also compare 
+the transmission performance with that of traditional curve designs 
+having the same equivalent radius, including Bezier bend, Euler bend, 
+and Arc bend. For the Bezier bend, the optimal design is achieved with a 
+Bezier number B = 0 . 35 [ 39 ]. For the Euler bend, the minimum radius of 
+18.1 μ m, 21.6 μ m and 24.3 μ m are chosen to match the equivalent radius 
+of the other curves. For the optimized FFC bends with equivalent radii of 
+33.9 μ m, 40.5 μ m and 45.5 μ m, the transmission losses are below 0.022 
+dB, 0.012 dB and 0.004 dB, respectively, over the 100 nm band. At the 
+specific operating wavelength of 1550 nm, the corresponding losses are 
+0.015 dB, 0.0074 dB, and 0.0012 dB, respectively. For all three sizes, the 
+optimized FFC bends demonstrate superior transmission performance 
+compared to the traditional design curves. We also employed FDTD 
+simulations to extract the variation of the net TE0 mode power content 
+as a function of transmission length for the optimized FFC, Bezier, Euler, 
+and Arc bends, all with an equivalent radius of 33.9 μ m. This analysis 
+further demonstrates that the optimized FFC bend exhibit superior TE0 
+mode propagation, enabling low loss single mode transmission (See 
+Supplementary Note 4 in the Supporting Information).
+To evaluate the permitted manufacturing tolerance for the designed 
+bending waveguide, we introduce a width deviation Δ W by moving each 
+point on the boundary shape curve along the outer normal vector at a 
+distance of Δ W / 2. The value of Δ W varies from   200 to 200 nm with a 
+20 nm interval. The simulated transmission efficiencies of the optimized 
+FFC and other traditional designs at 1550 nm wavelength vary with Δ W , 
+as shown in Fig. 4 (d)-4(f). Within the manufacturing tolerance range of 
+  200 to 200 nm, the maximum transmission losses for the FFC bends 
+with equivalent radii of 33.9 μ m, 40.5 μ m and 45.5 μ m are 0.026 dB, 
+0.008 dB and 0.003 dB, respectively, all of which are lower than the 
+minimum transmission losses for the traditional designs with the same 
+size. This demonstrates that the proposed FFC design exhibits excellent 
+manufacturing tolerance.
+The designed devices were fabricated on a commercially available X- 
+cut LNOI wafer and tested. An i -line stepper was used for patterning, 
+followed by inductively coupled plasma etching to transferred onto the 
+LN layer. Finally, a 0.8 μ m thick silicon dioxide upper cladding was 
+deposited onto the structure using plasma-enhanced chemical vapor 
+deposition. The Microscopic and SEM image of the fabricated structures 
+with equivalent radius of 33.9 μ m are illustrated in Fig. 5 (a)-5(d). To 
+minimize random errors caused by measurement instability, 80 
+cascaded FFC bends, Bezier bends, Euler bends, and Arc bends were 
+fabricated. All test ports were connected to TE-polarized grating cou -
+plers (GCs), which had an insertion loss of approximately 7 dB/facet at 
+1550 nm for optical coupling between the chip and the fiber. The actual 
+fabricated waveguide bottom width was 1.83 μ m, with the same 
+equivalent radii for each bend. The measured transmission losses in the 
+wavelength range of 1500 – 1600 nm for each port, divided by 80 
+cascaded bends, are shown in Fig. 5 (e)-5(g). It can be seen that for FFC 
+bends with equivalent radii of 33.9 μ m, 40.5 μ m and 45.5 μ m, the 
+maximum losses are 0.034 dB, 0.019 dB and 0.02 dB, respectively. At 
+1550 nm wavelength, the transmission losses for FFC bends with 
+equivalent radii of 33.9 μ m, 40.5 μ m and 45.5 μ m are 0.022 dB, 0.008 dB 
+and 0.009 dB, respectively. These transmission performances signifi -
+cantly outperform the Bezier, Euler, and Arc bends of the same di -
+mensions. The measured transmission efficiencies are lower than the 
+simulated results, which is possibly caused by the waveguide sidewall 
+etching roughness and width fabrication deviation during the 
+manufacturing process. Furthermore, the measured losses of the FFCs 
+with equivalent radii of 40.5 μ m and 45.5 μ m are nearly identical. Based 
+on the simulation results, it is likely attributed to the minimal contri -
+butions of mode mismatch loss and radiation loss, with sidewall scat -
+tering emerging as the dominant loss mechanism.
+4. Compact and low-loss ODLs
+We apply the proposed method to design a compact and low-loss 
+Fig. 4. Simulated transmission spectra for optimized FFC, Bezier, Euler, and Arc bends with (a) R
+eq 
+= 33.9 μ m, (b) R
+eq 
+= 40.5 μ m and (c) R
+eq 
+= 45.5 μ m. The inset 
+shows the dimensional model of the corresponding FFC bends. Simulated transmission efficiencies at 1550 nm wavelength for optimized FFC, Bezier, Euler, and Arc 
+bends with (d) R
+eq 
+= 33.9 μ m, R
+eq 
+= 40.5 μ m and (f) R
+eq 
+= 45.5 μ m, as a function of the width deviation Δ W .
+L. Zhang et al.                                                                                                                                                                                                                                   Optics Communications 589 (2025) 132032 
+6 
+
+Fig. 5. (a) Microscopic image of the fabricated devices with 80 cascaded bends and an equivalent radius R
+eq 
+= 33.9 μ m. (b) SEM images of (b) the grating coupler, (c) 
+waveguide structure and (d) optimized FFC with R
+eq 
+= 33.9 μ m. Measurement results of the normalized transmittances for optimized FFC, Bezier, Euler, and Arc 
+bends with (e) R
+eq 
+= 33.9 μ m, (f) R
+eq 
+= 40.5 μ m and (g) R
+eq 
+= 45.5 μ m, which are the average values out of 80 fabricated bends.
+Fig. 6. (a) Microscopic image of the fabricated FFC-bend ODLs with the total length of 3.64 cm. SEM images of (b) the FFC-bends and (c) the straight sections of the 
+fabricated FFC-bend ODLs. Transmission measurements of (d) 0.76 cm, (e) 1.96 cm and (f) 3.64 cm long for the FFC-bend ODLs and the Euler-bend ODLs on the 
+same chip.
+L. Zhang et al.                                                                                                                                                                                                                                   Optics Communications 589 (2025) 132032 
+7 
+
+ODLs. To balance loss and size, we select a gap of 4.2 μ m to avoid mode 
+coupling between adjacent waveguides and optimize an S-bend wave -
+guide with an equivalent radius of 30 μ m (See Supplementary Note 5 in 
+the Supporting Information). Additionally, the 90-degree optimized FFC 
+bending waveguide with the equivalent radius of 45.5 μ m is used to form 
+the ODL structure.
+The fabrication process of the designed delay line follows the same 
+procedure as that of the FFC bending waveguide. Fig. 6 (a)-6(c) show the 
+Microscopic and SEM images of the optimized FFC bending delay line 
+sample, with a total length of 3.64 cm and an area footprint of 
+approximately 0.5 × 0.5 mm
+2
+. The fabricated waveguide has a bottom 
+width of 1.83 μ m, with a gap of 4.1 μ m between neighbored waveguides. 
+Although the waveguide gap is slightly smaller than the design value, it 
+still effectively prevents mode coupling. Three ODLs with lengths of 
+0.76 cm, 1.96 cm and 3.64 cm were designed. For comparison, ODLs 
+with the same equivalent radius using Euler bends were also fabricated 
+on the same chip. The measured transmission losses were normalized by 
+comparing them to the transmission loss of a 500 μ m long straight 
+waveguide with the same grating couplers, and the propagation loss 
+(excluding coupling loss) is shown in Fig. 6 (d)-6(f). The results show 
+that the transmission loss of the FFC-bend ODLs is significantly lower 
+than that of the Euler-bend ODLs of the same dimensions. Specifically, 
+for the FFC-bend ODLs with total lengths of 0.76 cm, 1.96 cm and 3.64 
+cm, the transmission losses at 1550 nm wavelength are 0.345 dB, 0.833 
+dB and 1.583 dB, respectively, corresponding to average transmission 
+losses of 0.45 dB/cm, 0.43 dB/cm and 0.43 dB/cm. In contrast, the 
+Euler-bend ODLs of the same lengths exhibit transmission losses of 
+1.795 dB, 3.76 dB and 7.745 dB at 1550 nm wavelength, with average 
+transmission losses of2.36 dB/cm, 1.92 dB/cm and 2.13 dB/cm, 
+respectively. Compared to the Euler-bend ODLs, the transmission loss of 
+the FFC-bend ODLs is reduced by approximately 80 % for the same sizes.
+5. Conclusion
+In conclusion, we propose the FDB-MFA method for designing 
+compact and low-loss SWBs on anisotropic LNOI platform. By opti -
+mizing the FFC structure consisting of cascaded Generalized Euler seg -
+ments, we overcome the loss limitations imposed by the anisotropic 
+platform, significantly reducing both mode mismatch loss and radiation 
+loss. SWBs utilizing FFCs with a 200-nm-thick slab and a 200-nm-height 
+rib on the X-cut LNOI platform, designed with three distinct equivalent 
+radii, outperform traditional bending structures and exhibit a substan -
+tial manufacturing tolerance of ± 200 nm. Experimental results show 
+that the bending waveguide with an equivalent radius of 40.5 μ m ex -
+hibits a transmission loss of 0.008 dB at 1550 nm wavelength. Addi -
+tionally, we demonstrate a compact FFC-bend optical delay line (ODL) 
+with a total length of 3.64 cm, a footprint of 0.5 × 0.5 mm
+2
+, and a 
+transmission loss of 0.43 dB/cm, 80 % lower than the Euler-bend ODLs 
+of the same size. The low-loss SWBs and ODLs developed in this work 
+offer considerable potential to drive the advancement of LNOI-based 
+photonic integrated devices and circuits.
+CRediT authorship contribution statement
+Lingxiao Zhang: Writing – original draft, Investigation, Formal 
+analysis, Data curation, Conceptualization. Minjun Xie: Formal anal -
+ysis, Data curation, Conceptualization. Yalong Yu: Data curation, 
+Conceptualization. Juzheng Li: Data curation, Conceptualization. Wei 
+Ma: Conceptualization. Tao Chu: Conceptualization. Bo Xiong: Writing 
+– review & editing, Supervision, Methodology, Investigation, Funding 
+acquisition, Formal analysis, Data curation, Conceptualization.
+Funding
+This work was supported by the National Natural Science Foundation 
+of China (Grant No. 62475237, Grant No. 62322511, Grant No. 
+62105285 and No. 62275230), the Natural Science Foundation of Zhe -
+jiang Province (Grant No. LMS25F050003), the National Key R & D 
+Program of China (Grant No. 2021YFA1401200).
+Declaration of competing interest
+The authors declare that they have no known competing financial 
+interests or personal relationships that could have appeared to influence 
+the work reported in this paper.
+Acknowledgement
+The authors acknowledge the Zhejiang University Micro and Nano 
+Processing Platform for providing the facility support services. The au -
+thors also thank Mr. Kangping Lou for the fruitful discussions regarding 
+the experiments conducted in this study.
+Appendix A. Supplementary data
+Supplementary data to this article can be found online at https://doi. 
+org/10.1016/j.optcom.2025.132032 .
+Data availability
+Data will be made available on request.
+References
+[1] Di Zhu, Linbo Shao, Mengjie Yu, Rebecca Cheng, Boris Desiatov, C.J. Xin, et al., 
+Integrated photonics on thin-film lithium niobate, Adv. Opt. Photonics 13.2 (2021) 
+242 – 352 .
+[2] R.S. Weis, T.K. Gaylord, Lithium niobate: summary of physical properties and 
+crystal structure, Appl. Phys. A 37 (1985) 191 – 203 .
+[3] Andreas Boes, Lin Chang, Carsten Langrock, Mengjie Yu, Mian Zhang, Qiang Lin, et 
+al., Lithium niobate photonics: unlocking the electromagnetic spectrum, Science 
+379 (6627) (2023) eabj4396 .
+[4] Zihan Li, Rui Ning Wang, Grigory Lihachev, Junyin Zhang, Zelin Tan, 
+Mikhail Churaev, et al., High density lithium niobate photonic integrated circuits, 
+Nat. Commun. 14 (1) (2023) 4856 .
+[5] Guanyu Chen, Nanxi Li, Jun Da Ng, Hong-Lin Lin, Yanyan Zhou, Hsing Fu Yuan, et 
+al., Advances in lithium niobate photonics: development status and perspectives, 
+Adv.Photonics 4 (3) (2022), 034003-034003 .
+[6] Xiaoyan Liu, Nuo Chen, Tao Chu, Polarization-insensitive electrooptic modulation 
+on anisotropic thin-film lithium niobate, ACS Photonics 11 (7) (2024) 2556 – 2560 .
+[7] Nuo Chen, Kangping Lou, Yalong Yu, Xuanjian He, Tao Chu, High-efficiency 
+electro-optic modulator on thin-film lithium niobate with high-permittivity 
+cladding, Laser Photon. Rev. 17 (11) (2023) 2200927 .
+[8] Mengyue Xu, Yuntao Zhu, Fabio Pittal `a, Jin Tang, Mingbo He, Wing Chau Ng, et 
+al., Dual-polarization thin-film lithium niobate in-phase quadrature modulators for 
+terabit-per-second transmission, Optica 9 (1) (2022) 61 – 62 .
+[9] Bing-Cheng Pan, Hong-Xuan Liu, Hao-Chen Xu, Yi-Shu Huang, Huan Li, Ze-Jie Yu, 
+et al., Ultra-compact lithium niobate microcavity electro-optic modulator beyond 
+110 GHz, Chip (Würzbg.) 1.4 (2022) 100029 .
+[10] Cheng Wang, Mian Zhang, Xi Chen, Maxime Bertrand, Amirhassan Shams-Ansari, 
+Sethumadhavan Chandrasekhar, et al., Integrated lithium niobate electro-optic 
+modulators operating at CMOS-compatible voltages, Nature 562 (7725) (2018) 
+101 – 104 .
+[11] Christopher J. Sarabalis, Rapha ¨el Van Laer, Rishi N. Patel, Yanni D. Dahmani, 
+Wentao Jiang, Felix M. Mayor, et al., Acousto-optic modulation of a wavelength- 
+scale waveguide, Optica 8 (4) (2021) 477 – 483 .
+[12] Linbo Shao, Mengjie Yu, Smarak Maity, Neil Sinclair, Zheng Lu, Cleaven Chia, et 
+al., Microwave-to-optical conversion using lithium niobate thin-film acoustic 
+resonators, Optica 6 (12) (2019) 1498 – 1505 .
+[13] Chang Lin, Songtao Liu, John E. Bowers, Integrated optical frequency comb 
+technologies, Nat. Photonics 16 (2) (2022) 95 – 108 .
+[14] Yaowen Hu, Mengjie Yu, Di Zhu, Neil Sinclair, Amirhassan Shams-Ansari, 
+Linbo Shao, et al., On-chip electro-optic frequency shifters and beam splitters, 
+Nature 599 (7886) (2021) 587 – 593 .
+[15] Mian Zhang, Brandon Buscaino, Cheng Wang, Amirhassan Shams-Ansari, 
+Christian Reimer, Rongrong Zhu, et al., Broadband electro-optic frequency comb 
+generation in a lithium niobate microring resonator, Nature 568 (7752) (2019) 
+373 – 377 .
+[16] Xinrui Zhu, Yaowen Hu, Shengyuan Lu, Hana K. Warner, Xudong Li, 
+Yunxiang Song, et al., Twenty-nine million intrinsic Q-factor monolithic 
+microresonators on thin-film lithium niobate, Photon. Res. 12 (8) (2024) A63 – A68 .
+L. Zhang et al.                                                                                                                                                                                                                                   Optics Communications 589 (2025) 132032 
+8 
+
+[17] Kevin Luke, Prashanta Kharel, Christian Reimer, Lingyan He, Marko Loncar, 
+Mian Zhang, et al., Wafer-scale low-loss lithium niobate photonic integrated 
+circuits, Opt. Express 28 (17) (2020) 24452 – 24458 .
+[18] Inna Krasnokutska, Jean-Luc J. Tambasco, Xijun Li, Alberto Peruzzo, Ultra-low loss 
+photonic circuits in lithium niobate on insulator, Opt. Express 26 (2) (2018) 
+897 – 904 .
+[19] Mian Zhang, Cheng Wang, Rebecca Cheng, Amirhassan Shams-ansari, 
+Marko Loncar, Monolithic ultra-high-Q lithium niobate microring resonator, 
+Optica 4 (12) (2017) 1536 – 1537 .
+[20] Jin Wang, Hongsheng Niu, Shangqing Shi, Wei Cheng, Yifei Chen, Chen Guo, A low 
+loss silicon photonic switchable optical delay line with low power consumption, 
+J. Lightwave Technol. 42 (24) (2024) 8771 – 8777 .
+[21] Dongdong Lin, Shangqing Shi, Wei Cheng, Pengcheng Liu, Mengjia Lu, Tong Lin, 
+A high performance silicon nitride optical delay line with good expansibility, 
+J. Lightwave Technol. 41 (1) (2022) 209 – 217 .
+[22] Wei Ke, Yanmei Lin, Mingbo He, Mengyue Xu, Jiaxiang Zhang, Zhongjin Lin, et al., 
+Digitally tunable optical delay line based on thin-film lithium niobate featuring 
+high switching speed and low optical loss, Photon. Res. 10 (11) (2022) 2575 – 2583 .
+[23] Shihan Hong, Long Zhang, Yi Wang, Ming Zhang, Yiwei Xie, Daoxin Dai, Ultralow- 
+loss compact silicon photonic waveguide spirals and delay lines, Photon. Res. 10 
+(1) (2021) 1 – 7 .
+[24] Xinyi Wang, Linjie Zhou, Ruifei Li, Jingya Xie, Liangjun Lu, Kan Wu, 
+Jianping Chen, et al., Continuously tunable ultra-thin silicon waveguide optical 
+delay line, Optica 4 (5) (2017) 507 – 515 .
+[25] Tao Chu, Nuo Chen, Weijie Tang, Yating Wu, Large-scale high-speed photonic 
+switches fabricated on silicon-based photonic platforms. 2023 Optical Fiber 
+Communications Conference and Exhibition (OFC), IEEE, 2023 .
+[26] Tae Joon Seok, Kyungmok Kwon, Johannes Henriksson, Jianheng Luo, Ming 
+C. Wu, Wafer-scale silicon photonic switches beyond die size limit, Optica 6 (4) 
+(2019) 490 – 494 .
+[27] Tae Joon Seok, Niels Quack, Sangyoon Han, Richard S. Muller, Ming C. Wu, Large- 
+scale broadband digital silicon photonic switches with vertical adiabatic couplers, 
+Optica 3 (1) (2016) 64 – 70 .
+[28] Sangyoon Han, Tae Joon Seok, Niels Quack, Byung-Wook Yoo, Ming C. Wu, Large- 
+scale silicon photonic switches with movable directional couplers, Optica 2 (4) 
+(2015) 370 – 375 .
+[29] Jiayi Ouyang, Shengping Liu, Ziyue Yang, Wei Wang, Xue Feng, Yongzhuo Li, et 
+al., 16-channel Photonic Solver for Optimization Problems on a Silicon Chip, 2024 
+100117. Chip .
+[30] Qiaolv Ling, Penghui Dong, Yayan Chu, Xiaowen Dong, Jingye Chen, Daoxin Dai, 
+et al., On-chip optical matrix-vector multiplier based on mode division 
+multiplexing, Chip (Würzbg.) 2.4 (2023) 100061 .
+[31] Shuhei Ohno, Rui Tang, Kasidit Toprasertpong, Shinichi Takagi, Mitsuru Takenaka, 
+Si microring resonator crossbar array for on-chip inference and training of the 
+optical neural network, ACS Photonics 9 (8) (2022) 2614 – 2622 .
+[32] Yi Wang, Daoxin Dai, Ultra-sharp multimode waveguide bends with dual 
+polarizations, J. Lightwave Technol. 38 (15) (2020) 3994 – 3999 .
+[33] Hao Wu, Chenlei Li, Lijia Song, Hon-Ki Tsang, John E. Bowers, Daoxin Dai, Ultra- 
+sharp multimode waveguide bends with subwavelength gratings, Laser Photon. 
+Rev. 13 (2) (2019) 1800119 .
+[34] Hongnan Xu, Yaocheng Shi, Ultra-sharp multi-mode waveguide bending assisted 
+with metamaterial-based mode converters, Laser Photon. Rev. 12 (3) (2018) 
+1700240 .
+[35] Shaoliang Yu, Xiaoming Qiu, Haijie Zuo, Mirbek Turduev, Tian Gu, Juejun Hu, 
+Compact and fabrication-tolerant waveguide bends based on quadratic reflectors, 
+J. Lightwave Technol. 38 (16) (2020) 4368 – 4373 .
+[36] Yi Wang, Daoxin Dai, Multimode silicon photonic waveguide corner-bend, Opt. 
+Express 28 (7) (2020) 9062 – 9071 .
+[37] Yingjie Liu, Wenzhao Sun, Hucheng Xie, Nan Zhang, Ke Xu, Yong Yao, et al., Very 
+sharp adiabatic bends based on an inverse design, Opt Lett. 43 (11) (2018) 
+2482 – 2485 .
+[38] Matteo Cherchi, Sami Ylinen, Mikko Harjanne, Markku Kapulainen, Timo Aalto, 
+Dramatic size reduction of waveguide bends on a micron-scale silicon photonic 
+platform, Opt. Express 21 (15) (2013) 17814 – 17823 .
+[39] Hamed Pishvai Bazargani, Jonas Flueckiger, Lukas Chrostowski, Jos ´e Aza ˜na, 
+Microring resonator design with improved quality factors using quarter Bezier 
+curves. 2015 Conference on Lasers and Electro-Optics (CLEO), IEEE, 2015 .
+[40] Xingxu Liu, Ziliang Ruan, Shangsen Sun, Changjian Guo, Kaixuan Chen, Ning Zhu, 
+et al., Sharp bend and large FSR ring resonator based on the free-form curves on a 
+thin-film lithium niobate platform, Opt. Express 32 (6) (2024) 9433 – 9441 .
+[41] Shangsen Sun, Zhiqiang Yang, Juanli Wang, Runsen Zhang, Fengchun Zhang, 
+Ning Zhu, et al., Ultra-sharp silicon multimode waveguide bends based on double 
+free-form curves, Photon. Res. 10 (6) (2022) 1484 – 1490 .
+[42] Shangsen Sun, Penghui Dong, Fengchun Zhang, Juanli Wang, Ning Zhu, 
+Yaocheng Shi, Inverse design of ultra-compact multimode waveguide bends based 
+on the free-form curves, Laser Photon. Rev. 15 (9) (2021) 2100162 .
+[43] Michael A. Seldowitz, Jan P. Allebach, Donald W. Sweeney, Synthesis of digital 
+holograms by direct binary search, Appl. Opt. 26 (14) (1987) 2788 – 2798 .
+[44] Meisam Bahadori, Mahdi Nikdast, Qixiang Cheng, Keren Bergman, Universal 
+design of waveguide bends in silicon-on-insulator photonics platform, J. Lightwave 
+Technol. 37 (13) (2019) 3044 – 3054 .
+[45] Allan W. Snyder, John D. Love, Optical Waveguide Theory, 1983 .
+L. Zhang et al.                                                                                                                                                                                                                                   Optics Communications 589 (2025) 132032 
+9 
