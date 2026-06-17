@@ -186,6 +186,35 @@ export type ToolReservation = {
   updated_at: string;
 };
 
+export type ProcessPerson = {
+  id: string;
+  display_name: string;
+  profile_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProcessCalendarEvent = {
+  id: string;
+  process_template_id: string;
+  location: string;
+  starts_at: string;
+  ends_at: string;
+  process_step_id: string | null;
+  manual_action: string | null;
+  description: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProcessCalendarEventPerson = {
+  event_id: string;
+  person_id: string;
+  created_at: string;
+};
+
 export type Measurement = {
   id: string;
   project_id: string;
@@ -317,6 +346,9 @@ export interface Database {
       wafer_process_assignments: Row<WaferProcessAssignment>;
       step_executions: Row<StepExecution>;
       tool_reservations: Row<ToolReservation>;
+      process_people: Row<ProcessPerson>;
+      process_calendar_events: Row<ProcessCalendarEvent>;
+      process_calendar_event_people: Row<ProcessCalendarEventPerson>;
       measurements: Row<Measurement>;
       attachments: Row<Attachment>;
       process_issues: Row<ProcessIssue>;

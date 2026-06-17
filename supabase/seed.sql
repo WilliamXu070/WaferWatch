@@ -49,3 +49,11 @@ values
   ('ICP Etcher', 'etcher', 'Cleanroom', 'available', '{"owner": "MQPG"}'::jsonb),
   ('Optical Probe Station', 'metrology', 'Photonics Lab', 'available', '{"owner": "MQPG"}'::jsonb)
 on conflict (name) do nothing;
+
+insert into public.process_people (display_name)
+values
+  ('adam'),
+  ('barbara'),
+  ('calvin'),
+  ('derik')
+on conflict (display_name) do update set is_active = true;

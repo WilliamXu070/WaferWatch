@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "react-calendar-timeline/style.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

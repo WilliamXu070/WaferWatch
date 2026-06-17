@@ -64,7 +64,7 @@ export async function requireAccountOrRedirect() {
   const account = await getCurrentAccount();
 
   if (!account) {
-    redirect("/login");
+    redirect("/");
   }
 
   return account;

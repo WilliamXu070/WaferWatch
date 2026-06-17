@@ -13,14 +13,14 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type");
-  const next = searchParams.get("next") ?? "/";
+  const next = searchParams.get("next") ?? "/processes";
   const safeNext = next.startsWith("/") ? next : "/";
   const oauthError = searchParams.get("error") ?? searchParams.get("error_code");
   const oauthErrorDescription = searchParams.get("error_description");
 
   if (oauthError) {
     const message = oauthErrorDescription ?? oauthError;
-    return redirectTo(request, `/login?error=${encodeURIComponent(message)}`);
+    return redirectTo(request, `/?error=${encodeURIComponent(message)}`);
   }
 
   const supabase = await createServerSupabaseClient();
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {
-      return redirectTo(request, `/login?error=${encodeURIComponent(error.message)}`);
+      return redirectTo(request, `/?error=${encodeURIComponent(error.message)}`);
     }
 
     return redirectTo(request, safeNext);
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (error) {
-      return redirectTo(request, `/login?error=${encodeURIComponent(error.message)}`);
+      return redirectTo(request, `/?error=${encodeURIComponent(error.message)}`);
     }
 
     return redirectTo(request, safeNext);
@@ -50,6 +50,6 @@ export async function GET(request: NextRequest) {
 
   return redirectTo(
     request,
-    "/login?error=The confirmation link is missing a verification code."
+    "/?error=The confirmation link is missing a verification code."
   );
 }
