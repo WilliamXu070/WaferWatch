@@ -1,0 +1,407 @@
+switchtolayout;
+selectall;
+delete;
+
+## SIM PARAMS
+wavelength=1.55e-6;
+WG_length=5e-6;
+WG_width=0.8e-6;
+Thickness=0.6e-6;
+etch_depth=0.3e-6;
+# radius=__RADIUS__;
+radius=50e-6;
+# Horizontal location of the vertical output waveguide and bend endpoint.
+# Python can set this independently from radius, e.g. output_x=40e-6 while radius=50e-6.
+# output_x=__OUTPUT_X__;
+output_x=50e-6;
+Angle=70;
+mesh=50e-9;
+BOX=4.7e-6;
+
+A0=[1;1;1];
+B1=[2.9804;2.6734;2.6734];
+C1=[0.02047;0.01764;0.01764];
+B2=[0.5981;1.229;1.229];
+C2=[0.0666;0.05914;0.05914];
+B3=[8.9543;12.614;12.614];
+C3=[414.08;474.6;474.6];
+#deletematerial('LN-will');
+opt_material=addmaterial('Sellmeier');
+setmaterial(opt_material,'name','LN-will');
+setmaterial('LN-will','Anisotropy','Diagonal');
+setmaterial('LN-will','A0',A0);
+setmaterial('LN-will','B1',B1);
+setmaterial('LN-will','C1',C1);
+setmaterial('LN-will','B2',B2);
+setmaterial('LN-will','C2',C2);
+setmaterial('LN-will','B3',B3);
+setmaterial('LN-will','C3',C3);
+
+# deletematerial('Air');
+air_material=addmaterial('Dielectric');
+setmaterial(air_material,'name','Air_Custom');
+setmaterial('Air_Custom','Refractive Index',1);
+
+## Geometry definitions
+# Bend endpoints. Fixed access waveguides are trimmed by join_clearance so
+# they do not overlap the bend polygon drawn by optimized_core.
+join_clearance = 1e-9;
+bend_start_x = 0;
+bend_start_y = 0;
+bend_end_x   = output_x;
+bend_end_y   = radius;
+
+# Input waveguide: horizontal 5um access arm ending just before bend start
+input_x_end   = bend_start_x - join_clearance;
+input_x_start = input_x_end - WG_length;
+input_y       = bend_start_y;
+
+# Output waveguide: vertical 5um access arm starting just after bend end
+# output_x is the free horizontal placement parameter defined above.
+output_y_start = bend_end_y + join_clearance;
+output_y_end   = output_y_start + WG_length;
+
+# Circular arc from bend start to bend end
+arc_start_x = bend_start_x;
+arc_start_y = bend_start_y;
+arc_end_x   = bend_end_x;
+arc_end_y   = bend_end_y;
+
+# Compute arc center from chord geometry
+chord_mid_x = (arc_start_x + arc_end_x) / 2;
+chord_mid_y = (arc_start_y + arc_end_y) / 2;
+chord_dx = arc_end_x - arc_start_x;
+chord_dy = arc_end_y - arc_start_y;
+chord_len = sqrt(chord_dx^2 + chord_dy^2);
+half_chord = chord_len / 2;
+d_center = sqrt(radius^2 - half_chord^2);
+perp_x = -chord_dy / chord_len;
+perp_y =  chord_dx / chord_len;
+arc_cx = chord_mid_x + d_center * perp_x;
+arc_cy = chord_mid_y + d_center * perp_y;
+
+# Start and end angles (radians)
+theta_start = atan2(arc_start_y - arc_cy, arc_start_x - arc_cx);
+theta_end   = atan2(arc_end_y - arc_cy, arc_end_x - arc_cx);
+if (theta_end < theta_start) {
+  theta_end = theta_end + 2*pi;
+}
+
+# Build a single absolute design frame for all builders/sources/monitors.
+# This is the replacement for manually moving addlayerbuilder x/y.
+# We keep each object in its own builder, but every object shares one design reference.
+pad = 5e-6;
+
+# initialize background extents from straight waveguides + margin
+layout_x_min = input_x_start - pad;
+layout_x_max = output_x + WG_width/2 + pad;
+
+layout_y_min = input_y - WG_width / 2;
+if (output_y_start < layout_y_min) {
+  layout_y_min = output_y_start;
+}
+layout_y_max = input_y + WG_width / 2;
+if (output_y_end > layout_y_max) {
+  layout_y_max = output_y_end;
+}
+
+# include arc outer-edge envelope for safe absolute extents
+num_arc_samples = 200;
+arc_x_min = arc_cx + (radius + WG_width/2) * cos(theta_start);
+arc_x_max = arc_x_min;
+arc_y_min = arc_cy + (radius + WG_width/2) * sin(theta_start);
+arc_y_max = arc_y_min;
+for (i = 1; i <= num_arc_samples; i = i + 1) {
+  t_arc = theta_start + (i - 1) / (num_arc_samples - 1) * (theta_end - theta_start);
+  x_arc = arc_cx + (radius + WG_width/2) * cos(t_arc);
+  y_arc = arc_cy + (radius + WG_width/2) * sin(t_arc);
+
+  if (x_arc < arc_x_min) { arc_x_min = x_arc; }
+  if (x_arc > arc_x_max) { arc_x_max = x_arc; }
+  if (y_arc < arc_y_min) { arc_y_min = y_arc; }
+  if (y_arc > arc_y_max) { arc_y_max = y_arc; }
+}
+
+if (arc_x_min < layout_x_min) { layout_x_min = arc_x_min; }
+if (arc_x_max > layout_x_max) { layout_x_max = arc_x_max; }
+if (arc_y_min < layout_y_min) { layout_y_min = arc_y_min; }
+if (arc_y_max > layout_y_max) { layout_y_max = arc_y_max; }
+
+# one shared absolute reference (all builders and regions use these)
+layout_x_min = layout_x_min - pad;
+layout_x_max = layout_x_max + pad;
+layout_y_min = layout_y_min - pad;
+layout_y_max = layout_y_max + pad;
+
+layout_x_span = layout_x_max - layout_x_min;
+layout_y_span = layout_y_max - layout_y_min;
+layout_x_center = (layout_x_min + layout_x_max) / 2;
+layout_y_center = (layout_y_min + layout_y_max) / 2;
+
+#############################################
+## LAYER BUILDER 1: Fixed input waveguide
+#####################################
+addlayerbuilder;
+set('name', 'input_waveguide');
+set('x', layout_x_center);
+set('y', layout_y_center);
+set('z', 0);
+set('x span', layout_x_span);
+set('y span', layout_y_span);
+set('gds position reference', 1);
+set('base mesh order', 1);
+
+addlayer('Si_Substrate');
+addlayer('BOX');
+addlayer('TFLN-film');
+addlayer('MMI-core');
+
+setlayer('Si_Substrate', 'start position', -BOX);
+setlayer('Si_Substrate', 'thickness', -10e-6);
+setlayer('Si_Substrate', 'process', 'background');
+setlayer('Si_Substrate', 'background material', 'Si (Silicon) - Palik');
+set('base mesh order', 1);
+
+setlayer('BOX', 'start position', -BOX);
+setlayer('BOX', 'thickness', BOX);
+setlayer('BOX', 'process', 'background');
+setlayer('BOX', 'background material', 'SiO2 (Glass) - Palik');
+set('base mesh order', 1);
+
+setlayer('TFLN-film', 'start position', 0);
+setlayer('TFLN-film', 'thickness', Thickness - etch_depth);
+setlayer('TFLN-film', 'process', 'background');
+setlayer('TFLN-film', 'background material', 'LN-will');
+set('base mesh order', 1);
+
+setlayer('MMI-core', 'layer number', '1:0');
+setlayer('MMI-core', 'start position', Thickness - etch_depth);
+setlayer('MMI-core', 'thickness', etch_depth);
+setlayer('MMI-core', 'process', 'grow');
+setlayer('MMI-core', 'pattern material', 'LN-will');
+set('gds sidewall angle position reference', 'Top');
+setlayer('MMI-core', 'sidewall angle', Angle);
+set('base mesh order', 1);
+
+# Input waveguide rectangle.
+# Layerbuilder geometry is local to the builder origin, so subtract layout center.
+input_rect = [[input_x_start - layout_x_center, input_y - WG_width/2 - layout_y_center];
+              [input_x_end   - layout_x_center, input_y - WG_width/2 - layout_y_center];
+              [input_x_end   - layout_x_center, input_y + WG_width/2 - layout_y_center];
+              [input_x_start - layout_x_center, input_y + WG_width/2 - layout_y_center];
+              [input_x_start - layout_x_center, input_y - WG_width/2 - layout_y_center]];
+set('geometry', {"1:0":{input_rect}});
+
+#############################################
+## LAYER BUILDER 2: Fixed output waveguide
+#####################################
+addlayerbuilder;
+set('name', 'output_waveguide');
+set('x', layout_x_center);
+set('y', layout_y_center);
+set('z', 0);
+set('x span', layout_x_span);
+set('y span', layout_y_span);
+set('gds position reference', 1);
+set('base mesh order', 1);
+
+addlayer('Si_Substrate');
+addlayer('BOX');
+addlayer('TFLN-film');
+addlayer('MMI-core');
+
+setlayer('Si_Substrate', 'start position', -BOX);
+setlayer('Si_Substrate', 'thickness', -10e-6);
+setlayer('Si_Substrate', 'process', 'background');
+setlayer('Si_Substrate', 'background material', 'Si (Silicon) - Palik');
+set('base mesh order', 1);
+
+setlayer('BOX', 'start position', -BOX);
+setlayer('BOX', 'thickness', BOX);
+setlayer('BOX', 'process', 'background');
+setlayer('BOX', 'background material', 'SiO2 (Glass) - Palik');
+set('base mesh order', 1);
+
+setlayer('TFLN-film', 'start position', 0);
+setlayer('TFLN-film', 'thickness', Thickness - etch_depth);
+setlayer('TFLN-film', 'process', 'background');
+setlayer('TFLN-film', 'background material', 'LN-will');
+set('base mesh order', 1);
+
+setlayer('MMI-core', 'layer number', '1:0');
+setlayer('MMI-core', 'start position', Thickness - etch_depth);
+setlayer('MMI-core', 'thickness', etch_depth);
+setlayer('MMI-core', 'process', 'grow');
+setlayer('MMI-core', 'pattern material', 'LN-will');
+set('gds sidewall angle position reference', 'Top');
+setlayer('MMI-core', 'sidewall angle', Angle);
+set('base mesh order', 1);
+
+# Output waveguide rectangle, vertical access arm.
+# Layerbuilder geometry is local to the builder origin, so subtract layout center.
+output_rect = [[output_x - WG_width/2 - layout_x_center, output_y_start - layout_y_center];
+               [output_x + WG_width/2 - layout_x_center, output_y_start - layout_y_center];
+               [output_x + WG_width/2 - layout_x_center, output_y_end   - layout_y_center];
+               [output_x - WG_width/2 - layout_x_center, output_y_end   - layout_y_center];
+               [output_x - WG_width/2 - layout_x_center, output_y_start - layout_y_center]];
+set('geometry', {"1:0":{output_rect}});
+
+#############################################
+## LAYER BUILDER 3: Optimized core (circular arc bend) [Python injected]
+#####################################
+
+## Generate circular arc polygon
+#num_arc_points = 100;
+## Outer edge + inner edge + close polygon
+#arc_polygon = matrix(num_arc_points * 2 + 1, 2);
+
+## Outer edge (CCW): offset +WG_width/2 radially outward
+#for (i = 1; i <= num_arc_points; i = i + 1) {
+  #t = (i - 1) / (num_arc_points - 1);
+  #theta = theta_start + t * (theta_end - theta_start);
+  #arc_polygon(i, 1) = arc_cx + (radius + WG_width/2) * cos(theta) - layout_x_center;
+  #arc_polygon(i, 2) = arc_cy + (radius + WG_width/2) * sin(theta) - layout_y_center;
+#}
+## Inner edge (backward): offset -WG_width/2 radially inward
+#for (i = 1; i <= num_arc_points; i = i + 1) {
+  #t = (i - 1) / (num_arc_points - 1);
+  #theta = theta_end - t * (theta_end - theta_start);
+  #arc_polygon(num_arc_points + i, 1) = arc_cx + (radius - WG_width/2) * cos(theta) - layout_x_center;
+  #arc_polygon(num_arc_points + i, 2) = arc_cy + (radius - WG_width/2) * sin(theta) - layout_y_center;
+#}
+## Close polygon
+#arc_polygon(num_arc_points * 2 + 1, 1) = arc_polygon(1, 1);
+#arc_polygon(num_arc_points * 2 + 1, 2) = arc_polygon(1, 2);
+
+#set('geometry', {"1:0": {arc_polygon}});
+
+## FDTD REGION
+# Reference-style rectangular FDTD window: independent x/y spans, auto mesh.
+# It covers the bend plus only a short tip of each access waveguide.
+fdtd_tip_length = 1e-6;
+fdtd_padding = 1.5e-6;
+source_y_span = 5e-6;
+source_z_span = 5e-6;
+fdtd_z_span = source_z_span;
+
+fdtd_x_min = arc_x_min;
+if (input_x_end - fdtd_tip_length < fdtd_x_min) {
+  fdtd_x_min = input_x_end - fdtd_tip_length;
+}
+if (output_x - WG_width/2 < fdtd_x_min) {
+  fdtd_x_min = output_x - WG_width/2;
+}
+
+fdtd_x_max = arc_x_max;
+if (input_x_end > fdtd_x_max) {
+  fdtd_x_max = input_x_end;
+}
+if (output_x + WG_width/2 > fdtd_x_max) {
+  fdtd_x_max = output_x + WG_width/2;
+}
+
+fdtd_y_min = arc_y_min;
+if (input_y - source_y_span/2 < fdtd_y_min) {
+  fdtd_y_min = input_y - source_y_span/2;
+}
+if (input_y - WG_width/2 < fdtd_y_min) {
+  fdtd_y_min = input_y - WG_width/2;
+}
+if (output_y_start < fdtd_y_min) {
+  fdtd_y_min = output_y_start;
+}
+
+fdtd_y_max = arc_y_max;
+if (input_y + source_y_span/2 > fdtd_y_max) {
+  fdtd_y_max = input_y + source_y_span/2;
+}
+if (input_y + WG_width/2 > fdtd_y_max) {
+  fdtd_y_max = input_y + WG_width/2;
+}
+if (output_y_start + fdtd_tip_length > fdtd_y_max) {
+  fdtd_y_max = output_y_start + fdtd_tip_length;
+}
+
+fdtd_x_min = fdtd_x_min - fdtd_padding;
+fdtd_x_max = fdtd_x_max + fdtd_padding;
+fdtd_y_min = fdtd_y_min - fdtd_padding;
+fdtd_y_max = fdtd_y_max + fdtd_padding;
+
+fdtd_x_span = fdtd_x_max - fdtd_x_min;
+fdtd_y_span = fdtd_y_max - fdtd_y_min;
+fdtd_center_x = (fdtd_x_min + fdtd_x_max) / 2;
+fdtd_center_y = (fdtd_y_min + fdtd_y_max) / 2;
+
+source_x = input_x_end - 0.5e-6;
+fom_y = output_y_start + 0.5e-6;
+
+addfdtd;
+set('dimension','3D');
+set('x', fdtd_center_x);
+set('x span', fdtd_x_span);
+set('y', fdtd_center_y);
+set('y span', fdtd_y_span);
+set('z', 0.3e-6);
+set('z span', fdtd_z_span);
+set('mesh type','auto non-uniform');
+set('mesh accuracy',2);
+set('mesh refinement','conformal variant 0');
+set('x min bc','PML');
+set('x max bc','PML');
+set('y min bc','PML');
+set('y max bc','PML');
+set('z min bc','PML');
+set('z max bc','PML');
+set('auto scale pml parameters',1);
+set('snap pec to yee cell boundary',1);
+set('pml layers', 16);
+set('simulation time',3e-12);
+set('background material','Air_Custom');
+setglobalsource('wavelength start',wavelength);
+setglobalsource('wavelength stop',wavelength);
+
+## SOURCE
+addmode;
+set('direction','Forward');
+set('injection axis','x-axis');
+set('x', source_x);
+set('y', input_y);
+set('y span', source_y_span);
+set('z', 0.3e-6);
+set('z span', source_z_span);
+set('mode selection','fundamental TE mode');
+set('override global source settings', 1);
+set('wavelength start', wavelength);
+set('wavelength stop', wavelength);
+
+## 3D FIELD MONITOR
+adddftmonitor;
+set('name','opt_fields');
+set('monitor type','3D');
+set('x', fdtd_center_x);
+set('x span', fdtd_x_span);
+set('y', fdtd_center_y);
+set('y span', fdtd_y_span);
+set('z', 0.3e-6);
+set('z span', 3e-6);
+
+## FOM MONITOR (at vertical output waveguide end)
+adddftmonitor;
+set('name','fom');
+set('monitor type','2D Y-normal');
+set('x', output_x);
+set('x span', 2.5e-6);
+set('y', fom_y);
+set('z', 0.3e-6);
+set('z span', 3e-6);
+
+## XY PROFILE MONITOR
+adddftmonitor;
+set('name', 'XY-profile_monitor');
+set('monitor type','2D Z-normal');
+set('spatial interpolation','specified position');
+set('z', 0.3e-6);
+set('y', fdtd_center_y);
+set('y span', fdtd_y_span);
+set('x', fdtd_center_x);
+set('x span', fdtd_x_span);
