@@ -914,6 +914,10 @@ input {
   overflow: hidden;
 }
 
+.calendar-timeline-panel--panning {
+  cursor: grabbing;
+}
+
 .calendar-timeline-toolbar {
   min-height: 56px;
   display: flex;
@@ -1104,6 +1108,137 @@ input {
   padding: 16px;
   display: grid;
   gap: 14px;
+}
+
+.calendar-filter-panel {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+}
+
+.calendar-filter-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.calendar-filter-panel__header h3 {
+  margin: 3px 0 0;
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.calendar-filter-panel__toggle {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--foreground);
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.calendar-filter-panel__toggle:hover {
+  background: var(--panel-soft);
+}
+
+.calendar-filter-summary {
+  display: grid;
+  gap: 6px;
+}
+
+.calendar-filter-summary button {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--foreground);
+  padding: 8px 9px;
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.calendar-filter-summary button:hover {
+  background: var(--panel-soft);
+}
+
+.calendar-filter-summary span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.calendar-filter-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-filter-chip-list button,
+.calendar-filter-group__label button {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.calendar-filter-chip-list button:hover {
+  background: var(--panel-soft);
+}
+
+.calendar-filter-chip-list button.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--foreground));
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+}
+
+.calendar-filter-group {
+  display: grid;
+  gap: 7px;
+}
+
+.calendar-filter-group__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.calendar-filter-group__label button {
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.calendar-filter-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.calendar-filter-chip-list button {
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
 }
 
 .calendar-inspector-header h3,

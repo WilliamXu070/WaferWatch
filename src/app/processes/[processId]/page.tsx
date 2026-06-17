@@ -60,6 +60,18 @@ const dashboardTabs: Array<{ key: DashboardView; label: string }> = [
   { key: "wafers", label: "Current wafers / chip status" }
 ];
 
+const CALENDAR_WEEK_DAYS = 7;
+
+function getMondayWeekStart(date: Date) {
+  const weekStart = new Date(date);
+  const day = weekStart.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+
+  weekStart.setDate(weekStart.getDate() + offset);
+  weekStart.setHours(0, 0, 0, 0);
+  return weekStart;
+}
+
 export default async function ProcessDashboardPage({
   params,
   searchParams
@@ -89,10 +101,9 @@ export default async function ProcessDashboardPage({
     wafers: activeWaferStates.filter((state) => state.currentStepId === step.id)
   }));
 
-  const calendarStart = new Date();
-  calendarStart.setHours(0, 0, 0, 0);
+  const calendarStart = getMondayWeekStart(new Date());
   const calendarEnd = new Date(calendarStart);
-  calendarEnd.setDate(calendarStart.getDate() + 6);
+  calendarEnd.setDate(calendarStart.getDate() + CALENDAR_WEEK_DAYS - 1);
   calendarEnd.setHours(23, 59, 59, 999);
   const calendarSchedule = await getProcessCalendarSchedule(
     process.id,
@@ -200,7 +211,7 @@ export default async function ProcessDashboardPage({
             <ProcessCalendarBoard
               processTemplateId={process.id}
               calendarStartDate={calendarStart.toISOString().slice(0, 10)}
-              days={7}
+              days={CALENDAR_WEEK_DAYS}
               steps={sortedSteps.map((step) => ({ id: step.id, name: step.name }))}
               people={calendarSchedule.people}
               initialEvents={calendarSchedule.events}

@@ -42,6 +42,14 @@ type DraftDragSelection = {
   currentTime: number;
 };
 
+type TimelinePanState = {
+  pointerId: number;
+  startX: number;
+  startStart: number;
+  startEnd: number;
+  moved: boolean;
+};
+
 type MoveWindow = {
   location: ProcessCalendarLocation;
   startsAt: string;
@@ -49,6 +57,7 @@ type MoveWindow = {
 };
 
 type ActionMode = "step" | "manual";
+type StageFilterId = string | "__manual__";
 
 type TimelineHeaderScale = {
   id: "minutes" | "hours" | "blocks" | "days";
@@ -90,6 +99,7 @@ const DEFAULT_EVENT_MS = 60 * 60 * 1000;
 const TRAVEL_BUFFER_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
+const MANUAL_STAGE_FILTER_ID = "__manual__";
 
 const TIMELINE_KEYS = {
   groupIdKey: "id",
@@ -165,6 +175,10 @@ function intervalsOverlap(startsAt: Date, endsAt: Date, otherStartsAt: Date, oth
 
 function sortCalendarEvents(events: ProcessCalendarEventView[]) {
   return [...events].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+}
+
+function toggleSelection(current: string[], value: string) {
+  return current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
 }
 
 function toMoveWindow(event: ProcessCalendarEventView): MoveWindow {
@@ -262,7 +276,7 @@ function getHeaderScale(visibleSpan: number): TimelineHeaderScale {
     return HEADER_SCALES.minutes;
   }
 
-  if (visibleSpan <= 12 * HOUR_MS) {
+  if (visibleSpan <= 18 * HOUR_MS) {
     return HEADER_SCALES.hours;
   }
 
@@ -271,6 +285,19 @@ function getHeaderScale(visibleSpan: number): TimelineHeaderScale {
   }
 
   return HEADER_SCALES.days;
+}
+
+function isBlankTimelineTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    !target.closest(".rct-item") &&
+    !target.closest(".rct-header-root") &&
+    !target.closest(".rct-sidebar") &&
+    Boolean(target.closest(".rct-scroll"))
+  );
 }
 
 export function ProcessCalendarBoard({
@@ -298,14 +325,20 @@ export function ProcessCalendarBoard({
   const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
   const [personQuery, setPersonQuery] = useState("");
   const [draftDragSelection, setDraftDragSelection] = useState<DraftDragSelection | null>(null);
+  const [filterPersonIds, setFilterPersonIds] = useState<string[]>([]);
+  const [filterStageIds, setFilterStageIds] = useState<StageFilterId[]>([]);
+  const [isFilterPanelExpanded, setIsFilterPanelExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const timelineRef = useRef<CalendarTimelineRef>(null);
   const timelinePanelRef = useRef<HTMLDivElement>(null);
   const draftDragSelectionRef = useRef<DraftDragSelection | null>(null);
+  const timelinePanRef = useRef<TimelinePanState | null>(null);
   const undoStackRef = useRef<Array<{ eventId: string; previous: MoveWindow; next: MoveWindow }>>([]);
   const moveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestMoveRequestRef = useRef(0);
+  const [timelinePanPointerId, setTimelinePanPointerId] = useState<number | null>(null);
+  const [isTimelinePanning, setIsTimelinePanning] = useState(false);
 
   const startDate = useMemo(() => new Date(`${calendarStartDate}T00:00:00`), [calendarStartDate]);
   const timelineStart = useMemo(() => buildDateAtMinute(startDate, START_MINUTE).getTime(), [startDate]);
@@ -335,7 +368,42 @@ export function ProcessCalendarBoard({
 
   const stepsById = useMemo(() => new Map(steps.map((step) => [step.id, step.name])), [steps]);
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
-  const selectedEvent = events.find((event) => event.id === selectedEventId) ?? null;
+  const stageFilterOptions = useMemo(
+    () => [
+      ...steps.map((step) => ({ id: step.id as StageFilterId, name: step.name })),
+      { id: MANUAL_STAGE_FILTER_ID as StageFilterId, name: "Manual" }
+    ],
+    [steps]
+  );
+  const stageFilterOptionsById = useMemo(
+    () => new Map(stageFilterOptions.map((stage) => [stage.id, stage.name])),
+    [stageFilterOptions]
+  );
+  const personFilterSummary =
+    filterPersonIds.length === 0
+      ? "Everyone"
+      : filterPersonIds.map((personId) => peopleById.get(personId)?.display_name ?? "Unknown").join(", ");
+  const stageFilterSummary =
+    filterStageIds.length === 0
+      ? "All stages"
+      : filterStageIds.map((stageId) => stageFilterOptionsById.get(stageId) ?? "Unknown").join(", ");
+  const visibleEvents = useMemo(
+    () =>
+      events.filter((event) => {
+        const matchesPeople =
+          filterPersonIds.length === 0 ||
+          event.people.some((person) => filterPersonIds.includes(person.id));
+        const matchesStage =
+          filterStageIds.length === 0 ||
+          filterStageIds.some((stageId) =>
+            stageId === MANUAL_STAGE_FILTER_ID ? !event.process_step_id : event.process_step_id === stageId
+          );
+
+        return matchesPeople && matchesStage;
+      }),
+    [events, filterPersonIds, filterStageIds]
+  );
+  const selectedEvent = visibleEvents.find((event) => event.id === selectedEventId) ?? null;
   const selectedPeople = selectedPersonIds
     .map((personId) => peopleById.get(personId))
     .filter((person): person is ProcessCalendarPersonOption => Boolean(person));
@@ -345,15 +413,15 @@ export function ProcessCalendarBoard({
       LOCATIONS.map((location) => ({
         id: location,
         title: location,
-        rightTitle: `${events.filter((event) => event.location === location).length}`,
+        rightTitle: `${visibleEvents.filter((event) => event.location === location).length}`,
         stackItems: true
       })),
-    [events]
+    [visibleEvents]
   );
 
   const timelineItems = useMemo<CalendarTimelineItem[]>(
     () => {
-      const items: CalendarTimelineItem[] = events.map((event) => {
+      const items: CalendarTimelineItem[] = visibleEvents.map((event) => {
         const label = eventLabel(event, stepsById);
         const peopleLabel = event.people.map((person) => person.display_name).join(", ");
 
@@ -396,7 +464,7 @@ export function ProcessCalendarBoard({
 
       return items;
     },
-    [draft, draftDragSelection, events, stepsById, timelineEnd, timelineStart]
+    [draft, draftDragSelection, stepsById, timelineEnd, timelineStart, visibleEvents]
   );
 
   const personConflictById = useMemo(() => {
@@ -735,21 +803,32 @@ export function ProcessCalendarBoard({
   }, []);
 
   const handleTimelinePointerDownCapture = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || !event.shiftKey) {
+    if (event.button !== 0 || !isBlankTimelineTarget(event.target)) {
       return;
     }
 
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) {
-      return;
-    }
+    if (!event.shiftKey) {
+      if (event.pointerType !== "mouse") {
+        return;
+      }
 
-    if (
-      target.closest(".rct-item") ||
-      target.closest(".rct-header-root") ||
-      target.closest(".rct-sidebar") ||
-      !target.closest(".rct-scroll")
-    ) {
+      const timeline = timelineRef.current;
+      if (!timeline) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      timelinePanelRef.current?.setPointerCapture?.(event.pointerId);
+      timelinePanRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startStart: effectiveVisibleRange.start,
+        startEnd: effectiveVisibleRange.end,
+        moved: false
+      };
+      setTimelinePanPointerId(event.pointerId);
+      setIsTimelinePanning(false);
       return;
     }
 
@@ -774,7 +853,15 @@ export function ProcessCalendarBoard({
     setDraft(null);
     resetDraftForm();
     setActiveDraftDrag(selection);
-  }, [getTimelinePointerTarget, resetDraftForm, setActiveDraftDrag, timelineEnd, timelineStart]);
+  }, [
+    effectiveVisibleRange.end,
+    effectiveVisibleRange.start,
+    getTimelinePointerTarget,
+    resetDraftForm,
+    setActiveDraftDrag,
+    timelineEnd,
+    timelineStart
+  ]);
 
   const moveResizeValidator = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["moveResizeValidator"]>>(
     (action, item, time, resizeEdge) => {
@@ -999,10 +1086,88 @@ export function ProcessCalendarBoard({
     };
   }, [draftDragSelection, finishDraftDrag, getTimelinePointerTarget, setActiveDraftDrag]);
 
+  useEffect(() => {
+    if (timelinePanPointerId === null) {
+      return;
+    }
+
+    const finishTimelinePan = (event?: PointerEvent) => {
+      const pan = timelinePanRef.current;
+      if (!pan || (event && event.pointerId !== pan.pointerId)) {
+        return;
+      }
+
+      if (!pan.moved) {
+        setSelectedEventId(null);
+      }
+
+      if (event) {
+        timelinePanelRef.current?.releasePointerCapture?.(event.pointerId);
+      }
+
+      timelinePanRef.current = null;
+      setTimelinePanPointerId(null);
+      setIsTimelinePanning(false);
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const pan = timelinePanRef.current;
+      const timeline = timelineRef.current;
+      if (!pan || event.pointerId !== pan.pointerId || !timeline) {
+        return;
+      }
+
+      const rect = timeline.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+
+      const dragDistance = event.clientX - pan.startX;
+      if (!pan.moved && Math.abs(dragDistance) < 4) {
+        return;
+      }
+
+      event.preventDefault();
+      pan.moved = true;
+      setIsTimelinePanning(true);
+
+      const span = pan.startEnd - pan.startStart;
+      if (span >= timelineEnd - timelineStart) {
+        setVisibleRange({
+          boundsStart: timelineStart,
+          boundsEnd: timelineEnd,
+          start: timelineStart,
+          end: timelineEnd
+        });
+        return;
+      }
+
+      const timeDelta = (dragDistance / rect.width) * span;
+      const nextStart = clamp(pan.startStart - timeDelta, timelineStart, timelineEnd - span);
+
+      setVisibleRange({
+        boundsStart: timelineStart,
+        boundsEnd: timelineEnd,
+        start: nextStart,
+        end: nextStart + span
+      });
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", finishTimelinePan);
+    window.addEventListener("pointercancel", finishTimelinePan);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishTimelinePan);
+      window.removeEventListener("pointercancel", finishTimelinePan);
+    };
+  }, [timelineEnd, timelinePanPointerId, timelineStart]);
+
   return (
     <div className="calendar-scheduler calendar-scheduler--timeline">
       <div
-        className="calendar-timeline-panel"
+        className={`calendar-timeline-panel ${isTimelinePanning ? "calendar-timeline-panel--panning" : ""}`}
         onPointerDownCapture={handleTimelinePointerDownCapture}
         ref={timelinePanelRef}
       >
@@ -1068,6 +1233,92 @@ export function ProcessCalendarBoard({
       </div>
 
       <aside className="calendar-inspector" aria-label="Calendar event details">
+        <div className="calendar-filter-panel">
+          <div className="calendar-filter-panel__header">
+            <div>
+              <p className="eyebrow">Show</p>
+              <h3>Calendar filters</h3>
+            </div>
+            <button
+              aria-expanded={isFilterPanelExpanded}
+              className="calendar-filter-panel__toggle"
+              type="button"
+              onClick={() => setIsFilterPanelExpanded((expanded) => !expanded)}
+            >
+              {isFilterPanelExpanded ? "Compact" : "Expand"}
+            </button>
+          </div>
+
+          {isFilterPanelExpanded ? (
+            <>
+              <div className="calendar-filter-group">
+                <div className="calendar-filter-group__label">
+                  <span>People</span>
+                </div>
+                <div className="calendar-filter-chip-list">
+                  <button
+                    aria-pressed={filterPersonIds.length === 0}
+                    className={filterPersonIds.length === 0 ? "is-selected" : ""}
+                    type="button"
+                    onClick={() => setFilterPersonIds([])}
+                  >
+                    Everyone
+                  </button>
+                  {people.map((person) => (
+                    <button
+                      aria-pressed={filterPersonIds.includes(person.id)}
+                      className={filterPersonIds.includes(person.id) ? "is-selected" : ""}
+                      key={person.id}
+                      type="button"
+                      onClick={() => setFilterPersonIds((current) => toggleSelection(current, person.id))}
+                    >
+                      {person.display_name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="calendar-filter-group">
+                <div className="calendar-filter-group__label">
+                  <span>Process stage</span>
+                </div>
+                <div className="calendar-filter-chip-list">
+                  <button
+                    aria-pressed={filterStageIds.length === 0}
+                    className={filterStageIds.length === 0 ? "is-selected" : ""}
+                    type="button"
+                    onClick={() => setFilterStageIds([])}
+                  >
+                    All stages
+                  </button>
+                  {stageFilterOptions.map((stage) => (
+                    <button
+                      aria-pressed={filterStageIds.includes(stage.id)}
+                      className={filterStageIds.includes(stage.id) ? "is-selected" : ""}
+                      key={stage.id}
+                      type="button"
+                      onClick={() => setFilterStageIds((current) => toggleSelection(current, stage.id))}
+                    >
+                      {stage.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="calendar-filter-summary">
+              <button type="button" onClick={() => setIsFilterPanelExpanded(true)}>
+                <span>People</span>
+                <strong>{personFilterSummary}</strong>
+              </button>
+              <button type="button" onClick={() => setIsFilterPanelExpanded(true)}>
+                <span>Process stage</span>
+                <strong>{stageFilterSummary}</strong>
+              </button>
+            </div>
+          )}
+        </div>
+
         {draft ? (
           <>
             <div className="calendar-inspector-header">
