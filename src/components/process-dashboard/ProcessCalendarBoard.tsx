@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { Dayjs } from "dayjs";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import Timeline, {
   DateHeader,
   SidebarHeader,
@@ -34,6 +35,13 @@ type DraftEvent = {
   endsAt: Date;
 };
 
+type DraftDragSelection = {
+  pointerId: number;
+  location: ProcessCalendarLocation;
+  anchorTime: number;
+  currentTime: number;
+};
+
 type MoveWindow = {
   location: ProcessCalendarLocation;
   startsAt: string;
@@ -43,11 +51,12 @@ type MoveWindow = {
 type ActionMode = "step" | "manual";
 
 type TimelineHeaderScale = {
-  id: "minutes" | "hours" | "days";
+  id: "minutes" | "hours" | "blocks" | "days";
   primaryUnit: "day" | "month";
   primaryLabelFormat: (timeRange: [Dayjs, Dayjs]) => string;
   secondaryUnit: "minute" | "hour" | "day";
   secondaryLabelFormat: (timeRange: [Dayjs, Dayjs]) => string;
+  hourStep: 1 | 6;
 };
 
 type TimelineLocationGroup = TimelineGroupBase & {
@@ -56,13 +65,18 @@ type TimelineLocationGroup = TimelineGroupBase & {
   stackItems: true;
 };
 
+type CalendarTimelineRef = {
+  getBoundingClientRect(): DOMRect;
+};
+
 type CalendarTimelineItem = TimelineItemBase<number> & {
   id: string;
   group: ProcessCalendarLocation;
   title: string;
-  event: ProcessCalendarEventView;
+  event?: ProcessCalendarEventView;
   peopleLabel: string;
   toneClass: string;
+  isDraft?: boolean;
 };
 
 const LOCATIONS: ProcessCalendarLocation[] = ["McMaster", "Waterloo", "Toronto"];
@@ -104,6 +118,10 @@ function buildDateAtMinute(date: Date, minute: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function snapTime(time: number) {
+  return Math.round(time / SNAP_MS) * SNAP_MS;
 }
 
 function formatMinute(minute: number) {
@@ -170,8 +188,38 @@ function getEventDuration(event: ProcessCalendarEventView) {
   return new Date(event.ends_at).getTime() - new Date(event.starts_at).getTime();
 }
 
+function draftFromSelection(selection: DraftDragSelection, minTime: number, maxTime: number): DraftEvent {
+  let startsAt = Math.min(selection.anchorTime, selection.currentTime);
+  const selectedEnd = Math.max(selection.anchorTime, selection.currentTime);
+  let endsAt = Math.max(selectedEnd, startsAt + MIN_EVENT_MS);
+
+  if (endsAt > maxTime) {
+    endsAt = maxTime;
+    startsAt = Math.max(minTime, endsAt - MIN_EVENT_MS);
+  }
+
+  return {
+    location: selection.location,
+    startsAt: new Date(startsAt),
+    endsAt: new Date(endsAt)
+  };
+}
+
 function createHeaderLabelFormatter(format: string) {
   return ([start]: [Dayjs, Dayjs]) => start.format(format);
+}
+
+function formatSixHourBlock([start, end]: [Dayjs, Dayjs]) {
+  const hour = start.hour();
+  const label = hour < 6
+    ? "Night"
+    : hour < 12
+      ? "Morning"
+      : hour < 18
+        ? "Afternoon"
+        : "Evening";
+
+  return `${label} ${start.format("h A")}-${end.format("h A")}`;
 }
 
 const HEADER_SCALES: Record<TimelineHeaderScale["id"], TimelineHeaderScale> = {
@@ -180,21 +228,32 @@ const HEADER_SCALES: Record<TimelineHeaderScale["id"], TimelineHeaderScale> = {
     primaryUnit: "day",
     primaryLabelFormat: createHeaderLabelFormatter("ddd, MMM D"),
     secondaryUnit: "minute",
-    secondaryLabelFormat: createHeaderLabelFormatter("h:mm A")
+    secondaryLabelFormat: createHeaderLabelFormatter("h:mm A"),
+    hourStep: 1
   },
   hours: {
     id: "hours",
     primaryUnit: "day",
     primaryLabelFormat: createHeaderLabelFormatter("ddd, MMM D"),
     secondaryUnit: "hour",
-    secondaryLabelFormat: createHeaderLabelFormatter("h A")
+    secondaryLabelFormat: createHeaderLabelFormatter("h A"),
+    hourStep: 1
+  },
+  blocks: {
+    id: "blocks",
+    primaryUnit: "day",
+    primaryLabelFormat: createHeaderLabelFormatter("ddd, MMM D"),
+    secondaryUnit: "hour",
+    secondaryLabelFormat: formatSixHourBlock,
+    hourStep: 6
   },
   days: {
     id: "days",
     primaryUnit: "month",
     primaryLabelFormat: createHeaderLabelFormatter("MMM YYYY"),
     secondaryUnit: "day",
-    secondaryLabelFormat: createHeaderLabelFormatter("ddd D")
+    secondaryLabelFormat: createHeaderLabelFormatter("ddd D"),
+    hourStep: 6
   }
 };
 
@@ -203,8 +262,12 @@ function getHeaderScale(visibleSpan: number): TimelineHeaderScale {
     return HEADER_SCALES.minutes;
   }
 
-  if (visibleSpan <= 2 * DAY_MS) {
+  if (visibleSpan <= 12 * HOUR_MS) {
     return HEADER_SCALES.hours;
+  }
+
+  if (visibleSpan <= 2 * DAY_MS) {
+    return HEADER_SCALES.blocks;
   }
 
   return HEADER_SCALES.days;
@@ -234,8 +297,12 @@ export function ProcessCalendarBoard({
   const [description, setDescription] = useState("");
   const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
   const [personQuery, setPersonQuery] = useState("");
+  const [draftDragSelection, setDraftDragSelection] = useState<DraftDragSelection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const timelineRef = useRef<CalendarTimelineRef>(null);
+  const timelinePanelRef = useRef<HTMLDivElement>(null);
+  const draftDragSelectionRef = useRef<DraftDragSelection | null>(null);
   const undoStackRef = useRef<Array<{ eventId: string; previous: MoveWindow; next: MoveWindow }>>([]);
   const moveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestMoveRequestRef = useRef(0);
@@ -285,8 +352,8 @@ export function ProcessCalendarBoard({
   );
 
   const timelineItems = useMemo<CalendarTimelineItem[]>(
-    () =>
-      events.map((event) => {
+    () => {
+      const items: CalendarTimelineItem[] = events.map((event) => {
         const label = eventLabel(event, stepsById);
         const peopleLabel = event.people.map((person) => person.display_name).join(", ");
 
@@ -304,8 +371,32 @@ export function ProcessCalendarBoard({
           canResize: "both",
           height: 30
         };
-      }),
-    [events, stepsById]
+      });
+
+      const draftWindow = draftDragSelection
+        ? draftFromSelection(draftDragSelection, timelineStart, timelineEnd)
+        : draft;
+
+      if (draftWindow) {
+        items.push({
+          id: "__draft-create__",
+          group: draftWindow.location,
+          title: "New event",
+          peopleLabel: draftDragSelection ? "Release to create" : "Unsaved draft",
+          toneClass: `ww-timeline-item--draft ${draftDragSelection ? "ww-timeline-item--draft-active" : ""}`,
+          start_time: draftWindow.startsAt.getTime(),
+          end_time: draftWindow.endsAt.getTime(),
+          canMove: !draftDragSelection,
+          canChangeGroup: !draftDragSelection,
+          canResize: draftDragSelection ? false : "both",
+          height: 30,
+          isDraft: true
+        });
+      }
+
+      return items;
+    },
+    [draft, draftDragSelection, events, stepsById, timelineEnd, timelineStart]
   );
 
   const personConflictById = useMemo(() => {
@@ -349,6 +440,85 @@ export function ProcessCalendarBoard({
       conflictReason: personConflictById.get(person.id) ?? null
     }))
     .slice(0, 5);
+
+  const resetDraftForm = useCallback(() => {
+    setSelectedEventId(null);
+    setError(null);
+    setActionMode(steps.length ? "step" : "manual");
+    setSelectedStepId(steps[0]?.id ?? "");
+    setManualAction("");
+    setDescription("");
+    setSelectedPersonIds([]);
+    setPersonQuery("");
+  }, [steps]);
+
+  const openDraft = useCallback((nextDraft: DraftEvent) => {
+    setDraft(nextDraft);
+    resetDraftForm();
+  }, [resetDraftForm]);
+
+  const getTimelinePointerTarget = useCallback((event: PointerEvent | ReactPointerEvent) => {
+    const timeline = timelineRef.current;
+    const panel = timelinePanelRef.current;
+    if (!timeline || !panel) {
+      return null;
+    }
+
+    const rect = timeline.getBoundingClientRect();
+    if (
+      event.clientX < rect.left ||
+      event.clientX > rect.right ||
+      event.clientY < rect.top ||
+      event.clientY > rect.bottom
+    ) {
+      return null;
+    }
+
+    const rows = Array.from(
+      panel.querySelectorAll<HTMLElement>(".rct-horizontal-lines > .rct-hl-even, .rct-horizontal-lines > .rct-hl-odd")
+    );
+    const groupIndex = rows.findIndex((row) => {
+      const rowRect = row.getBoundingClientRect();
+      return event.clientY >= rowRect.top && event.clientY <= rowRect.bottom;
+    });
+    const group = groups[groupIndex];
+    if (!group) {
+      return null;
+    }
+
+    const visibleSpan = effectiveVisibleRange.end - effectiveVisibleRange.start;
+    const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    const time = clamp(
+      snapTime(effectiveVisibleRange.start + ratio * visibleSpan),
+      timelineStart,
+      timelineEnd
+    );
+
+    return {
+      location: group.id,
+      time
+    };
+  }, [effectiveVisibleRange.end, effectiveVisibleRange.start, groups, timelineEnd, timelineStart]);
+
+  const setActiveDraftDrag = useCallback((selection: DraftDragSelection | null) => {
+    draftDragSelectionRef.current = selection;
+    setDraftDragSelection(selection);
+  }, []);
+
+  const setTimelineRef = useCallback((instance: CalendarTimelineRef | null) => {
+    timelineRef.current = instance;
+  }, []);
+
+  const finishDraftDrag = useCallback((event?: PointerEvent | KeyboardEvent) => {
+    const currentSelection = draftDragSelectionRef.current;
+    if (!currentSelection) {
+      return;
+    }
+
+    event?.preventDefault();
+    setActiveDraftDrag(null);
+    openDraft(draftFromSelection(currentSelection, timelineStart, timelineEnd));
+  }, [openDraft, setActiveDraftDrag, timelineEnd, timelineStart]);
 
   const commitMove = useCallback((input: {
     eventId: string;
@@ -438,9 +608,27 @@ export function ProcessCalendarBoard({
   const handleItemMove = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onItemMove"]>>(
     (itemId, dragTime, newGroupOrder) => {
       const eventId = String(itemId);
-      const event = events.find((candidate) => candidate.id === eventId);
       const group = groups[newGroupOrder];
-      if (!event || !group) {
+      if (!group) {
+        return;
+      }
+
+      if (eventId === "__draft-create__") {
+        if (!draft) {
+          return;
+        }
+
+        const duration = Math.max(MIN_EVENT_MS, draft.endsAt.getTime() - draft.startsAt.getTime());
+        setDraft({
+          location: group.id,
+          startsAt: new Date(dragTime),
+          endsAt: new Date(dragTime + duration)
+        });
+        return;
+      }
+
+      const event = events.find((candidate) => candidate.id === eventId);
+      if (!event) {
         return;
       }
 
@@ -459,14 +647,40 @@ export function ProcessCalendarBoard({
         recordUndo: true
       });
     },
-    [commitMove, events, groups]
+    [commitMove, draft, events, groups]
   );
 
   const handleItemResize = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onItemResize"]>>(
     (itemId, resizeTime, edge) => {
       const eventId = String(itemId);
+      if (!edge) {
+        return;
+      }
+
+      if (eventId === "__draft-create__") {
+        if (!draft) {
+          return;
+        }
+
+        const currentStart = draft.startsAt.getTime();
+        const currentEnd = draft.endsAt.getTime();
+        const startsAt = edge === "left" ? resizeTime : currentStart;
+        const endsAt = edge === "right" ? resizeTime : currentEnd;
+
+        if (endsAt - startsAt < MIN_EVENT_MS) {
+          return;
+        }
+
+        setDraft({
+          ...draft,
+          startsAt: new Date(startsAt),
+          endsAt: new Date(endsAt)
+        });
+        return;
+      }
+
       const event = events.find((candidate) => candidate.id === eventId);
-      if (!event || !edge) {
+      if (!event) {
         return;
       }
 
@@ -490,7 +704,7 @@ export function ProcessCalendarBoard({
         recordUndo: true
       });
     },
-    [commitMove, events]
+    [commitMove, draft, events]
   );
 
   const handleCanvasDoubleClick = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onCanvasDoubleClick"]>>(
@@ -502,17 +716,9 @@ export function ProcessCalendarBoard({
 
       const startsAt = new Date(time);
       const endsAt = new Date(time + DEFAULT_EVENT_MS);
-      setDraft({ location, startsAt, endsAt });
-      setSelectedEventId(null);
-      setError(null);
-      setActionMode(steps.length ? "step" : "manual");
-      setSelectedStepId(steps[0]?.id ?? "");
-      setManualAction("");
-      setDescription("");
-      setSelectedPersonIds([]);
-      setPersonQuery("");
+      openDraft({ location, startsAt, endsAt });
     },
-    [steps]
+    [openDraft]
   );
 
   const handleCanvasClick = useCallback(() => {
@@ -520,9 +726,55 @@ export function ProcessCalendarBoard({
   }, []);
 
   const handleItemSelect = useCallback((itemId: Id) => {
+    if (String(itemId) === "__draft-create__") {
+      return;
+    }
+
     setSelectedEventId(String(itemId));
     setDraft(null);
   }, []);
+
+  const handleTimelinePointerDownCapture = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !event.shiftKey) {
+      return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    if (
+      target.closest(".rct-item") ||
+      target.closest(".rct-header-root") ||
+      target.closest(".rct-sidebar") ||
+      !target.closest(".rct-scroll")
+    ) {
+      return;
+    }
+
+    const pointerTarget = getTimelinePointerTarget(event);
+    if (!pointerTarget) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const selection = {
+      pointerId: event.pointerId,
+      location: pointerTarget.location,
+      anchorTime: pointerTarget.time,
+      currentTime:
+        pointerTarget.time + MIN_EVENT_MS <= timelineEnd
+          ? pointerTarget.time + MIN_EVENT_MS
+          : Math.max(timelineStart, pointerTarget.time - MIN_EVENT_MS)
+    };
+
+    setDraft(null);
+    resetDraftForm();
+    setActiveDraftDrag(selection);
+  }, [getTimelinePointerTarget, resetDraftForm, setActiveDraftDrag, timelineEnd, timelineStart]);
 
   const moveResizeValidator = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["moveResizeValidator"]>>(
     (action, item, time, resizeEdge) => {
@@ -688,9 +940,72 @@ export function ProcessCalendarBoard({
     return () => window.removeEventListener("keydown", handleUndo);
   }, [commitMove]);
 
+  useEffect(() => {
+    if (!draftDragSelection) {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const currentSelection = draftDragSelectionRef.current;
+      if (!currentSelection || event.pointerId !== currentSelection.pointerId) {
+        return;
+      }
+
+      if (!event.shiftKey) {
+        finishDraftDrag(event);
+        return;
+      }
+
+      event.preventDefault();
+      const pointerTarget = getTimelinePointerTarget(event);
+      if (!pointerTarget) {
+        return;
+      }
+
+      setActiveDraftDrag({
+        ...currentSelection,
+        location: pointerTarget.location,
+        currentTime: pointerTarget.time
+      });
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      const currentSelection = draftDragSelectionRef.current;
+      if (!currentSelection || event.pointerId !== currentSelection.pointerId) {
+        return;
+      }
+
+      finishDraftDrag(event);
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== "Shift") {
+        return;
+      }
+
+      finishDraftDrag(event);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", handlePointerUp, { passive: false });
+    window.addEventListener("pointercancel", handlePointerUp, { passive: false });
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [draftDragSelection, finishDraftDrag, getTimelinePointerTarget, setActiveDraftDrag]);
+
   return (
     <div className="calendar-scheduler calendar-scheduler--timeline">
-      <div className="calendar-timeline-panel">
+      <div
+        className="calendar-timeline-panel"
+        onPointerDownCapture={handleTimelinePointerDownCapture}
+        ref={timelinePanelRef}
+      >
         <div className="calendar-timeline-toolbar">
           <p className="eyebrow">Schedule map</p>
           <p className="muted">
@@ -725,10 +1040,11 @@ export function ProcessCalendarBoard({
           onItemResize={handleItemResize}
           onItemSelect={handleItemSelect}
           onTimeChange={handleTimeChange}
-          selected={selectedEventId ? [selectedEventId] : []}
+          ref={setTimelineRef}
+          selected={draft ? ["__draft-create__"] : selectedEventId ? [selectedEventId] : []}
           sidebarWidth={132}
           stackItems
-          timeSteps={{ second: 1, minute: 15, hour: 1, day: 1, month: 1, year: 1 }}
+          timeSteps={{ second: 1, minute: 15, hour: headerScale.hourStep, day: 1, month: 1, year: 1 }}
           useResizeHandle
           visibleTimeEnd={effectiveVisibleRange.end}
           visibleTimeStart={effectiveVisibleRange.start}

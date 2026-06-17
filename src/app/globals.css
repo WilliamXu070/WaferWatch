@@ -1014,6 +1014,15 @@ input {
   background: color-mix(in srgb, var(--panel-soft) 32%, var(--panel));
 }
 
+.ww-timeline-item--draft {
+  border-style: dashed;
+  background: #ffe066;
+}
+
+.ww-timeline-item--draft-active {
+  pointer-events: none;
+}
+
 .ww-timeline-item-content {
   height: 100%;
   min-width: 0;
