@@ -68,6 +68,8 @@ export type ProcessDashboardData = {
   calendarDays: ProcessDashboardCalendarDay[];
 };
 
+export type ProcessDashboardWaferData = Omit<ProcessDashboardData, "calendarDays">;
+
 function mapProcessStepsByTemplate(steps: ProcessStep[] | null) {
   const grouped: Record<string, ProcessStep[]> = {};
 
@@ -321,7 +323,8 @@ export async function getActiveAssignmentForWafer(waferId: string) {
 
 export async function getProcessDashboardData(
   processTemplateId: string,
-  calendarDays = 14
+  calendarDays = 14,
+  includeCalendar = true
 ): Promise<ProcessDashboardData> {
   const supabase = await createServerSupabaseClient();
   const process = await getProcessTemplate(processTemplateId);
@@ -412,28 +415,31 @@ export async function getProcessDashboardData(
     new Set(Array.from(mergedWafersById.values()).map((wafer) => wafer.project_id))
   );
 
-  const [reservationsResult, plannedStepsResult] = await Promise.all([
-    projectIds.length
-      ? supabase
-          .from("tool_reservations")
-          .select("id, starts_at, tool_id, status, notes, project_id")
-          .in("project_id", projectIds)
-          .gte("starts_at", fromIso)
-          .lte("starts_at", toIso)
-          .neq("status", "cancelled")
-          .order("starts_at", { ascending: true })
-      : Promise.resolve({ data: [], error: null } as const),
-    assignmentIds.length
-      ? supabase
-          .from("step_executions")
-          .select("id, assignment_id, process_step_id, planned_start_at, tool_id")
-          .in("assignment_id", assignmentIds)
-          .not("planned_start_at", "is", null)
-          .gte("planned_start_at", fromIso)
-          .lte("planned_start_at", toIso)
-          .order("planned_start_at", { ascending: true })
-      : Promise.resolve({ data: [], error: null } as const)
-  ]);
+  const reservationsResult = includeCalendar
+    ? await (projectIds.length
+        ? supabase
+            .from("tool_reservations")
+            .select("id, starts_at, tool_id, status, notes, project_id")
+            .in("project_id", projectIds)
+            .gte("starts_at", fromIso)
+            .lte("starts_at", toIso)
+            .neq("status", "cancelled")
+            .order("starts_at", { ascending: true })
+        : Promise.resolve({ data: [], error: null } as const))
+    : ({ data: [], error: null } as const);
+
+  const plannedStepsResult = includeCalendar
+    ? await (assignmentIds.length
+        ? supabase
+            .from("step_executions")
+            .select("id, assignment_id, process_step_id, planned_start_at, tool_id")
+            .in("assignment_id", assignmentIds)
+            .not("planned_start_at", "is", null)
+            .gte("planned_start_at", fromIso)
+            .lte("planned_start_at", toIso)
+            .order("planned_start_at", { ascending: true })
+        : Promise.resolve({ data: [], error: null } as const))
+    : ({ data: [], error: null } as const);
 
   if (reservationsResult.error) {
     throw reservationsResult.error;
@@ -566,6 +572,15 @@ export async function getProcessDashboardData(
       dieDescriptions: extractDieDescriptions(seededWafer.metadata as Json),
       diePollingParameters: extractDiePollingParameters(seededWafer.metadata as Json)
     });
+  }
+
+  if (!includeCalendar) {
+    return {
+      process,
+      workspaceWaferStates,
+      activeWaferStates,
+      calendarDays: []
+    };
   }
 
   const toolIds = new Set<string>();

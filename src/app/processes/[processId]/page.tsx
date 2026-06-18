@@ -6,7 +6,7 @@ import { getProcessCalendarSchedule } from "@/features/calendar/queries";
 import { signOut } from "@/features/accounts/actions";
 import { ProcessFlowDiagram } from "@/components/ProcessFlowDiagram";
 import { CurrentWaferStatusWorkspace } from "@/components/process-dashboard/CurrentWaferStatusWorkspace";
-import { ProcessCalendarBoard } from "@/components/process-dashboard/ProcessCalendarBoard";
+import { LazyProcessCalendarBoard } from "@/components/process-dashboard/LazyProcessCalendarBoard";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +57,12 @@ export default async function ProcessDashboardPage({
     redirect("/");
   }
 
-  const dashboardData = await getProcessDashboardData(processId).catch(() => null);
+  const shouldLoadCalendar = activeView === "calendar";
+  const dashboardData = await getProcessDashboardData(
+    processId,
+    shouldLoadCalendar ? CALENDAR_WEEK_DAYS : 14,
+    shouldLoadCalendar
+  ).catch(() => null);
   if (!dashboardData) {
     redirect("/processes");
   }
@@ -73,11 +78,10 @@ export default async function ProcessDashboardPage({
   const calendarEnd = new Date(calendarStart);
   calendarEnd.setDate(calendarStart.getDate() + CALENDAR_WEEK_DAYS - 1);
   calendarEnd.setHours(23, 59, 59, 999);
-  const calendarSchedule = await getProcessCalendarSchedule(
-    process.id,
-    calendarStart.toISOString(),
-    calendarEnd.toISOString()
-  );
+
+  const calendarSchedule = shouldLoadCalendar
+    ? await getProcessCalendarSchedule(process.id, calendarStart.toISOString(), calendarEnd.toISOString())
+    : null;
 
   return (
     <main className="page-shell">
@@ -113,7 +117,6 @@ export default async function ProcessDashboardPage({
 
           return (
             <Link
-              prefetch={false}
               href={`/processes/${process.id}?view=${tab.key}`}
               key={tab.key}
               className={isActive ? "dashboard-tab active" : "dashboard-tab"}
@@ -153,13 +156,13 @@ export default async function ProcessDashboardPage({
               <p className="muted">Process work across McMaster, Waterloo, and Toronto.</p>
             </div>
 
-            <ProcessCalendarBoard
+            <LazyProcessCalendarBoard
               processTemplateId={process.id}
               calendarStartDate={calendarStart.toISOString().slice(0, 10)}
               days={CALENDAR_WEEK_DAYS}
               steps={sortedSteps.map((step) => ({ id: step.id, name: step.name }))}
-              people={calendarSchedule.people}
-              initialEvents={calendarSchedule.events}
+              people={calendarSchedule?.people ?? []}
+              initialEvents={calendarSchedule?.events ?? []}
             />
           </>
         ) : null}
