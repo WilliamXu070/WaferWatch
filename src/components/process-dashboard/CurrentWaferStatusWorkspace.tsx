@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { StepStatus } from "@/types/database";
 import type { ProcessDashboardWaferState } from "@/features/process-flows/queries";
 import { WaferCutVisualizer } from "@/components/WaferCutVisualizer";
@@ -47,24 +47,6 @@ function normalizeStatusLabel(status: StepStatus | null) {
   return "Done";
 }
 
-function statusPillClass(status: StepStatus | null) {
-  const normalized = normalizeStatusLabel(status).toLowerCase();
-
-  if (normalized === "running" || normalized === "queued") {
-    return "wafer-card-chip-status wafer-card-chip-status--active";
-  }
-
-  if (normalized === "blocked" || normalized === "failed") {
-    return "wafer-card-chip-status wafer-card-chip-status--warning";
-  }
-
-  if (normalized === "completed" || normalized === "done") {
-    return "wafer-card-chip-status wafer-card-chip-status--success";
-  }
-
-  return "wafer-card-chip-status";
-}
-
 function matchesAlphaSeed(waferCode: string) {
   return waferCode.toLowerCase().includes(DEFAULT_SEED_FILTER);
 }
@@ -93,8 +75,13 @@ export function CurrentWaferStatusWorkspace({ states }: ChipWorkspaceProps) {
     }));
   }, [states]);
 
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
-  const selected = availableStates.find((state) => state.assignmentId === selectedAssignmentId) ?? null;
+  const visualizerWafers = availableStates.map((state) => ({
+    id: state.assignmentId,
+    name: state.waferCode,
+    stateName: state.currentStepName,
+    statusLabel: normalizeStatusLabel(state.currentStepStatus),
+    assignmentLabel: state.assignmentStatus.replace(/_/g, " ")
+  }));
 
   if (availableStates.length === 0) {
     return (
@@ -111,48 +98,7 @@ export function CurrentWaferStatusWorkspace({ states }: ChipWorkspaceProps) {
         <p className="muted">Select a wafer to open the die viewer.</p>
       </header>
 
-      {selected ? (
-        <div className="wafer-workspace-selected">
-          <div className="wafer-workspace-selected__toolbar">
-            <button
-              type="button"
-              className="button button-secondary wafer-workspace-back"
-              onClick={() => setSelectedAssignmentId(null)}
-            >
-              ← Back to wafers
-            </button>
-            <h3 style={{ margin: 0 }}>{selected.waferCode}</h3>
-            <p className="muted">Current step: {selected.currentStepName ?? "Waiting to start"}</p>
-          </div>
-
-            <WaferCutVisualizer waferStateName={selected.currentStepName} />
-          </div>
-      ) : (
-        <div className="panel wafer-card-panel">
-          <div className="wafer-card-panel__list">
-            {availableStates.map((state) => {
-              const waferLabel = state.waferCode;
-              const stepLabel = state.currentStepName ?? "Waiting to start";
-              const assignmentLabel = state.assignmentStatus.replace(/_/g, " ");
-
-              return (
-                <button
-                  type="button"
-                  key={state.assignmentId}
-                  className="wafer-card"
-                  onClick={() => setSelectedAssignmentId(state.assignmentId)}
-                >
-                  <strong>{waferLabel}</strong>
-                  <p className="muted">{state.dieLabel ? `Die ${state.dieLabel}` : "Die unknown"}</p>
-                  <p className="muted">Current step: {stepLabel}</p>
-                  <p className="muted">Assignment: {assignmentLabel}</p>
-                  <span className={statusPillClass(state.currentStepStatus)}>{normalizeStatusLabel(state.currentStepStatus)}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <WaferCutVisualizer wafers={visualizerWafers} />
     </section>
   );
 }

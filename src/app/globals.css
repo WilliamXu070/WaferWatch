@@ -1513,6 +1513,110 @@ input {
   align-items: stretch;
 }
 
+.wafer-preview-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.wafer-preview-card {
+  display: grid;
+  grid-template-columns: minmax(128px, 180px) minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-height: 176px;
+  text-align: left;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, #58cc02);
+  border-radius: 8px;
+  padding: 14px;
+  background:
+    linear-gradient(135deg, rgba(166, 230, 78, 0.32), rgba(255, 255, 255, 0.78)),
+    var(--panel);
+  color: var(--foreground);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.wafer-preview-card:hover,
+.wafer-preview-card:focus-visible {
+  border-color: #4f8f21;
+  box-shadow: 0 16px 34px rgba(55, 88, 27, 0.16);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.wafer-preview-card:active {
+  transform: translateY(0);
+}
+
+.wafer-preview-card--active {
+  border-color: #2f6e16;
+  background:
+    linear-gradient(135deg, rgba(166, 230, 78, 0.5), rgba(255, 255, 255, 0.86)),
+    var(--panel);
+  box-shadow:
+    0 0 0 3px rgba(88, 204, 2, 0.18),
+    0 18px 40px rgba(55, 88, 27, 0.18);
+}
+
+.wafer-preview-card__body {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.wafer-preview-card__body strong {
+  font-family: var(--font-headline);
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.wafer-preview-card__body .muted {
+  margin: 0;
+}
+
+.wafer-preview-card__body .wafer-card-chip-status {
+  margin-top: 6px;
+}
+
+.wafer-preview-svg {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(88, 204, 2, 0.12),
+    rgba(88, 204, 2, 0.12) 8px,
+    rgba(166, 230, 78, 0.2) 8px,
+    rgba(166, 230, 78, 0.2) 16px
+  );
+}
+
+.wafer-preview-svg__wafer {
+  fill: rgba(217, 247, 176, 0.82);
+  stroke: rgba(15, 23, 42, 0.82);
+  stroke-width: 1.6;
+}
+
+.wafer-preview-svg__die {
+  fill: rgba(217, 247, 176, 0.34);
+  stroke: rgba(15, 23, 42, 0.82);
+  stroke-width: 1.4;
+}
+
+.wafer-preview-svg__grid rect {
+  fill: rgba(217, 247, 176, 0.52);
+  stroke: rgba(15, 23, 42, 0.62);
+  stroke-width: 0.9;
+}
+
 .wafer-card-panel {
   display: grid;
   align-content: start;
@@ -1769,6 +1873,10 @@ input {
   align-items: start;
 }
 
+.wafer-visualizer-layout--overview {
+  grid-template-columns: 1fr;
+}
+
 .wafer-viewer-panel {
   display: grid;
   gap: 10px;
@@ -1788,29 +1896,87 @@ input {
 }
 
 .wafer-stage-shell {
-  min-height: 560px;
+  position: relative;
+  min-height: min(78vh, 820px);
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--panel-soft);
   display: grid;
   place-items: center;
   overflow: hidden;
-  padding: 10px;
+  padding: 24px;
   box-sizing: border-box;
 }
 
+.wafer-stage-shell--focused {
+  background: var(--panel-soft);
+}
+
+.wafer-stage-shell--overview {
+  min-height: min(84vh, 940px);
+}
+
+.wafer-chip-zoom-back {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1;
+}
+
 .wafer-svg-canvas {
-  width: min(100%, 540px);
+  width: min(100%, calc(78vh - 48px), 820px);
   height: auto;
   aspect-ratio: 1 / 1;
   background: repeating-linear-gradient(
     45deg,
-    rgba(0, 0, 0, 0.02),
-    rgba(0, 0, 0, 0.02) 10px,
-    transparent 10px,
-    transparent 20px
+    rgba(88, 204, 2, 0.18),
+    rgba(88, 204, 2, 0.18) 10px,
+    rgba(166, 230, 78, 0.2) 10px,
+    rgba(166, 230, 78, 0.2) 20px
   );
   display: block;
+}
+
+.wafer-svg-canvas--focused {
+  width: min(100%, calc(78vh - 48px), 820px);
+}
+
+.wafer-svg-canvas--overview {
+  width: min(100%, 1060px);
+  max-height: calc(84vh - 48px);
+}
+
+.wafer-overview-tile {
+  cursor: pointer;
+  outline: none;
+}
+
+.wafer-overview-tile__hitbox {
+  fill: rgba(255, 255, 255, 0);
+  stroke: rgba(15, 23, 42, 0);
+  stroke-width: 1.5;
+  transition:
+    fill 160ms ease,
+    stroke 160ms ease;
+}
+
+.wafer-overview-tile:hover .wafer-overview-tile__hitbox,
+.wafer-overview-tile:focus-visible .wafer-overview-tile__hitbox {
+  fill: rgba(255, 255, 255, 0.16);
+  stroke: rgba(15, 23, 42, 0.42);
+}
+
+.wafer-overview-tile__name {
+  fill: rgba(15, 23, 42, 0.82);
+  font-family: var(--font-headline);
+  font-size: 17px;
+  font-weight: 850;
+}
+
+.wafer-overview-tile__meta {
+  fill: rgba(15, 23, 42, 0.58);
+  font-size: 9px;
+  font-weight: 700;
 }
 
 .wafer-wafer-outline-shape {
@@ -1865,6 +2031,11 @@ input {
 
 .wafer-chip-shape--selected.wafer-chip-shape--clean {
   fill: rgba(120, 193, 79, 0.32);
+}
+
+.wafer-chip-shape--focused {
+  fill: rgba(255, 255, 255, 0.1);
+  stroke-width: 1.4;
 }
 
 .wafer-chip-shape:focus,

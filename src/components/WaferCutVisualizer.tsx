@@ -68,8 +68,17 @@ type SvgViewport = {
   halfSpan: number;
 };
 
+export type WaferVisualizerSample = {
+  id: string;
+  name: string;
+  stateName?: string | null;
+  statusLabel?: string | null;
+  assignmentLabel?: string | null;
+};
+
 type WaferCutVisualizerProps = {
   waferStateName?: string | null;
+  wafers?: WaferVisualizerSample[];
 };
 
 const GDS_ASSET_PATH = "/wafer-assets/wafer_4in_100mm_bottom_primary_flat_only.gds";
@@ -104,6 +113,9 @@ const POST_ELB_GRID_DEFAULT_INCHES: DieStructureGridTemplateInInches = {
   rowDirection: "top-to-bottom"
 };
 const POST_ELB_CLUSTER_SPAN_FRACTION = 1;
+const WAFER_OVERVIEW_TILE_SIZE = 240;
+const WAFER_OVERVIEW_TILE_GAP = 30;
+const WAFER_OVERVIEW_LABEL_HEIGHT = 42;
 
 const DIE_POST_ELB_LAYOUTS_BY_LABEL: Record<number, DieStructureGridTemplateInInches> = {
   1: POST_ELB_GRID_DEFAULT_INCHES,
@@ -808,13 +820,21 @@ function toSvgPoint(point: Point, viewport: SvgViewport) {
   };
 }
 
-export function WaferCutVisualizer({ waferStateName }: WaferCutVisualizerProps) {
+export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisualizerProps) {
   const [rawPolygons, setRawPolygons] = useState<ParsedPolygon[]>([]);
   const [loadMessage, setLoadMessage] = useState("Loading 4-inch GDS layout.");
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedWaferId, setSelectedWaferId] = useState<string | null>(null);
   const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
   const [parameterState, setParameterState] = useState<Record<string, string[][]>>({});
-  const waferMode = getWaferModeFromState(waferStateName);
+  const hasWaferOverview = wafers.length > 0;
+  const selectedWafer = hasWaferOverview
+    ? wafers.find((wafer) => wafer.id === selectedWaferId) ?? null
+    : null;
+  const isWaferOverviewView = hasWaferOverview && !selectedWafer;
+  const activeWaferStateName = selectedWafer?.stateName ?? waferStateName;
+  const activeWaferName = selectedWafer?.name ?? "Wafer";
+  const waferMode = getWaferModeFromState(activeWaferStateName);
   const isPostDiceMode = waferMode === "post-dice";
 
   useEffect(() => {
@@ -864,16 +884,24 @@ export function WaferCutVisualizer({ waferStateName }: WaferCutVisualizerProps) 
   const normalizedPolygons = useMemo(() => normalizeToMillimeters(rawPolygons), [rawPolygons]);
   const waferOutline = useMemo(() => deriveWaferGeometry(normalizedPolygons), [normalizedPolygons]);
   const chipPieces = useMemo(() => {
-    if (!waferOutline) {
+    if (!waferOutline || isWaferOverviewView) {
       return [];
     }
 
     return buildWaferPieces(waferOutline.points, waferMode);
-  }, [waferMode, waferOutline]);
+  }, [isWaferOverviewView, waferMode, waferOutline]);
 
   const svgViewport = useMemo(() => (waferOutline ? buildSvgViewport(waferOutline.points) : null), [waferOutline]);
+  const overviewColumns = 3;
+  const overviewRows = Math.max(2, Math.ceil(wafers.length / overviewColumns));
+  const overviewWidth =
+    overviewColumns * WAFER_OVERVIEW_TILE_SIZE + Math.max(0, overviewColumns - 1) * WAFER_OVERVIEW_TILE_GAP;
+  const overviewHeight =
+    overviewRows * (WAFER_OVERVIEW_TILE_SIZE + WAFER_OVERVIEW_LABEL_HEIGHT) +
+    Math.max(0, overviewRows - 1) * WAFER_OVERVIEW_TILE_GAP;
 
   const activeChipId =
+    !isWaferOverviewView &&
     isPostDiceMode &&
     selectedChipId &&
     chipPieces.some((chip) => chip.id === selectedChipId)
@@ -881,10 +909,15 @@ export function WaferCutVisualizer({ waferStateName }: WaferCutVisualizerProps) 
       : null;
 
   const activeChip = activeChipId ? chipPieces.find((chip) => chip.id === activeChipId) ?? null : null;
-  const activeGrid = activeChip ? (parameterState[activeChip.id] ?? buildDefaultChipGrid()) : null;
+  const activeParameterKey = activeChip ? `${selectedWafer?.id ?? "single"}:${activeChip.id}` : null;
+  const activeGrid = activeParameterKey ? (parameterState[activeParameterKey] ?? buildDefaultChipGrid()) : null;
   const activeChipModeStatus = activeChip
     ? getDieStatusForLabelAndMode(activeChip.label, waferMode)
     : null;
+  const activeChipViewport = activeChip ? buildSvgViewport(activeChip.points) : null;
+  const displayViewport = activeChipViewport ?? svgViewport;
+  const isChipFocusView = Boolean(activeChip && activeChipViewport);
+  const isWaferFocusView = hasWaferOverview && Boolean(selectedWafer) && !isChipFocusView;
 
   const handleChipSelect = (chipId: string) => {
     if (!isPostDiceMode) {
@@ -914,113 +947,270 @@ export function WaferCutVisualizer({ waferStateName }: WaferCutVisualizerProps) 
     }
 
     setParameterState((prev) => {
-      const existing = prev[activeChip.id] ?? buildDefaultChipGrid();
+      if (!activeParameterKey) {
+        return prev;
+      }
+
+      const existing = prev[activeParameterKey] ?? buildDefaultChipGrid();
       const nextGrid = existing.map((r) => [...r]);
       nextGrid[row] = [...nextGrid[row]];
       nextGrid[row][column] = value;
 
       return {
         ...prev,
-        [activeChip.id]: nextGrid
+        [activeParameterKey]: nextGrid
       };
     });
   };
 
+  const renderChip = (
+    chip: ChipPiece,
+    viewport: SvgViewport,
+    isFocusedView: boolean,
+    mode = waferMode,
+    clipPrefix = "",
+    allowChipSelect = true
+  ) => {
+    const isSelected = chip.id === activeChipId;
+    const chipStatus = getDieStatusForLabelAndMode(chip.label, mode);
+    const chipClipPathId = `${clipPrefix}wafer-chip-clip-${chip.id}`;
+    const structureRects = getModeStructuresForDie(chip.points, chipStatus, chip.label, viewport);
+    const chipLabel = getDieLabelPlacement(chip.points, viewport, structureRects.length > 0);
+    const canSelect = allowChipSelect && mode === "post-dice" && !isFocusedView;
+
+    return (
+      <g key={`${clipPrefix}${chip.id}`}>
+        <polygon
+          className={[
+            "wafer-chip-shape",
+            chipStatus === "clean" ? "wafer-chip-shape--clean" : "wafer-chip-shape--electrode",
+            canSelect ? "wafer-chip-shape--interactive" : "wafer-chip-shape--readonly",
+            isSelected ? "wafer-chip-shape--selected" : "",
+            isFocusedView ? "wafer-chip-shape--focused" : ""
+          ].join(" ")}
+          points={toSvgPoints(chip.points, viewport)}
+          vectorEffect="non-scaling-stroke"
+          role={canSelect ? "button" : undefined}
+          tabIndex={canSelect ? 0 : -1}
+          aria-label={canSelect ? `Select die ${chip.label}` : `Die ${chip.label}`}
+          aria-pressed={canSelect ? isSelected : undefined}
+          onMouseDown={canSelect ? () => handleChipSelect(chip.id) : undefined}
+          onKeyDown={canSelect ? (event) => handleChipKeySelect(event, chip.id) : undefined}
+        />
+        {chipStatus === "post_elb" && (
+          <polygon
+            className="wafer-chip-shape wafer-chip-hatch"
+            points={toSvgPoints(chip.points, viewport)}
+            vectorEffect="non-scaling-stroke"
+            style={{ pointerEvents: "none" }}
+          />
+        )}
+        <g clipPath={`url(#${chipClipPathId})`} style={{ pointerEvents: "none" }}>
+          {structureRects.map((rect) => (
+            <rect
+              key={rect.id}
+              className="wafer-mode-structure"
+              x={rect.x}
+              y={rect.y}
+              width={rect.width}
+              height={rect.height}
+              fill={rect.fill}
+              stroke={rect.stroke}
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        </g>
+        {mode === "post-dice" && !isFocusedView ? (
+          <text
+            x={chipLabel.x}
+            y={chipLabel.y}
+            textAnchor={chipLabel.textAnchor}
+            dominantBaseline={chipLabel.dominantBaseline}
+            pointerEvents="none"
+            fontSize={chipLabel.fontSize}
+            fontWeight={700}
+            fill="rgba(15, 23, 42, 0.56)"
+            stroke="rgba(236, 253, 245, 0.72)"
+            strokeWidth={0.25}
+            style={{
+              paintOrder: "stroke",
+              userSelect: "none"
+            }}
+          >
+            {chip.label}
+          </text>
+        ) : null}
+      </g>
+    );
+  };
+
+  const handleWaferOverviewKeySelect = (event: KeyboardEvent<SVGGElement>, waferId: string) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setSelectedChipId(null);
+      setSelectedWaferId(waferId);
+    }
+  };
+
+  const renderWaferOverviewTile = (wafer: WaferVisualizerSample, index: number) => {
+    if (!waferOutline) {
+      return null;
+    }
+
+    const column = index % overviewColumns;
+    const row = Math.floor(index / overviewColumns);
+    const tileX = column * (WAFER_OVERVIEW_TILE_SIZE + WAFER_OVERVIEW_TILE_GAP);
+    const tileY = row * (WAFER_OVERVIEW_TILE_SIZE + WAFER_OVERVIEW_TILE_GAP + WAFER_OVERVIEW_LABEL_HEIGHT);
+    const tileViewport = buildSvgViewport(waferOutline.points);
+    const tileViewportSize = tileViewport.halfSpan * 2;
+    const tileScale = WAFER_OVERVIEW_TILE_SIZE / tileViewportSize;
+    const tileMode = getWaferModeFromState(wafer.stateName);
+    const tileChips = buildWaferPieces(waferOutline.points, tileMode);
+    const clipPrefix = `overview-${wafer.id}-`;
+
+    return (
+      <g
+        key={wafer.id}
+        className="wafer-overview-tile"
+        role="button"
+        tabIndex={0}
+        aria-label={`Open ${wafer.name}`}
+        onClick={() => {
+          setSelectedChipId(null);
+          setSelectedWaferId(wafer.id);
+        }}
+        onKeyDown={(event) => handleWaferOverviewKeySelect(event, wafer.id)}
+      >
+        <rect
+          className="wafer-overview-tile__hitbox"
+          x={tileX}
+          y={tileY}
+          width={WAFER_OVERVIEW_TILE_SIZE}
+          height={WAFER_OVERVIEW_TILE_SIZE + WAFER_OVERVIEW_LABEL_HEIGHT}
+          rx={8}
+        />
+        <g transform={`translate(${tileX} ${tileY}) scale(${tileScale})`}>
+          <polygon
+            className="wafer-wafer-outline-shape"
+            points={toSvgPoints(waferOutline.points, tileViewport)}
+            vectorEffect="non-scaling-stroke"
+          />
+          {tileChips.map((chip) => renderChip(chip, tileViewport, false, tileMode, clipPrefix, false))}
+        </g>
+        <text
+          className="wafer-overview-tile__name"
+          x={tileX + WAFER_OVERVIEW_TILE_SIZE / 2}
+          y={tileY + WAFER_OVERVIEW_TILE_SIZE + 22}
+          textAnchor="middle"
+        >
+          {wafer.name}
+        </text>
+        <text
+          className="wafer-overview-tile__meta"
+          x={tileX + WAFER_OVERVIEW_TILE_SIZE / 2}
+          y={tileY + WAFER_OVERVIEW_TILE_SIZE + 38}
+          textAnchor="middle"
+        >
+          {wafer.stateName ?? wafer.statusLabel ?? "Waiting to start"}
+        </text>
+      </g>
+    );
+  };
+
   return (
     <div className="wafer-visualizer">
-      <div className="wafer-visualizer-layout">
+      <div className={["wafer-visualizer-layout", !isChipFocusView ? "wafer-visualizer-layout--overview" : ""].join(" ")}>
         <section className="panel wafer-viewer-panel">
-          <div className="wafer-stage-shell">
-            {waferOutline && svgViewport ? (
+          <div
+            className={[
+              "wafer-stage-shell",
+              isWaferOverviewView ? "wafer-stage-shell--overview" : "",
+              isChipFocusView || isWaferFocusView ? "wafer-stage-shell--focused" : ""
+            ].join(" ")}
+          >
+            {isChipFocusView || isWaferFocusView ? (
+              <button
+                type="button"
+                className="button button-secondary wafer-chip-zoom-back"
+                onClick={() => {
+                  if (isChipFocusView) {
+                    setSelectedChipId(null);
+                    return;
+                  }
+
+                  setSelectedChipId(null);
+                  setSelectedWaferId(null);
+                }}
+              >
+                {isChipFocusView ? "← All dies" : "← All wafers"}
+              </button>
+            ) : null}
+            {isWaferOverviewView && waferOutline ? (
               <svg
-                className="wafer-svg-canvas"
-                viewBox={`0 0 ${svgViewport.halfSpan * 2} ${svgViewport.halfSpan * 2}`}
+                className="wafer-svg-canvas wafer-svg-canvas--overview"
+                viewBox={`0 0 ${overviewWidth} ${overviewHeight}`}
                 preserveAspectRatio="xMidYMid meet"
                 role="img"
-                aria-label="Static wafer layout"
+                aria-label="Available wafer overview"
+                style={{ aspectRatio: `${overviewWidth} / ${overviewHeight}` }}
               >
-                <polygon
-                  className="wafer-wafer-outline-shape"
-                  points={toSvgPoints(waferOutline.points, svgViewport)}
-                  vectorEffect="non-scaling-stroke"
-                />
-
-                  {chipPieces.map((chip) => {
-                  const isSelected = chip.id === activeChipId;
-                  const chipStatus = getDieStatusForLabelAndMode(chip.label, waferMode);
-                  const chipClipPathId = `wafer-chip-clip-${chip.id}`;
-                  const structureRects = getModeStructuresForDie(chip.points, chipStatus, chip.label, svgViewport);
-                  const chipLabel = getDieLabelPlacement(chip.points, svgViewport, structureRects.length > 0);
-
-                    return (
-                      <g key={chip.id}>
-                      <polygon
-                        className={[
-                          "wafer-chip-shape",
-                          chipStatus === "clean" ? "wafer-chip-shape--clean" : "wafer-chip-shape--electrode",
-                          isPostDiceMode ? "wafer-chip-shape--interactive" : "wafer-chip-shape--readonly",
-                          isSelected ? "wafer-chip-shape--selected" : ""
-                        ].join(" ")}
-                        points={toSvgPoints(chip.points, svgViewport)}
-                        vectorEffect="non-scaling-stroke"
-                        role={isPostDiceMode ? "button" : undefined}
-                        tabIndex={isPostDiceMode ? 0 : -1}
-                        aria-label={`Select die ${chip.label}`}
-                        aria-pressed={isPostDiceMode ? isSelected : false}
-                        onMouseDown={() => handleChipSelect(chip.id)}
-                        onKeyDown={(event) => handleChipKeySelect(event, chip.id)}
-                      />
-                      {chipStatus === "post_elb" && (
-                        <polygon
-                          className="wafer-chip-shape wafer-chip-hatch"
-                          points={toSvgPoints(chip.points, svgViewport)}
-                          vectorEffect="non-scaling-stroke"
-                          style={{ pointerEvents: "none" }}
-                        />
-                      )}
-                      <g clipPath={`url(#${chipClipPathId})`} style={{ pointerEvents: "none" }}>
-                        {structureRects.map((rect) => (
-                          <rect
-                            key={rect.id}
-                            className="wafer-mode-structure"
-                            x={rect.x}
-                            y={rect.y}
-                            width={rect.width}
-                            height={rect.height}
-                            fill={rect.fill}
-                            stroke={rect.stroke}
-                            strokeWidth={1}
-                            vectorEffect="non-scaling-stroke"
-                          />
-                        ))}
-                      </g>
-                      {isPostDiceMode ? (
-                        <text
-                          x={chipLabel.x}
-                          y={chipLabel.y}
-                          textAnchor={chipLabel.textAnchor}
-                          dominantBaseline={chipLabel.dominantBaseline}
-                          pointerEvents="none"
-                          fontSize={chipLabel.fontSize}
-                          fontWeight={700}
-                          fill="rgba(15, 23, 42, 0.56)"
-                          stroke="rgba(236, 253, 245, 0.72)"
-                          strokeWidth={0.25}
-                          style={{
-                            paintOrder: "stroke",
-                            userSelect: "none"
-                          }}
-                        >
-                          {chip.label}
-                        </text>
-                      ) : null}
-                    </g>
-                  );
-                })}
+                {wafers.map((wafer, index) => renderWaferOverviewTile(wafer, index))}
                 <defs>
-                  {chipPieces.map((chip) => (
+                  {wafers.flatMap((wafer) => {
+                    const tileMode = getWaferModeFromState(wafer.stateName);
+                    const tileChips = buildWaferPieces(waferOutline.points, tileMode);
+                    const tileViewport = buildSvgViewport(waferOutline.points);
+                    const clipPrefix = `overview-${wafer.id}-`;
+
+                    return tileChips.map((chip) => (
+                      <clipPath id={`${clipPrefix}wafer-chip-clip-${chip.id}`} key={`clip-${clipPrefix}${chip.id}`}>
+                        <polygon points={toSvgPoints(chip.points, tileViewport)} />
+                      </clipPath>
+                    ));
+                  })}
+                  <pattern
+                    id={ELECTRODE_PATTERN_ID}
+                    x="0"
+                    y="0"
+                    width="6"
+                    height="6"
+                    patternUnits="userSpaceOnUse"
+                    patternTransform="rotate(45)"
+                  >
+                    <rect width="6" height="6" fill="rgba(15, 23, 42, 0.04)" />
+                    <path d="M0 0h6" stroke="rgba(15, 23, 42, 0.2)" strokeWidth="1" />
+                  </pattern>
+                </defs>
+              </svg>
+            ) : null}
+            {!isWaferOverviewView && waferOutline && displayViewport ? (
+              <svg
+                className={["wafer-svg-canvas", isChipFocusView ? "wafer-svg-canvas--focused" : ""].join(" ")}
+                viewBox={`0 0 ${displayViewport.halfSpan * 2} ${displayViewport.halfSpan * 2}`}
+                preserveAspectRatio="xMidYMid meet"
+                role="img"
+                aria-label={
+                  isChipFocusView && activeChip
+                    ? `Die ${activeChip.label} focused layout`
+                    : `${activeWaferName} wafer layout`
+                }
+              >
+                {!isChipFocusView ? (
+                  <polygon
+                    className="wafer-wafer-outline-shape"
+                    points={toSvgPoints(waferOutline.points, displayViewport)}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : null}
+
+                {isChipFocusView && activeChip
+                  ? renderChip(activeChip, displayViewport, true)
+                  : chipPieces.map((chip) => renderChip(chip, displayViewport, false))}
+                <defs>
+                  {(isChipFocusView && activeChip ? [activeChip] : chipPieces).map((chip) => (
                     <clipPath id={`wafer-chip-clip-${chip.id}`} key={`clip-${chip.id}`}>
-                      <polygon points={toSvgPoints(chip.points, svgViewport)} />
+                      <polygon points={toSvgPoints(chip.points, displayViewport)} />
                     </clipPath>
                   ))}
                   <pattern
@@ -1039,22 +1229,27 @@ export function WaferCutVisualizer({ waferStateName }: WaferCutVisualizerProps) 
               </svg>
             ) : null}
           </div>
-          <p className="muted wafer-load-state">{loadMessage}</p>
-          {isLoading ? <p className="wafer-load-state muted">Loading local wafer layout...</p> : null}
-          <p className="muted wafer-load-caption">
-            {waferMode === "pre-dice"
-              ? "Fixed 4-inch 100mm wafer from local GDS, showing full wafer before die separation."
-              : "Fixed 4-inch 100mm wafer from local GDS, split into the 8 largest selectable dies."}
-          </p>
+          {!hasWaferOverview ? (
+            <>
+              <p className="muted wafer-load-state">{loadMessage}</p>
+              {isLoading ? <p className="wafer-load-state muted">Loading local wafer layout...</p> : null}
+              <p className="muted wafer-load-caption">
+                {waferMode === "pre-dice"
+                  ? "Fixed 4-inch 100mm wafer from local GDS, showing full wafer before die separation."
+                  : "Fixed 4-inch 100mm wafer from local GDS, split into the 8 largest selectable dies."}
+              </p>
+            </>
+          ) : null}
         </section>
 
-        <aside className="panel wafer-params-panel">
+        {isChipFocusView ? (
+          <aside className="panel wafer-params-panel">
                 {isPostDiceMode ? (
                   activeChip ? (
                     <>
                       <div className="wafer-panel-heading">
-                        <strong>Die {activeChip.label}</strong>
-                        <span className="muted">State: {waferStateName ?? "Not started"}</span>
+                        <strong>{activeWaferName} / Die {activeChip.label}</strong>
+                        <span className="muted">State: {activeWaferStateName ?? "Not started"}</span>
                         <span className="muted">Wafer state: {getWaferStateLabel(waferMode)}</span>
                         <span className="muted">Status: {activeChipModeStatus ? formatDieStatus(activeChipModeStatus) : "Unassigned"}</span>
                       </div>
@@ -1096,7 +1291,8 @@ export function WaferCutVisualizer({ waferStateName }: WaferCutVisualizerProps) 
                     <p className="muted">Die-level parameter sheet appears when this wafer enters post-dice state.</p>
                   </div>
                 )}
-        </aside>
+          </aside>
+        ) : null}
       </div>
     </div>
   );
