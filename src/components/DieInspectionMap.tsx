@@ -17,6 +17,7 @@ import {
   listDieInspections,
   type DieInspectionRecord
 } from "@/features/inspections/actions";
+import { getTextSurface, upsertTextSurface } from "@/features/text-surfaces/actions";
 import { createClient } from "@/lib/supabase/client";
 
 type PendingPin = {
@@ -76,7 +77,17 @@ export function DieInspectionMap({
   const [isUploading, setIsUploading] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [inspectionComment, setInspectionComment] = useState("");
+  const [savedInspectionComment, setSavedInspectionComment] = useState("");
   const bubbleRef = useRef<HTMLDivElement | null>(null);
+  const textSurfaceIdentity = useMemo(
+    () => ({
+      projectId,
+      scopeType: "die_inspection_cell",
+      scopeKey: `${waferId}:${dieCode}:R${row}:C${column}`,
+      fieldKey: "comments"
+    }),
+    [column, dieCode, projectId, row, waferId]
+  );
   const visibleInspections = useMemo(
     () =>
       [...(preloadedInspections ?? inspections)].sort((first, second) => {
@@ -144,6 +155,28 @@ export function DieInspectionMap({
       isStale = true;
     };
   }, [column, dieCode, preloadedInspections, row, waferId]);
+
+  useEffect(() => {
+    let isStale = false;
+
+    void getTextSurface(textSurfaceIdentity).then((result) => {
+      if (isStale) {
+        return;
+      }
+
+      if (result.ok) {
+        const value = result.data?.value ?? "";
+        setInspectionComment(value);
+        setSavedInspectionComment(value);
+      } else {
+        setUploadError(result.error);
+      }
+    });
+
+    return () => {
+      isStale = true;
+    };
+  }, [textSurfaceIdentity]);
 
   useEffect(() => {
     if (!pendingPin) {
@@ -244,6 +277,38 @@ export function DieInspectionMap({
       isStale = true;
     };
   }, [onInspectionsChange, preloadedInspections, selectedInspection]);
+
+  const saveInspectionComment = useCallback(
+    async (value: string) => {
+      if (value === savedInspectionComment) {
+        return;
+      }
+
+      const result = await upsertTextSurface({
+        ...textSurfaceIdentity,
+        value
+      });
+
+      if (result.ok) {
+        setSavedInspectionComment(result.data.value);
+      } else {
+        setUploadError(result.error);
+      }
+    },
+    [savedInspectionComment, textSurfaceIdentity]
+  );
+
+  useEffect(() => {
+    if (inspectionComment === savedInspectionComment) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void saveInspectionComment(inspectionComment);
+    }, 900);
+
+    return () => window.clearTimeout(timeout);
+  }, [inspectionComment, savedInspectionComment, saveInspectionComment]);
 
   const uploadInspectionFile = async (rawFile: File, pin: PendingPin) => {
     try {
@@ -510,6 +575,7 @@ export function DieInspectionMap({
           rows={3}
           value={inspectionComment}
           onChange={(event) => setInspectionComment(event.target.value)}
+          onBlur={(event) => void saveInspectionComment(event.target.value)}
         />
       </label>
     </section>

@@ -265,6 +265,19 @@ export type DieInspection = {
   updated_at: string;
 };
 
+export type TextSurface = {
+  id: string;
+  project_id: string;
+  scope_type: string;
+  scope_key: string;
+  field_key: string;
+  value: string;
+  version: number;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ProcessIssue = {
   id: string;
   project_id: string;
@@ -371,6 +384,7 @@ export interface Database {
       measurements: Row<Measurement>;
       attachments: Row<Attachment>;
       die_inspections: Row<DieInspection>;
+      text_surfaces: Row<TextSurface>;
       process_issues: Row<ProcessIssue>;
       process_events: Row<ProcessEvent>;
       audit_events: Row<AuditEvent>;

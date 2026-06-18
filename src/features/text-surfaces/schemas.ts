@@ -1,0 +1,13 @@
+import { z } from "zod";
+import { uuidSchema } from "@/lib/validation";
+
+export const textSurfaceIdentitySchema = z.object({
+  projectId: uuidSchema,
+  scopeType: z.string().trim().min(2).max(80).regex(/^[a-z][a-z0-9_:-]{1,79}$/),
+  scopeKey: z.string().trim().min(1).max(400),
+  fieldKey: z.string().trim().min(2).max(80).regex(/^[a-z][a-z0-9_:-]{1,79}$/)
+});
+
+export const textSurfaceUpsertSchema = textSurfaceIdentitySchema.extend({
+  value: z.string().max(20000)
+});
