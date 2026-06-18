@@ -3,46 +3,14 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getProcessDashboardData } from "@/features/process-flows/queries";
 import { getProcessCalendarSchedule } from "@/features/calendar/queries";
-import type { StepStatus } from "@/types/database";
 import { signOut } from "@/features/accounts/actions";
 import { ProcessFlowDiagram } from "@/components/ProcessFlowDiagram";
+import { CurrentWaferStatusWorkspace } from "@/components/process-dashboard/CurrentWaferStatusWorkspace";
 import { ProcessCalendarBoard } from "@/components/process-dashboard/ProcessCalendarBoard";
 
 export const dynamic = "force-dynamic";
 
 type DashboardView = "flow" | "calendar" | "wafers";
-
-function getAssignmentStatusLabel(status: StepStatus | null) {
-  if (!status) {
-    return "pending";
-  }
-
-  if (status === "running") {
-    return "running";
-  }
-
-  if (status === "queued") {
-    return "queued";
-  }
-
-  if (status === "blocked" || status === "failed") {
-    return status;
-  }
-
-  return "done";
-}
-
-function statusClass(status: StepStatus | null) {
-  const value = getAssignmentStatusLabel(status);
-  if (value === "running") {
-    return "status-pill status-pill--active";
-  }
-  return "status-pill status-pill--inactive";
-}
-
-function labelWafer(waferCode: string, dieLabel: string | null) {
-  return dieLabel ? `${waferCode} • ${dieLabel}` : waferCode;
-}
 
 function getActiveView(raw: string | string[] | undefined): DashboardView {
   const candidate = Array.isArray(raw) ? raw[0] : raw;
@@ -57,7 +25,7 @@ function getActiveView(raw: string | string[] | undefined): DashboardView {
 const dashboardTabs: Array<{ key: DashboardView; label: string }> = [
   { key: "flow", label: "Process flow" },
   { key: "calendar", label: "Calendar" },
-  { key: "wafers", label: "Current wafers / chip status" }
+  { key: "wafers", label: "Current wafers / die status" }
 ];
 
 const CALENDAR_WEEK_DAYS = 7;
@@ -94,7 +62,7 @@ export default async function ProcessDashboardPage({
     redirect("/processes");
   }
 
-  const { process, activeWaferStates } = dashboardData;
+  const { process, activeWaferStates, workspaceWaferStates } = dashboardData;
   const sortedSteps = [...process.process_steps].sort((a, b) => a.step_order - b.step_order);
   const flowColumns = sortedSteps.map((step) => ({
     ...step,
@@ -174,30 +142,7 @@ export default async function ProcessDashboardPage({
 
         {activeView === "wafers" ? (
           <>
-            <div className="section-heading">
-              <h2>Current wafers / chip status</h2>
-              <p className="muted">Live rotation at this process level</p>
-            </div>
-            <div className="step-list">
-              {activeWaferStates.length === 0 ? (
-                <p className="muted">No wafers are currently in this process.</p>
-              ) : (
-                activeWaferStates.map((state) => (
-                  <article className="step-row" key={state.assignmentId}>
-                    <span className="step-index">W</span>
-                    <div>
-                      <strong>{labelWafer(state.waferCode, state.dieLabel)}</strong>
-                      <p className="muted">Current step: {state.currentStepName ?? "Waiting to start"}</p>
-                      <p className="muted">Area: {state.currentStepArea ?? "TBD"}</p>
-                      <p className="muted">Status: {state.assignmentStatus}</p>
-                    </div>
-                    <span className={statusClass(state.currentStepStatus)}>
-                      {getAssignmentStatusLabel(state.currentStepStatus)}
-                    </span>
-                  </article>
-                ))
-              )}
-            </div>
+            <CurrentWaferStatusWorkspace states={workspaceWaferStates.length ? workspaceWaferStates : activeWaferStates} />
           </>
         ) : null}
 

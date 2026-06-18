@@ -24,7 +24,7 @@ export type ProcessTemplateWithSteps = ProcessTemplate & {
   process_steps: ProcessStep[];
 };
 
-type ProcessDashboardWaferState = {
+export type ProcessDashboardWaferState = {
   assignmentId: string;
   assignmentStatus: WaferProcessAssignment["status"];
   waferId: string;
@@ -60,6 +60,7 @@ export type ProcessDashboardCalendarDay = {
 export type ProcessDashboardData = {
   process: ProcessTemplateWithSteps;
   activeWaferStates: ProcessDashboardWaferState[];
+  workspaceWaferStates: ProcessDashboardWaferState[];
   calendarDays: ProcessDashboardCalendarDay[];
 };
 
@@ -263,16 +264,24 @@ export async function getProcessDashboardData(
 
   const fromIso = today.toISOString();
   const toIso = toDate.toISOString();
+  const activeStatuses: WaferProcessAssignment["status"][] = [
+    "planned",
+    "queued",
+    "in_progress",
+    "on_hold"
+  ];
+  const seededWaferCodes = ["alpha"];
+  const activeStatusSet = new Set(activeStatuses);
 
   const stepOrderById = new Map(process.process_steps.map((step) => [step.id, step.step_order]));
   const stepNameById = new Map(process.process_steps.map((step) => [step.id, step.name]));
   const stepAreaById = new Map(process.process_steps.map((step) => [step.id, step.process_area]));
+  const seededWaferPostDiceStepName = "Post EBL";
 
   const assignmentsResult = await supabase
     .from("wafer_process_assignments")
     .select("id, wafer_id, status, assigned_at, started_at, completed_at")
-    .eq("template_id", processTemplateId)
-    .in("status", ["planned", "queued", "in_progress", "on_hold"]);
+    .eq("template_id", processTemplateId);
 
   if (assignmentsResult.error) {
     throw assignmentsResult.error;
@@ -280,38 +289,56 @@ export async function getProcessDashboardData(
 
   const assignments: DashboardAssignment[] = assignmentsResult.data ?? [];
 
-  if (!assignments.length) {
-    return {
-      process,
-      activeWaferStates: [],
-      calendarDays: createEmptyCalendarDays(today, calendarDays)
-    };
-  }
-
   const assignmentIds = assignments.map((assignment) => assignment.id);
   const waferIds = assignments.map((assignment) => assignment.wafer_id);
+  const seededWaferFilter = seededWaferCodes.map((seed) => `wafer_code.ilike.%${seed}%`).join(",");
+  const seededQuery = process.owner_project_id
+    ? supabase
+        .from("wafers")
+        .select("id, wafer_code, project_id, metadata")
+        .eq("project_id", process.owner_project_id)
+        .or(seededWaferFilter)
+    : supabase.from("wafers").select("id, wafer_code, project_id, metadata").or(seededWaferFilter);
+  const assignedWafersQuery = waferIds.length
+    ? supabase
+        .from("wafers")
+        .select("id, wafer_code, project_id, metadata")
+        .in("id", waferIds)
+    : Promise.resolve({ data: [], error: null } as const);
 
-  const [stepExecutionsResult, wafersResult] = await Promise.all([
-    supabase
-      .from("step_executions")
-      .select("id, assignment_id, process_step_id, status, tool_id, created_at")
-      .in("assignment_id", assignmentIds),
-    supabase
-      .from("wafers")
-      .select("id, wafer_code, project_id, metadata")
-      .in("id", waferIds)
+  const [stepExecutionsResult, seededWafersResult, assignedWafersResult] = await Promise.all([
+    assignmentIds.length
+      ? supabase
+          .from("step_executions")
+          .select("id, assignment_id, process_step_id, status, tool_id, created_at")
+          .in("assignment_id", assignmentIds)
+      : Promise.resolve({ data: [], error: null } as const),
+    seededQuery,
+    assignedWafersQuery
   ]);
 
   if (stepExecutionsResult.error) {
     throw stepExecutionsResult.error;
   }
 
-  if (wafersResult.error) {
-    throw wafersResult.error;
+  if (seededWafersResult.error) {
+    throw seededWafersResult.error;
+  }
+
+  if (assignedWafersResult.error) {
+    throw assignedWafersResult.error;
+  }
+
+  const mergedWafersById = new Map<string, { id: string; wafer_code: string; project_id: string; metadata: unknown }>();
+  for (const wafer of assignedWafersResult.data ?? []) {
+    mergedWafersById.set(wafer.id, wafer);
+  }
+  for (const wafer of seededWafersResult.data ?? []) {
+    mergedWafersById.set(wafer.id, wafer);
   }
 
   const projectIds = Array.from(
-    new Set((wafersResult.data ?? []).map((wafer: { project_id: string }) => wafer.project_id))
+    new Set(Array.from(mergedWafersById.values()).map((wafer) => wafer.project_id))
   );
 
   const [reservationsResult, plannedStepsResult] = await Promise.all([
@@ -325,14 +352,16 @@ export async function getProcessDashboardData(
           .neq("status", "cancelled")
           .order("starts_at", { ascending: true })
       : Promise.resolve({ data: [], error: null } as const),
-    supabase
-      .from("step_executions")
-      .select("id, assignment_id, process_step_id, planned_start_at, tool_id")
-      .in("assignment_id", assignmentIds)
-      .not("planned_start_at", "is", null)
-      .gte("planned_start_at", fromIso)
-      .lte("planned_start_at", toIso)
-      .order("planned_start_at", { ascending: true })
+    assignmentIds.length
+      ? supabase
+          .from("step_executions")
+          .select("id, assignment_id, process_step_id, planned_start_at, tool_id")
+          .in("assignment_id", assignmentIds)
+          .not("planned_start_at", "is", null)
+          .gte("planned_start_at", fromIso)
+          .lte("planned_start_at", toIso)
+          .order("planned_start_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null } as const)
   ]);
 
   if (reservationsResult.error) {
@@ -343,12 +372,7 @@ export async function getProcessDashboardData(
     throw plannedStepsResult.error;
   }
 
-  const wafersById = new Map(
-    (wafersResult.data ?? []).map((wafer: { id: string; wafer_code: string; project_id: string; metadata: unknown }) => [
-      wafer.id,
-      wafer
-    ])
-  );
+  const wafersById = mergedWafersById;
 
   const assignmentWaferIdById = new Map(assignments.map((assignment) => [assignment.id, assignment.wafer_id]));
 
@@ -363,7 +387,9 @@ export async function getProcessDashboardData(
     }
   }
 
+  const workspaceWaferStates: ProcessDashboardWaferState[] = [];
   const activeWaferStates: ProcessDashboardWaferState[] = [];
+  const assignedWaferIds = new Set(assignments.map((assignment) => assignment.wafer_id));
 
   for (const assignment of assignments) {
     const wafer = wafersById.get(assignment.wafer_id);
@@ -374,7 +400,7 @@ export async function getProcessDashboardData(
     const executions = stepExecutionsByAssignment.get(assignment.id) ?? [];
     const currentExecution = pickCurrentStepExecution(executions, stepOrderById);
 
-    activeWaferStates.push({
+    const waferState: ProcessDashboardWaferState = {
       assignmentId: assignment.id,
       assignmentStatus: assignment.status,
       waferId: wafer.id,
@@ -389,6 +415,37 @@ export async function getProcessDashboardData(
       currentStepStatus: currentExecution ? currentExecution.status : null,
       currentStepArea: currentExecution ? stepAreaById.get(currentExecution.process_step_id) ?? null : null,
       currentToolId: currentExecution?.tool_id ?? null
+    };
+
+    workspaceWaferStates.push(waferState);
+    if (activeStatusSet.has(assignment.status)) {
+      activeWaferStates.push(waferState);
+    }
+  }
+
+  const seededWaferStates = Array.from(wafersById.values()).filter((wafer) => {
+    if (assignedWaferIds.has(wafer.id)) {
+      return false;
+    }
+
+    const normalizedCode = wafer.wafer_code.toLowerCase();
+    return seededWaferCodes.some((seed) => normalizedCode.includes(seed));
+  });
+
+  for (const seededWafer of seededWaferStates) {
+    workspaceWaferStates.push({
+      assignmentId: `seed:${seededWafer.id}`,
+      assignmentStatus: "planned",
+      waferId: seededWafer.id,
+      waferCode: seededWafer.wafer_code,
+      projectId: seededWafer.project_id,
+      dieLabel: extractDieLabel(seededWafer.metadata as Json),
+      currentStepId: null,
+      currentStepName: seededWaferPostDiceStepName,
+      currentStepOrder: null,
+      currentStepStatus: "running",
+      currentStepArea: null,
+      currentToolId: null
     });
   }
 
@@ -429,9 +486,7 @@ export async function getProcessDashboardData(
     ])
   );
 
-  const wafersByIdForCalendar = new Map(
-    (wafersResult.data ?? []).map((wafer: { id: string; wafer_code: string }) => [wafer.id, wafer.wafer_code])
-  );
+  const wafersByIdForCalendar = new Map(Array.from(wafersById.values()).map((wafer) => [wafer.id, wafer.wafer_code]));
   const stepNameByIdForCalendar = new Map(process.process_steps.map((step) => [step.id, step.name]));
 
   for (const reservation of reservationsResult.data ?? []) {
@@ -511,6 +566,7 @@ export async function getProcessDashboardData(
 
   return {
     process,
+    workspaceWaferStates,
     activeWaferStates,
     calendarDays: sortedCalendarDays
   };

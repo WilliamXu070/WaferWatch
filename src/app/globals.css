@@ -1495,6 +1495,135 @@ input {
   gap: 10px;
 }
 
+.wafer-workspace-shell {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+}
+
+.wafer-workspace-header {
+  display: grid;
+  gap: 4px;
+}
+
+.wafer-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.wafer-card-panel {
+  display: grid;
+  align-content: start;
+}
+
+.wafer-card-panel__list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.wafer-card {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--panel);
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.wafer-card:hover,
+.wafer-card:focus-visible {
+  border-color: var(--accent);
+}
+
+.wafer-card--active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+}
+
+.wafer-card strong {
+  font-family: var(--font-headline);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.wafer-card .muted {
+  margin: 2px 0 0;
+}
+
+.wafer-card-chip-status {
+  margin-top: 4px;
+  justify-self: start;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+}
+
+.wafer-card-chip-status--active {
+  background: #e7fff0;
+  color: #166534;
+}
+
+.wafer-card-chip-status--warning {
+  background: #fff0e5;
+  color: #854d0e;
+}
+
+.wafer-card-chip-status--success {
+  background: #ebfffa;
+  color: #065f46;
+}
+
+.wafer-workspace-selected {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+}
+
+.wafer-workspace-selected__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wafer-workspace-selected__toolbar h3 {
+  margin: 0;
+}
+
+.wafer-workspace-back {
+  min-height: 36px;
+}
+
+.wafer-workspace-idle {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  min-height: 460px;
+  display: grid;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 18px;
+}
+
+.wafer-workspace-placeholder {
+  width: 100%;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 18px;
+}
+
 .step-row,
 .tool-row {
   display: flex;
@@ -1627,6 +1756,217 @@ input {
 .auth-notice {
   margin-bottom: 10px;
   text-align: center;
+}
+
+.wafer-visualizer {
+  width: 100%;
+}
+
+.wafer-visualizer-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.wafer-viewer-panel {
+  display: grid;
+  gap: 10px;
+  min-height: 620px;
+}
+
+.wafer-mode-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wafer-mode-toolbar .button.active {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+}
+
+.wafer-stage-shell {
+  min-height: 560px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.wafer-svg-canvas {
+  width: min(100%, 540px);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.02),
+    rgba(0, 0, 0, 0.02) 10px,
+    transparent 10px,
+    transparent 20px
+  );
+  display: block;
+}
+
+.wafer-wafer-outline-shape {
+  fill: rgba(240, 240, 240, 0.26);
+  stroke: rgba(80, 80, 80, 0.65);
+  stroke-width: 1;
+}
+
+.wafer-chip-shape {
+  fill: rgba(255, 255, 255, 0.15);
+  stroke: rgba(18, 18, 18, 0.9);
+  stroke-width: 2.1;
+  stroke-linejoin: round;
+  transition: fill 0.15s ease;
+  cursor: default;
+}
+
+.wafer-chip-shape--interactive {
+  cursor: pointer;
+}
+
+.wafer-chip-shape--readonly {
+  pointer-events: none;
+}
+
+.wafer-chip-shape--clean {
+  fill: rgba(255, 255, 255, 0.2);
+}
+
+.wafer-chip-shape--electrode {
+  fill: rgba(226, 232, 240, 0.18);
+  stroke: rgba(15, 23, 42, 0.95);
+}
+
+.wafer-chip-hatch {
+  fill: url(#wafer-electrode-pattern);
+  fill-opacity: 0.8;
+  stroke: none;
+}
+
+.wafer-chip-shape:hover {
+  fill: rgba(137, 204, 79, 0.25);
+  stroke: rgba(15, 15, 15, 0.9);
+  stroke-width: 2.2;
+}
+
+.wafer-chip-shape--selected {
+  fill: rgba(82, 126, 52, 0.42);
+  stroke: rgba(8, 8, 8, 0.96);
+  stroke-width: 2.6;
+}
+
+.wafer-chip-shape--selected.wafer-chip-shape--clean {
+  fill: rgba(120, 193, 79, 0.32);
+}
+
+.wafer-chip-shape:focus,
+.wafer-chip-shape:focus-visible {
+  outline: none;
+}
+
+.wafer-load-state,
+.wafer-load-caption {
+  margin: 0;
+}
+
+.wafer-load-caption {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.wafer-params-panel {
+  display: grid;
+  gap: 10px;
+  min-height: 620px;
+}
+
+.wafer-panel-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wafer-params-scroll {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: auto;
+  padding: 10px;
+  background: var(--panel-soft);
+  display: grid;
+  gap: 8px;
+}
+
+.wafer-params-row {
+  display: grid;
+  grid-template-columns: repeat(46, minmax(56px, 1fr));
+  gap: 6px;
+}
+
+.wafer-params-input {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+.wafer-params-input:focus {
+  outline: 2px solid rgba(88, 204, 2, 0.35);
+}
+
+.wafer-params-empty {
+  min-height: 200px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.wafer-chip-label {
+  fill: var(--foreground);
+  stroke: none;
+  font-weight: 900;
+  font-size: 20px;
+  text-transform: none;
+  pointer-events: none;
+}
+
+.wafer-mode-structure {
+  fill: rgba(255, 255, 255, 0.08);
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  stroke-width: 2;
+  stroke: rgba(15, 23, 42, 0.75);
+  opacity: 0.85;
+}
+
+@media (max-width: 1080px) {
+  .wafer-visualizer-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .wafer-viewer-panel,
+  .wafer-params-panel,
+  .wafer-stage-shell {
+    min-height: 460px;
+  }
+
+  .wafer-workspace-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 860px) {

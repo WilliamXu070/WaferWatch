@@ -15,6 +15,13 @@ const authSchema = z.object({
   password: z.string().min(8)
 });
 
+function isHtmlParseError(error: unknown) {
+  return (
+    error instanceof Error &&
+    error.message.includes("Unexpected token '<'")
+  );
+}
+
 const profileUpdateSchema = z.object({
   displayName: z.string().trim().min(1).max(120),
   labGroup: z.string().trim().min(1).max(160).default("McMaster Quantum Photonic Group")
@@ -30,6 +37,10 @@ export async function signInWithPassword(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword(parsed);
 
   if (error) {
+    if (isHtmlParseError(error)) {
+      return fail("Authentication endpoint returned a non-JSON response. Verify your live Supabase project credentials.");
+    }
+
     return fail(error.message);
   }
 
@@ -62,6 +73,13 @@ export async function signInFormAction(
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
 
   if (error) {
+    if (isHtmlParseError(error)) {
+      return {
+        message: null,
+        error: "Authentication endpoint returned a non-JSON response. Verify your live Supabase project credentials."
+      };
+    }
+
     return {
       message: null,
       error: error.message

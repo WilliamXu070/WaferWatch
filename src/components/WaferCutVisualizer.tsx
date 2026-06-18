@@ -1,0 +1,1103 @@
+"use client";
+
+import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
+
+type Point = {
+  x: number;
+  y: number;
+};
+
+type ParsedPolygon = {
+  id: string;
+  points: Point[];
+};
+
+type WaferMode = "pre-dice" | "post-dice";
+
+type DieStatus =
+  | "clean"
+  | "post_elb"
+  | "post_pad"
+  | "pl2"
+  | "post_polling"
+  | "post_inspection";
+
+type ChipPiece = {
+  id: string;
+  label: number;
+  points: Point[];
+  area: number;
+  centroid: Point;
+};
+
+type DieStructure = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  stroke?: string;
+  fill?: string;
+};
+
+type DieStructureRectMm = {
+  id: string;
+  xMin: number;
+  yMin: number;
+  xMax: number;
+  yMax: number;
+};
+
+type DieGridRowDirection = "top-to-bottom" | "bottom-to-top";
+
+type DieStructureGridTemplateInInches = {
+  columns: number;
+  rows: number;
+  rectWidthIn: number;
+  rectHeightIn: number;
+  gapXIn?: number;
+  gapYIn?: number;
+  insetIn?: number;
+  clusterSpanFraction?: number;
+  rowDirection?: DieGridRowDirection;
+};
+
+type SvgViewport = {
+  centerX: number;
+  centerY: number;
+  halfSpan: number;
+};
+
+type WaferCutVisualizerProps = {
+  waferStateName?: string | null;
+};
+
+const GDS_ASSET_PATH = "/wafer-assets/wafer_4in_100mm_bottom_primary_flat_only.gds";
+const TARGET_WAFER_DIAMETER_MM = 100;
+const TARGET_HALF_DIAMETER_MM = TARGET_WAFER_DIAMETER_MM / 2;
+const HORIZONTAL_CUT_STEP_MM = 25.4;
+const VERTICAL_OFFSET_MM = 38.1;
+const MM_PER_INCH = 25.4;
+
+const PARAMETER_COLUMNS = 46;
+const PARAMETER_ROWS = 5;
+const CHIP_COUNT = 8;
+const MIN_CHIP_AREA_MM2 = 5;
+const SVG_PADDING_MM = 20;
+const POST_DICE_STATUS_SEQUENCE: DieStatus[] = [
+  "clean",
+  "post_elb",
+  "post_pad",
+  "pl2",
+  "post_polling",
+  "post_inspection"
+];
+const POST_ELB_GRID_DEFAULT_INCHES: DieStructureGridTemplateInInches = {
+  columns: 3,
+  rows: 4,
+  rectWidthIn: 1.5,
+  rectHeightIn: 1,
+  gapXIn: 0.22,
+  gapYIn: 0.20,
+  insetIn: 0,
+  clusterSpanFraction: 1,
+  rowDirection: "top-to-bottom"
+};
+const POST_ELB_CLUSTER_SPAN_FRACTION = 1;
+
+const DIE_POST_ELB_LAYOUTS_BY_LABEL: Record<number, DieStructureGridTemplateInInches> = {
+  1: POST_ELB_GRID_DEFAULT_INCHES,
+  2: POST_ELB_GRID_DEFAULT_INCHES,
+  3: POST_ELB_GRID_DEFAULT_INCHES,
+  4: POST_ELB_GRID_DEFAULT_INCHES,
+  5: POST_ELB_GRID_DEFAULT_INCHES,
+  6: POST_ELB_GRID_DEFAULT_INCHES,
+  7: POST_ELB_GRID_DEFAULT_INCHES,
+  8: POST_ELB_GRID_DEFAULT_INCHES
+};
+const ELECTRODE_PATTERN_ID = "wafer-electrode-pattern";
+
+const GDS_RECORD = {
+  BOUNDARY: 0x08,
+  XY: 0x10,
+  ENDEL: 0x11,
+  ENDSTR: 0x07,
+  ENDLIB: 0x04
+} as const;
+
+function parseGdsPolygons(buffer: ArrayBuffer): ParsedPolygon[] {
+  const view = new DataView(buffer);
+  const len = view.byteLength;
+  let offset = 0;
+
+  let activePoints: Point[] | null = null;
+  const polygons: ParsedPolygon[] = [];
+
+  const finalizeBoundary = () => {
+    if (!activePoints || activePoints.length < 3) {
+      activePoints = null;
+      return;
+    }
+
+    if (
+      activePoints.length > 2 &&
+      activePoints[0].x === activePoints[activePoints.length - 1].x &&
+      activePoints[0].y === activePoints[activePoints.length - 1].y
+    ) {
+      activePoints.pop();
+    }
+
+    if (activePoints.length >= 3) {
+      polygons.push({
+        id: `${polygons.length + 1}`,
+        points: [...activePoints]
+      });
+    }
+
+    activePoints = null;
+  };
+
+  while (offset + 4 <= len) {
+    const recordLen = view.getUint16(offset, false);
+    if (recordLen < 4 || offset + recordLen > len) {
+      break;
+    }
+
+    const recordType = view.getUint8(offset + 2);
+    const recordDataType = view.getInt8(offset + 3);
+    const dataStart = offset + 4;
+    const dataLen = recordLen - 4;
+
+    if (recordType === GDS_RECORD.BOUNDARY) {
+      finalizeBoundary();
+      activePoints = [];
+    } else if (recordType === GDS_RECORD.XY && activePoints) {
+      if (recordDataType === 3 && dataLen > 0 && dataLen % 8 === 0) {
+        for (let index = 0; index < dataLen; index += 8) {
+          const x = view.getInt32(dataStart + index, false);
+          const y = view.getInt32(dataStart + index + 4, false);
+          activePoints.push({ x, y });
+        }
+      }
+    } else if (
+      recordType === GDS_RECORD.ENDEL ||
+      recordType === GDS_RECORD.ENDSTR ||
+      recordType === GDS_RECORD.ENDLIB
+    ) {
+      finalizeBoundary();
+    } else {
+      void recordDataType;
+    }
+
+    offset += recordLen;
+  }
+
+  finalizeBoundary();
+  return polygons;
+}
+
+function polygonArea(points: Point[]) {
+  let sum = 0;
+
+  for (let index = 0; index < points.length; index++) {
+    const next = (index + 1) % points.length;
+    sum += points[index].x * points[next].y;
+    sum -= points[next].x * points[index].y;
+  }
+
+  return Math.abs(sum) / 2;
+}
+
+function polygonCentroid(points: Point[]) {
+  let signedArea = 0;
+  let cx = 0;
+  let cy = 0;
+
+  for (let index = 0; index < points.length; index++) {
+    const next = (index + 1) % points.length;
+    const cross = points[index].x * points[next].y - points[next].x * points[index].y;
+
+    signedArea += cross;
+    cx += (points[index].x + points[next].x) * cross;
+    cy += (points[index].y + points[next].y) * cross;
+  }
+
+  if (!signedArea) {
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    return {
+      x: (Math.max(...xs) + Math.min(...xs)) / 2,
+      y: (Math.max(...ys) + Math.min(...ys)) / 2
+    };
+  }
+
+  const divisor = 6 * signedArea;
+  return {
+    x: cx / divisor,
+    y: cy / divisor
+  };
+}
+
+function cleanPolygon(points: Point[]): Point[] | null {
+  if (points.length < 3) {
+    return null;
+  }
+
+  const output: Point[] = [];
+  for (const point of points) {
+    const previous = output.at(-1);
+    if (!previous || previous.x !== point.x || previous.y !== point.y) {
+      output.push(point);
+    }
+  }
+
+  if (output.length > 1) {
+    const first = output[0];
+    const last = output.at(-1);
+
+    if (last && first.x === last.x && first.y === last.y) {
+      output.pop();
+    }
+  }
+
+  return output.length >= 3 ? output : null;
+}
+
+function splitPolygonByAxis(points: Point[], axis: "x" | "y", cut: number) {
+  const negativeSide: Point[] = [];
+  const positiveSide: Point[] = [];
+
+  for (let index = 0; index < points.length; index++) {
+    const start = points[index];
+    const end = points[(index + 1) % points.length];
+
+    const startCoord = axis === "x" ? start.x : start.y;
+    const endCoord = axis === "x" ? end.x : end.y;
+    const startDelta = startCoord - cut;
+    const endDelta = endCoord - cut;
+
+    if (startDelta <= 0) {
+      negativeSide.push(start);
+    }
+
+    if (startDelta >= 0) {
+      positiveSide.push(start);
+    }
+
+    const crosses =
+      (startDelta < 0 && endDelta > 0) ||
+      (startDelta > 0 && endDelta < 0);
+
+    if (crosses) {
+      const t = startDelta / (startDelta - endDelta);
+      const intersection: Point = {
+        x: start.x + (end.x - start.x) * t,
+        y: start.y + (end.y - start.y) * t
+      };
+
+      negativeSide.push(intersection);
+      positiveSide.push(intersection);
+    }
+  }
+
+  return {
+    negative: cleanPolygon(negativeSide),
+    positive: cleanPolygon(positiveSide)
+  };
+}
+
+function buildLinearCuts(halfSpan: number, step: number): number[] {
+  const rawCuts: number[] = [];
+
+  for (let value = -halfSpan + step; value < halfSpan - 0.000001; value += step) {
+    rawCuts.push(value);
+  }
+
+  return rawCuts;
+}
+
+function buildDefaultChipGrid() {
+  return Array.from({ length: PARAMETER_ROWS }, () =>
+    Array.from({ length: PARAMETER_COLUMNS }, () => "")
+  );
+}
+
+function formatDieStatus(status: DieStatus) {
+  if (status === "post_elb") {
+    return "Post EBL";
+  }
+
+  if (status === "post_pad") {
+    return "Post PAD";
+  }
+
+  if (status === "post_polling") {
+    return "Post Polling";
+  }
+
+  if (status === "post_inspection") {
+    return "Post Inspection";
+  }
+
+  return "Clean";
+}
+
+function getWaferModeFromState(waferStateName?: string | null): WaferMode {
+  const normalized = (waferStateName ?? "").toLowerCase();
+
+  if (!normalized) {
+    return "pre-dice";
+  }
+
+  if (normalized.includes("post") || normalized.includes("pad") || normalized.includes("polling")) {
+    return "post-dice";
+  }
+
+  if (normalized.includes("pl2") || normalized.includes("inspection") || normalized.includes("elb")) {
+    return "post-dice";
+  }
+
+  if (normalized.includes("clean") || normalized.includes("pre")) {
+    return "pre-dice";
+  }
+
+  return "post-dice";
+}
+
+function getWaferStateLabel(mode: WaferMode) {
+  return mode === "pre-dice" ? "Pre-dice" : "Post-dice";
+}
+
+function getDieStatusForLabelAndMode(label: number, mode: WaferMode): DieStatus {
+  if (mode === "pre-dice") {
+    return "clean";
+  }
+
+  return POST_DICE_STATUS_SEQUENCE[(label - 1) % POST_DICE_STATUS_SEQUENCE.length];
+}
+
+function buildWaferPieces(waferPoints: Point[], mode: WaferMode): ChipPiece[] {
+  if (mode === "pre-dice") {
+    const area = polygonArea(waferPoints);
+    if (area <= MIN_CHIP_AREA_MM2) {
+      return [];
+    }
+
+    return [
+      {
+        id: "1",
+        label: 1,
+        points: waferPoints,
+        area,
+        centroid: polygonCentroid(waferPoints)
+      }
+    ];
+  }
+
+  return buildChipPieces(waferPoints);
+}
+
+function deriveWaferGeometry(polygons: ParsedPolygon[]): ParsedPolygon | null {
+  if (polygons.length === 0) {
+    return null;
+  }
+
+  const withArea = polygons
+    .map((polygon) => ({ polygon, area: polygonArea(polygon.points) }))
+    .filter((item) => item.area > MIN_CHIP_AREA_MM2)
+    .sort((a, b) => b.area - a.area);
+
+  return withArea.length > 0 ? withArea[0].polygon : polygons[0] ?? null;
+}
+
+function normalizeToMillimeters(polygons: ParsedPolygon[]): ParsedPolygon[] {
+  if (polygons.length === 0) {
+    return [];
+  }
+
+  const allX = polygons.flatMap((polygon) => polygon.points.map((point) => point.x));
+  const allY = polygons.flatMap((polygon) => polygon.points.map((point) => point.y));
+
+  const minX = Math.min(...allX);
+  const maxX = Math.max(...allX);
+  const minY = Math.min(...allY);
+  const maxY = Math.max(...allY);
+
+  const spanX = Math.max(maxX - minX, 1);
+  const scale = TARGET_WAFER_DIAMETER_MM / spanX;
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+
+  return polygons.map((polygon) => ({
+    ...polygon,
+    points: polygon.points.map((point) => ({
+      x: (point.x - centerX) * scale,
+      y: (point.y - centerY) * scale
+    }))
+  }));
+}
+
+function buildChipPieces(waferPoints: Point[]): ChipPiece[] {
+  const verticalCuts = [
+    -VERTICAL_OFFSET_MM,
+    0,
+    VERTICAL_OFFSET_MM
+  ];
+
+  const horizontalCuts = buildLinearCuts(TARGET_HALF_DIAMETER_MM, HORIZONTAL_CUT_STEP_MM);
+
+  let chunks: Point[][] = [waferPoints];
+
+  for (const cut of horizontalCuts) {
+    chunks = chunks
+      .flatMap((chunk) => {
+        const split = splitPolygonByAxis(chunk, "y", cut);
+        return [split.negative, split.positive];
+      })
+      .filter((chunk): chunk is Point[] => Boolean(chunk));
+  }
+
+  for (const cut of verticalCuts) {
+    chunks = chunks
+      .flatMap((chunk) => {
+        const split = splitPolygonByAxis(chunk, "x", cut);
+        return [split.negative, split.positive];
+      })
+      .filter((chunk): chunk is Point[] => Boolean(chunk));
+  }
+
+  const filteredPieces = chunks
+    .map((chunk, index) => {
+      const area = polygonArea(chunk);
+      return {
+        id: `piece-${index}`,
+        points: chunk,
+        area,
+        centroid: polygonCentroid(chunk),
+        label: 0
+      };
+    })
+    .filter((piece) => piece.area > MIN_CHIP_AREA_MM2)
+    .sort((a, b) => b.area - a.area)
+    .slice(0, CHIP_COUNT)
+    .sort((a, b) => b.centroid.y - a.centroid.y);
+
+  if (filteredPieces.length === 0) {
+    return [];
+  }
+
+  const sortedByY = [...filteredPieces].sort((a, b) => b.centroid.y - a.centroid.y);
+  const yGaps = sortedByY.slice(1).map((piece, index) => {
+    const previous = sortedByY[index];
+    return previous.centroid.y - piece.centroid.y;
+  });
+
+  let rows: ChipPiece[][] = [];
+  if (yGaps.length === 0) {
+    rows = [sortedByY];
+  } else {
+    let smallGap = yGaps.reduce((acc, value) => Math.min(acc, value), yGaps[0]);
+    let largeGap = yGaps.reduce((acc, value) => Math.max(acc, value), yGaps[0]);
+
+    for (let pass = 0; pass < 3; pass++) {
+      const smallGroup: number[] = [];
+      const largeGroup: number[] = [];
+      const splitAt = (smallGap + largeGap) / 2;
+
+      for (const gap of yGaps) {
+        if (gap <= splitAt) {
+          smallGroup.push(gap);
+        } else {
+          largeGroup.push(gap);
+        }
+      }
+
+      const smallSum = smallGroup.reduce((acc, value) => acc + value, 0);
+      const largeSum = largeGroup.reduce((acc, value) => acc + value, 0);
+      smallGap = smallGroup.length > 0 ? smallSum / smallGroup.length : smallGap;
+      largeGap = largeGroup.length > 0 ? largeSum / largeGroup.length : largeGap;
+    }
+
+    const rowSplitAt = (smallGap + largeGap) / 2;
+    rows = [[]];
+
+    for (const piece of sortedByY) {
+      if (rows.length === 0) {
+        rows.push([]);
+      }
+
+      const currentRow = rows[rows.length - 1];
+      if (
+        currentRow.length > 0 &&
+        piece.centroid.y < currentRow[currentRow.length - 1].centroid.y - rowSplitAt
+      ) {
+        rows.push([]);
+      }
+
+      rows[rows.length - 1].push(piece);
+    }
+  }
+
+  let nextLabel = 1;
+  return rows
+    .flatMap((row) => {
+      row.sort((a, b) => a.centroid.x - b.centroid.x);
+
+      return row.map((piece) => ({
+        ...piece,
+        id: `${nextLabel}`,
+        label: nextLabel++
+      }));
+    })
+    .slice(0, CHIP_COUNT);
+}
+
+function buildSvgViewport(points: Point[]): SvgViewport {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const halfSpan = Math.max(maxX - minX, maxY - minY) / 2 + SVG_PADDING_MM;
+
+  return {
+    centerX,
+    centerY,
+    halfSpan
+  };
+}
+
+function polygonBoundsCenter(points: Point[]) {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+
+  return {
+    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+    y: (Math.min(...ys) + Math.max(...ys)) / 2
+  };
+}
+
+function polygonBounds(points: Point[]) {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  return {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY
+  };
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getHorizontalPolygonIntervalAtY(points: Point[], y: number) {
+  const intersections: number[] = [];
+  const epsilon = 1e-9;
+
+  for (let index = 0; index < points.length; index++) {
+    const start = points[index];
+    const end = points[(index + 1) % points.length];
+
+    if (Math.abs(start.y - end.y) < epsilon) {
+      if (Math.abs(y - start.y) < epsilon) {
+        intersections.push(start.x, end.x);
+      }
+      continue;
+    }
+
+    const minY = Math.min(start.y, end.y);
+    const maxY = Math.max(start.y, end.y);
+    const withinEdge = y >= minY - epsilon && y <= maxY + epsilon;
+
+    if (!withinEdge) {
+      continue;
+    }
+
+    const t = (y - start.y) / (end.y - start.y);
+    if (t >= -epsilon && t <= 1 + epsilon) {
+      intersections.push(start.x + (end.x - start.x) * t);
+    }
+  }
+
+  if (intersections.length < 2) {
+    return null;
+  }
+
+  return {
+    minX: Math.min(...intersections),
+    maxX: Math.max(...intersections)
+  };
+}
+
+function getDieLabelPlacement(points: Point[], viewport: SvgViewport, useCompactPlacement: boolean) {
+  const bounds = polygonBounds(points);
+  const shortestSpan = Math.max(1, Math.min(bounds.width, bounds.height));
+  const fontSize = useCompactPlacement
+    ? clampNumber(shortestSpan * 0.1, 2, 4)
+    : clampNumber(shortestSpan * 0.2, 3.5, 8);
+  const inset = Math.max(fontSize * 0.9, 1.2);
+
+  if (!useCompactPlacement) {
+    const centerPoint = toSvgPoint(polygonBoundsCenter(points), viewport);
+    return {
+      x: centerPoint.x,
+      y: centerPoint.y,
+      fontSize,
+      textAnchor: "middle" as const,
+      dominantBaseline: "middle" as const
+    };
+  }
+
+  const desiredY = bounds.maxY - inset;
+  const interval = getHorizontalPolygonIntervalAtY(points, desiredY);
+  const fallbackPoint = polygonCentroid(points);
+  const labelPoint =
+    interval && interval.maxX - interval.minX > inset * 2
+      ? {
+          x: interval.minX + inset,
+          y: desiredY
+        }
+      : fallbackPoint;
+  const svgPoint = toSvgPoint(labelPoint, viewport);
+
+  return {
+    x: svgPoint.x,
+    y: svgPoint.y,
+    fontSize,
+    textAnchor: "start" as const,
+    dominantBaseline: "hanging" as const
+  };
+}
+
+function sanitizeGridAxisCount(value: number) {
+  return Number.isFinite(value) ? Math.max(1, Math.round(value)) : 0;
+}
+
+function sanitizeMm(value: number) {
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStructureRectMm[] {
+  const bounds = polygonBounds(points);
+  const template = DIE_POST_ELB_LAYOUTS_BY_LABEL[label];
+
+  if (!template) {
+    return [];
+  }
+
+  const columns = sanitizeGridAxisCount(template.columns);
+  const rows = sanitizeGridAxisCount(template.rows);
+  const rawRectWidth = sanitizeMm(template.rectWidthIn * MM_PER_INCH);
+  const rawRectHeight = sanitizeMm(template.rectHeightIn * MM_PER_INCH);
+  const rawGapX = sanitizeMm((template.gapXIn ?? template.rectWidthIn * 0.2) * MM_PER_INCH);
+  const rawGapY = sanitizeMm((template.gapYIn ?? template.rectHeightIn * 0.2) * MM_PER_INCH);
+  const inset = sanitizeMm((template.insetIn ?? 0.1) * MM_PER_INCH);
+  const clampSpanFraction = Math.min(
+    1,
+    Math.max(0.05, template.clusterSpanFraction ?? POST_ELB_CLUSTER_SPAN_FRACTION)
+  );
+
+  if (columns === 0 || rows === 0 || rawRectWidth === 0 || rawRectHeight === 0) {
+    return [];
+  }
+
+  const gapXToRectWidth = Math.min(1, rawGapX / rawRectWidth);
+  const gapYToRectHeight = Math.min(1, rawGapY / rawRectHeight);
+
+  const innerWidth = Math.max(bounds.width - 2 * inset, 1);
+  const innerHeight = Math.max(bounds.height - 2 * inset, 1);
+  const spanWidth = Math.max(1, innerWidth * clampSpanFraction);
+  const spanHeight = Math.max(1, innerHeight * clampSpanFraction);
+
+  // Equal-gutter die-local layout in wafer-space mm:
+  // left chip edge gap = internal column gap = right chip edge gap,
+  // top chip edge gap = internal row gap = bottom chip edge gap.
+  // The grid fills the chip bounding span and is clipped to the chip polygon
+  // during SVG rendering so curved wafer-edge dies do not show spillover.
+  const rectWidth = spanWidth / (columns + (columns + 1) * gapXToRectWidth);
+  const rectHeight = spanHeight / (rows + (rows + 1) * gapYToRectHeight);
+  const gapX = rectWidth * gapXToRectWidth;
+  const gapY = rectHeight * gapYToRectHeight;
+
+  const startX = bounds.minX + inset + (innerWidth - spanWidth) / 2 + gapX;
+  const startY = bounds.minY + inset + (innerHeight - spanHeight) / 2 + gapY;
+  const rowDirection = template.rowDirection ?? "top-to-bottom";
+
+  const structures: DieStructureRectMm[] = [];
+
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      const waferRow = rowDirection === "top-to-bottom" ? rows - 1 - row : row;
+      const xMin = startX + column * (rectWidth + gapX);
+      const yMin = startY + waferRow * (rectHeight + gapY);
+      const xMax = xMin + rectWidth;
+      const yMax = yMin + rectHeight;
+
+      structures.push({
+        id: `die-${label}-r-${row + 1}-c-${column + 1}`,
+        xMin,
+        yMin,
+        xMax,
+        yMax
+      });
+    }
+  }
+
+  return structures;
+}
+
+function rectMmToSvg(rect: DieStructureRectMm, viewport: SvgViewport): DieStructure {
+  const startPoint = toSvgPoint({ x: rect.xMin, y: rect.yMin }, viewport);
+  const endPoint = toSvgPoint({ x: rect.xMax, y: rect.yMax }, viewport);
+
+  return {
+    id: rect.id,
+    x: Math.min(startPoint.x, endPoint.x),
+    y: Math.min(startPoint.y, endPoint.y),
+    width: Math.abs(endPoint.x - startPoint.x),
+    height: Math.abs(endPoint.y - startPoint.y),
+    stroke: "#0f172a",
+    fill: "rgba(15, 23, 42, 0.15)"
+  };
+}
+
+function buildCenteredGridRectsForDie(
+  points: Point[],
+  viewport: SvgViewport,
+  label: number
+) {
+  return buildCenteredGridRectsForDieMm(points, label).map((rect) => rectMmToSvg(rect, viewport));
+}
+
+function getModeStructuresForDie(points: Point[], status: DieStatus, label: number, viewport: SvgViewport) {
+  if (status !== "post_elb") {
+    return [];
+  }
+
+  return buildCenteredGridRectsForDie(points, viewport, label);
+}
+
+function toSvgPoints(points: Point[], viewport: SvgViewport) {
+  return points
+    .map(
+      (point) =>
+        `${point.x - viewport.centerX + viewport.halfSpan},${viewport.halfSpan - (point.y - viewport.centerY)}`
+    )
+    .join(" ");
+}
+
+function toSvgPoint(point: Point, viewport: SvgViewport) {
+  return {
+    x: point.x - viewport.centerX + viewport.halfSpan,
+    y: viewport.halfSpan - (point.y - viewport.centerY)
+  };
+}
+
+export function WaferCutVisualizer({ waferStateName }: WaferCutVisualizerProps) {
+  const [rawPolygons, setRawPolygons] = useState<ParsedPolygon[]>([]);
+  const [loadMessage, setLoadMessage] = useState("Loading 4-inch GDS layout.");
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
+  const [parameterState, setParameterState] = useState<Record<string, string[][]>>({});
+  const waferMode = getWaferModeFromState(waferStateName);
+  const isPostDiceMode = waferMode === "post-dice";
+
+  useEffect(() => {
+    let isStale = false;
+
+    const loadGds = async () => {
+      try {
+        const response = await fetch(GDS_ASSET_PATH);
+        if (!response.ok) {
+          throw new Error("Unable to load local GDS source.");
+        }
+
+        const buffer = await response.arrayBuffer();
+        const parsed = parseGdsPolygons(buffer);
+        if (isStale) {
+          return;
+        }
+
+        if (parsed.length === 0) {
+          setLoadMessage("The included GDS contains no boundary polygons.");
+          setRawPolygons([]);
+          setIsLoading(false);
+          return;
+        }
+
+        setRawPolygons(parsed);
+        setLoadMessage(`Loaded ${parsed.length} boundary object${parsed.length === 1 ? "" : "s"} from local GDS.`);
+      } catch {
+        if (!isStale) {
+          setLoadMessage("Failed to load GDS preview. Falling back to no layout.");
+          setRawPolygons([]);
+        }
+      } finally {
+        if (!isStale) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadGds();
+
+    return () => {
+      isStale = true;
+    };
+  }, []);
+
+  const normalizedPolygons = useMemo(() => normalizeToMillimeters(rawPolygons), [rawPolygons]);
+  const waferOutline = useMemo(() => deriveWaferGeometry(normalizedPolygons), [normalizedPolygons]);
+  const chipPieces = useMemo(() => {
+    if (!waferOutline) {
+      return [];
+    }
+
+    return buildWaferPieces(waferOutline.points, waferMode);
+  }, [waferMode, waferOutline]);
+
+  const svgViewport = useMemo(() => (waferOutline ? buildSvgViewport(waferOutline.points) : null), [waferOutline]);
+
+  const activeChipId =
+    isPostDiceMode &&
+    selectedChipId &&
+    chipPieces.some((chip) => chip.id === selectedChipId)
+      ? selectedChipId
+      : null;
+
+  const activeChip = activeChipId ? chipPieces.find((chip) => chip.id === activeChipId) ?? null : null;
+  const activeGrid = activeChip ? (parameterState[activeChip.id] ?? buildDefaultChipGrid()) : null;
+  const activeChipModeStatus = activeChip
+    ? getDieStatusForLabelAndMode(activeChip.label, waferMode)
+    : null;
+
+  const handleChipSelect = (chipId: string) => {
+    if (!isPostDiceMode) {
+      return;
+    }
+
+    setSelectedChipId((current) => (current === chipId ? null : chipId));
+  };
+
+  const handleChipKeySelect = (
+    event: KeyboardEvent<SVGPolygonElement>,
+    chipId: string
+  ) => {
+    if (!isPostDiceMode) {
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleChipSelect(chipId);
+    }
+  };
+
+  const updateCell = (row: number, column: number, value: string) => {
+    if (!activeChip) {
+      return;
+    }
+
+    setParameterState((prev) => {
+      const existing = prev[activeChip.id] ?? buildDefaultChipGrid();
+      const nextGrid = existing.map((r) => [...r]);
+      nextGrid[row] = [...nextGrid[row]];
+      nextGrid[row][column] = value;
+
+      return {
+        ...prev,
+        [activeChip.id]: nextGrid
+      };
+    });
+  };
+
+  return (
+    <div className="wafer-visualizer">
+      <div className="wafer-visualizer-layout">
+        <section className="panel wafer-viewer-panel">
+          <div className="wafer-stage-shell">
+            {waferOutline && svgViewport ? (
+              <svg
+                className="wafer-svg-canvas"
+                viewBox={`0 0 ${svgViewport.halfSpan * 2} ${svgViewport.halfSpan * 2}`}
+                preserveAspectRatio="xMidYMid meet"
+                role="img"
+                aria-label="Static wafer layout"
+              >
+                <polygon
+                  className="wafer-wafer-outline-shape"
+                  points={toSvgPoints(waferOutline.points, svgViewport)}
+                  vectorEffect="non-scaling-stroke"
+                />
+
+                  {chipPieces.map((chip) => {
+                  const isSelected = chip.id === activeChipId;
+                  const chipStatus = getDieStatusForLabelAndMode(chip.label, waferMode);
+                  const chipClipPathId = `wafer-chip-clip-${chip.id}`;
+                  const structureRects = getModeStructuresForDie(chip.points, chipStatus, chip.label, svgViewport);
+                  const chipLabel = getDieLabelPlacement(chip.points, svgViewport, structureRects.length > 0);
+
+                    return (
+                      <g key={chip.id}>
+                      <polygon
+                        className={[
+                          "wafer-chip-shape",
+                          chipStatus === "clean" ? "wafer-chip-shape--clean" : "wafer-chip-shape--electrode",
+                          isPostDiceMode ? "wafer-chip-shape--interactive" : "wafer-chip-shape--readonly",
+                          isSelected ? "wafer-chip-shape--selected" : ""
+                        ].join(" ")}
+                        points={toSvgPoints(chip.points, svgViewport)}
+                        vectorEffect="non-scaling-stroke"
+                        role={isPostDiceMode ? "button" : undefined}
+                        tabIndex={isPostDiceMode ? 0 : -1}
+                        aria-label={`Select die ${chip.label}`}
+                        aria-pressed={isPostDiceMode ? isSelected : false}
+                        onMouseDown={() => handleChipSelect(chip.id)}
+                        onKeyDown={(event) => handleChipKeySelect(event, chip.id)}
+                      />
+                      {chipStatus === "post_elb" && (
+                        <polygon
+                          className="wafer-chip-shape wafer-chip-hatch"
+                          points={toSvgPoints(chip.points, svgViewport)}
+                          vectorEffect="non-scaling-stroke"
+                          style={{ pointerEvents: "none" }}
+                        />
+                      )}
+                      <g clipPath={`url(#${chipClipPathId})`} style={{ pointerEvents: "none" }}>
+                        {structureRects.map((rect) => (
+                          <rect
+                            key={rect.id}
+                            className="wafer-mode-structure"
+                            x={rect.x}
+                            y={rect.y}
+                            width={rect.width}
+                            height={rect.height}
+                            fill={rect.fill}
+                            stroke={rect.stroke}
+                            strokeWidth={1}
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        ))}
+                      </g>
+                      {isPostDiceMode ? (
+                        <text
+                          x={chipLabel.x}
+                          y={chipLabel.y}
+                          textAnchor={chipLabel.textAnchor}
+                          dominantBaseline={chipLabel.dominantBaseline}
+                          pointerEvents="none"
+                          fontSize={chipLabel.fontSize}
+                          fontWeight={700}
+                          fill="rgba(15, 23, 42, 0.56)"
+                          stroke="rgba(236, 253, 245, 0.72)"
+                          strokeWidth={0.25}
+                          style={{
+                            paintOrder: "stroke",
+                            userSelect: "none"
+                          }}
+                        >
+                          {chip.label}
+                        </text>
+                      ) : null}
+                    </g>
+                  );
+                })}
+                <defs>
+                  {chipPieces.map((chip) => (
+                    <clipPath id={`wafer-chip-clip-${chip.id}`} key={`clip-${chip.id}`}>
+                      <polygon points={toSvgPoints(chip.points, svgViewport)} />
+                    </clipPath>
+                  ))}
+                  <pattern
+                    id={ELECTRODE_PATTERN_ID}
+                    x="0"
+                    y="0"
+                    width="6"
+                    height="6"
+                    patternUnits="userSpaceOnUse"
+                    patternTransform="rotate(45)"
+                  >
+                    <rect width="6" height="6" fill="rgba(15, 23, 42, 0.04)" />
+                    <path d="M0 0h6" stroke="rgba(15, 23, 42, 0.2)" strokeWidth="1" />
+                  </pattern>
+                </defs>
+              </svg>
+            ) : null}
+          </div>
+          <p className="muted wafer-load-state">{loadMessage}</p>
+          {isLoading ? <p className="wafer-load-state muted">Loading local wafer layout...</p> : null}
+          <p className="muted wafer-load-caption">
+            {waferMode === "pre-dice"
+              ? "Fixed 4-inch 100mm wafer from local GDS, showing full wafer before die separation."
+              : "Fixed 4-inch 100mm wafer from local GDS, split into the 8 largest selectable dies."}
+          </p>
+        </section>
+
+        <aside className="panel wafer-params-panel">
+                {isPostDiceMode ? (
+                  activeChip ? (
+                    <>
+                      <div className="wafer-panel-heading">
+                        <strong>Die {activeChip.label}</strong>
+                        <span className="muted">State: {waferStateName ?? "Not started"}</span>
+                        <span className="muted">Wafer state: {getWaferStateLabel(waferMode)}</span>
+                        <span className="muted">Status: {activeChipModeStatus ? formatDieStatus(activeChipModeStatus) : "Unassigned"}</span>
+                      </div>
+
+                      <div className="wafer-params-scroll" role="region" aria-label={`Die ${activeChip.label} parameters`}>
+                        {Array.from({ length: PARAMETER_ROWS }).map((_, rowIndex) => (
+                          <div className="wafer-params-row" key={`row-${rowIndex}`}>
+                            {Array.from({ length: PARAMETER_COLUMNS }).map((_, columnIndex) => {
+                              const value = activeGrid?.[rowIndex]?.[columnIndex] ?? "";
+
+                              return (
+                                <input
+                                  key={`cell-${rowIndex}-${columnIndex}`}
+                                  className="wafer-params-input"
+                                  value={value}
+                                  onChange={(event) => {
+                                    updateCell(rowIndex, columnIndex, event.target.value);
+                                  }}
+                                  aria-label={`Parameter row ${rowIndex + 1} column ${columnIndex + 1}`}
+                                  title={`Parameter ${rowIndex + 1}-${columnIndex + 1}`}
+                                />
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="wafer-params-empty">
+                      <p className="muted">
+                        Click one of the dies on the wafer to open the 46×5 parameter sheet.
+                      </p>
+                      <p className="muted">No die is selected right now.</p>
+                    </div>
+                  )
+                ) : (
+                  <div className="wafer-params-empty">
+                    <p className="muted">This wafer is in pre-dice state.</p>
+                    <p className="muted">Die-level parameter sheet appears when this wafer enters post-dice state.</p>
+                  </div>
+                )}
+        </aside>
+      </div>
+    </div>
+  );
+}

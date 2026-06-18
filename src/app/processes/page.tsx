@@ -28,11 +28,16 @@ export default async function ProcessesPage() {
           <p className="eyebrow">WaferWatch</p>
           <h1>Processes</h1>
         </div>
-        <form action={signOut}>
-          <button className="button button-secondary" type="submit">
-            Sign out
-          </button>
-        </form>
+        <div className="topbar-actions">
+          <Link href="/wafer-visualizer" className="button button-secondary">
+            Wafer visualizer
+          </Link>
+          <form action={signOut}>
+            <button className="button button-secondary" type="submit">
+              Sign out
+            </button>
+          </form>
+        </div>
       </section>
 
       <p className="hero-copy" style={{ maxWidth: "760px", textAlign: "left" }}>
