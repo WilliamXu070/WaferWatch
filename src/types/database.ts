@@ -251,6 +251,8 @@ export type DieInspection = {
   project_id: string;
   wafer_id: string;
   die_code: string;
+  pattern_row: number;
+  pattern_column: number;
   x_ratio: number;
   y_ratio: number;
   image_bucket: string;

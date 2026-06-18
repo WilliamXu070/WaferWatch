@@ -70,7 +70,7 @@ export function DieInspectionMap({
   useEffect(() => {
     let isStale = false;
 
-    void listDieInspections({ waferId, dieCode }).then((result) => {
+    void listDieInspections({ waferId, dieCode, row, column }).then((result) => {
       if (isStale) {
         return;
       }
@@ -85,7 +85,7 @@ export function DieInspectionMap({
     return () => {
       isStale = true;
     };
-  }, [dieCode, waferId]);
+  }, [column, dieCode, row, waferId]);
 
   useEffect(() => {
     if (!pendingPin) {
@@ -166,6 +166,8 @@ export function DieInspectionMap({
         projectId,
         waferId,
         dieCode,
+        row,
+        column,
         xRatio: pin.xRatio,
         yRatio: pin.yRatio,
         imageBucket: INSPECTION_BUCKET,

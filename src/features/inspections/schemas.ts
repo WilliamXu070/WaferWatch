@@ -3,7 +3,9 @@ import { uuidSchema } from "@/lib/validation";
 
 export const dieInspectionListSchema = z.object({
   waferId: uuidSchema,
-  dieCode: z.string().trim().min(2).max(32).regex(/^[A-Z][1-8]-V\d+$/)
+  dieCode: z.string().trim().min(2).max(32).regex(/^[A-Z][1-8]-V\d+$/),
+  row: z.number().int().min(1).max(64),
+  column: z.number().int().min(1).max(64)
 });
 
 export const dieInspectionCreateSchema = dieInspectionListSchema.extend({
@@ -20,4 +22,9 @@ export const dieInspectionCreateSchema = dieInspectionListSchema.extend({
 
 export const dieInspectionDeleteSchema = z.object({
   inspectionId: uuidSchema
+});
+
+export const dieInspectionCellSummarySchema = z.object({
+  waferId: uuidSchema,
+  dieCode: z.string().trim().min(2).max(32).regex(/^[A-Z][1-8]-V\d+$/)
 });

@@ -2,6 +2,7 @@
 
 import { type CSSProperties, type KeyboardEvent, type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { DieInspectionMap } from "@/components/DieInspectionMap";
+import { listDieInspectionCells } from "@/features/inspections/actions";
 import { updateWaferDiePollingParameter } from "@/features/wafers/actions";
 
 type Point = {
@@ -926,6 +927,10 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
   const [isInspectionPanelOpen, setIsInspectionPanelOpen] = useState(false);
   const [selectedInspectionCell, setSelectedInspectionCell] = useState<{ row: number; column: number } | null>(null);
+  const [inspectionCellState, setInspectionCellState] = useState<{
+    scope: string;
+    cells: Record<string, boolean>;
+  }>({ scope: "", cells: {} });
   const [pollingValues, setPollingValues] = useState<Record<string, string>>({});
   const [savedPollingOverrides, setSavedPollingOverrides] = useState<Record<string, string>>({});
   const [, setPollingSaveStatus] = useState<Record<string, "idle" | "saving" | "saved" | "error">>({});
@@ -1067,6 +1072,11 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       ? DIE_POST_ELB_LAYOUTS_BY_LABEL[activeChip.label] ?? null
       : null;
   const activePollingCanPersist = Boolean(activeWaferDatabaseId && UUID_PATTERN.test(activeWaferDatabaseId ?? ""));
+  const activeInspectionCellScope = activeWaferDatabaseId && activeChipCode
+    ? `${activeWaferDatabaseId}:${activeChipCode}`
+    : "";
+  const activeInspectionCells =
+    inspectionCellState.scope === activeInspectionCellScope ? inspectionCellState.cells : {};
 
   const getPollingValue = (
     row: number,
@@ -1156,6 +1166,33 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     pollingValues,
     savePollingCell
   ]);
+
+  useEffect(() => {
+    if (!activeWaferDatabaseId || !activeChipCode) {
+      return;
+    }
+
+    let isStale = false;
+    void listDieInspectionCells({
+      waferId: activeWaferDatabaseId,
+      dieCode: activeChipCode
+    }).then((result) => {
+      if (isStale) {
+        return;
+      }
+
+      if (result.ok) {
+        setInspectionCellState({
+          scope: `${activeWaferDatabaseId}:${activeChipCode}`,
+          cells: Object.fromEntries(result.data.map((cell) => [`${cell.row}:${cell.column}`, true]))
+        });
+      }
+    });
+
+    return () => {
+      isStale = true;
+    };
+  }, [activeChipCode, activeWaferDatabaseId]);
 
   const handleChipSelect = (chipId: string) => {
     if (!isPostDiceMode) {
@@ -1346,6 +1383,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
             const match = rect.id.match(/r-(\d+)-c-(\d+)$/);
             const inspectionRow = match ? Number(match[1]) : 1;
             const inspectionColumn = match ? Number(match[2]) : 1;
+            const hasInspection = isFocusedView && Boolean(activeInspectionCells[`${inspectionRow}:${inspectionColumn}`]);
             const openInspectionCell = (event: MouseEvent<SVGRectElement>) => {
               if (!isFocusedView) {
                 return;
@@ -1360,8 +1398,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
             };
 
             return (
+              <g key={rect.id}>
               <rect
-                key={rect.id}
                 className="wafer-mode-structure"
                 data-inspection-cell={`r${inspectionRow}-c${inspectionColumn}`}
                 data-inspection-row={inspectionRow}
@@ -1378,6 +1416,17 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                 onClick={isFocusedView ? openInspectionCell : undefined}
                 style={isFocusedView ? { pointerEvents: "auto", cursor: "pointer" } : undefined}
               />
+              {hasInspection ? (
+                <circle
+                  className="wafer-mode-inspection-pin"
+                  cx={rect.x + rect.width / 2}
+                  cy={rect.y + rect.height / 2}
+                  r={Math.max(0.65, Math.min(rect.width, rect.height) * 0.12)}
+                  vectorEffect="non-scaling-stroke"
+                  pointerEvents="none"
+                />
+              ) : null}
+              </g>
             );
           })}
         </g>
@@ -1648,6 +1697,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
               </button>
             </div>
             <DieInspectionMap
+              key={`${activeWaferDatabaseId}:${activeChipCode}:${activeChipInspectionRow}:${activeChipInspectionColumn}`}
               projectId={activeProjectId}
               waferId={activeWaferDatabaseId}
               dieCode={activeChipCode}
