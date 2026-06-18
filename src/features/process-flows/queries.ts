@@ -68,8 +68,6 @@ export type ProcessDashboardData = {
   calendarDays: ProcessDashboardCalendarDay[];
 };
 
-export type ProcessDashboardWaferData = Omit<ProcessDashboardData, "calendarDays">;
-
 function mapProcessStepsByTemplate(steps: ProcessStep[] | null) {
   const grouped: Record<string, ProcessStep[]> = {};
 
@@ -321,41 +319,10 @@ export async function getActiveAssignmentForWafer(waferId: string) {
   return data;
 }
 
-export async function getActiveWaferStateCount(processTemplateId: string) {
-  const supabase = await createServerSupabaseClient();
-  const { count, error } = await supabase
-    .from("wafer_process_assignments")
-    .select("id", { count: "exact", head: true })
-    .eq("template_id", processTemplateId)
-    .in("status", ["planned", "queued", "in_progress", "on_hold"]);
-
-  if (error) {
-    throw error;
-  }
-
-  return count ?? 0;
-}
-
 export async function getProcessDashboardData(
   processTemplateId: string,
-  calendarDays = 14,
-  includeCalendar = true
-): Promise<ProcessDashboardData | ProcessDashboardWaferData> {
-  return getProcessDashboardDataInternal(processTemplateId, calendarDays, includeCalendar);
-}
-
-export async function getProcessDashboardWaferData(
-  processTemplateId: string
-): Promise<ProcessDashboardWaferData> {
-  const data = await getProcessDashboardData(processTemplateId, 14, false);
-  return data as ProcessDashboardWaferData;
-}
-
-async function getProcessDashboardDataInternal(
-  processTemplateId: string,
-  calendarDays: number,
-  includeCalendar: boolean
-): Promise<ProcessDashboardData | ProcessDashboardWaferData> {
+  calendarDays = 14
+): Promise<ProcessDashboardData> {
   const supabase = await createServerSupabaseClient();
   const process = await getProcessTemplate(processTemplateId);
 
@@ -601,14 +568,6 @@ async function getProcessDashboardDataInternal(
     });
   }
 
-  if (!includeCalendar) {
-    return {
-      process,
-      workspaceWaferStates,
-      activeWaferStates
-    };
-  }
-
   const toolIds = new Set<string>();
   const calendarDaysMap = new Map<string, ProcessDashboardCalendarDay>();
   createEmptyCalendarDays(today, calendarDays).forEach((entry) => {
@@ -719,7 +678,7 @@ async function getProcessDashboardDataInternal(
 
     const sortedEvents = [...day.events].sort((a, b) => a.timeValue - b.timeValue);
     return {
-      ...calendarDay,
+      ...day,
       events: sortedEvents
     };
   });

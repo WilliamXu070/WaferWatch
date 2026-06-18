@@ -1,11 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import {
-  getActiveWaferStateCount,
-  getProcessDashboardWaferData,
-  getProcessTemplate
-} from "@/features/process-flows/queries";
+import { getProcessDashboardData } from "@/features/process-flows/queries";
 import { getProcessCalendarSchedule } from "@/features/calendar/queries";
 import { signOut } from "@/features/accounts/actions";
 import { ProcessFlowDiagram } from "@/components/ProcessFlowDiagram";
@@ -61,22 +57,12 @@ export default async function ProcessDashboardPage({
     redirect("/");
   }
 
-  const dashboardData = activeView === "calendar" ? null : await getProcessDashboardWaferData(processId).catch(() => null);
-  if (!dashboardData && activeView !== "calendar") {
+  const dashboardData = await getProcessDashboardData(processId).catch(() => null);
+  if (!dashboardData) {
     redirect("/processes");
   }
 
-  const process = dashboardData
-    ? dashboardData.process
-    : await getProcessTemplate(processId).catch(() => null);
-
-  if (!process) {
-    redirect("/processes");
-  }
-
-  const activeWaferStates = dashboardData?.activeWaferStates ?? [];
-  const workspaceWaferStates = dashboardData?.workspaceWaferStates ?? [];
-
+  const { process, activeWaferStates, workspaceWaferStates } = dashboardData;
   const sortedSteps = [...process.process_steps].sort((a, b) => a.step_order - b.step_order);
   const flowColumns = sortedSteps.map((step) => ({
     ...step,
@@ -87,17 +73,11 @@ export default async function ProcessDashboardPage({
   const calendarEnd = new Date(calendarStart);
   calendarEnd.setDate(calendarStart.getDate() + CALENDAR_WEEK_DAYS - 1);
   calendarEnd.setHours(23, 59, 59, 999);
-  const isCalendarView = activeView === "calendar";
-  const [activeWaferCount, calendarSchedule] = await Promise.all([
-    isCalendarView ? getActiveWaferStateCount(processId) : Promise.resolve(activeWaferStates.length),
-    isCalendarView
-      ? getProcessCalendarSchedule(
-          process.id,
-          calendarStart.toISOString(),
-          calendarEnd.toISOString()
-        )
-      : Promise.resolve(null)
-  ]);
+  const calendarSchedule = await getProcessCalendarSchedule(
+    process.id,
+    calendarStart.toISOString(),
+    calendarEnd.toISOString()
+  );
 
   return (
     <main className="page-shell">
@@ -122,7 +102,7 @@ export default async function ProcessDashboardPage({
         <p className="muted">
           <strong>{process.name}</strong> · {process.version}
           <span style={{ marginLeft: "8px", opacity: 0.7 }}>
-            · {activeWaferCount} die{activeWaferCount === 1 ? "" : "s"} in rotation.
+            · {activeWaferStates.length} die{activeWaferStates.length === 1 ? "" : "s"} in rotation.
           </span>
         </p>
       </section>
@@ -133,6 +113,7 @@ export default async function ProcessDashboardPage({
 
           return (
             <Link
+              prefetch={false}
               href={`/processes/${process.id}?view=${tab.key}`}
               key={tab.key}
               className={isActive ? "dashboard-tab active" : "dashboard-tab"}
@@ -177,8 +158,8 @@ export default async function ProcessDashboardPage({
               calendarStartDate={calendarStart.toISOString().slice(0, 10)}
               days={CALENDAR_WEEK_DAYS}
               steps={sortedSteps.map((step) => ({ id: step.id, name: step.name }))}
-              people={calendarSchedule?.people ?? []}
-              initialEvents={calendarSchedule?.events ?? []}
+              people={calendarSchedule.people}
+              initialEvents={calendarSchedule.events}
             />
           </>
         ) : null}
