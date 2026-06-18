@@ -858,8 +858,6 @@ function toSvgPoint(point: Point, viewport: SvgViewport) {
 
 export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisualizerProps) {
   const [rawPolygons, setRawPolygons] = useState<ParsedPolygon[]>([]);
-  const [loadMessage, setLoadMessage] = useState("Loading 4-inch GDS layout.");
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedWaferId, setSelectedWaferId] = useState<string | null>(null);
   const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
   const hasWaferOverview = wafers.length > 0;
@@ -897,22 +895,14 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
         }
 
         if (parsed.length === 0) {
-          setLoadMessage("The included GDS contains no boundary polygons.");
           setRawPolygons([]);
-          setIsLoading(false);
           return;
         }
 
         setRawPolygons(parsed);
-        setLoadMessage(`Loaded ${parsed.length} boundary object${parsed.length === 1 ? "" : "s"} from local GDS.`);
       } catch {
         if (!isStale) {
-          setLoadMessage("Failed to load GDS preview. Falling back to no layout.");
           setRawPolygons([]);
-        }
-      } finally {
-        if (!isStale) {
-          setIsLoading(false);
         }
       }
     };
@@ -1259,17 +1249,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
               </svg>
             ) : null}
           </div>
-          {!hasWaferOverview ? (
-            <>
-              <p className="muted wafer-load-state">{loadMessage}</p>
-              {isLoading ? <p className="wafer-load-state muted">Loading local wafer layout...</p> : null}
-              <p className="muted wafer-load-caption">
-                {waferMode === "pre-dice"
-                  ? "Fixed 4-inch 100mm wafer from local GDS, showing full wafer before die separation."
-                  : "Fixed 4-inch 100mm wafer from local GDS, split into the 8 largest selectable dies."}
-              </p>
-            </>
-          ) : null}
         </section>
 
         {isChipFocusView ? (
