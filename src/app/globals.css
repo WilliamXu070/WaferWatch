@@ -2227,7 +2227,7 @@ textarea {
   margin: 0;
   color: var(--polling-row-color);
   font-family: var(--font-headline);
-  font-size: clamp(30px, 4vw, 52px);
+  font-size: clamp(15px, 2.4vw, 34px);
   font-style: italic;
   font-weight: 900;
   line-height: 0.94;
@@ -2344,12 +2344,10 @@ textarea {
 }
 
 .wafer-mode-structure {
-  fill: rgba(255, 255, 255, 0.08);
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
   stroke-width: 2;
-  stroke: rgba(15, 23, 42, 0.75);
-  opacity: 0.85;
+  opacity: 1;
 }
 
 @media (max-width: 1080px) {

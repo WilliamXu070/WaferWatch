@@ -815,6 +815,13 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
 function rectMmToSvg(rect: DieStructureRectMm, viewport: SvgViewport): DieStructure {
   const startPoint = toSvgPoint({ x: rect.xMin, y: rect.yMin }, viewport);
   const endPoint = toSvgPoint({ x: rect.xMax, y: rect.yMax }, viewport);
+  const cellMatch = rect.id.match(/r-(\d+)-c-(\d+)$/);
+  const rowIndex = cellMatch ? Number(cellMatch[1]) - 1 : 0;
+  const columnIndex = cellMatch ? Number(cellMatch[2]) - 1 : 0;
+  const totalColumns = POST_ELB_GRID_DEFAULT_INCHES.columns;
+  const hue = POLLING_ROW_HUES[rowIndex % POLLING_ROW_HUES.length];
+  const lightnessStep = totalColumns > 1 ? columnIndex / (totalColumns - 1) : 0;
+  const fillLightness = 78 + lightnessStep * 10;
 
   return {
     id: rect.id,
@@ -822,8 +829,8 @@ function rectMmToSvg(rect: DieStructureRectMm, viewport: SvgViewport): DieStruct
     y: Math.min(startPoint.y, endPoint.y),
     width: Math.abs(endPoint.x - startPoint.x),
     height: Math.abs(endPoint.y - startPoint.y),
-    stroke: "#0f172a",
-    fill: "rgba(15, 23, 42, 0.15)"
+    stroke: `hsl(${hue} 44% 28%)`,
+    fill: `hsl(${hue} 58% ${fillLightness}%)`
   };
 }
 
