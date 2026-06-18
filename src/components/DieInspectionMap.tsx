@@ -75,6 +75,7 @@ export function DieInspectionMap({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [inspectionComment, setInspectionComment] = useState("");
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const visibleInspections = useMemo(
     () =>
@@ -502,6 +503,15 @@ export function DieInspectionMap({
           <p>No inspection images have been attached to this region yet.</p>
         </div>
       )}
+      <label className="die-inspection-comments">
+        <span>Comments</span>
+        <textarea
+          aria-label={`Comments for row ${row}, column ${column}`}
+          rows={3}
+          value={inspectionComment}
+          onChange={(event) => setInspectionComment(event.target.value)}
+        />
+      </label>
     </section>
   );
 }

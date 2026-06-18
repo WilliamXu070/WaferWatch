@@ -2650,6 +2650,42 @@ textarea {
   white-space: nowrap;
 }
 
+.die-inspection-comments {
+  display: grid;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 52%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-soft) 64%, var(--panel));
+  padding: 12px;
+}
+
+.die-inspection-comments span {
+  color: var(--foreground);
+  font-family: var(--font-headline);
+  font-size: 1rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.die-inspection-comments textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  padding: 10px;
+}
+
+.die-inspection-comments textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
+
 .wafer-chip-label {
   fill: var(--foreground);
   stroke: none;
