@@ -118,8 +118,11 @@ export function ProcessDashboardTabsClient({
     } else if (tab === "wafers") {
       setIsWafersMounted(true);
     } else if (tab === "calendar") {
+      if (!isCalendarLoaded) {
+        await loadCalendar();
+      }
+
       setIsCalendarMounted(true);
-      void loadCalendar();
     }
 
     setActiveTab(tab);
