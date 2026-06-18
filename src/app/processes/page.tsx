@@ -29,9 +29,6 @@ export default async function ProcessesPage() {
           <h1>Processes</h1>
         </div>
         <div className="topbar-actions">
-          <Link href="/wafer-visualizer" className="button button-secondary">
-            Wafer visualizer
-          </Link>
           <form action={signOut}>
             <button className="button button-secondary" type="submit">
               Sign out
