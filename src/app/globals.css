@@ -2057,7 +2057,6 @@ input {
   display: grid;
   gap: 10px;
   min-height: 620px;
-  align-content: center;
 }
 
 .wafer-params-block {
