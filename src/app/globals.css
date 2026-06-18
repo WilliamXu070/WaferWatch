@@ -2392,9 +2392,15 @@ textarea {
   z-index: 1;
 }
 
-.wafer-inspection-workspace {
+.wafer-inspection-stack {
   grid-column: 2;
   grid-row: 1 / span 2;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.wafer-inspection-workspace {
   display: grid;
   gap: 14px;
   align-content: start;
@@ -2413,6 +2419,45 @@ textarea {
   font-size: clamp(24px, 2.8vw, 34px);
   font-weight: 850;
   line-height: 1;
+}
+
+.wafer-inspection-polling-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.wafer-inspection-polling-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.wafer-inspection-polling-field {
+  display: grid;
+  grid-template-columns: minmax(116px, 0.28fr) minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 42px;
+  border: 1px solid color-mix(in srgb, var(--border) 52%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel-soft) 76%, var(--panel));
+  overflow: hidden;
+}
+
+.wafer-inspection-polling-field span {
+  display: flex;
+  align-items: center;
+  border-right: 1px solid color-mix(in srgb, var(--border) 52%, transparent);
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  padding: 8px 10px;
+}
+
+.wafer-inspection-polling-field .wafer-polling-cell-editor {
+  min-height: 42px;
+  border-radius: 0;
+  background: transparent;
 }
 
 .die-inspection-card {
@@ -2551,6 +2596,92 @@ textarea {
 
 .die-inspection-error {
   color: #7f1d1d !important;
+}
+
+.die-inspection-media-viewer {
+  display: grid;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 52%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-soft) 58%, var(--panel));
+  padding: 10px;
+}
+
+.die-inspection-media-viewer--empty {
+  min-height: 92px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.die-inspection-media-viewer__chrome {
+  display: grid;
+  grid-template-columns: 38px 1fr 38px;
+  align-items: center;
+  gap: 8px;
+}
+
+.die-inspection-media-viewer__arrow {
+  min-width: 38px;
+  padding: 6px 0;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.die-inspection-media-viewer__count {
+  justify-self: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.die-inspection-media-viewer__stage {
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: 1px solid color-mix(in srgb, var(--border) 48%, transparent);
+  border-radius: 12px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.die-inspection-media-viewer__stage img {
+  width: 100%;
+  height: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.die-inspection-media-viewer__stage p {
+  width: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.die-inspection-media-viewer__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.die-inspection-media-viewer__meta strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wafer-chip-label {

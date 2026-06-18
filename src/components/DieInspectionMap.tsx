@@ -1,6 +1,15 @@
 "use client";
 
-import { type ClipboardEvent, type CSSProperties, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ClipboardEvent,
+  type CSSProperties,
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import { useDropzone } from "react-dropzone";
 import {
   createDieInspection,
@@ -69,9 +78,35 @@ export function DieInspectionMap({
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const visibleInspections = preloadedInspections ?? inspections;
+  const activeInspectionId = selectedInspectionId ?? visibleInspections[0]?.id ?? null;
   const selectedInspection = useMemo(
-    () => visibleInspections.find((inspection) => inspection.id === selectedInspectionId) ?? null,
-    [visibleInspections, selectedInspectionId]
+    () => visibleInspections.find((inspection) => inspection.id === activeInspectionId) ?? null,
+    [activeInspectionId, visibleInspections]
+  );
+  const selectedInspectionIndex = useMemo(
+    () =>
+      selectedInspection
+        ? visibleInspections.findIndex((inspection) => inspection.id === selectedInspection.id)
+        : -1,
+    [selectedInspection, visibleInspections]
+  );
+
+  const selectInspectionByOffset = useCallback(
+    (offset: number) => {
+      if (visibleInspections.length === 0) {
+        return;
+      }
+
+      const currentIndex = selectedInspectionIndex >= 0 ? selectedInspectionIndex : 0;
+      const nextIndex = (currentIndex + offset + visibleInspections.length) % visibleInspections.length;
+      const nextInspection = visibleInspections[nextIndex];
+
+      setSelectedInspectionId(nextInspection.id);
+      setPendingPin(null);
+      setIsPreviewLoading(!nextInspection.imageUrl);
+      setUploadError(null);
+    },
+    [selectedInspectionIndex, visibleInspections]
   );
 
   useEffect(() => {
@@ -133,6 +168,33 @@ export function DieInspectionMap({
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [pendingPin, selectedInspection]);
+
+  useEffect(() => {
+    if (visibleInspections.length < 2 || pendingPin) {
+      return;
+    }
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        selectInspectionByOffset(-1);
+      }
+
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        selectInspectionByOffset(1);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [pendingPin, selectInspectionByOffset, visibleInspections.length]);
 
   useEffect(() => {
     if (!selectedInspection || selectedInspection.imageUrl) {
@@ -306,7 +368,7 @@ export function DieInspectionMap({
       }
   };
 
-  const bubblePin = pendingPin ?? selectedInspection;
+  const bubblePin = pendingPin ?? (selectedInspectionId ? selectedInspection : null);
 
   return (
     <section
@@ -326,7 +388,7 @@ export function DieInspectionMap({
             type="button"
             className={[
               "die-inspection-pin",
-              selectedInspectionId === inspection.id ? "die-inspection-pin--selected" : ""
+              activeInspectionId === inspection.id ? "die-inspection-pin--selected" : ""
             ].join(" ")}
             key={inspection.id}
             style={{
@@ -426,6 +488,56 @@ export function DieInspectionMap({
           </div>
         ) : null}
       </div>
+      {visibleInspections.length > 0 ? (
+        <div className="die-inspection-media-viewer" aria-label="Inspection media viewer">
+          <div className="die-inspection-media-viewer__chrome">
+            <button
+              type="button"
+              className="button button-secondary die-inspection-media-viewer__arrow"
+              onClick={() => selectInspectionByOffset(-1)}
+              disabled={visibleInspections.length < 2}
+              aria-label="Previous inspection image"
+            >
+              {"<"}
+            </button>
+            <div className="die-inspection-media-viewer__count">
+              {Math.max(selectedInspectionIndex + 1, 1)} / {visibleInspections.length}
+            </div>
+            <button
+              type="button"
+              className="button button-secondary die-inspection-media-viewer__arrow"
+              onClick={() => selectInspectionByOffset(1)}
+              disabled={visibleInspections.length < 2}
+              aria-label="Next inspection image"
+            >
+              {">"}
+            </button>
+          </div>
+          <div className="die-inspection-media-viewer__stage">
+            {isPreviewLoading ? (
+              <p>Loading preview...</p>
+            ) : selectedInspection?.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={selectedInspection.imageUrl} alt={selectedInspection.imageFileName} />
+            ) : (
+              <p>No preview image is available for this pin.</p>
+            )}
+          </div>
+          {selectedInspection ? (
+            <div className="die-inspection-media-viewer__meta">
+              <strong>{selectedInspection.imageFileName}</strong>
+              <span>
+                Pin {Math.max(selectedInspectionIndex + 1, 1)} at{" "}
+                {Math.round(selectedInspection.xRatio * 100)}% length
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="die-inspection-media-viewer die-inspection-media-viewer--empty">
+          <p>No inspection images have been attached to this region yet.</p>
+        </div>
+      )}
     </section>
   );
 }

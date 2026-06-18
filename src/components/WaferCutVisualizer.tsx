@@ -1289,6 +1289,69 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     }));
   };
 
+  const renderActiveInspectionPollingSummary = () => {
+    if (!activePollingTemplate || !activeChip || !activeChipCode || !activeWaferDatabaseId) {
+      return null;
+    }
+
+    return (
+      <section
+        className="panel wafer-inspection-polling-panel"
+        aria-label={`${activeChipCode} selected chip polling parameters`}
+      >
+        <div className="wafer-polling-header">
+          <div>
+            <h3>Chip polling parameters</h3>
+            <p>
+              Row {activeChipInspectionRow} / Column {activeChipInspectionColumn}
+            </p>
+          </div>
+        </div>
+        <div className="wafer-inspection-polling-grid">
+          {POLLING_PARAMETER_FIELDS.map((field) => {
+            const key = getPollingCellKey(
+              activeWaferDatabaseId,
+              activeChipCode,
+              activeChipInspectionRow,
+              activeChipInspectionColumn,
+              field.key
+            );
+            const inputValue = getPollingValue(
+              activeChipInspectionRow,
+              activeChipInspectionColumn,
+              field.key
+            );
+
+            return (
+              <label className="wafer-inspection-polling-field" key={`inspection-${field.key}`}>
+                <span>{field.label}</span>
+                <textarea
+                  className="wafer-polling-cell-editor"
+                  aria-label={`${field.label} for row ${activeChipInspectionRow}, column ${activeChipInspectionColumn}`}
+                  rows={1}
+                  value={inputValue}
+                  onChange={(event) => {
+                    handlePollingCellChange(
+                      activeChipInspectionRow,
+                      activeChipInspectionColumn,
+                      field.key,
+                      event.target.value
+                    );
+                    fitPollingTextareaHeight(event.target);
+                  }}
+                  onFocus={(event) => fitPollingTextareaHeight(event.target)}
+                  onBlur={(event) => {
+                    void savePollingCell(key, event.target.value);
+                  }}
+                />
+              </label>
+            );
+          })}
+        </div>
+      </section>
+    );
+  };
+
   const renderPollingParameterSheet = () => {
     if (!activePollingTemplate || !activeChip || !activeChipCode) {
       return null;
@@ -1753,54 +1816,57 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
         ) : null}
         </div>
         {isChipFocusView && isInspectionPanelOpen && activeChipCode && activeChipExpandedName && activeWaferDatabaseId && activeProjectId ? (
-          <section className="panel wafer-inspection-workspace">
-            <div className="wafer-inspection-workspace__header">
-              <h3>Inspection</h3>
-              <button
-                type="button"
-                className="button button-secondary"
-                onClick={() => setIsInspectionPanelOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-            <DieInspectionMap
-              key={`${activeWaferDatabaseId}:${activeChipCode}:${activeChipInspectionRow}:${activeChipInspectionColumn}`}
-              projectId={activeProjectId}
-              waferId={activeWaferDatabaseId}
-              dieCode={activeChipCode}
-              dieName={activeChipExpandedName}
-              row={activeChipInspectionRow}
-              column={activeChipInspectionColumn}
-              hue={activeInspectionHue}
-              preloadedInspections={activeInspectionRecords}
-              onInspectionsChange={(updatedInspections) => {
-                setInspectionCellState((current) => {
-                  if (current.scope !== activeInspectionCellScope) {
-                    return current;
-                  }
+          <div className="wafer-inspection-stack">
+            {renderActiveInspectionPollingSummary()}
+            <section className="panel wafer-inspection-workspace">
+              <div className="wafer-inspection-workspace__header">
+                <h3>Inspection</h3>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => setIsInspectionPanelOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+              <DieInspectionMap
+                key={`${activeWaferDatabaseId}:${activeChipCode}:${activeChipInspectionRow}:${activeChipInspectionColumn}`}
+                projectId={activeProjectId}
+                waferId={activeWaferDatabaseId}
+                dieCode={activeChipCode}
+                dieName={activeChipExpandedName}
+                row={activeChipInspectionRow}
+                column={activeChipInspectionColumn}
+                hue={activeInspectionHue}
+                preloadedInspections={activeInspectionRecords}
+                onInspectionsChange={(updatedInspections) => {
+                  setInspectionCellState((current) => {
+                    if (current.scope !== activeInspectionCellScope) {
+                      return current;
+                    }
 
-                  const nextCells = { ...current.cells };
-                  const nextInspectionsByCell = {
-                    ...current.inspectionsByCell,
-                    [activeInspectionCellKey]: updatedInspections
-                  };
+                    const nextCells = { ...current.cells };
+                    const nextInspectionsByCell = {
+                      ...current.inspectionsByCell,
+                      [activeInspectionCellKey]: updatedInspections
+                    };
 
-                  if (updatedInspections.length > 0) {
-                    nextCells[activeInspectionCellKey] = true;
-                  } else {
-                    delete nextCells[activeInspectionCellKey];
-                  }
+                    if (updatedInspections.length > 0) {
+                      nextCells[activeInspectionCellKey] = true;
+                    } else {
+                      delete nextCells[activeInspectionCellKey];
+                    }
 
-                  return {
-                    ...current,
-                    cells: nextCells,
-                    inspectionsByCell: nextInspectionsByCell
-                  };
-                });
-              }}
-            />
-          </section>
+                    return {
+                      ...current,
+                      cells: nextCells,
+                      inspectionsByCell: nextInspectionsByCell
+                    };
+                  });
+                }}
+              />
+            </section>
+          </div>
         ) : isChipFocusView ? renderPollingParameterSheet() : null}
       </div>
     </div>
