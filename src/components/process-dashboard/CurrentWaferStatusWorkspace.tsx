@@ -10,14 +10,6 @@ type ChipWorkspaceProps = {
 };
 
 const DEFAULT_SEED_FILTER = "alpha";
-const EMPTY_FALLBACK_SEEDS: Array<{ assignmentId: string; waferCode: string; dieLabel: string | null }> = [
-  {
-    assignmentId: "seed-fallback-alpha",
-    waferCode: "Alpha",
-    dieLabel: null
-  }
-];
-const FALLBACK_ALPHA_STEP_NAME = "Post EBL";
 
 function normalizeStatusLabel(status: StepStatus | null) {
   if (!status) {
@@ -53,34 +45,19 @@ function matchesAlphaSeed(waferCode: string) {
 
 export function CurrentWaferStatusWorkspace({ states }: ChipWorkspaceProps) {
   const availableStates = useMemo(() => {
-    const seeded = states.filter((state) => matchesAlphaSeed(state.waferCode));
-
-    if (seeded.length > 0) {
-      return seeded;
-    }
-
-    return EMPTY_FALLBACK_SEEDS.map((seed) => ({
-      assignmentId: seed.assignmentId,
-      assignmentStatus: "planned",
-      waferId: seed.assignmentId,
-      waferCode: seed.waferCode,
-      projectId: "seed-fallback",
-      dieLabel: seed.dieLabel,
-      currentStepId: null,
-      currentStepName: FALLBACK_ALPHA_STEP_NAME,
-      currentStepOrder: null,
-      currentStepStatus: "running" as StepStatus,
-      currentStepArea: null,
-      currentToolId: null
-    }));
+    return states.filter((state) => matchesAlphaSeed(state.waferCode));
   }, [states]);
 
   const visualizerWafers = availableStates.map((state) => ({
     id: state.assignmentId,
+    waferId: state.waferId,
     name: state.waferCode,
     stateName: state.currentStepName,
     statusLabel: normalizeStatusLabel(state.currentStepStatus),
-    assignmentLabel: state.assignmentStatus.replace(/_/g, " ")
+    assignmentLabel: state.assignmentStatus.replace(/_/g, " "),
+    nextStepName: state.nextStepName,
+    currentHandlerName: state.currentHandlerName,
+    dieDescriptions: state.dieDescriptions
   }));
 
   if (availableStates.length === 0) {

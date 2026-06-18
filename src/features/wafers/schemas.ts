@@ -23,3 +23,9 @@ export const waferStatusSchema = z.object({
   status: z.enum(["planned", "queued", "in_progress", "on_hold", "completed", "scrapped"]),
   notes: z.string().trim().max(2000).nullable().optional()
 });
+
+export const waferDieDescriptionSchema = z.object({
+  waferId: uuidSchema,
+  dieCode: z.string().trim().min(2).max(32).regex(/^[A-Z][1-8]-V\d+$/),
+  description: z.string().max(4000)
+});

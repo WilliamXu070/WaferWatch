@@ -12,12 +12,12 @@ import type {
 
 type DashboardAssignment = Pick<
   WaferProcessAssignment,
-  "id" | "wafer_id" | "status" | "assigned_at" | "started_at" | "completed_at"
+  "id" | "wafer_id" | "status" | "assigned_at" | "started_at" | "completed_at" | "assigned_by"
 >;
 
 type DashboardStepExecution = Pick<
   StepExecution,
-  "id" | "assignment_id" | "process_step_id" | "status" | "tool_id" | "created_at"
+  "id" | "assignment_id" | "process_step_id" | "status" | "tool_id" | "operator_id" | "completed_by" | "created_at"
 >;
 
 export type ProcessTemplateWithSteps = ProcessTemplate & {
@@ -37,6 +37,9 @@ export type ProcessDashboardWaferState = {
   currentStepStatus: StepStatus | null;
   currentStepArea: string | null;
   currentToolId: string | null;
+  nextStepName: string | null;
+  currentHandlerName: string | null;
+  dieDescriptions: Record<string, string>;
 };
 
 export type ProcessDashboardCalendarEvent = {
@@ -158,6 +161,21 @@ function extractDieLabel(metadata: Json): string | null {
   return typeof candidate === "string" && candidate.trim() ? candidate.trim() : null;
 }
 
+function extractDieDescriptions(metadata: Json): Record<string, string> {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return {};
+  }
+
+  const rawDescriptions = metadata.die_descriptions;
+  if (!rawDescriptions || typeof rawDescriptions !== "object" || Array.isArray(rawDescriptions)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(rawDescriptions).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+  );
+}
+
 function deriveStepStatusRank(status: StepStatus) {
   if (status === "running") return 0;
   if (status === "blocked") return 1;
@@ -276,11 +294,12 @@ export async function getProcessDashboardData(
   const stepOrderById = new Map(process.process_steps.map((step) => [step.id, step.step_order]));
   const stepNameById = new Map(process.process_steps.map((step) => [step.id, step.name]));
   const stepAreaById = new Map(process.process_steps.map((step) => [step.id, step.process_area]));
+  const sortedProcessSteps = [...process.process_steps].sort((a, b) => a.step_order - b.step_order);
   const seededWaferPostDiceStepName = "Post EBL";
 
   const assignmentsResult = await supabase
     .from("wafer_process_assignments")
-    .select("id, wafer_id, status, assigned_at, started_at, completed_at")
+    .select("id, wafer_id, status, assigned_at, started_at, completed_at, assigned_by")
     .eq("template_id", processTemplateId);
 
   if (assignmentsResult.error) {
@@ -310,7 +329,7 @@ export async function getProcessDashboardData(
     assignmentIds.length
       ? supabase
           .from("step_executions")
-          .select("id, assignment_id, process_step_id, status, tool_id, created_at")
+          .select("id, assignment_id, process_step_id, status, tool_id, operator_id, completed_by, created_at")
           .in("assignment_id", assignmentIds)
       : Promise.resolve({ data: [], error: null } as const),
     seededQuery,
@@ -377,8 +396,16 @@ export async function getProcessDashboardData(
   const assignmentWaferIdById = new Map(assignments.map((assignment) => [assignment.id, assignment.wafer_id]));
 
   const stepExecutionsByAssignment = new Map<string, DashboardStepExecution[]>();
+  const handlerProfileIds = new Set<string>();
 
   for (const execution of stepExecutionsResult.data ?? []) {
+    if (execution.operator_id) {
+      handlerProfileIds.add(execution.operator_id);
+    }
+    if (execution.completed_by) {
+      handlerProfileIds.add(execution.completed_by);
+    }
+
     const entry = stepExecutionsByAssignment.get(execution.assignment_id);
     if (entry) {
       entry.push(execution as DashboardStepExecution);
@@ -386,6 +413,30 @@ export async function getProcessDashboardData(
       stepExecutionsByAssignment.set(execution.assignment_id, [execution as DashboardStepExecution]);
     }
   }
+
+  for (const assignment of assignments) {
+    if (assignment.assigned_by) {
+      handlerProfileIds.add(assignment.assigned_by);
+    }
+  }
+
+  const handlersResult = handlerProfileIds.size
+    ? await supabase
+        .from("profiles")
+        .select("id, display_name, email")
+        .in("id", Array.from(handlerProfileIds))
+    : { data: [], error: null };
+
+  if (handlersResult.error) {
+    throw handlersResult.error;
+  }
+
+  const handlerNameById = new Map(
+    (handlersResult.data ?? []).map((profile) => [
+      profile.id,
+      profile.display_name?.trim() || profile.email
+    ])
+  );
 
   const workspaceWaferStates: ProcessDashboardWaferState[] = [];
   const activeWaferStates: ProcessDashboardWaferState[] = [];
@@ -399,6 +450,16 @@ export async function getProcessDashboardData(
 
     const executions = stepExecutionsByAssignment.get(assignment.id) ?? [];
     const currentExecution = pickCurrentStepExecution(executions, stepOrderById);
+    const currentStepOrder = currentExecution
+      ? stepOrderById.get(currentExecution.process_step_id) ?? null
+      : null;
+    const nextStep = currentStepOrder === null
+      ? null
+      : sortedProcessSteps.find((step) => step.step_order > currentStepOrder) ?? null;
+    const handlerProfileId =
+      currentExecution?.operator_id ??
+      currentExecution?.completed_by ??
+      assignment.assigned_by;
 
     const waferState: ProcessDashboardWaferState = {
       assignmentId: assignment.id,
@@ -409,12 +470,13 @@ export async function getProcessDashboardData(
       dieLabel: extractDieLabel(wafer.metadata as Json),
       currentStepId: currentExecution?.process_step_id ?? null,
       currentStepName: currentExecution ? stepNameById.get(currentExecution.process_step_id) ?? null : null,
-      currentStepOrder: currentExecution
-        ? stepOrderById.get(currentExecution.process_step_id) ?? null
-        : null,
+      currentStepOrder,
       currentStepStatus: currentExecution ? currentExecution.status : null,
       currentStepArea: currentExecution ? stepAreaById.get(currentExecution.process_step_id) ?? null : null,
-      currentToolId: currentExecution?.tool_id ?? null
+      currentToolId: currentExecution?.tool_id ?? null,
+      nextStepName: nextStep?.name ?? null,
+      currentHandlerName: handlerProfileId ? handlerNameById.get(handlerProfileId) ?? null : null,
+      dieDescriptions: extractDieDescriptions(wafer.metadata as Json)
     };
 
     workspaceWaferStates.push(waferState);
@@ -445,7 +507,10 @@ export async function getProcessDashboardData(
       currentStepOrder: null,
       currentStepStatus: "running",
       currentStepArea: null,
-      currentToolId: null
+      currentToolId: null,
+      nextStepName: null,
+      currentHandlerName: null,
+      dieDescriptions: extractDieDescriptions(seededWafer.metadata as Json)
     });
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { updateWaferDieDescription } from "@/features/wafers/actions";
 
 type Point = {
   x: number;
@@ -70,10 +71,14 @@ type SvgViewport = {
 
 export type WaferVisualizerSample = {
   id: string;
+  waferId?: string;
   name: string;
   stateName?: string | null;
   statusLabel?: string | null;
   assignmentLabel?: string | null;
+  nextStepName?: string | null;
+  currentHandlerName?: string | null;
+  dieDescriptions?: Record<string, string>;
 };
 
 type WaferCutVisualizerProps = {
@@ -116,6 +121,7 @@ const WAFER_OVERVIEW_TILE_GAP = 30;
 const WAFER_OVERVIEW_LABEL_HEIGHT = 42;
 const WAFER_REUSE_PREFIX = "V";
 const WAFER_REUSE_CYCLE = 1;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const WAFER_FAMILY_ORDER = [
   "alpha",
   "beta",
@@ -352,26 +358,6 @@ function buildLinearCuts(halfSpan: number, step: number): number[] {
   }
 
   return rawCuts;
-}
-
-function formatDieStatus(status: DieStatus) {
-  if (status === "post_elb") {
-    return "Post EBL";
-  }
-
-  if (status === "post_pad") {
-    return "Post PAD";
-  }
-
-  if (status === "post_polling") {
-    return "Post Polling";
-  }
-
-  if (status === "post_inspection") {
-    return "Post Inspection";
-  }
-
-  return "Clean";
 }
 
 function getWaferModeFromState(waferStateName?: string | null): WaferMode {
@@ -861,6 +847,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const [selectedWaferId, setSelectedWaferId] = useState<string | null>(null);
   const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
   const [chipDescriptions, setChipDescriptions] = useState<Record<string, string>>({});
+  const [savedDescriptionOverrides, setSavedDescriptionOverrides] = useState<Record<string, string>>({});
+  const [descriptionSaveStatus, setDescriptionSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const hasWaferOverview = wafers.length > 0;
   const selectedWafer = hasWaferOverview
     ? wafers.find((wafer) => wafer.id === selectedWaferId) ?? null
@@ -878,6 +866,21 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       }, {}),
     [wafers]
   );
+  const databaseDescriptionByKey = useMemo(() => {
+    const descriptions: Record<string, string> = {};
+
+    for (const wafer of wafers) {
+      if (!wafer.waferId) {
+        continue;
+      }
+
+      for (const [dieCode, description] of Object.entries(wafer.dieDescriptions ?? {})) {
+        descriptions[`${wafer.waferId}:${dieCode}`] = description;
+      }
+    }
+
+    return descriptions;
+  }, [wafers]);
 
   useEffect(() => {
     let isStale = false;
@@ -943,9 +946,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       : null;
 
   const activeChip = activeChipId ? chipPieces.find((chip) => chip.id === activeChipId) ?? null : null;
-  const activeChipModeStatus = activeChip
-    ? getDieStatusForLabelAndMode(activeChip.label, waferMode)
-    : null;
   const activeChipViewport = activeChip ? buildSvgViewport(activeChip.points) : null;
   const displayViewport = activeChipViewport ?? svgViewport;
   const isChipFocusView = Boolean(activeChip && activeChipViewport);
@@ -957,8 +957,85 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const activeChipExpandedName = activeChip
     ? `${activeWaferName} wafer, die number ${activeChip.label}, version ${WAFER_REUSE_CYCLE}`
     : null;
-  const activeDescriptionKey = activeChipCode ? `${selectedWafer?.id ?? "single"}:${activeChipCode}` : null;
-  const activeChipDescription = activeDescriptionKey ? chipDescriptions[activeDescriptionKey] ?? "" : "";
+  const activeWaferDatabaseId = selectedWafer?.waferId;
+  const activeDescriptionKey = activeChipCode && activeWaferDatabaseId
+    ? `${activeWaferDatabaseId}:${activeChipCode}`
+    : null;
+  const activeDescriptionCanPersist = Boolean(activeWaferDatabaseId && UUID_PATTERN.test(activeWaferDatabaseId));
+  const activePersistedDescription = activeDescriptionKey
+    ? savedDescriptionOverrides[activeDescriptionKey] ?? databaseDescriptionByKey[activeDescriptionKey] ?? ""
+    : "";
+  const activeChipDescription = activeDescriptionKey
+    ? chipDescriptions[activeDescriptionKey] ?? activePersistedDescription
+    : "";
+  const currentStepLabel = activeWaferStateName ?? "N/A";
+  const nextStepLabel = selectedWafer?.nextStepName ?? "N/A";
+  const currentHandlerLabel = selectedWafer?.currentHandlerName ?? "N/A";
+
+  const saveActiveChipDescription = async (description: string) => {
+    if (!activeDescriptionKey || !activeChipCode || !activeWaferDatabaseId || !activeDescriptionCanPersist) {
+      return;
+    }
+
+    if (description === activePersistedDescription) {
+      return;
+    }
+
+    setDescriptionSaveStatus("saving");
+    const result = await updateWaferDieDescription({
+      waferId: activeWaferDatabaseId,
+      dieCode: activeChipCode,
+      description
+    });
+
+    if (result.ok) {
+      setSavedDescriptionOverrides((current) => ({
+        ...current,
+        [activeDescriptionKey]: description
+      }));
+      setDescriptionSaveStatus("saved");
+    } else {
+      setDescriptionSaveStatus("error");
+    }
+  };
+
+  useEffect(() => {
+    if (!activeDescriptionKey || !activeChipCode || !activeWaferDatabaseId || !activeDescriptionCanPersist) {
+      return;
+    }
+
+    if (activeChipDescription === activePersistedDescription) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setDescriptionSaveStatus("saving");
+      void updateWaferDieDescription({
+        waferId: activeWaferDatabaseId,
+        dieCode: activeChipCode,
+        description: activeChipDescription
+      }).then((result) => {
+        if (result.ok) {
+          setSavedDescriptionOverrides((current) => ({
+            ...current,
+            [activeDescriptionKey]: activeChipDescription
+          }));
+          setDescriptionSaveStatus("saved");
+        } else {
+          setDescriptionSaveStatus("error");
+        }
+      });
+    }, 900);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    activeChipCode,
+    activeChipDescription,
+    activeDescriptionCanPersist,
+    activeDescriptionKey,
+    activePersistedDescription,
+    activeWaferDatabaseId
+  ]);
 
   const handleChipSelect = (chipId: string) => {
     if (!isPostDiceMode) {
@@ -991,6 +1068,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       ...current,
       [activeDescriptionKey]: value
     }));
+    setDescriptionSaveStatus("idle");
   };
 
   const renderChip = (
@@ -1271,17 +1349,34 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                         <p className="wafer-params-name">{activeChipExpandedName}</p>
                       </div>
                       <div className="wafer-params-empty">
-                        <p className="muted">State: {activeWaferStateName ?? "Not started"}</p>
+                        <p className="muted">State: {currentStepLabel}</p>
                         <p className="muted">Wafer state: {getWaferStateLabel(waferMode)}</p>
-                        <p className="muted">Status: {activeChipModeStatus ? formatDieStatus(activeChipModeStatus) : "Unassigned"}</p>
+                        <p className="muted">Status: {currentStepLabel}</p>
+                        <p className="muted">Current step: {currentStepLabel}</p>
+                        <p className="muted">Next step: {nextStepLabel}</p>
+                        <p className="muted">Current handler: {currentHandlerLabel}</p>
                         <label className="wafer-description-field">
                           Description
                           <textarea
                             className="wafer-description-input"
                             value={activeChipDescription}
                             onChange={(event) => handleChipDescriptionChange(event.target.value)}
+                            onBlur={(event) => {
+                              void saveActiveChipDescription(event.target.value);
+                            }}
                             placeholder="Add notes, observations, cleanup history, or anything useful for this die."
                           />
+                          <span className="wafer-description-save-state">
+                            {activeDescriptionCanPersist
+                              ? descriptionSaveStatus === "saving"
+                                ? "Saving..."
+                                : descriptionSaveStatus === "saved"
+                                  ? "Saved"
+                                  : descriptionSaveStatus === "error"
+                                    ? "Save failed"
+                                    : "Updates after typing stops"
+                              : "Database wafer required to save"}
+                          </span>
                         </label>
                       </div>
                     </div>

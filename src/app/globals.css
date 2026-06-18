@@ -2112,6 +2112,12 @@ input {
   border-color: rgba(88, 204, 2, 0.55);
 }
 
+.wafer-description-save-state {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .wafer-params-scroll {
   border: 1px solid var(--border);
   border-radius: 8px;
