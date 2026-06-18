@@ -2421,45 +2421,6 @@ textarea {
   line-height: 1;
 }
 
-.wafer-inspection-polling-panel {
-  display: grid;
-  gap: 12px;
-}
-
-.wafer-inspection-polling-grid {
-  display: grid;
-  gap: 8px;
-}
-
-.wafer-inspection-polling-field {
-  display: grid;
-  grid-template-columns: minmax(116px, 0.28fr) minmax(0, 1fr);
-  align-items: stretch;
-  min-height: 42px;
-  border: 1px solid color-mix(in srgb, var(--border) 52%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--panel-soft) 76%, var(--panel));
-  overflow: hidden;
-}
-
-.wafer-inspection-polling-field span {
-  display: flex;
-  align-items: center;
-  border-right: 1px solid color-mix(in srgb, var(--border) 52%, transparent);
-  background: color-mix(in srgb, var(--foreground) 7%, transparent);
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: -0.01em;
-  padding: 8px 10px;
-}
-
-.wafer-inspection-polling-field .wafer-polling-cell-editor {
-  min-height: 42px;
-  border-radius: 0;
-  background: transparent;
-}
-
 .die-inspection-card {
   display: grid;
   gap: 12px;

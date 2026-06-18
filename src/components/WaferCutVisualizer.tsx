@@ -1294,59 +1294,87 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       return null;
     }
 
+    const columns = sanitizeGridAxisCount(activePollingTemplate.columns);
+    const row = activeChipInspectionRow;
+    const rowIndex = row - 1;
+    const gridStyle = {
+      gridTemplateColumns: `minmax(104px, 0.28fr) repeat(${columns}, minmax(118px, 1fr))`
+    };
+
     return (
       <section
-        className="panel wafer-inspection-polling-panel"
+        className="panel wafer-polling-panel wafer-inspection-polling-panel"
         aria-label={`${activeChipCode} selected chip polling parameters`}
       >
         <div className="wafer-polling-header">
-          <div>
-            <h3>Chip polling parameters</h3>
-            <p>
-              Row {activeChipInspectionRow} / Column {activeChipInspectionColumn}
-            </p>
-          </div>
+          <h3>Polling parameters</h3>
         </div>
-        <div className="wafer-inspection-polling-grid">
-          {POLLING_PARAMETER_FIELDS.map((field) => {
-            const key = getPollingCellKey(
-              activeWaferDatabaseId,
-              activeChipCode,
-              activeChipInspectionRow,
-              activeChipInspectionColumn,
-              field.key
-            );
-            const inputValue = getPollingValue(
-              activeChipInspectionRow,
-              activeChipInspectionColumn,
-              field.key
-            );
-
-            return (
-              <label className="wafer-inspection-polling-field" key={`inspection-${field.key}`}>
-                <span>{field.label}</span>
-                <textarea
-                  className="wafer-polling-cell-editor"
-                  aria-label={`${field.label} for row ${activeChipInspectionRow}, column ${activeChipInspectionColumn}`}
-                  rows={1}
-                  value={inputValue}
-                  onChange={(event) => {
-                    handlePollingCellChange(
-                      activeChipInspectionRow,
-                      activeChipInspectionColumn,
-                      field.key,
-                      event.target.value
+        <div className="wafer-polling-sheet">
+          <section
+            className="wafer-polling-row-block"
+            key={`inspection-polling-row-${row}`}
+            style={getPollingRowStyle(rowIndex)}
+          >
+            <h4>Row {row}</h4>
+            <div className="wafer-polling-grid" style={gridStyle}>
+              <div className="wafer-polling-corner">Parameter</div>
+              {Array.from({ length: columns }, (_, columnIndex) => (
+                <div
+                  className="wafer-polling-column-header"
+                  key={`inspection-polling-header-${row}-${columnIndex + 1}`}
+                  style={getPollingColumnStyle(rowIndex, columnIndex, columns)}
+                >
+                  C{columnIndex + 1}
+                </div>
+              ))}
+              {POLLING_PARAMETER_FIELDS.map((field) => (
+                <div className="wafer-polling-field-row" key={`inspection-polling-${row}-${field.key}`}>
+                  <div className="wafer-polling-row-label">{field.label}</div>
+                  {Array.from({ length: columns }, (_, columnIndex) => {
+                    const column = columnIndex + 1;
+                    const key = getPollingCellKey(
+                      activeWaferDatabaseId,
+                      activeChipCode,
+                      row,
+                      column,
+                      field.key
                     );
-                    fitPollingTextareaHeight(event.target);
-                  }}
-                  onFocus={(event) => fitPollingTextareaHeight(event.target)}
-                  onBlur={(event) => {
-                    void savePollingCell(key, event.target.value);
-                  }}
-                />
-              </label>
-            );
-          })}
+                    const inputValue = getPollingValue(row, column, field.key);
+                    const cellStyle = getPollingColumnStyle(rowIndex, columnIndex, columns);
+
+                    return (
+                      <div
+                        className={[
+                          "wafer-polling-cell",
+                          field.key === "description" ? "wafer-polling-cell--description" : ""
+                        ].join(" ")}
+                        key={`inspection-polling-cell-${row}-${column}-${field.key}`}
+                        style={cellStyle}
+                      >
+                        <span className="sr-only">
+                          Row {row}, column {column}, {field.label}
+                        </span>
+                        <textarea
+                          className="wafer-polling-cell-editor"
+                          aria-label={`Row ${row}, column ${column}, ${field.label}`}
+                          rows={1}
+                          value={inputValue}
+                          onChange={(event) => {
+                            handlePollingCellChange(row, column, field.key, event.target.value);
+                            fitPollingTextareaHeight(event.target);
+                          }}
+                          onFocus={(event) => fitPollingTextareaHeight(event.target)}
+                          onBlur={(event) => {
+                            void savePollingCell(key, event.target.value);
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
       </section>
     );
