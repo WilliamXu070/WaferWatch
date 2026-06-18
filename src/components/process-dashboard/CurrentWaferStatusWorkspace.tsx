@@ -57,7 +57,8 @@ export function CurrentWaferStatusWorkspace({ states }: ChipWorkspaceProps) {
     assignmentLabel: state.assignmentStatus.replace(/_/g, " "),
     nextStepName: state.nextStepName,
     currentHandlerName: state.currentHandlerName,
-    dieDescriptions: state.dieDescriptions
+    dieDescriptions: state.dieDescriptions,
+    diePollingParameters: state.diePollingParameters
   }));
 
   if (availableStates.length === 0) {

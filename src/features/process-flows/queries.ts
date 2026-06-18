@@ -40,6 +40,7 @@ export type ProcessDashboardWaferState = {
   nextStepName: string | null;
   currentHandlerName: string | null;
   dieDescriptions: Record<string, string>;
+  diePollingParameters: Record<string, Record<string, Record<string, Record<string, string>>>>;
 };
 
 export type ProcessDashboardCalendarEvent = {
@@ -174,6 +175,57 @@ function extractDieDescriptions(metadata: Json): Record<string, string> {
   return Object.fromEntries(
     Object.entries(rawDescriptions).filter((entry): entry is [string, string] => typeof entry[1] === "string")
   );
+}
+
+function extractDiePollingParameters(metadata: Json): Record<string, Record<string, Record<string, Record<string, string>>>> {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return {};
+  }
+
+  const rawParameters = metadata.die_polling_parameters;
+  if (!rawParameters || typeof rawParameters !== "object" || Array.isArray(rawParameters)) {
+    return {};
+  }
+
+  const output: Record<string, Record<string, Record<string, Record<string, string>>>> = {};
+
+  for (const [dieCode, rawRows] of Object.entries(rawParameters)) {
+    if (!rawRows || typeof rawRows !== "object" || Array.isArray(rawRows)) {
+      continue;
+    }
+
+    const rows: Record<string, Record<string, Record<string, string>>> = {};
+    for (const [rowKey, rawColumns] of Object.entries(rawRows)) {
+      if (!rawColumns || typeof rawColumns !== "object" || Array.isArray(rawColumns)) {
+        continue;
+      }
+
+      const columns: Record<string, Record<string, string>> = {};
+      for (const [columnKey, rawFields] of Object.entries(rawColumns)) {
+        if (!rawFields || typeof rawFields !== "object" || Array.isArray(rawFields)) {
+          continue;
+        }
+
+        const fields = Object.fromEntries(
+          Object.entries(rawFields).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+        );
+
+        if (Object.keys(fields).length > 0) {
+          columns[columnKey] = fields;
+        }
+      }
+
+      if (Object.keys(columns).length > 0) {
+        rows[rowKey] = columns;
+      }
+    }
+
+    if (Object.keys(rows).length > 0) {
+      output[dieCode] = rows;
+    }
+  }
+
+  return output;
 }
 
 function deriveStepStatusRank(status: StepStatus) {
@@ -476,7 +528,8 @@ export async function getProcessDashboardData(
       currentToolId: currentExecution?.tool_id ?? null,
       nextStepName: nextStep?.name ?? null,
       currentHandlerName: handlerProfileId ? handlerNameById.get(handlerProfileId) ?? null : null,
-      dieDescriptions: extractDieDescriptions(wafer.metadata as Json)
+      dieDescriptions: extractDieDescriptions(wafer.metadata as Json),
+      diePollingParameters: extractDiePollingParameters(wafer.metadata as Json)
     };
 
     workspaceWaferStates.push(waferState);
@@ -510,7 +563,8 @@ export async function getProcessDashboardData(
       currentToolId: null,
       nextStepName: null,
       currentHandlerName: null,
-      dieDescriptions: extractDieDescriptions(seededWafer.metadata as Json)
+      dieDescriptions: extractDieDescriptions(seededWafer.metadata as Json),
+      diePollingParameters: extractDiePollingParameters(seededWafer.metadata as Json)
     });
   }
 

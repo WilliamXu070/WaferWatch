@@ -1,7 +1,7 @@
 "use client";
 
-import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
-import { updateWaferDieDescription } from "@/features/wafers/actions";
+import { type CSSProperties, type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { updateWaferDieDescription, updateWaferDiePollingParameter } from "@/features/wafers/actions";
 
 type Point = {
   x: number;
@@ -69,6 +69,12 @@ type SvgViewport = {
   halfSpan: number;
 };
 
+type DiePollingParameterField = "peakVoltage" | "pulseDuration" | "description";
+
+type DiePollingCellValues = Partial<Record<DiePollingParameterField, string>>;
+
+type DiePollingRows = Record<string, Record<string, DiePollingCellValues>>;
+
 export type WaferVisualizerSample = {
   id: string;
   waferId?: string;
@@ -79,6 +85,7 @@ export type WaferVisualizerSample = {
   nextStepName?: string | null;
   currentHandlerName?: string | null;
   dieDescriptions?: Record<string, string>;
+  diePollingParameters?: Record<string, DiePollingRows>;
 };
 
 type WaferCutVisualizerProps = {
@@ -122,6 +129,16 @@ const WAFER_OVERVIEW_LABEL_HEIGHT = 42;
 const WAFER_REUSE_PREFIX = "V";
 const WAFER_REUSE_CYCLE = 1;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const POLLING_PARAMETER_FIELDS: Array<{
+  key: DiePollingParameterField;
+  label: string;
+  placeholder: string;
+}> = [
+  { key: "peakVoltage", label: "Peak voltage", placeholder: "" },
+  { key: "pulseDuration", label: "Pulse duration", placeholder: "" },
+  { key: "description", label: "Description", placeholder: "" }
+];
+const POLLING_ROW_HUES = [202, 190, 172, 154, 218, 32, 284, 122];
 const WAFER_FAMILY_ORDER = [
   "alpha",
   "beta",
@@ -826,6 +843,62 @@ function getModeStructuresForDie(points: Point[], status: DieStatus, label: numb
   return buildCenteredGridRectsForDie(points, viewport, label);
 }
 
+function getPollingCellKey(
+  waferId: string,
+  dieCode: string,
+  row: number,
+  column: number,
+  field: DiePollingParameterField
+) {
+  return `${waferId}:${dieCode}:R${row}:C${column}:${field}`;
+}
+
+function parsePollingCellKey(key: string) {
+  const match = key.match(
+    /^([^:]+):([^:]+):R(\d+):C(\d+):(peakVoltage|pulseDuration|description)$/
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    waferId: match[1],
+    dieCode: match[2],
+    row: Number(match[3]),
+    column: Number(match[4]),
+    field: match[5] as DiePollingParameterField
+  };
+}
+
+function getPollingColumnStyle(rowIndex: number, columnIndex: number, totalColumns: number) {
+  const hue = POLLING_ROW_HUES[rowIndex % POLLING_ROW_HUES.length];
+  const lightnessStep = totalColumns > 1 ? columnIndex / (totalColumns - 1) : 0;
+  const headerLightness = 34 + lightnessStep * 28;
+  const bodyLightness = 92 + lightnessStep * 3;
+
+  return {
+    "--polling-column-header": `hsl(${hue} 52% ${headerLightness}%)`,
+    "--polling-column-body": `hsl(${hue} 58% ${bodyLightness}%)`,
+    "--polling-column-border": `hsl(${hue} 32% 72%)`
+  } as CSSProperties;
+}
+
+function getPollingRowStyle(rowIndex: number) {
+  const hue = POLLING_ROW_HUES[rowIndex % POLLING_ROW_HUES.length];
+
+  return {
+    "--polling-row-color": `hsl(${hue} 52% 34%)`,
+    "--polling-row-soft": `hsl(${hue} 56% 95%)`,
+    "--polling-row-line": `hsl(${hue} 34% 74%)`
+  } as CSSProperties;
+}
+
+function fitPollingTextareaHeight(textarea: HTMLTextAreaElement) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
+}
+
 function toSvgPoints(points: Point[], viewport: SvgViewport) {
   return points
     .map(
@@ -849,6 +922,9 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const [chipDescriptions, setChipDescriptions] = useState<Record<string, string>>({});
   const [savedDescriptionOverrides, setSavedDescriptionOverrides] = useState<Record<string, string>>({});
   const [descriptionSaveStatus, setDescriptionSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [pollingValues, setPollingValues] = useState<Record<string, string>>({});
+  const [savedPollingOverrides, setSavedPollingOverrides] = useState<Record<string, string>>({});
+  const [, setPollingSaveStatus] = useState<Record<string, "idle" | "saving" | "saved" | "error">>({});
   const hasWaferOverview = wafers.length > 0;
   const selectedWafer = hasWaferOverview
     ? wafers.find((wafer) => wafer.id === selectedWaferId) ?? null
@@ -880,6 +956,40 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     }
 
     return descriptions;
+  }, [wafers]);
+  const databasePollingByKey = useMemo(() => {
+    const parameters: Record<string, string> = {};
+
+    for (const wafer of wafers) {
+      if (!wafer.waferId) {
+        continue;
+      }
+
+      for (const [dieCode, rows] of Object.entries(wafer.diePollingParameters ?? {})) {
+        for (const [rowKey, columns] of Object.entries(rows)) {
+          const row = Number(rowKey.replace(/^R/i, ""));
+          if (!Number.isFinite(row)) {
+            continue;
+          }
+
+          for (const [columnKey, fields] of Object.entries(columns)) {
+            const column = Number(columnKey.replace(/^C/i, ""));
+            if (!Number.isFinite(column)) {
+              continue;
+            }
+
+            for (const field of POLLING_PARAMETER_FIELDS) {
+              const value = fields[field.key];
+              if (typeof value === "string") {
+                parameters[getPollingCellKey(wafer.waferId, dieCode, row, column, field.key)] = value;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return parameters;
   }, [wafers]);
 
   useEffect(() => {
@@ -971,6 +1081,30 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const currentStepLabel = activeWaferStateName ?? "N/A";
   const nextStepLabel = selectedWafer?.nextStepName ?? "N/A";
   const currentHandlerLabel = selectedWafer?.currentHandlerName ?? "N/A";
+  const activeChipStatus = activeChip ? getDieStatusForLabelAndMode(activeChip.label, waferMode) : null;
+  const activePollingTemplate =
+    activeChip && activeChipStatus === "post_elb"
+      ? DIE_POST_ELB_LAYOUTS_BY_LABEL[activeChip.label] ?? null
+      : null;
+  const activePollingCanPersist = Boolean(activeWaferDatabaseId && UUID_PATTERN.test(activeWaferDatabaseId ?? ""));
+
+  const getPollingValue = (
+    row: number,
+    column: number,
+    field: DiePollingParameterField
+  ) => {
+    if (!activeWaferDatabaseId || !activeChipCode) {
+      return "";
+    }
+
+    const key = getPollingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field);
+    return pollingValues[key] ?? savedPollingOverrides[key] ?? databasePollingByKey[key] ?? "";
+  };
+
+  const getPersistedPollingValue = useCallback(
+    (key: string) => savedPollingOverrides[key] ?? databasePollingByKey[key] ?? "",
+    [databasePollingByKey, savedPollingOverrides]
+  );
 
   const saveActiveChipDescription = async (description: string) => {
     if (!activeDescriptionKey || !activeChipCode || !activeWaferDatabaseId || !activeDescriptionCanPersist) {
@@ -998,6 +1132,47 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       setDescriptionSaveStatus("error");
     }
   };
+
+  const savePollingCell = useCallback(async (key: string, value: string) => {
+    const parsed = parsePollingCellKey(key);
+    if (!parsed || !activePollingCanPersist) {
+      return;
+    }
+
+    if (value === getPersistedPollingValue(key)) {
+      return;
+    }
+
+    setPollingSaveStatus((current) => ({
+      ...current,
+      [key]: "saving"
+    }));
+
+    const result = await updateWaferDiePollingParameter({
+      waferId: parsed.waferId,
+      dieCode: parsed.dieCode,
+      row: parsed.row,
+      column: parsed.column,
+      field: parsed.field,
+      value
+    });
+
+    if (result.ok) {
+      setSavedPollingOverrides((current) => ({
+        ...current,
+        [key]: value
+      }));
+      setPollingSaveStatus((current) => ({
+        ...current,
+        [key]: "saved"
+      }));
+    } else {
+      setPollingSaveStatus((current) => ({
+        ...current,
+        [key]: "error"
+      }));
+    }
+  }, [activePollingCanPersist, getPersistedPollingValue]);
 
   useEffect(() => {
     if (!activeDescriptionKey || !activeChipCode || !activeWaferDatabaseId || !activeDescriptionCanPersist) {
@@ -1037,6 +1212,36 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     activeWaferDatabaseId
   ]);
 
+  useEffect(() => {
+    if (!activeWaferDatabaseId || !activeChipCode || !activePollingCanPersist) {
+      return;
+    }
+
+    const activePrefix = `${activeWaferDatabaseId}:${activeChipCode}:`;
+    const dirtyEntries = Object.entries(pollingValues).filter(
+      ([key, value]) => key.startsWith(activePrefix) && value !== getPersistedPollingValue(key)
+    );
+
+    if (dirtyEntries.length === 0) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      for (const [key, value] of dirtyEntries) {
+        void savePollingCell(key, value);
+      }
+    }, 900);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    activeChipCode,
+    activePollingCanPersist,
+    activeWaferDatabaseId,
+    getPersistedPollingValue,
+    pollingValues,
+    savePollingCell
+  ]);
+
   const handleChipSelect = (chipId: string) => {
     if (!isPostDiceMode) {
       return;
@@ -1069,6 +1274,135 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       [activeDescriptionKey]: value
     }));
     setDescriptionSaveStatus("idle");
+  };
+
+  const handlePollingCellChange = (
+    row: number,
+    column: number,
+    field: DiePollingParameterField,
+    value: string
+  ) => {
+    if (!activeWaferDatabaseId || !activeChipCode) {
+      return;
+    }
+
+    const key = getPollingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field);
+    setPollingValues((current) => ({
+      ...current,
+      [key]: value
+    }));
+    setPollingSaveStatus((current) => ({
+      ...current,
+      [key]: "idle"
+    }));
+  };
+
+  const renderPollingParameterSheet = () => {
+    if (!activePollingTemplate || !activeChip || !activeChipCode) {
+      return null;
+    }
+
+    const rows = sanitizeGridAxisCount(activePollingTemplate.rows);
+    const columns = sanitizeGridAxisCount(activePollingTemplate.columns);
+    return (
+      <section className="panel wafer-polling-panel" aria-label={`${activeChipCode} polling parameters`}>
+        <div className="wafer-polling-header">
+          <div>
+            <p className="eyebrow">Pattern parameter sheet</p>
+            <h3>{activeChipCode} polling parameters</h3>
+          </div>
+        </div>
+        <div className="wafer-polling-intro">
+          <p className="muted">
+            Rows and columns mirror the patterned rectangle array on the selected die.
+          </p>
+          <p className="muted">
+            {rows} rows by {columns} columns, finite and locked to the die geometry.
+          </p>
+        </div>
+        <div className="wafer-polling-sheet">
+          {Array.from({ length: rows }, (_, rowIndex) => {
+            const row = rowIndex + 1;
+            const gridStyle = {
+              gridTemplateColumns: `minmax(128px, 0.38fr) repeat(${columns}, minmax(150px, 1fr))`
+            };
+
+            return (
+              <section
+                className="wafer-polling-row-block"
+                key={`polling-row-${row}`}
+                style={getPollingRowStyle(rowIndex)}
+              >
+                <h4>Row {row}</h4>
+                <div className="wafer-polling-grid" style={gridStyle}>
+                  <div className="wafer-polling-corner">Parameter</div>
+                  {Array.from({ length: columns }, (_, columnIndex) => (
+                    <div
+                      className="wafer-polling-column-header"
+                      key={`polling-header-${row}-${columnIndex + 1}`}
+                      style={getPollingColumnStyle(rowIndex, columnIndex, columns)}
+                    >
+                      C{columnIndex + 1}
+                    </div>
+                  ))}
+                  {POLLING_PARAMETER_FIELDS.map((field) => (
+                    <div className="wafer-polling-field-row" key={`polling-${row}-${field.key}`}>
+                      <div className="wafer-polling-row-label">{field.label}</div>
+                      {Array.from({ length: columns }, (_, columnIndex) => {
+                        const column = columnIndex + 1;
+                        const key = activeWaferDatabaseId && activeChipCode
+                          ? getPollingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field.key)
+                          : "";
+                        const inputValue = getPollingValue(row, column, field.key);
+                        const cellStyle = getPollingColumnStyle(rowIndex, columnIndex, columns);
+
+                        return (
+                          <div
+                            className={[
+                              "wafer-polling-cell",
+                              field.key === "description" ? "wafer-polling-cell--description" : ""
+                            ].join(" ")}
+                            key={`polling-cell-${row}-${column}-${field.key}`}
+                            style={cellStyle}
+                          >
+                            <span className="sr-only">
+                              Row {row}, column {column}, {field.label}
+                            </span>
+                            <textarea
+                              className="wafer-polling-cell-editor"
+                              aria-label={`Row ${row}, column ${column}, ${field.label}`}
+                              rows={1}
+                              value={inputValue}
+                              onChange={(event) =>
+                                {
+                                  handlePollingCellChange(
+                                    row,
+                                    column,
+                                    field.key,
+                                    event.target.value
+                                  );
+                                  fitPollingTextareaHeight(event.target);
+                                }
+                              }
+                              onFocus={(event) => fitPollingTextareaHeight(event.target)}
+                              onBlur={(event) => {
+                                if (key) {
+                                  void savePollingCell(key, event.target.value);
+                                }
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </section>
+    );
   };
 
   const renderChip = (
@@ -1396,6 +1730,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                 )}
           </aside>
         ) : null}
+        {isChipFocusView ? renderPollingParameterSheet() : null}
       </div>
     </div>
   );

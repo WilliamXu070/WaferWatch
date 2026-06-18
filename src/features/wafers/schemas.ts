@@ -29,3 +29,12 @@ export const waferDieDescriptionSchema = z.object({
   dieCode: z.string().trim().min(2).max(32).regex(/^[A-Z][1-8]-V\d+$/),
   description: z.string().max(4000)
 });
+
+export const waferDiePollingParameterSchema = z.object({
+  waferId: uuidSchema,
+  dieCode: z.string().trim().min(2).max(32).regex(/^[A-Z][1-8]-V\d+$/),
+  row: z.number().int().min(1).max(64),
+  column: z.number().int().min(1).max(64),
+  field: z.enum(["peakVoltage", "pulseDuration", "description"]),
+  value: z.string().max(2000)
+});

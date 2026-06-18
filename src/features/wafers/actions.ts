@@ -9,6 +9,7 @@ import {
   lotCreateSchema,
   waferCreateSchema,
   waferDieDescriptionSchema,
+  waferDiePollingParameterSchema,
   waferStatusSchema
 } from "@/features/wafers/schemas";
 import type { Json } from "@/types/database";
@@ -25,6 +26,12 @@ function toStringRecord(value: unknown) {
   return Object.fromEntries(
     Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string")
   );
+}
+
+function toRecordObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? { ...value }
+    : {};
 }
 
 export async function createWaferLot(input: unknown) {
@@ -187,7 +194,93 @@ export async function updateWaferDieDescription(input: unknown) {
 
     const { data, error } = await supabase
       .from("wafers")
-      .update({ metadata: nextMetadata })
+      .update({ metadata: nextMetadata as Json })
+      .eq("id", parsed.waferId)
+      .select("id, metadata")
+      .single();
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidatePath("/", "layout");
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateWaferDiePollingParameter(input: unknown) {
+  try {
+    const account = await requireAccount();
+    const parsed = waferDiePollingParameterSchema.parse(input);
+
+    const supabase = await createServerSupabaseClient();
+    const { data: wafer, error: waferError } = await supabase
+      .from("wafers")
+      .select("id, project_id, metadata")
+      .eq("id", parsed.waferId)
+      .single();
+
+    if (waferError) {
+      return fail(waferError.message);
+    }
+
+    await assertProjectAccess(wafer.project_id, "write");
+
+    const metadata = toMetadataObject(wafer.metadata as Json);
+    const diePollingParameters = toRecordObject(metadata.die_polling_parameters);
+    const dieParameters = toRecordObject(diePollingParameters[parsed.dieCode]);
+    const rowKey = `R${parsed.row}`;
+    const columnKey = `C${parsed.column}`;
+    const rowParameters = toRecordObject(dieParameters[rowKey]);
+    const columnParameters = toRecordObject(rowParameters[columnKey]);
+    const nextColumnParameters = {
+      ...columnParameters,
+      [parsed.field]: parsed.value
+    };
+
+    if (!parsed.value.trim()) {
+      delete nextColumnParameters[parsed.field];
+    }
+
+    const nextRowParameters = {
+      ...rowParameters,
+      [columnKey]: nextColumnParameters
+    };
+
+    if (Object.keys(nextColumnParameters).length === 0) {
+      delete nextRowParameters[columnKey];
+    }
+
+    const nextDieParameters = {
+      ...dieParameters,
+      [rowKey]: nextRowParameters
+    };
+
+    if (Object.keys(nextRowParameters).length === 0) {
+      delete nextDieParameters[rowKey];
+    }
+
+    const nextDiePollingParameters = {
+      ...diePollingParameters,
+      [parsed.dieCode]: nextDieParameters
+    };
+
+    if (Object.keys(nextDieParameters).length === 0) {
+      delete nextDiePollingParameters[parsed.dieCode];
+    }
+
+    const nextMetadata = {
+      ...metadata,
+      die_polling_parameters: nextDiePollingParameters,
+      die_polling_parameter_updated_by: account.userId,
+      die_polling_parameter_updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from("wafers")
+      .update({ metadata: nextMetadata as Json })
       .eq("id", parsed.waferId)
       .select("id, metadata")
       .single();

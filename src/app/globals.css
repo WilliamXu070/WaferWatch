@@ -59,7 +59,8 @@ a {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -2157,6 +2158,182 @@ input {
   align-content: start;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.wafer-polling-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.wafer-polling-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.wafer-polling-header h3 {
+  margin: 3px 0 0;
+  font-family: var(--font-headline);
+  font-size: clamp(26px, 3vw, 38px);
+  font-weight: 850;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.wafer-polling-intro {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+
+.wafer-polling-intro .muted {
+  margin: 0;
+}
+
+.wafer-polling-sheet {
+  display: grid;
+  gap: 22px;
+}
+
+.wafer-polling-row-block {
+  display: grid;
+  grid-template-columns: minmax(112px, 0.16fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  padding: 16px;
+  border: 1px solid var(--polling-row-line);
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, var(--polling-row-soft), transparent 62%),
+    var(--panel);
+}
+
+.wafer-polling-row-block h4 {
+  position: sticky;
+  top: 12px;
+  margin: 0;
+  color: var(--polling-row-color);
+  font-family: var(--font-headline);
+  font-size: clamp(30px, 4vw, 52px);
+  font-style: italic;
+  font-weight: 900;
+  line-height: 0.94;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.wafer-polling-grid {
+  min-width: 0;
+  display: grid;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 26%, transparent);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.wafer-polling-corner,
+.wafer-polling-column-header,
+.wafer-polling-row-label,
+.wafer-polling-cell {
+  border-right: 1px solid color-mix(in srgb, var(--border) 18%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 18%, transparent);
+}
+
+.wafer-polling-corner,
+.wafer-polling-column-header {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  color: color-mix(in srgb, var(--background) 96%, var(--foreground));
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.wafer-polling-corner {
+  background: color-mix(in srgb, var(--foreground) 76%, var(--panel));
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wafer-polling-column-header {
+  background: var(--polling-column-header);
+}
+
+.wafer-polling-field-row {
+  display: contents;
+}
+
+.wafer-polling-row-label {
+  display: flex;
+  align-items: center;
+  background: color-mix(in srgb, var(--panel) 78%, var(--polling-row-soft));
+  padding: 14px;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.wafer-polling-cell {
+  min-height: 42px;
+  display: grid;
+  align-content: stretch;
+  background: var(--polling-column-body);
+  padding: 0;
+}
+
+.wafer-polling-cell--description {
+  min-height: 52px;
+}
+
+.wafer-polling-cell-editor {
+  min-height: 42px;
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 8px 10px;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.22;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  resize: none;
+  outline: none;
+  cursor: text;
+}
+
+.wafer-polling-cell--description .wafer-polling-cell-editor {
+  min-height: 52px;
+}
+
+.wafer-polling-cell:focus-within {
+  box-shadow:
+    inset 0 0 0 2px var(--polling-row-color),
+    0 0 0 2px color-mix(in srgb, var(--polling-row-color) 18%, transparent);
+  z-index: 1;
+}
+
 .wafer-chip-label {
   fill: var(--foreground);
   stroke: none;
@@ -2188,6 +2365,14 @@ input {
 
   .wafer-workspace-grid {
     grid-template-columns: 1fr;
+  }
+
+  .wafer-polling-row-block {
+    grid-template-columns: 1fr;
+  }
+
+  .wafer-polling-row-block h4 {
+    position: static;
   }
 }
 
@@ -2229,5 +2414,17 @@ input {
     width: 100%;
     justify-content: center;
     white-space: normal;
+  }
+
+  .wafer-polling-header {
+    display: grid;
+  }
+
+  .wafer-polling-row-block {
+    padding: 12px;
+  }
+
+  .wafer-polling-grid {
+    overflow-x: auto;
   }
 }
