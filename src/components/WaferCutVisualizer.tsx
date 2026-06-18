@@ -399,10 +399,6 @@ function getWaferModeFromState(waferStateName?: string | null): WaferMode {
   return "post-dice";
 }
 
-function getWaferStateLabel(mode: WaferMode) {
-  return mode === "pre-dice" ? "Pre-dice" : "Post-dice";
-}
-
 function getWaferFamilyPrefix(waferName: string, fallbackIndex: number) {
   const normalized = (waferName ?? "").toLowerCase();
   const familyIndex = WAFER_FAMILY_ORDER.findIndex((name) => normalized.includes(name));
@@ -603,7 +599,7 @@ function buildChipPieces(waferPoints: Point[]): ChipPiece[] {
     .slice(0, CHIP_COUNT);
 }
 
-function buildSvgViewport(points: Point[]): SvgViewport {
+function buildSvgViewport(points: Point[], padding = SVG_PADDING_MM): SvgViewport {
   const xs = points.map((point) => point.x);
   const ys = points.map((point) => point.y);
 
@@ -614,7 +610,7 @@ function buildSvgViewport(points: Point[]): SvgViewport {
 
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;
-  const halfSpan = Math.max(maxX - minX, maxY - minY) / 2 + SVG_PADDING_MM;
+  const halfSpan = Math.max(maxX - minX, maxY - minY) / 2 + padding;
 
   return {
     centerX,
@@ -928,7 +924,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
   const [chipDescriptions, setChipDescriptions] = useState<Record<string, string>>({});
   const [savedDescriptionOverrides, setSavedDescriptionOverrides] = useState<Record<string, string>>({});
-  const [descriptionSaveStatus, setDescriptionSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [, setDescriptionSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [pollingValues, setPollingValues] = useState<Record<string, string>>({});
   const [savedPollingOverrides, setSavedPollingOverrides] = useState<Record<string, string>>({});
   const [, setPollingSaveStatus] = useState<Record<string, "idle" | "saving" | "saved" | "error">>({});
@@ -1063,7 +1059,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       : null;
 
   const activeChip = activeChipId ? chipPieces.find((chip) => chip.id === activeChipId) ?? null : null;
-  const activeChipViewport = activeChip ? buildSvgViewport(activeChip.points) : null;
+  const activeChipViewport = activeChip ? buildSvgViewport(activeChip.points, 3) : null;
   const displayViewport = activeChipViewport ?? svgViewport;
   const isChipFocusView = Boolean(activeChip && activeChipViewport);
   const isWaferFocusView = hasWaferOverview && Boolean(selectedWafer) && !isChipFocusView;
@@ -1314,24 +1310,13 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     return (
       <section className="panel wafer-polling-panel" aria-label={`${activeChipCode} polling parameters`}>
         <div className="wafer-polling-header">
-          <div>
-            <p className="eyebrow">Pattern parameter sheet</p>
-            <h3>{activeChipCode} polling parameters</h3>
-          </div>
-        </div>
-        <div className="wafer-polling-intro">
-          <p className="muted">
-            Rows and columns mirror the patterned rectangle array on the selected die.
-          </p>
-          <p className="muted">
-            {rows} rows by {columns} columns, finite and locked to the die geometry.
-          </p>
+          <h3>Polling parameters</h3>
         </div>
         <div className="wafer-polling-sheet">
           {Array.from({ length: rows }, (_, rowIndex) => {
             const row = rowIndex + 1;
             const gridStyle = {
-              gridTemplateColumns: `minmax(128px, 0.38fr) repeat(${columns}, minmax(150px, 1fr))`
+              gridTemplateColumns: `minmax(104px, 0.28fr) repeat(${columns}, minmax(118px, 1fr))`
             };
 
             return (
@@ -1569,7 +1554,14 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
 
   return (
     <div className="wafer-visualizer">
-      <div className={["wafer-visualizer-layout", !isChipFocusView ? "wafer-visualizer-layout--overview" : ""].join(" ")}>
+      <div
+        className={[
+          "wafer-visualizer-layout",
+          !isChipFocusView ? "wafer-visualizer-layout--overview" : "",
+          isChipFocusView ? "wafer-visualizer-layout--chip-focus" : ""
+        ].join(" ")}
+      >
+        <div className={isChipFocusView ? "wafer-focus-rail" : "wafer-focus-rail wafer-focus-rail--inactive"}>
         <section className="panel wafer-viewer-panel">
           <div
             className={[
@@ -1690,9 +1682,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                         <p className="wafer-params-name">{activeChipExpandedName}</p>
                       </div>
                       <div className="wafer-params-empty">
-                        <p className="muted">State: {currentStepLabel}</p>
-                        <p className="muted">Wafer state: {getWaferStateLabel(waferMode)}</p>
-                        <p className="muted">Status: {currentStepLabel}</p>
                         <p className="muted">Current step: {currentStepLabel}</p>
                         <p className="muted">Next step: {nextStepLabel}</p>
                         <p className="muted">Current handler: {currentHandlerLabel}</p>
@@ -1705,19 +1694,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                             onBlur={(event) => {
                               void saveActiveChipDescription(event.target.value);
                             }}
-                            placeholder="Add notes, observations, cleanup history, or anything useful for this die."
                           />
-                          <span className="wafer-description-save-state">
-                            {activeDescriptionCanPersist
-                              ? descriptionSaveStatus === "saving"
-                                ? "Saving..."
-                                : descriptionSaveStatus === "saved"
-                                  ? "Saved"
-                                  : descriptionSaveStatus === "error"
-                                    ? "Save failed"
-                                    : "Updates after typing stops"
-                              : "Database wafer required to save"}
-                          </span>
                         </label>
                       </div>
                     </div>
@@ -1737,6 +1714,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                 )}
           </aside>
         ) : null}
+        </div>
         {isChipFocusView ? renderPollingParameterSheet() : null}
       </div>
     </div>

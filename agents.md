@@ -13,6 +13,10 @@ This ensures the code is lint-clean and compile-safe before we move on.
 
 Run this exact sequence for every change, including UI/asset updates.
 
+## Commit expectation
+
+After completing each feature, rework, or bug fix, commit the finished changes with a clear message once lint and build pass.
+
 ## Playwright and auth testing safety
 
 Never create new Supabase auth users, run signup flows, or use fake/random email addresses while testing this app with Playwright or browser automation. This project may point local development at a live Supabase project, and signup tests can send real transactional emails that bounce and risk Supabase email restrictions.
