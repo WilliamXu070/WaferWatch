@@ -88,8 +88,6 @@ const HORIZONTAL_CUT_STEP_MM = 25.4;
 const VERTICAL_OFFSET_MM = 38.1;
 const MM_PER_INCH = 25.4;
 
-const PARAMETER_COLUMNS = 46;
-const PARAMETER_ROWS = 5;
 const CHIP_COUNT = 8;
 const MIN_CHIP_AREA_MM2 = 5;
 const SVG_PADDING_MM = 20;
@@ -116,6 +114,34 @@ const POST_ELB_CLUSTER_SPAN_FRACTION = 1;
 const WAFER_OVERVIEW_TILE_SIZE = 240;
 const WAFER_OVERVIEW_TILE_GAP = 30;
 const WAFER_OVERVIEW_LABEL_HEIGHT = 42;
+const WAFER_REUSE_PREFIX = "V";
+const WAFER_REUSE_CYCLE = 1;
+const WAFER_FAMILY_ORDER = [
+  "alpha",
+  "beta",
+  "gamma",
+  "delta",
+  "epsilon",
+  "zeta",
+  "eta",
+  "theta",
+  "iota",
+  "kappa",
+  "lambda",
+  "mu",
+  "nu",
+  "xi",
+  "omicron",
+  "pi",
+  "rho",
+  "sigma",
+  "tau",
+  "upsilon",
+  "phi",
+  "chi",
+  "psi",
+  "omega"
+];
 
 const DIE_POST_ELB_LAYOUTS_BY_LABEL: Record<number, DieStructureGridTemplateInInches> = {
   1: POST_ELB_GRID_DEFAULT_INCHES,
@@ -328,12 +354,6 @@ function buildLinearCuts(halfSpan: number, step: number): number[] {
   return rawCuts;
 }
 
-function buildDefaultChipGrid() {
-  return Array.from({ length: PARAMETER_ROWS }, () =>
-    Array.from({ length: PARAMETER_COLUMNS }, () => "")
-  );
-}
-
 function formatDieStatus(status: DieStatus) {
   if (status === "post_elb") {
     return "Post EBL";
@@ -378,6 +398,22 @@ function getWaferModeFromState(waferStateName?: string | null): WaferMode {
 
 function getWaferStateLabel(mode: WaferMode) {
   return mode === "pre-dice" ? "Pre-dice" : "Post-dice";
+}
+
+function getWaferFamilyPrefix(waferName: string, fallbackIndex: number) {
+  const normalized = (waferName ?? "").toLowerCase();
+  const familyIndex = WAFER_FAMILY_ORDER.findIndex((name) => normalized.includes(name));
+
+  if (familyIndex >= 0) {
+    return String.fromCharCode(65 + familyIndex);
+  }
+
+  const tokenMatch = normalized.match(/[a-z]/);
+  if (tokenMatch) {
+    return tokenMatch[0].toUpperCase();
+  }
+
+  return String.fromCharCode(65 + (fallbackIndex % 26));
 }
 
 function getDieStatusForLabelAndMode(label: number, mode: WaferMode): DieStatus {
@@ -826,7 +862,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const [isLoading, setIsLoading] = useState(true);
   const [selectedWaferId, setSelectedWaferId] = useState<string | null>(null);
   const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
-  const [parameterState, setParameterState] = useState<Record<string, string[][]>>({});
   const hasWaferOverview = wafers.length > 0;
   const selectedWafer = hasWaferOverview
     ? wafers.find((wafer) => wafer.id === selectedWaferId) ?? null
@@ -836,6 +871,14 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const activeWaferName = selectedWafer?.name ?? "Wafer";
   const waferMode = getWaferModeFromState(activeWaferStateName);
   const isPostDiceMode = waferMode === "post-dice";
+  const waferFamilyPrefixById = useMemo(
+    () =>
+      wafers.reduce<Record<string, string>>((acc, wafer, index) => {
+        acc[wafer.id] = getWaferFamilyPrefix(wafer.name, index);
+        return acc;
+      }, {}),
+    [wafers]
+  );
 
   useEffect(() => {
     let isStale = false;
@@ -909,8 +952,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       : null;
 
   const activeChip = activeChipId ? chipPieces.find((chip) => chip.id === activeChipId) ?? null : null;
-  const activeParameterKey = activeChip ? `${selectedWafer?.id ?? "single"}:${activeChip.id}` : null;
-  const activeGrid = activeParameterKey ? (parameterState[activeParameterKey] ?? buildDefaultChipGrid()) : null;
   const activeChipModeStatus = activeChip
     ? getDieStatusForLabelAndMode(activeChip.label, waferMode)
     : null;
@@ -918,6 +959,17 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const displayViewport = activeChipViewport ?? svgViewport;
   const isChipFocusView = Boolean(activeChip && activeChipViewport);
   const isWaferFocusView = hasWaferOverview && Boolean(selectedWafer) && !isChipFocusView;
+  const activeWaferPrefix = selectedWafer ? waferFamilyPrefixById[selectedWafer.id] : "";
+  const activeChipCode = activeChip && activeWaferPrefix
+    ? `${activeWaferPrefix}${activeChip.label}-${WAFER_REUSE_PREFIX}${WAFER_REUSE_CYCLE}`
+    : null;
+  const activeChipExpandedName = activeChip
+    ? `${activeWaferName} / Die ${activeChip.label}`
+    : null;
+
+  const activeChipDescription = activeChip
+    ? `Good to know: ${WAFER_REUSE_PREFIX}${WAFER_REUSE_CYCLE} is the wafer/reticle revision currently shown for this chip.`
+    : "";
 
   const handleChipSelect = (chipId: string) => {
     if (!isPostDiceMode) {
@@ -939,28 +991,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       event.preventDefault();
       handleChipSelect(chipId);
     }
-  };
-
-  const updateCell = (row: number, column: number, value: string) => {
-    if (!activeChip) {
-      return;
-    }
-
-    setParameterState((prev) => {
-      if (!activeParameterKey) {
-        return prev;
-      }
-
-      const existing = prev[activeParameterKey] ?? buildDefaultChipGrid();
-      const nextGrid = existing.map((r) => [...r]);
-      nextGrid[row] = [...nextGrid[row]];
-      nextGrid[row][column] = value;
-
-      return {
-        ...prev,
-        [activeParameterKey]: nextGrid
-      };
-    });
   };
 
   const renderChip = (
@@ -1248,39 +1278,20 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                   activeChip ? (
                     <>
                       <div className="wafer-panel-heading">
-                        <strong>{activeWaferName} / Die {activeChip.label}</strong>
-                        <span className="muted">State: {activeWaferStateName ?? "Not started"}</span>
-                        <span className="muted">Wafer state: {getWaferStateLabel(waferMode)}</span>
-                        <span className="muted">Status: {activeChipModeStatus ? formatDieStatus(activeChipModeStatus) : "Unassigned"}</span>
+                        <div className="wafer-params-id">{activeChipCode}</div>
+                        <p className="wafer-params-name">{activeChipExpandedName}</p>
                       </div>
-
-                      <div className="wafer-params-scroll" role="region" aria-label={`Die ${activeChip.label} parameters`}>
-                        {Array.from({ length: PARAMETER_ROWS }).map((_, rowIndex) => (
-                          <div className="wafer-params-row" key={`row-${rowIndex}`}>
-                            {Array.from({ length: PARAMETER_COLUMNS }).map((_, columnIndex) => {
-                              const value = activeGrid?.[rowIndex]?.[columnIndex] ?? "";
-
-                              return (
-                                <input
-                                  key={`cell-${rowIndex}-${columnIndex}`}
-                                  className="wafer-params-input"
-                                  value={value}
-                                  onChange={(event) => {
-                                    updateCell(rowIndex, columnIndex, event.target.value);
-                                  }}
-                                  aria-label={`Parameter row ${rowIndex + 1} column ${columnIndex + 1}`}
-                                  title={`Parameter ${rowIndex + 1}-${columnIndex + 1}`}
-                                />
-                              );
-                            })}
-                          </div>
-                        ))}
+                      <div className="wafer-params-empty">
+                        <p className="muted">State: {activeWaferStateName ?? "Not started"}</p>
+                        <p className="muted">Wafer state: {getWaferStateLabel(waferMode)}</p>
+                        <p className="muted">Status: {activeChipModeStatus ? formatDieStatus(activeChipModeStatus) : "Unassigned"}</p>
+                        <p className="wafer-params-note">{activeChipDescription}</p>
                       </div>
                     </>
                   ) : (
                     <div className="wafer-params-empty">
                       <p className="muted">
-                        Click one of the dies on the wafer to open the 46×5 parameter sheet.
+                        Click one of the dies on the wafer to inspect chip details.
                       </p>
                       <p className="muted">No die is selected right now.</p>
                     </div>

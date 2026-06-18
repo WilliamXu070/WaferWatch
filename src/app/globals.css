@@ -2060,11 +2060,35 @@ input {
 }
 
 .wafer-panel-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.wafer-params-id {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--foreground);
+}
+
+.wafer-params-name {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 750;
+  line-height: 1.2;
+  color: var(--foreground);
+}
+
+.wafer-params-note {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.wafer-params-note strong {
+  color: var(--foreground);
 }
 
 .wafer-params-scroll {
