@@ -1,7 +1,8 @@
 "use client";
 
-import { type CSSProperties, type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { updateWaferDieDescription, updateWaferDiePollingParameter } from "@/features/wafers/actions";
+import { type CSSProperties, type KeyboardEvent, type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { DieInspectionMap } from "@/components/DieInspectionMap";
+import { updateWaferDiePollingParameter } from "@/features/wafers/actions";
 
 type Point = {
   x: number;
@@ -78,6 +79,7 @@ type DiePollingRows = Record<string, Record<string, DiePollingCellValues>>;
 export type WaferVisualizerSample = {
   id: string;
   waferId?: string;
+  projectId?: string;
   name: string;
   stateName?: string | null;
   statusLabel?: string | null;
@@ -922,9 +924,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const [rawPolygons, setRawPolygons] = useState<ParsedPolygon[]>([]);
   const [selectedWaferId, setSelectedWaferId] = useState<string | null>(null);
   const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
-  const [chipDescriptions, setChipDescriptions] = useState<Record<string, string>>({});
-  const [savedDescriptionOverrides, setSavedDescriptionOverrides] = useState<Record<string, string>>({});
-  const [, setDescriptionSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [isInspectionPanelOpen, setIsInspectionPanelOpen] = useState(false);
+  const [selectedInspectionCell, setSelectedInspectionCell] = useState<{ row: number; column: number } | null>(null);
   const [pollingValues, setPollingValues] = useState<Record<string, string>>({});
   const [savedPollingOverrides, setSavedPollingOverrides] = useState<Record<string, string>>({});
   const [, setPollingSaveStatus] = useState<Record<string, "idle" | "saving" | "saved" | "error">>({});
@@ -945,21 +946,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       }, {}),
     [wafers]
   );
-  const databaseDescriptionByKey = useMemo(() => {
-    const descriptions: Record<string, string> = {};
-
-    for (const wafer of wafers) {
-      if (!wafer.waferId) {
-        continue;
-      }
-
-      for (const [dieCode, description] of Object.entries(wafer.dieDescriptions ?? {})) {
-        descriptions[`${wafer.waferId}:${dieCode}`] = description;
-      }
-    }
-
-    return descriptions;
-  }, [wafers]);
   const databasePollingByKey = useMemo(() => {
     const parameters: Record<string, string> = {};
 
@@ -1071,20 +1057,11 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     ? `${activeWaferName} wafer, die number ${activeChip.label}, version ${WAFER_REUSE_CYCLE}`
     : null;
   const activeWaferDatabaseId = selectedWafer?.waferId;
-  const activeDescriptionKey = activeChipCode && activeWaferDatabaseId
-    ? `${activeWaferDatabaseId}:${activeChipCode}`
-    : null;
-  const activeDescriptionCanPersist = Boolean(activeWaferDatabaseId && UUID_PATTERN.test(activeWaferDatabaseId));
-  const activePersistedDescription = activeDescriptionKey
-    ? savedDescriptionOverrides[activeDescriptionKey] ?? databaseDescriptionByKey[activeDescriptionKey] ?? ""
-    : "";
-  const activeChipDescription = activeDescriptionKey
-    ? chipDescriptions[activeDescriptionKey] ?? activePersistedDescription
-    : "";
-  const currentStepLabel = activeWaferStateName ?? "N/A";
-  const nextStepLabel = selectedWafer?.nextStepName ?? "N/A";
-  const currentHandlerLabel = selectedWafer?.currentHandlerName ?? "N/A";
+  const activeProjectId = selectedWafer?.projectId;
   const activeChipStatus = activeChip ? getDieStatusForLabelAndMode(activeChip.label, waferMode) : null;
+  const activeChipInspectionRow = selectedInspectionCell?.row ?? 1;
+  const activeChipInspectionColumn = selectedInspectionCell?.column ?? 1;
+  const activeInspectionHue = POLLING_ROW_HUES[(activeChipInspectionRow - 1) % POLLING_ROW_HUES.length];
   const activePollingTemplate =
     activeChip && activeChipStatus === "post_elb"
       ? DIE_POST_ELB_LAYOUTS_BY_LABEL[activeChip.label] ?? null
@@ -1108,33 +1085,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     (key: string) => savedPollingOverrides[key] ?? databasePollingByKey[key] ?? "",
     [databasePollingByKey, savedPollingOverrides]
   );
-
-  const saveActiveChipDescription = async (description: string) => {
-    if (!activeDescriptionKey || !activeChipCode || !activeWaferDatabaseId || !activeDescriptionCanPersist) {
-      return;
-    }
-
-    if (description === activePersistedDescription) {
-      return;
-    }
-
-    setDescriptionSaveStatus("saving");
-    const result = await updateWaferDieDescription({
-      waferId: activeWaferDatabaseId,
-      dieCode: activeChipCode,
-      description
-    });
-
-    if (result.ok) {
-      setSavedDescriptionOverrides((current) => ({
-        ...current,
-        [activeDescriptionKey]: description
-      }));
-      setDescriptionSaveStatus("saved");
-    } else {
-      setDescriptionSaveStatus("error");
-    }
-  };
 
   const savePollingCell = useCallback(async (key: string, value: string) => {
     const parsed = parsePollingCellKey(key);
@@ -1178,44 +1128,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   }, [activePollingCanPersist, getPersistedPollingValue]);
 
   useEffect(() => {
-    if (!activeDescriptionKey || !activeChipCode || !activeWaferDatabaseId || !activeDescriptionCanPersist) {
-      return;
-    }
-
-    if (activeChipDescription === activePersistedDescription) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setDescriptionSaveStatus("saving");
-      void updateWaferDieDescription({
-        waferId: activeWaferDatabaseId,
-        dieCode: activeChipCode,
-        description: activeChipDescription
-      }).then((result) => {
-        if (result.ok) {
-          setSavedDescriptionOverrides((current) => ({
-            ...current,
-            [activeDescriptionKey]: activeChipDescription
-          }));
-          setDescriptionSaveStatus("saved");
-        } else {
-          setDescriptionSaveStatus("error");
-        }
-      });
-    }, 900);
-
-    return () => window.clearTimeout(timeout);
-  }, [
-    activeChipCode,
-    activeChipDescription,
-    activeDescriptionCanPersist,
-    activeDescriptionKey,
-    activePersistedDescription,
-    activeWaferDatabaseId
-  ]);
-
-  useEffect(() => {
     if (!activeWaferDatabaseId || !activeChipCode || !activePollingCanPersist) {
       return;
     }
@@ -1250,6 +1162,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       return;
     }
 
+    setIsInspectionPanelOpen(false);
+    setSelectedInspectionCell(null);
     setSelectedChipId((current) => (current === chipId ? null : chipId));
   };
 
@@ -1265,18 +1179,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       event.preventDefault();
       handleChipSelect(chipId);
     }
-  };
-
-  const handleChipDescriptionChange = (value: string) => {
-    if (!activeDescriptionKey) {
-      return;
-    }
-
-    setChipDescriptions((current) => ({
-      ...current,
-      [activeDescriptionKey]: value
-    }));
-    setDescriptionSaveStatus("idle");
   };
 
   const handlePollingCellChange = (
@@ -1439,21 +1341,45 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
             style={{ pointerEvents: "none" }}
           />
         )}
-        <g clipPath={`url(#${chipClipPathId})`} style={{ pointerEvents: "none" }}>
-          {structureRects.map((rect) => (
-            <rect
-              key={rect.id}
-              className="wafer-mode-structure"
-              x={rect.x}
-              y={rect.y}
-              width={rect.width}
-              height={rect.height}
-              fill={rect.fill}
-              stroke={rect.stroke}
-              strokeWidth={1}
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
+        <g clipPath={`url(#${chipClipPathId})`} style={{ pointerEvents: isFocusedView ? "auto" : "none" }}>
+          {structureRects.map((rect) => {
+            const match = rect.id.match(/r-(\d+)-c-(\d+)$/);
+            const inspectionRow = match ? Number(match[1]) : 1;
+            const inspectionColumn = match ? Number(match[2]) : 1;
+            const openInspectionCell = (event: MouseEvent<SVGRectElement>) => {
+              if (!isFocusedView) {
+                return;
+              }
+
+              event.stopPropagation();
+              setSelectedInspectionCell({
+                row: inspectionRow,
+                column: inspectionColumn
+              });
+              setIsInspectionPanelOpen(true);
+            };
+
+            return (
+              <rect
+                key={rect.id}
+                className="wafer-mode-structure"
+                data-inspection-cell={`r${inspectionRow}-c${inspectionColumn}`}
+                data-inspection-row={inspectionRow}
+                data-inspection-column={inspectionColumn}
+                x={rect.x}
+                y={rect.y}
+                width={rect.width}
+                height={rect.height}
+                fill={rect.fill}
+                stroke={rect.stroke}
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+                onMouseDown={isFocusedView ? openInspectionCell : undefined}
+                onClick={isFocusedView ? openInspectionCell : undefined}
+                style={isFocusedView ? { pointerEvents: "auto", cursor: "pointer" } : undefined}
+              />
+            );
+          })}
         </g>
         {mode === "post-dice" && !isFocusedView ? (
           <text
@@ -1567,19 +1493,25 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
             className={[
               "wafer-stage-shell",
               isWaferOverviewView ? "wafer-stage-shell--overview" : "",
-              isChipFocusView || isWaferFocusView ? "wafer-stage-shell--focused" : ""
+              isChipFocusView || isWaferFocusView ? "wafer-stage-shell--focused" : "",
+              isChipFocusView ? "wafer-stage-shell--inspection-trigger" : ""
             ].join(" ")}
           >
             {isChipFocusView || isWaferFocusView ? (
               <button
                 type="button"
                 className="button button-secondary wafer-chip-zoom-back"
-                onClick={() => {
+                onClick={(event) => {
+                  event.stopPropagation();
                   if (isChipFocusView) {
+                    setIsInspectionPanelOpen(false);
+                    setSelectedInspectionCell(null);
                     setSelectedChipId(null);
                     return;
                   }
 
+                  setIsInspectionPanelOpen(false);
+                  setSelectedInspectionCell(null);
                   setSelectedChipId(null);
                   setSelectedWaferId(null);
                 }}
@@ -1675,27 +1607,15 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
         {isChipFocusView ? (
           <aside className="panel wafer-params-panel">
                 {isPostDiceMode ? (
-              activeChip ? (
+              activeChip && activeChipCode && activeChipExpandedName ? (
                     <div className="wafer-params-block">
                       <div className="wafer-panel-heading">
                         <div className="wafer-params-id">{activeChipCode}</div>
                         <p className="wafer-params-name">{activeChipExpandedName}</p>
                       </div>
                       <div className="wafer-params-empty">
-                        <p className="muted">Current step: {currentStepLabel}</p>
-                        <p className="muted">Next step: {nextStepLabel}</p>
-                        <p className="muted">Current handler: {currentHandlerLabel}</p>
-                        <label className="wafer-description-field">
-                          Description
-                          <textarea
-                            className="wafer-description-input"
-                            value={activeChipDescription}
-                            onChange={(event) => handleChipDescriptionChange(event.target.value)}
-                            onBlur={(event) => {
-                              void saveActiveChipDescription(event.target.value);
-                            }}
-                          />
-                        </label>
+                        <p className="muted">Click the die preview below to open inspection.</p>
+                        <p className="muted">Row {activeChipInspectionRow} / Column {activeChipInspectionColumn}</p>
                       </div>
                     </div>
                   ) : (
@@ -1715,7 +1635,29 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
           </aside>
         ) : null}
         </div>
-        {isChipFocusView ? renderPollingParameterSheet() : null}
+        {isChipFocusView && isInspectionPanelOpen && activeChipCode && activeChipExpandedName && activeWaferDatabaseId && activeProjectId ? (
+          <section className="panel wafer-inspection-workspace">
+            <div className="wafer-inspection-workspace__header">
+              <h3>Inspection</h3>
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => setIsInspectionPanelOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <DieInspectionMap
+              projectId={activeProjectId}
+              waferId={activeWaferDatabaseId}
+              dieCode={activeChipCode}
+              dieName={activeChipExpandedName}
+              row={activeChipInspectionRow}
+              column={activeChipInspectionColumn}
+              hue={activeInspectionHue}
+            />
+          </section>
+        ) : isChipFocusView ? renderPollingParameterSheet() : null}
       </div>
     </div>
   );

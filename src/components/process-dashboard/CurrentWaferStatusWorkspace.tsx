@@ -51,6 +51,7 @@ export function CurrentWaferStatusWorkspace({ states }: ChipWorkspaceProps) {
   const visualizerWafers = availableStates.map((state) => ({
     id: state.assignmentId,
     waferId: state.waferId,
+    projectId: state.projectId,
     name: state.waferCode,
     stateName: state.currentStepName,
     statusLabel: normalizeStatusLabel(state.currentStepStatus),

@@ -246,6 +246,23 @@ export type Attachment = {
   created_at: string;
 };
 
+export type DieInspection = {
+  id: string;
+  project_id: string;
+  wafer_id: string;
+  die_code: string;
+  x_ratio: number;
+  y_ratio: number;
+  image_bucket: string;
+  image_path: string;
+  image_mime_type: string;
+  image_size_bytes: number;
+  image_file_name: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ProcessIssue = {
   id: string;
   project_id: string;
@@ -351,6 +368,7 @@ export interface Database {
       process_calendar_event_people: Row<ProcessCalendarEventPerson>;
       measurements: Row<Measurement>;
       attachments: Row<Attachment>;
+      die_inspections: Row<DieInspection>;
       process_issues: Row<ProcessIssue>;
       process_events: Row<ProcessEvent>;
       audit_events: Row<AuditEvent>;
