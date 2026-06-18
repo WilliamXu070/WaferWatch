@@ -2085,6 +2085,33 @@ input {
   color: var(--foreground);
 }
 
+.wafer-description-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--foreground);
+  font-weight: 750;
+}
+
+.wafer-description-input {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.45;
+  padding: 12px 14px;
+}
+
+.wafer-description-input:focus {
+  outline: 2px solid rgba(88, 204, 2, 0.35);
+  border-color: rgba(88, 204, 2, 0.55);
+}
+
 .wafer-params-scroll {
   border: 1px solid var(--border);
   border-radius: 8px;

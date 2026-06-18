@@ -860,6 +860,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const [rawPolygons, setRawPolygons] = useState<ParsedPolygon[]>([]);
   const [selectedWaferId, setSelectedWaferId] = useState<string | null>(null);
   const [selectedChipId, setSelectedChipId] = useState<string | null>(null);
+  const [chipDescriptions, setChipDescriptions] = useState<Record<string, string>>({});
   const hasWaferOverview = wafers.length > 0;
   const selectedWafer = hasWaferOverview
     ? wafers.find((wafer) => wafer.id === selectedWaferId) ?? null
@@ -956,6 +957,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const activeChipExpandedName = activeChip
     ? `${activeWaferName} wafer, die number ${activeChip.label}, version ${WAFER_REUSE_CYCLE}`
     : null;
+  const activeDescriptionKey = activeChipCode ? `${selectedWafer?.id ?? "single"}:${activeChipCode}` : null;
+  const activeChipDescription = activeDescriptionKey ? chipDescriptions[activeDescriptionKey] ?? "" : "";
 
   const handleChipSelect = (chipId: string) => {
     if (!isPostDiceMode) {
@@ -977,6 +980,17 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       event.preventDefault();
       handleChipSelect(chipId);
     }
+  };
+
+  const handleChipDescriptionChange = (value: string) => {
+    if (!activeDescriptionKey) {
+      return;
+    }
+
+    setChipDescriptions((current) => ({
+      ...current,
+      [activeDescriptionKey]: value
+    }));
   };
 
   const renderChip = (
@@ -1260,6 +1274,15 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                         <p className="muted">State: {activeWaferStateName ?? "Not started"}</p>
                         <p className="muted">Wafer state: {getWaferStateLabel(waferMode)}</p>
                         <p className="muted">Status: {activeChipModeStatus ? formatDieStatus(activeChipModeStatus) : "Unassigned"}</p>
+                        <label className="wafer-description-field">
+                          Description
+                          <textarea
+                            className="wafer-description-input"
+                            value={activeChipDescription}
+                            onChange={(event) => handleChipDescriptionChange(event.target.value)}
+                            placeholder="Add notes, observations, cleanup history, or anything useful for this die."
+                          />
+                        </label>
                       </div>
                     </div>
                   ) : (
