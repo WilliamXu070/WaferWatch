@@ -2400,6 +2400,11 @@ textarea {
   align-content: start;
 }
 
+.wafer-inspection-stack .wafer-polling-panel {
+  grid-column: auto;
+  grid-row: auto;
+}
+
 .wafer-inspection-workspace {
   display: grid;
   gap: 14px;

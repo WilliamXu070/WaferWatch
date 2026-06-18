@@ -1294,20 +1294,26 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       return null;
     }
 
-    const columns = sanitizeGridAxisCount(activePollingTemplate.columns);
     const row = activeChipInspectionRow;
     const rowIndex = row - 1;
     const gridStyle = {
-      gridTemplateColumns: `minmax(104px, 0.28fr) repeat(${columns}, minmax(118px, 1fr))`
+      gridTemplateColumns: "minmax(104px, 0.28fr) minmax(118px, 1fr)"
     };
 
     return (
-      <section
-        className="panel wafer-polling-panel wafer-inspection-polling-panel"
+      <div
+        className="wafer-polling-panel wafer-inspection-polling-panel"
         aria-label={`${activeChipCode} selected chip polling parameters`}
       >
         <div className="wafer-polling-header">
           <h3>Polling parameters</h3>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => setIsInspectionPanelOpen(false)}
+          >
+            Close
+          </button>
         </div>
         <div className="wafer-polling-sheet">
           <section
@@ -1318,20 +1324,18 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
             <h4>Row {row}</h4>
             <div className="wafer-polling-grid" style={gridStyle}>
               <div className="wafer-polling-corner">Parameter</div>
-              {Array.from({ length: columns }, (_, columnIndex) => (
-                <div
-                  className="wafer-polling-column-header"
-                  key={`inspection-polling-header-${row}-${columnIndex + 1}`}
-                  style={getPollingColumnStyle(rowIndex, columnIndex, columns)}
-                >
-                  C{columnIndex + 1}
-                </div>
-              ))}
+              <div
+                className="wafer-polling-column-header"
+                key={`inspection-polling-header-${row}-${activeChipInspectionColumn}`}
+                style={getPollingColumnStyle(rowIndex, activeChipInspectionColumn - 1, activePollingTemplate.columns)}
+              >
+                C{activeChipInspectionColumn}
+              </div>
               {POLLING_PARAMETER_FIELDS.map((field) => (
                 <div className="wafer-polling-field-row" key={`inspection-polling-${row}-${field.key}`}>
                   <div className="wafer-polling-row-label">{field.label}</div>
-                  {Array.from({ length: columns }, (_, columnIndex) => {
-                    const column = columnIndex + 1;
+                  {(() => {
+                    const column = activeChipInspectionColumn;
                     const key = getPollingCellKey(
                       activeWaferDatabaseId,
                       activeChipCode,
@@ -1340,7 +1344,11 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                       field.key
                     );
                     const inputValue = getPollingValue(row, column, field.key);
-                    const cellStyle = getPollingColumnStyle(rowIndex, columnIndex, columns);
+                    const cellStyle = getPollingColumnStyle(
+                      rowIndex,
+                      activeChipInspectionColumn - 1,
+                      activePollingTemplate.columns
+                    );
 
                     return (
                       <div
@@ -1370,13 +1378,13 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                         />
                       </div>
                     );
-                  })}
+                  })()}
                 </div>
               ))}
             </div>
           </section>
         </div>
-      </section>
+      </div>
     );
   };
 
@@ -1812,7 +1820,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
           </div>
         </section>
 
-        {isChipFocusView ? (
+        {isChipFocusView && !isInspectionPanelOpen ? (
           <aside className="panel wafer-params-panel">
                 {isPostDiceMode ? (
               activeChip && activeChipCode && activeChipExpandedName ? (
@@ -1845,18 +1853,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
         </div>
         {isChipFocusView && isInspectionPanelOpen && activeChipCode && activeChipExpandedName && activeWaferDatabaseId && activeProjectId ? (
           <div className="wafer-inspection-stack">
-            {renderActiveInspectionPollingSummary()}
             <section className="panel wafer-inspection-workspace">
-              <div className="wafer-inspection-workspace__header">
-                <h3>Inspection</h3>
-                <button
-                  type="button"
-                  className="button button-secondary"
-                  onClick={() => setIsInspectionPanelOpen(false)}
-                >
-                  Close
-                </button>
-              </div>
+              {renderActiveInspectionPollingSummary()}
               <DieInspectionMap
                 key={`${activeWaferDatabaseId}:${activeChipCode}:${activeChipInspectionRow}:${activeChipInspectionColumn}`}
                 projectId={activeProjectId}

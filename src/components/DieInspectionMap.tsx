@@ -13,7 +13,6 @@ import {
 import { useDropzone } from "react-dropzone";
 import {
   createDieInspection,
-  deleteDieInspection,
   getDieInspectionPreviewUrl,
   listDieInspections,
   type DieInspectionRecord
@@ -77,7 +76,19 @@ export function DieInspectionMap({
   const [isUploading, setIsUploading] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const bubbleRef = useRef<HTMLDivElement | null>(null);
-  const visibleInspections = preloadedInspections ?? inspections;
+  const visibleInspections = useMemo(
+    () =>
+      [...(preloadedInspections ?? inspections)].sort((first, second) => {
+        const xDifference = first.xRatio - second.xRatio;
+
+        if (Math.abs(xDifference) > 0.0001) {
+          return xDifference;
+        }
+
+        return first.yRatio - second.yRatio;
+      }),
+    [inspections, preloadedInspections]
+  );
   const activeInspectionId = selectedInspectionId ?? visibleInspections[0]?.id ?? null;
   const selectedInspection = useMemo(
     () => visibleInspections.find((inspection) => inspection.id === activeInspectionId) ?? null,
@@ -156,7 +167,7 @@ export function DieInspectionMap({
       }
 
       const target = event.target as HTMLElement | null;
-      if (target?.closest(".die-inspection-map")) {
+      if (target?.closest(".die-inspection-card")) {
         return;
       }
 
@@ -350,25 +361,7 @@ export function DieInspectionMap({
     void uploadInspectionFile(file, pendingPin);
   };
 
-  const handleDeleteInspection = async (inspectionId: string) => {
-    const result = await deleteDieInspection({ inspectionId });
-
-    if (result.ok) {
-      if (preloadedInspections) {
-        onInspectionsChange?.(
-          preloadedInspections.filter((inspection) => inspection.id !== inspectionId)
-        );
-      } else {
-        setInspections((current) => current.filter((inspection) => inspection.id !== inspectionId));
-      }
-      setSelectedInspectionId(null);
-      setIsPreviewLoading(false);
-      } else {
-        setUploadError(result.error);
-      }
-  };
-
-  const bubblePin = pendingPin ?? (selectedInspectionId ? selectedInspection : null);
+  const bubblePin = pendingPin;
 
   return (
     <section
@@ -464,26 +457,6 @@ export function DieInspectionMap({
                   Cancel
                 </button>
               </>
-            ) : selectedInspection ? (
-              <>
-                <strong>{selectedInspection.imageFileName}</strong>
-                {isPreviewLoading ? (
-                  <p>Loading preview...</p>
-                ) : selectedInspection.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={selectedInspection.imageUrl} alt={selectedInspection.imageFileName} />
-                ) : (
-                  <p>Preview unavailable.</p>
-                )}
-                {uploadError ? <p className="die-inspection-error">{uploadError}</p> : null}
-                <button
-                  type="button"
-                  className="button button-danger"
-                  onClick={() => void handleDeleteInspection(selectedInspection.id)}
-                >
-                  Delete
-                </button>
-              </>
             ) : null}
           </div>
         ) : null}
@@ -523,15 +496,6 @@ export function DieInspectionMap({
               <p>No preview image is available for this pin.</p>
             )}
           </div>
-          {selectedInspection ? (
-            <div className="die-inspection-media-viewer__meta">
-              <strong>{selectedInspection.imageFileName}</strong>
-              <span>
-                Pin {Math.max(selectedInspectionIndex + 1, 1)} at{" "}
-                {Math.round(selectedInspection.xRatio * 100)}% length
-              </span>
-            </div>
-          ) : null}
         </div>
       ) : (
         <div className="die-inspection-media-viewer die-inspection-media-viewer--empty">
