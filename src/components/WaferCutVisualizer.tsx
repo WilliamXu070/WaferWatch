@@ -2,7 +2,10 @@
 
 import { type CSSProperties, type KeyboardEvent, type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { DieInspectionMap } from "@/components/DieInspectionMap";
-import { listDieInspectionCells } from "@/features/inspections/actions";
+import {
+  listDieInspectionsForDie,
+  type DieInspectionRecord
+} from "@/features/inspections/actions";
 import { updateWaferDiePollingParameter } from "@/features/wafers/actions";
 
 type Point = {
@@ -930,7 +933,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const [inspectionCellState, setInspectionCellState] = useState<{
     scope: string;
     cells: Record<string, boolean>;
-  }>({ scope: "", cells: {} });
+    inspectionsByCell: Record<string, DieInspectionRecord[]>;
+  }>({ scope: "", cells: {}, inspectionsByCell: {} });
   const [pollingValues, setPollingValues] = useState<Record<string, string>>({});
   const [savedPollingOverrides, setSavedPollingOverrides] = useState<Record<string, string>>({});
   const [, setPollingSaveStatus] = useState<Record<string, "idle" | "saving" | "saved" | "error">>({});
@@ -1077,6 +1081,27 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     : "";
   const activeInspectionCells =
     inspectionCellState.scope === activeInspectionCellScope ? inspectionCellState.cells : {};
+  const activeInspectionRecordsByCell = useMemo(
+    () =>
+      inspectionCellState.scope === activeInspectionCellScope
+        ? inspectionCellState.inspectionsByCell
+        : {},
+    [activeInspectionCellScope, inspectionCellState.inspectionsByCell, inspectionCellState.scope]
+  );
+  const activeInspectionCellKey = `${activeChipInspectionRow}:${activeChipInspectionColumn}`;
+  const activeInspectionRecords = activeInspectionRecordsByCell[activeInspectionCellKey] ?? [];
+  const activeInspectionImageUrls = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          Object.values(activeInspectionRecordsByCell)
+            .flat()
+            .map((inspection) => inspection.imageUrl)
+            .filter((imageUrl): imageUrl is string => Boolean(imageUrl))
+        )
+      ),
+    [activeInspectionRecordsByCell]
+  );
 
   const getPollingValue = (
     row: number,
@@ -1173,7 +1198,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     }
 
     let isStale = false;
-    void listDieInspectionCells({
+    void listDieInspectionsForDie({
       waferId: activeWaferDatabaseId,
       dieCode: activeChipCode
     }).then((result) => {
@@ -1182,9 +1207,19 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       }
 
       if (result.ok) {
+        const cells: Record<string, boolean> = {};
+        const inspectionsByCell: Record<string, DieInspectionRecord[]> = {};
+
+        for (const inspection of result.data) {
+          const key = `${inspection.row}:${inspection.column}`;
+          cells[key] = true;
+          inspectionsByCell[key] = [...(inspectionsByCell[key] ?? []), inspection];
+        }
+
         setInspectionCellState({
           scope: `${activeWaferDatabaseId}:${activeChipCode}`,
-          cells: Object.fromEntries(result.data.map((cell) => [`${cell.row}:${cell.column}`, true]))
+          cells,
+          inspectionsByCell
         });
       }
     });
@@ -1193,6 +1228,21 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       isStale = true;
     };
   }, [activeChipCode, activeWaferDatabaseId]);
+
+  useEffect(() => {
+    const warmedImages = activeInspectionImageUrls.map((imageUrl) => {
+      const image = new window.Image();
+      image.decoding = "async";
+      image.src = imageUrl;
+      return image;
+    });
+
+    return () => {
+      for (const image of warmedImages) {
+        image.src = "";
+      }
+    };
+  }, [activeInspectionImageUrls]);
 
   const handleChipSelect = (chipId: string) => {
     if (!isPostDiceMode) {
@@ -1723,6 +1773,32 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
               row={activeChipInspectionRow}
               column={activeChipInspectionColumn}
               hue={activeInspectionHue}
+              preloadedInspections={activeInspectionRecords}
+              onInspectionsChange={(updatedInspections) => {
+                setInspectionCellState((current) => {
+                  if (current.scope !== activeInspectionCellScope) {
+                    return current;
+                  }
+
+                  const nextCells = { ...current.cells };
+                  const nextInspectionsByCell = {
+                    ...current.inspectionsByCell,
+                    [activeInspectionCellKey]: updatedInspections
+                  };
+
+                  if (updatedInspections.length > 0) {
+                    nextCells[activeInspectionCellKey] = true;
+                  } else {
+                    delete nextCells[activeInspectionCellKey];
+                  }
+
+                  return {
+                    ...current,
+                    cells: nextCells,
+                    inspectionsByCell: nextInspectionsByCell
+                  };
+                });
+              }}
             />
           </section>
         ) : isChipFocusView ? renderPollingParameterSheet() : null}

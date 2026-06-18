@@ -111,7 +111,62 @@ export async function listDieInspections(input: unknown) {
       return fail(error.message);
     }
 
-    const inspections = (data ?? []).map((row) => mapInspectionRow(row, null));
+    const admin = createSupabaseAdminClient();
+    const inspections = await Promise.all(
+      (data ?? []).map(async (row) => {
+        const signed = await admin.storage
+          .from(row.image_bucket)
+          .createSignedUrl(row.image_path, 60 * 60);
+
+        return mapInspectionRow(row, signed.data?.signedUrl ?? null);
+      })
+    );
+
+    return ok(inspections);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function listDieInspectionsForDie(input: unknown) {
+  try {
+    const parsed = dieInspectionCellSummarySchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data: wafer, error: waferError } = await supabase
+      .from("wafers")
+      .select("id, project_id")
+      .eq("id", parsed.waferId)
+      .single();
+
+    if (waferError) {
+      return fail(waferError.message);
+    }
+
+    await assertProjectAccess(wafer.project_id, "read");
+
+    const { data, error } = await supabase
+      .from("die_inspections")
+      .select("*")
+      .eq("wafer_id", parsed.waferId)
+      .eq("die_code", parsed.dieCode)
+      .order("pattern_row", { ascending: true })
+      .order("pattern_column", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    const admin = createSupabaseAdminClient();
+    const inspections = await Promise.all(
+      (data ?? []).map(async (row) => {
+        const signed = await admin.storage
+          .from(row.image_bucket)
+          .createSignedUrl(row.image_path, 60 * 60);
+
+        return mapInspectionRow(row, signed.data?.signedUrl ?? null);
+      })
+    );
 
     return ok(inspections);
   } catch (error) {

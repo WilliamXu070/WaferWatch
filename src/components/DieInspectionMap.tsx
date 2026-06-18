@@ -24,6 +24,8 @@ type DieInspectionMapProps = {
   row: number;
   column: number;
   hue: number;
+  preloadedInspections?: DieInspectionRecord[];
+  onInspectionsChange?: (inspections: DieInspectionRecord[]) => void;
 };
 
 const INSPECTION_BUCKET = "wafer-process-files";
@@ -55,7 +57,9 @@ export function DieInspectionMap({
   dieName,
   row,
   column,
-  hue
+  hue,
+  preloadedInspections,
+  onInspectionsChange
 }: DieInspectionMapProps) {
   const [pendingPin, setPendingPin] = useState<PendingPin | null>(null);
   const [inspections, setInspections] = useState<DieInspectionRecord[]>([]);
@@ -64,12 +68,17 @@ export function DieInspectionMap({
   const [isUploading, setIsUploading] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const bubbleRef = useRef<HTMLDivElement | null>(null);
+  const visibleInspections = preloadedInspections ?? inspections;
   const selectedInspection = useMemo(
-    () => inspections.find((inspection) => inspection.id === selectedInspectionId) ?? null,
-    [inspections, selectedInspectionId]
+    () => visibleInspections.find((inspection) => inspection.id === selectedInspectionId) ?? null,
+    [visibleInspections, selectedInspectionId]
   );
 
   useEffect(() => {
+    if (preloadedInspections) {
+      return;
+    }
+
     let isStale = false;
 
     void listDieInspections({ waferId, dieCode, row, column }).then((result) => {
@@ -87,7 +96,7 @@ export function DieInspectionMap({
     return () => {
       isStale = true;
     };
-  }, [column, dieCode, row, waferId]);
+  }, [column, dieCode, preloadedInspections, row, waferId]);
 
   useEffect(() => {
     if (!pendingPin) {
@@ -138,13 +147,18 @@ export function DieInspectionMap({
       }
 
       if (result.ok) {
-        setInspections((current) =>
+        const updatePreviewUrl = (current: DieInspectionRecord[]) =>
           current.map((inspection) =>
             inspection.id === selectedInspection.id
               ? { ...inspection, imageUrl: result.data.imageUrl }
               : inspection
-          )
-        );
+          );
+
+        if (preloadedInspections) {
+          onInspectionsChange?.(updatePreviewUrl(preloadedInspections));
+        } else {
+          setInspections(updatePreviewUrl);
+        }
       } else {
         setUploadError(result.error);
       }
@@ -155,7 +169,7 @@ export function DieInspectionMap({
     return () => {
       isStale = true;
     };
-  }, [selectedInspection]);
+  }, [onInspectionsChange, preloadedInspections, selectedInspection]);
 
   const uploadInspectionFile = async (rawFile: File, pin: PendingPin) => {
     try {
@@ -215,7 +229,11 @@ export function DieInspectionMap({
         throw new Error(result.error);
       }
 
-      setInspections((current) => [...current, result.data]);
+      if (preloadedInspections) {
+        onInspectionsChange?.([...preloadedInspections, result.data]);
+      } else {
+        setInspections((current) => [...current, result.data]);
+      }
       setSelectedInspectionId(result.data.id);
       setPendingPin(null);
     } catch (error) {
@@ -273,10 +291,16 @@ export function DieInspectionMap({
   const handleDeleteInspection = async (inspectionId: string) => {
     const result = await deleteDieInspection({ inspectionId });
 
-      if (result.ok) {
+    if (result.ok) {
+      if (preloadedInspections) {
+        onInspectionsChange?.(
+          preloadedInspections.filter((inspection) => inspection.id !== inspectionId)
+        );
+      } else {
         setInspections((current) => current.filter((inspection) => inspection.id !== inspectionId));
-        setSelectedInspectionId(null);
-        setIsPreviewLoading(false);
+      }
+      setSelectedInspectionId(null);
+      setIsPreviewLoading(false);
       } else {
         setUploadError(result.error);
       }
@@ -297,7 +321,7 @@ export function DieInspectionMap({
 
       <div className="die-inspection-map" onClick={handleMapClick} role="presentation">
         <div className="die-inspection-map__surface" />
-        {inspections.map((inspection) => (
+        {visibleInspections.map((inspection) => (
           <button
             type="button"
             className={[
