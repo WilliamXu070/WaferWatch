@@ -1384,6 +1384,11 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
             const inspectionRow = match ? Number(match[1]) : 1;
             const inspectionColumn = match ? Number(match[2]) : 1;
             const hasInspection = isFocusedView && Boolean(activeInspectionCells[`${inspectionRow}:${inspectionColumn}`]);
+            const isActiveInspectionCell =
+              isFocusedView &&
+              isInspectionPanelOpen &&
+              selectedInspectionCell?.row === inspectionRow &&
+              selectedInspectionCell?.column === inspectionColumn;
             const openInspectionCell = (event: MouseEvent<SVGRectElement>) => {
               if (!isFocusedView) {
                 return;
@@ -1404,6 +1409,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                 data-inspection-cell={`r${inspectionRow}-c${inspectionColumn}`}
                 data-inspection-row={inspectionRow}
                 data-inspection-column={inspectionColumn}
+                data-active-inspection-cell={isActiveInspectionCell ? "true" : undefined}
                 x={rect.x}
                 y={rect.y}
                 width={rect.width}
@@ -1416,6 +1422,18 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                 onClick={isFocusedView ? openInspectionCell : undefined}
                 style={isFocusedView ? { pointerEvents: "auto", cursor: "pointer" } : undefined}
               />
+              {isActiveInspectionCell ? (
+                <rect
+                  className="wafer-mode-structure-active-ring"
+                  x={rect.x}
+                  y={rect.y}
+                  width={rect.width}
+                  height={rect.height}
+                  fill="none"
+                  vectorEffect="non-scaling-stroke"
+                  pointerEvents="none"
+                />
+              ) : null}
               {hasInspection ? (
                 <circle
                   className="wafer-mode-inspection-pin"

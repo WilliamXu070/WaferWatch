@@ -2569,6 +2569,15 @@ textarea {
   opacity: 1;
 }
 
+.wafer-mode-structure-active-ring {
+  stroke: color-mix(in srgb, var(--foreground) 88%, transparent);
+  stroke-width: 2.8;
+  stroke-linejoin: round;
+  filter:
+    drop-shadow(0 0 0.9px color-mix(in srgb, var(--panel) 95%, transparent))
+    drop-shadow(0 2px 4px rgba(75, 75, 75, 0.26));
+}
+
 .wafer-mode-inspection-pin {
   fill: #ef2f2f;
   stroke: color-mix(in srgb, var(--foreground) 82%, transparent);

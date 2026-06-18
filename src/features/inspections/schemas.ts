@@ -24,6 +24,10 @@ export const dieInspectionDeleteSchema = z.object({
   inspectionId: uuidSchema
 });
 
+export const dieInspectionPreviewSchema = z.object({
+  inspectionId: uuidSchema
+});
+
 export const dieInspectionCellSummarySchema = z.object({
   waferId: uuidSchema,
   dieCode: z.string().trim().min(2).max(32).regex(/^[A-Z][1-8]-V\d+$/)

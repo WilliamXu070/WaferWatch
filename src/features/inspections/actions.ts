@@ -9,6 +9,7 @@ import {
   dieInspectionCreateSchema,
   dieInspectionDeleteSchema,
   dieInspectionListSchema,
+  dieInspectionPreviewSchema,
   dieInspectionCellSummarySchema
 } from "@/features/inspections/schemas";
 
@@ -110,18 +111,40 @@ export async function listDieInspections(input: unknown) {
       return fail(error.message);
     }
 
-    const admin = createSupabaseAdminClient();
-    const inspections = await Promise.all(
-      (data ?? []).map(async (row) => {
-        const signed = await admin.storage
-          .from(row.image_bucket)
-          .createSignedUrl(row.image_path, 60 * 60);
-
-        return mapInspectionRow(row, signed.data?.signedUrl ?? null);
-      })
-    );
+    const inspections = (data ?? []).map((row) => mapInspectionRow(row, null));
 
     return ok(inspections);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function getDieInspectionPreviewUrl(input: unknown) {
+  try {
+    const parsed = dieInspectionPreviewSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data: inspection, error: inspectionError } = await supabase
+      .from("die_inspections")
+      .select("id, project_id, image_bucket, image_path")
+      .eq("id", parsed.inspectionId)
+      .single();
+
+    if (inspectionError) {
+      return fail(inspectionError.message);
+    }
+
+    await assertProjectAccess(inspection.project_id, "read");
+
+    const admin = createSupabaseAdminClient();
+    const { data, error } = await admin.storage
+      .from(inspection.image_bucket)
+      .createSignedUrl(inspection.image_path, 60 * 60);
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    return ok({ imageUrl: data.signedUrl });
   } catch (error) {
     return fail(toErrorMessage(error));
   }

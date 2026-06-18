@@ -5,6 +5,7 @@ import { useDropzone } from "react-dropzone";
 import {
   createDieInspection,
   deleteDieInspection,
+  getDieInspectionPreviewUrl,
   listDieInspections,
   type DieInspectionRecord
 } from "@/features/inspections/actions";
@@ -61,6 +62,7 @@ export function DieInspectionMap({
   const [selectedInspectionId, setSelectedInspectionId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const selectedInspection = useMemo(
     () => inspections.find((inspection) => inspection.id === selectedInspectionId) ?? null,
@@ -122,6 +124,38 @@ export function DieInspectionMap({
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [pendingPin, selectedInspection]);
+
+  useEffect(() => {
+    if (!selectedInspection || selectedInspection.imageUrl) {
+      return;
+    }
+
+    let isStale = false;
+
+    void getDieInspectionPreviewUrl({ inspectionId: selectedInspection.id }).then((result) => {
+      if (isStale) {
+        return;
+      }
+
+      if (result.ok) {
+        setInspections((current) =>
+          current.map((inspection) =>
+            inspection.id === selectedInspection.id
+              ? { ...inspection, imageUrl: result.data.imageUrl }
+              : inspection
+          )
+        );
+      } else {
+        setUploadError(result.error);
+      }
+
+      setIsPreviewLoading(false);
+    });
+
+    return () => {
+      isStale = true;
+    };
+  }, [selectedInspection]);
 
   const uploadInspectionFile = async (rawFile: File, pin: PendingPin) => {
     try {
@@ -217,6 +251,7 @@ export function DieInspectionMap({
       yRatio: clampRatio((event.clientY - rect.top) / rect.height)
     });
     setSelectedInspectionId(null);
+    setIsPreviewLoading(false);
     setUploadError(null);
   };
 
@@ -238,12 +273,13 @@ export function DieInspectionMap({
   const handleDeleteInspection = async (inspectionId: string) => {
     const result = await deleteDieInspection({ inspectionId });
 
-    if (result.ok) {
-      setInspections((current) => current.filter((inspection) => inspection.id !== inspectionId));
-      setSelectedInspectionId(null);
-    } else {
-      setUploadError(result.error);
-    }
+      if (result.ok) {
+        setInspections((current) => current.filter((inspection) => inspection.id !== inspectionId));
+        setSelectedInspectionId(null);
+        setIsPreviewLoading(false);
+      } else {
+        setUploadError(result.error);
+      }
   };
 
   const bubblePin = pendingPin ?? selectedInspection;
@@ -277,6 +313,7 @@ export function DieInspectionMap({
             onClick={(event) => {
               event.stopPropagation();
               setSelectedInspectionId(inspection.id);
+              setIsPreviewLoading(!inspection.imageUrl);
               setPendingPin(null);
               setUploadError(null);
             }}
@@ -344,7 +381,9 @@ export function DieInspectionMap({
             ) : selectedInspection ? (
               <>
                 <strong>{selectedInspection.imageFileName}</strong>
-                {selectedInspection.imageUrl ? (
+                {isPreviewLoading ? (
+                  <p>Loading preview...</p>
+                ) : selectedInspection.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={selectedInspection.imageUrl} alt={selectedInspection.imageFileName} />
                 ) : (
