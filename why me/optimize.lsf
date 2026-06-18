@@ -8,12 +8,10 @@ WG_length=5e-6;
 WG_width=0.8e-6;
 Thickness=0.6e-6;
 etch_depth=0.3e-6;
-# radius=__RADIUS__;
-radius=50e-6;
+radius=__RADIUS__;
 # Horizontal location of the vertical output waveguide and bend endpoint.
 # Python can set this independently from radius, e.g. output_x=40e-6 while radius=50e-6.
-# output_x=__OUTPUT_X__;
-output_x=50e-6;
+output_x=__OUTPUT_X__;
 Angle=70;
 mesh=50e-9;
 BOX=4.7e-6;
@@ -246,35 +244,6 @@ output_rect = [[output_x - WG_width/2 - layout_x_center, output_y_start - layout
                [output_x - WG_width/2 - layout_x_center, output_y_start - layout_y_center]];
 set('geometry', {"1:0":{output_rect}});
 
-#############################################
-## LAYER BUILDER 3: Optimized core (circular arc bend) [Python injected]
-#####################################
-
-## Generate circular arc polygon
-#num_arc_points = 100;
-## Outer edge + inner edge + close polygon
-#arc_polygon = matrix(num_arc_points * 2 + 1, 2);
-
-## Outer edge (CCW): offset +WG_width/2 radially outward
-#for (i = 1; i <= num_arc_points; i = i + 1) {
-  #t = (i - 1) / (num_arc_points - 1);
-  #theta = theta_start + t * (theta_end - theta_start);
-  #arc_polygon(i, 1) = arc_cx + (radius + WG_width/2) * cos(theta) - layout_x_center;
-  #arc_polygon(i, 2) = arc_cy + (radius + WG_width/2) * sin(theta) - layout_y_center;
-#}
-## Inner edge (backward): offset -WG_width/2 radially inward
-#for (i = 1; i <= num_arc_points; i = i + 1) {
-  #t = (i - 1) / (num_arc_points - 1);
-  #theta = theta_end - t * (theta_end - theta_start);
-  #arc_polygon(num_arc_points + i, 1) = arc_cx + (radius - WG_width/2) * cos(theta) - layout_x_center;
-  #arc_polygon(num_arc_points + i, 2) = arc_cy + (radius - WG_width/2) * sin(theta) - layout_y_center;
-#}
-## Close polygon
-#arc_polygon(num_arc_points * 2 + 1, 1) = arc_polygon(1, 1);
-#arc_polygon(num_arc_points * 2 + 1, 2) = arc_polygon(1, 2);
-
-#set('geometry', {"1:0": {arc_polygon}});
-
 ## FDTD REGION
 # Reference-style rectangular FDTD window: independent x/y spans, auto mesh.
 # It covers the bend plus only a short tip of each access waveguide.
@@ -374,7 +343,7 @@ set('override global source settings', 1);
 set('wavelength start', wavelength);
 set('wavelength stop', wavelength);
 
-## 3D FIELD MONITOR
+## REQUIRED LUMOPT FIELD MONITOR
 adddftmonitor;
 set('name','opt_fields');
 set('monitor type','3D');
@@ -394,14 +363,3 @@ set('x span', 2.5e-6);
 set('y', fom_y);
 set('z', 0.3e-6);
 set('z span', 3e-6);
-
-## XY PROFILE MONITOR
-adddftmonitor;
-set('name', 'XY-profile_monitor');
-set('monitor type','2D Z-normal');
-set('spatial interpolation','specified position');
-set('z', 0.3e-6);
-set('y', fdtd_center_y);
-set('y span', fdtd_y_span);
-set('x', fdtd_center_x);
-set('x span', fdtd_x_span);
