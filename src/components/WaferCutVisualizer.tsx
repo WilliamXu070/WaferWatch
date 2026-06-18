@@ -954,12 +954,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     ? `${activeWaferPrefix}${activeChip.label}-${WAFER_REUSE_PREFIX}${WAFER_REUSE_CYCLE}`
     : null;
   const activeChipExpandedName = activeChip
-    ? `${activeWaferName} / Die ${activeChip.label}`
+    ? `${activeWaferName} wafer, die number ${activeChip.label}, version ${WAFER_REUSE_CYCLE}`
     : null;
-
-  const activeChipDescription = activeChip
-    ? `Good to know: ${WAFER_REUSE_PREFIX}${WAFER_REUSE_CYCLE} is the wafer/reticle revision currently shown for this chip.`
-    : "";
 
   const handleChipSelect = (chipId: string) => {
     if (!isPostDiceMode) {
@@ -1254,8 +1250,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
         {isChipFocusView ? (
           <aside className="panel wafer-params-panel">
                 {isPostDiceMode ? (
-                  activeChip ? (
-                    <>
+              activeChip ? (
+                    <div className="wafer-params-block">
                       <div className="wafer-panel-heading">
                         <div className="wafer-params-id">{activeChipCode}</div>
                         <p className="wafer-params-name">{activeChipExpandedName}</p>
@@ -1264,9 +1260,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                         <p className="muted">State: {activeWaferStateName ?? "Not started"}</p>
                         <p className="muted">Wafer state: {getWaferStateLabel(waferMode)}</p>
                         <p className="muted">Status: {activeChipModeStatus ? formatDieStatus(activeChipModeStatus) : "Unassigned"}</p>
-                        <p className="wafer-params-note">{activeChipDescription}</p>
                       </div>
-                    </>
+                    </div>
                   ) : (
                     <div className="wafer-params-empty">
                       <p className="muted">

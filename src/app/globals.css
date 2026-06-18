@@ -2057,6 +2057,12 @@ input {
   display: grid;
   gap: 10px;
   min-height: 620px;
+  align-content: center;
+}
+
+.wafer-params-block {
+  display: grid;
+  gap: 10px;
 }
 
 .wafer-panel-heading {
@@ -2077,17 +2083,6 @@ input {
   font-size: 1.1rem;
   font-weight: 750;
   line-height: 1.2;
-  color: var(--foreground);
-}
-
-.wafer-params-note {
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--muted);
-}
-
-.wafer-params-note strong {
   color: var(--foreground);
 }
 
