@@ -6,7 +6,7 @@ import {
   listDieInspectionsForDie,
   type DieInspectionRecord
 } from "@/features/inspections/actions";
-import { updateWaferDiePollingParameter } from "@/features/wafers/actions";
+import { updateWaferDiePolingParameter } from "@/features/wafers/actions";
 
 type Point = {
   x: number;
@@ -25,7 +25,7 @@ type DieStatus =
   | "post_elb"
   | "post_pad"
   | "pl2"
-  | "post_polling"
+  | "post_poling"
   | "post_inspection";
 
 type ChipPiece = {
@@ -74,11 +74,11 @@ type SvgViewport = {
   halfSpan: number;
 };
 
-type DiePollingParameterField = "peakVoltage" | "pulseDuration" | "description";
+type DiePolingParameterField = "peakVoltage" | "pulseDuration" | "description";
 
-type DiePollingCellValues = Partial<Record<DiePollingParameterField, string>>;
+type DiePolingCellValues = Partial<Record<DiePolingParameterField, string>>;
 
-type DiePollingRows = Record<string, Record<string, DiePollingCellValues>>;
+type DiePolingRows = Record<string, Record<string, DiePolingCellValues>>;
 
 export type WaferVisualizerSample = {
   id: string;
@@ -91,12 +91,24 @@ export type WaferVisualizerSample = {
   nextStepName?: string | null;
   currentHandlerName?: string | null;
   dieDescriptions?: Record<string, string>;
-  diePollingParameters?: Record<string, DiePollingRows>;
+  diePolingParameters?: Record<string, DiePolingRows>;
 };
 
 type WaferCutVisualizerProps = {
   waferStateName?: string | null;
   wafers?: WaferVisualizerSample[];
+};
+
+type WaferOverviewTileLayout = {
+  wafer: WaferVisualizerSample;
+  index: number;
+  tileX: number;
+  tileY: number;
+  tileScale: number;
+  tileViewport: SvgViewport;
+  tileMode: WaferMode;
+  tileChips: ChipPiece[];
+  clipPrefix: string;
 };
 
 const GDS_ASSET_PATH = "/wafer-assets/wafer_4in_100mm_bottom_primary_flat_only.gds";
@@ -114,7 +126,7 @@ const POST_DICE_STATUS_SEQUENCE: DieStatus[] = [
   "post_elb",
   "post_pad",
   "pl2",
-  "post_polling",
+  "post_poling",
   "post_inspection"
 ];
 const POST_ELB_GRID_DEFAULT_INCHES: DieStructureGridTemplateInInches = {
@@ -135,8 +147,8 @@ const WAFER_OVERVIEW_LABEL_HEIGHT = 42;
 const WAFER_REUSE_PREFIX = "V";
 const WAFER_REUSE_CYCLE = 1;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const POLLING_PARAMETER_FIELDS: Array<{
-  key: DiePollingParameterField;
+const POLING_PARAMETER_FIELDS: Array<{
+  key: DiePolingParameterField;
   label: string;
   placeholder: string;
 }> = [
@@ -144,7 +156,7 @@ const POLLING_PARAMETER_FIELDS: Array<{
   { key: "pulseDuration", label: "Pulse duration", placeholder: "" },
   { key: "description", label: "Description", placeholder: "" }
 ];
-const POLLING_ROW_HUES = [202, 190, 172, 154, 218, 32, 284, 122];
+const POLING_ROW_HUES = [202, 190, 172, 154, 218, 32, 284, 122];
 const WAFER_FAMILY_ORDER = [
   "alpha",
   "beta",
@@ -390,7 +402,7 @@ function getWaferModeFromState(waferStateName?: string | null): WaferMode {
     return "pre-dice";
   }
 
-  if (normalized.includes("post") || normalized.includes("pad") || normalized.includes("polling")) {
+  if (normalized.includes("post") || normalized.includes("pad") || normalized.includes("poling")) {
     return "post-dice";
   }
 
@@ -821,7 +833,7 @@ function rectMmToSvg(rect: DieStructureRectMm, viewport: SvgViewport): DieStruct
   const rowIndex = cellMatch ? Number(cellMatch[1]) - 1 : 0;
   const columnIndex = cellMatch ? Number(cellMatch[2]) - 1 : 0;
   const totalColumns = POST_ELB_GRID_DEFAULT_INCHES.columns;
-  const hue = POLLING_ROW_HUES[rowIndex % POLLING_ROW_HUES.length];
+  const hue = POLING_ROW_HUES[rowIndex % POLING_ROW_HUES.length];
   const lightnessStep = totalColumns > 1 ? columnIndex / (totalColumns - 1) : 0;
   const fillLightness = 78 + lightnessStep * 10;
 
@@ -852,17 +864,17 @@ function getModeStructuresForDie(points: Point[], status: DieStatus, label: numb
   return buildCenteredGridRectsForDie(points, viewport, label);
 }
 
-function getPollingCellKey(
+function getPolingCellKey(
   waferId: string,
   dieCode: string,
   row: number,
   column: number,
-  field: DiePollingParameterField
+  field: DiePolingParameterField
 ) {
   return `${waferId}:${dieCode}:R${row}:C${column}:${field}`;
 }
 
-function parsePollingCellKey(key: string) {
+function parsePolingCellKey(key: string) {
   const match = key.match(
     /^([^:]+):([^:]+):R(\d+):C(\d+):(peakVoltage|pulseDuration|description)$/
   );
@@ -876,34 +888,34 @@ function parsePollingCellKey(key: string) {
     dieCode: match[2],
     row: Number(match[3]),
     column: Number(match[4]),
-    field: match[5] as DiePollingParameterField
+    field: match[5] as DiePolingParameterField
   };
 }
 
-function getPollingColumnStyle(rowIndex: number, columnIndex: number, totalColumns: number) {
-  const hue = POLLING_ROW_HUES[rowIndex % POLLING_ROW_HUES.length];
+function getPolingColumnStyle(rowIndex: number, columnIndex: number, totalColumns: number) {
+  const hue = POLING_ROW_HUES[rowIndex % POLING_ROW_HUES.length];
   const lightnessStep = totalColumns > 1 ? columnIndex / (totalColumns - 1) : 0;
   const headerLightness = 34 + lightnessStep * 28;
   const bodyLightness = 92 + lightnessStep * 3;
 
   return {
-    "--polling-column-header": `hsl(${hue} 52% ${headerLightness}%)`,
-    "--polling-column-body": `hsl(${hue} 58% ${bodyLightness}%)`,
-    "--polling-column-border": `hsl(${hue} 32% 72%)`
+    "--poling-column-header": `hsl(${hue} 52% ${headerLightness}%)`,
+    "--poling-column-body": `hsl(${hue} 58% ${bodyLightness}%)`,
+    "--poling-column-border": `hsl(${hue} 32% 72%)`
   } as CSSProperties;
 }
 
-function getPollingRowStyle(rowIndex: number) {
-  const hue = POLLING_ROW_HUES[rowIndex % POLLING_ROW_HUES.length];
+function getPolingRowStyle(rowIndex: number) {
+  const hue = POLING_ROW_HUES[rowIndex % POLING_ROW_HUES.length];
 
   return {
-    "--polling-row-color": `hsl(${hue} 52% 34%)`,
-    "--polling-row-soft": `hsl(${hue} 56% 95%)`,
-    "--polling-row-line": `hsl(${hue} 34% 74%)`
+    "--poling-row-color": `hsl(${hue} 52% 34%)`,
+    "--poling-row-soft": `hsl(${hue} 56% 95%)`,
+    "--poling-row-line": `hsl(${hue} 34% 74%)`
   } as CSSProperties;
 }
 
-function fitPollingTextareaHeight(textarea: HTMLTextAreaElement) {
+function fitPolingTextareaHeight(textarea: HTMLTextAreaElement) {
   textarea.style.height = "auto";
   textarea.style.height = `${textarea.scrollHeight}px`;
 }
@@ -935,9 +947,9 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     cells: Record<string, boolean>;
     inspectionsByCell: Record<string, DieInspectionRecord[]>;
   }>({ scope: "", cells: {}, inspectionsByCell: {} });
-  const [pollingValues, setPollingValues] = useState<Record<string, string>>({});
-  const [savedPollingOverrides, setSavedPollingOverrides] = useState<Record<string, string>>({});
-  const [, setPollingSaveStatus] = useState<Record<string, "idle" | "saving" | "saved" | "error">>({});
+  const [polingValues, setPolingValues] = useState<Record<string, string>>({});
+  const [savedPolingOverrides, setSavedPolingOverrides] = useState<Record<string, string>>({});
+  const [, setPolingSaveStatus] = useState<Record<string, "idle" | "saving" | "saved" | "error">>({});
   const hasWaferOverview = wafers.length > 0;
   const selectedWafer = hasWaferOverview
     ? wafers.find((wafer) => wafer.id === selectedWaferId) ?? null
@@ -955,7 +967,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       }, {}),
     [wafers]
   );
-  const databasePollingByKey = useMemo(() => {
+  const databasePolingByKey = useMemo(() => {
     const parameters: Record<string, string> = {};
 
     for (const wafer of wafers) {
@@ -963,7 +975,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
         continue;
       }
 
-      for (const [dieCode, rows] of Object.entries(wafer.diePollingParameters ?? {})) {
+      for (const [dieCode, rows] of Object.entries(wafer.diePolingParameters ?? {})) {
         for (const [rowKey, columns] of Object.entries(rows)) {
           const row = Number(rowKey.replace(/^R/i, ""));
           if (!Number.isFinite(row)) {
@@ -976,10 +988,10 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
               continue;
             }
 
-            for (const field of POLLING_PARAMETER_FIELDS) {
+            for (const field of POLING_PARAMETER_FIELDS) {
               const value = fields[field.key];
               if (typeof value === "string") {
-                parameters[getPollingCellKey(wafer.waferId, dieCode, row, column, field.key)] = value;
+                parameters[getPolingCellKey(wafer.waferId, dieCode, row, column, field.key)] = value;
               }
             }
           }
@@ -1028,6 +1040,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
 
   const normalizedPolygons = useMemo(() => normalizeToMillimeters(rawPolygons), [rawPolygons]);
   const waferOutline = useMemo(() => deriveWaferGeometry(normalizedPolygons), [normalizedPolygons]);
+  const waferViewport = useMemo(() => (waferOutline ? buildSvgViewport(waferOutline.points) : null), [waferOutline]);
   const chipPieces = useMemo(() => {
     if (!waferOutline || isWaferOverviewView) {
       return [];
@@ -1044,6 +1057,43 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const overviewHeight =
     overviewRows * (WAFER_OVERVIEW_TILE_SIZE + WAFER_OVERVIEW_LABEL_HEIGHT) +
     Math.max(0, overviewRows - 1) * WAFER_OVERVIEW_TILE_GAP;
+  const overviewTileLayouts = useMemo(() => {
+    if (!waferOutline || !waferViewport) {
+      return [] as WaferOverviewTileLayout[];
+    }
+
+    return wafers.map((wafer, index) => {
+      const column = index % overviewColumns;
+      const row = Math.floor(index / overviewColumns);
+      const tileX = column * (WAFER_OVERVIEW_TILE_SIZE + WAFER_OVERVIEW_TILE_GAP);
+      const tileY = row * (WAFER_OVERVIEW_TILE_SIZE + WAFER_OVERVIEW_TILE_GAP + WAFER_OVERVIEW_LABEL_HEIGHT);
+      const tileScale = WAFER_OVERVIEW_TILE_SIZE / (waferViewport.halfSpan * 2);
+      const tileMode = getWaferModeFromState(wafer.stateName);
+      const tileChips = buildWaferPieces(waferOutline.points, tileMode);
+
+      return {
+        wafer,
+        index,
+        tileX,
+        tileY,
+        tileScale,
+        tileViewport: waferViewport,
+        tileMode,
+        tileChips,
+        clipPrefix: `overview-${wafer.id}-`
+      };
+    });
+  }, [waferOutline, waferViewport, overviewColumns, wafers]);
+
+  const overviewClipDefs = useMemo(() => {
+    return overviewTileLayouts.flatMap((layout) =>
+      layout.tileChips.map((chip) => ({
+        id: `${layout.clipPrefix}wafer-chip-clip-${chip.id}`,
+        points: toSvgPoints(chip.points, layout.tileViewport),
+        key: `clip-${layout.clipPrefix}${chip.id}`
+      }))
+    );
+  }, [overviewTileLayouts]);
 
   const activeChipId =
     !isWaferOverviewView &&
@@ -1070,12 +1120,12 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const activeChipStatus = activeChip ? getDieStatusForLabelAndMode(activeChip.label, waferMode) : null;
   const activeChipInspectionRow = selectedInspectionCell?.row ?? 1;
   const activeChipInspectionColumn = selectedInspectionCell?.column ?? 1;
-  const activeInspectionHue = POLLING_ROW_HUES[(activeChipInspectionRow - 1) % POLLING_ROW_HUES.length];
-  const activePollingTemplate =
+  const activeInspectionHue = POLING_ROW_HUES[(activeChipInspectionRow - 1) % POLING_ROW_HUES.length];
+  const activePolingTemplate =
     activeChip && activeChipStatus === "post_elb"
       ? DIE_POST_ELB_LAYOUTS_BY_LABEL[activeChip.label] ?? null
       : null;
-  const activePollingCanPersist = Boolean(activeWaferDatabaseId && UUID_PATTERN.test(activeWaferDatabaseId ?? ""));
+  const activePolingCanPersist = Boolean(activeWaferDatabaseId && UUID_PATTERN.test(activeWaferDatabaseId ?? ""));
   const activeInspectionCellScope = activeWaferDatabaseId && activeChipCode
     ? `${activeWaferDatabaseId}:${activeChipCode}`
     : "";
@@ -1103,40 +1153,40 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     [activeInspectionRecordsByCell]
   );
 
-  const getPollingValue = (
+  const getPolingValue = (
     row: number,
     column: number,
-    field: DiePollingParameterField
+    field: DiePolingParameterField
   ) => {
     if (!activeWaferDatabaseId || !activeChipCode) {
       return "";
     }
 
-    const key = getPollingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field);
-    return pollingValues[key] ?? savedPollingOverrides[key] ?? databasePollingByKey[key] ?? "";
+    const key = getPolingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field);
+    return polingValues[key] ?? savedPolingOverrides[key] ?? databasePolingByKey[key] ?? "";
   };
 
-  const getPersistedPollingValue = useCallback(
-    (key: string) => savedPollingOverrides[key] ?? databasePollingByKey[key] ?? "",
-    [databasePollingByKey, savedPollingOverrides]
+  const getPersistedPolingValue = useCallback(
+    (key: string) => savedPolingOverrides[key] ?? databasePolingByKey[key] ?? "",
+    [databasePolingByKey, savedPolingOverrides]
   );
 
-  const savePollingCell = useCallback(async (key: string, value: string) => {
-    const parsed = parsePollingCellKey(key);
-    if (!parsed || !activePollingCanPersist) {
+  const savePolingCell = useCallback(async (key: string, value: string) => {
+    const parsed = parsePolingCellKey(key);
+    if (!parsed || !activePolingCanPersist) {
       return;
     }
 
-    if (value === getPersistedPollingValue(key)) {
+    if (value === getPersistedPolingValue(key)) {
       return;
     }
 
-    setPollingSaveStatus((current) => ({
+    setPolingSaveStatus((current) => ({
       ...current,
       [key]: "saving"
     }));
 
-    const result = await updateWaferDiePollingParameter({
+    const result = await updateWaferDiePolingParameter({
       waferId: parsed.waferId,
       dieCode: parsed.dieCode,
       row: parsed.row,
@@ -1146,30 +1196,30 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     });
 
     if (result.ok) {
-      setSavedPollingOverrides((current) => ({
+      setSavedPolingOverrides((current) => ({
         ...current,
         [key]: value
       }));
-      setPollingSaveStatus((current) => ({
+      setPolingSaveStatus((current) => ({
         ...current,
         [key]: "saved"
       }));
     } else {
-      setPollingSaveStatus((current) => ({
+      setPolingSaveStatus((current) => ({
         ...current,
         [key]: "error"
       }));
     }
-  }, [activePollingCanPersist, getPersistedPollingValue]);
+  }, [activePolingCanPersist, getPersistedPolingValue]);
 
   useEffect(() => {
-    if (!activeWaferDatabaseId || !activeChipCode || !activePollingCanPersist) {
+    if (!activeWaferDatabaseId || !activeChipCode || !activePolingCanPersist) {
       return;
     }
 
     const activePrefix = `${activeWaferDatabaseId}:${activeChipCode}:`;
-    const dirtyEntries = Object.entries(pollingValues).filter(
-      ([key, value]) => key.startsWith(activePrefix) && value !== getPersistedPollingValue(key)
+    const dirtyEntries = Object.entries(polingValues).filter(
+      ([key, value]) => key.startsWith(activePrefix) && value !== getPersistedPolingValue(key)
     );
 
     if (dirtyEntries.length === 0) {
@@ -1178,18 +1228,18 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
 
     const timeout = window.setTimeout(() => {
       for (const [key, value] of dirtyEntries) {
-        void savePollingCell(key, value);
+        void savePolingCell(key, value);
       }
     }, 900);
 
     return () => window.clearTimeout(timeout);
   }, [
     activeChipCode,
-    activePollingCanPersist,
+    activePolingCanPersist,
     activeWaferDatabaseId,
-    getPersistedPollingValue,
-    pollingValues,
-    savePollingCell
+    getPersistedPolingValue,
+    polingValues,
+    savePolingCell
   ]);
 
   useEffect(() => {
@@ -1268,29 +1318,29 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     }
   };
 
-  const handlePollingCellChange = (
+  const handlePolingCellChange = (
     row: number,
     column: number,
-    field: DiePollingParameterField,
+    field: DiePolingParameterField,
     value: string
   ) => {
     if (!activeWaferDatabaseId || !activeChipCode) {
       return;
     }
 
-    const key = getPollingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field);
-    setPollingValues((current) => ({
+    const key = getPolingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field);
+    setPolingValues((current) => ({
       ...current,
       [key]: value
     }));
-    setPollingSaveStatus((current) => ({
+    setPolingSaveStatus((current) => ({
       ...current,
       [key]: "idle"
     }));
   };
 
-  const renderActiveInspectionPollingSummary = () => {
-    if (!activePollingTemplate || !activeChip || !activeChipCode || !activeWaferDatabaseId) {
+  const renderActiveInspectionPolingSummary = () => {
+    if (!activePolingTemplate || !activeChip || !activeChipCode || !activeWaferDatabaseId) {
       return null;
     }
 
@@ -1302,11 +1352,11 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
 
     return (
       <div
-        className="wafer-polling-panel wafer-inspection-polling-panel"
-        aria-label={`${activeChipCode} selected chip polling parameters`}
+        className="wafer-poling-panel wafer-inspection-poling-panel"
+        aria-label={`${activeChipCode} selected chip poling parameters`}
       >
-        <div className="wafer-polling-header">
-          <h3>Polling parameters</h3>
+        <div className="wafer-poling-header">
+          <h3>Poling parameters</h3>
           <button
             type="button"
             className="button button-secondary"
@@ -1315,65 +1365,65 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
             Close
           </button>
         </div>
-        <div className="wafer-polling-sheet">
+        <div className="wafer-poling-sheet">
           <section
-            className="wafer-polling-row-block"
-            key={`inspection-polling-row-${row}`}
-            style={getPollingRowStyle(rowIndex)}
+            className="wafer-poling-row-block"
+            key={`inspection-poling-row-${row}`}
+            style={getPolingRowStyle(rowIndex)}
           >
             <h4>Row {row}</h4>
-            <div className="wafer-polling-grid" style={gridStyle}>
-              <div className="wafer-polling-corner">Parameter</div>
+            <div className="wafer-poling-grid" style={gridStyle}>
+              <div className="wafer-poling-corner">Parameter</div>
               <div
-                className="wafer-polling-column-header"
-                key={`inspection-polling-header-${row}-${activeChipInspectionColumn}`}
-                style={getPollingColumnStyle(rowIndex, activeChipInspectionColumn - 1, activePollingTemplate.columns)}
+                className="wafer-poling-column-header"
+                key={`inspection-poling-header-${row}-${activeChipInspectionColumn}`}
+                style={getPolingColumnStyle(rowIndex, activeChipInspectionColumn - 1, activePolingTemplate.columns)}
               >
                 C{activeChipInspectionColumn}
               </div>
-              {POLLING_PARAMETER_FIELDS.map((field) => (
-                <div className="wafer-polling-field-row" key={`inspection-polling-${row}-${field.key}`}>
-                  <div className="wafer-polling-row-label">{field.label}</div>
+              {POLING_PARAMETER_FIELDS.map((field) => (
+                <div className="wafer-poling-field-row" key={`inspection-poling-${row}-${field.key}`}>
+                  <div className="wafer-poling-row-label">{field.label}</div>
                   {(() => {
                     const column = activeChipInspectionColumn;
-                    const key = getPollingCellKey(
+                    const key = getPolingCellKey(
                       activeWaferDatabaseId,
                       activeChipCode,
                       row,
                       column,
                       field.key
                     );
-                    const inputValue = getPollingValue(row, column, field.key);
-                    const cellStyle = getPollingColumnStyle(
+                    const inputValue = getPolingValue(row, column, field.key);
+                    const cellStyle = getPolingColumnStyle(
                       rowIndex,
                       activeChipInspectionColumn - 1,
-                      activePollingTemplate.columns
+                      activePolingTemplate.columns
                     );
 
                     return (
                       <div
                         className={[
-                          "wafer-polling-cell",
-                          field.key === "description" ? "wafer-polling-cell--description" : ""
+                          "wafer-poling-cell",
+                          field.key === "description" ? "wafer-poling-cell--description" : ""
                         ].join(" ")}
-                        key={`inspection-polling-cell-${row}-${column}-${field.key}`}
+                        key={`inspection-poling-cell-${row}-${column}-${field.key}`}
                         style={cellStyle}
                       >
                         <span className="sr-only">
                           Row {row}, column {column}, {field.label}
                         </span>
                         <textarea
-                          className="wafer-polling-cell-editor"
+                          className="wafer-poling-cell-editor"
                           aria-label={`Row ${row}, column ${column}, ${field.label}`}
                           rows={1}
                           value={inputValue}
                           onChange={(event) => {
-                            handlePollingCellChange(row, column, field.key, event.target.value);
-                            fitPollingTextareaHeight(event.target);
+                            handlePolingCellChange(row, column, field.key, event.target.value);
+                            fitPolingTextareaHeight(event.target);
                           }}
-                          onFocus={(event) => fitPollingTextareaHeight(event.target)}
+                          onFocus={(event) => fitPolingTextareaHeight(event.target)}
                           onBlur={(event) => {
-                            void savePollingCell(key, event.target.value);
+                            void savePolingCell(key, event.target.value);
                           }}
                         />
                       </div>
@@ -1388,19 +1438,19 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     );
   };
 
-  const renderPollingParameterSheet = () => {
-    if (!activePollingTemplate || !activeChip || !activeChipCode) {
+  const renderPolingParameterSheet = () => {
+    if (!activePolingTemplate || !activeChip || !activeChipCode) {
       return null;
     }
 
-    const rows = sanitizeGridAxisCount(activePollingTemplate.rows);
-    const columns = sanitizeGridAxisCount(activePollingTemplate.columns);
+    const rows = sanitizeGridAxisCount(activePolingTemplate.rows);
+    const columns = sanitizeGridAxisCount(activePolingTemplate.columns);
     return (
-      <section className="panel wafer-polling-panel" aria-label={`${activeChipCode} polling parameters`}>
-        <div className="wafer-polling-header">
-          <h3>Polling parameters</h3>
+      <section className="panel wafer-poling-panel" aria-label={`${activeChipCode} poling parameters`}>
+        <div className="wafer-poling-header">
+          <h3>Poling parameters</h3>
         </div>
-        <div className="wafer-polling-sheet">
+        <div className="wafer-poling-sheet">
           {Array.from({ length: rows }, (_, rowIndex) => {
             const row = rowIndex + 1;
             const gridStyle = {
@@ -1409,65 +1459,65 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
 
             return (
               <section
-                className="wafer-polling-row-block"
-                key={`polling-row-${row}`}
-                style={getPollingRowStyle(rowIndex)}
+                className="wafer-poling-row-block"
+                key={`poling-row-${row}`}
+                style={getPolingRowStyle(rowIndex)}
               >
                 <h4>Row {row}</h4>
-                <div className="wafer-polling-grid" style={gridStyle}>
-                  <div className="wafer-polling-corner">Parameter</div>
+                <div className="wafer-poling-grid" style={gridStyle}>
+                  <div className="wafer-poling-corner">Parameter</div>
                   {Array.from({ length: columns }, (_, columnIndex) => (
                     <div
-                      className="wafer-polling-column-header"
-                      key={`polling-header-${row}-${columnIndex + 1}`}
-                      style={getPollingColumnStyle(rowIndex, columnIndex, columns)}
+                      className="wafer-poling-column-header"
+                      key={`poling-header-${row}-${columnIndex + 1}`}
+                      style={getPolingColumnStyle(rowIndex, columnIndex, columns)}
                     >
                       C{columnIndex + 1}
                     </div>
                   ))}
-                  {POLLING_PARAMETER_FIELDS.map((field) => (
-                    <div className="wafer-polling-field-row" key={`polling-${row}-${field.key}`}>
-                      <div className="wafer-polling-row-label">{field.label}</div>
+                  {POLING_PARAMETER_FIELDS.map((field) => (
+                    <div className="wafer-poling-field-row" key={`poling-${row}-${field.key}`}>
+                      <div className="wafer-poling-row-label">{field.label}</div>
                       {Array.from({ length: columns }, (_, columnIndex) => {
                         const column = columnIndex + 1;
                         const key = activeWaferDatabaseId && activeChipCode
-                          ? getPollingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field.key)
+                          ? getPolingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field.key)
                           : "";
-                        const inputValue = getPollingValue(row, column, field.key);
-                        const cellStyle = getPollingColumnStyle(rowIndex, columnIndex, columns);
+                        const inputValue = getPolingValue(row, column, field.key);
+                        const cellStyle = getPolingColumnStyle(rowIndex, columnIndex, columns);
 
                         return (
                           <div
                             className={[
-                              "wafer-polling-cell",
-                              field.key === "description" ? "wafer-polling-cell--description" : ""
+                              "wafer-poling-cell",
+                              field.key === "description" ? "wafer-poling-cell--description" : ""
                             ].join(" ")}
-                            key={`polling-cell-${row}-${column}-${field.key}`}
+                            key={`poling-cell-${row}-${column}-${field.key}`}
                             style={cellStyle}
                           >
                             <span className="sr-only">
                               Row {row}, column {column}, {field.label}
                             </span>
                             <textarea
-                              className="wafer-polling-cell-editor"
+                              className="wafer-poling-cell-editor"
                               aria-label={`Row ${row}, column ${column}, ${field.label}`}
                               rows={1}
                               value={inputValue}
                               onChange={(event) =>
                                 {
-                                  handlePollingCellChange(
+                                  handlePolingCellChange(
                                     row,
                                     column,
                                     field.key,
                                     event.target.value
                                   );
-                                  fitPollingTextareaHeight(event.target);
+                                  fitPolingTextareaHeight(event.target);
                                 }
                               }
-                              onFocus={(event) => fitPollingTextareaHeight(event.target)}
+                              onFocus={(event) => fitPolingTextareaHeight(event.target)}
                               onBlur={(event) => {
                                 if (key) {
-                                  void savePollingCell(key, event.target.value);
+                                  void savePolingCell(key, event.target.value);
                                 }
                               }}
                             />
@@ -1629,21 +1679,12 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     }
   };
 
-  const renderWaferOverviewTile = (wafer: WaferVisualizerSample, index: number) => {
+  const renderWaferOverviewTile = (layout: WaferOverviewTileLayout) => {
+    const { wafer, tileX, tileY, tileScale, tileViewport, tileMode, tileChips, clipPrefix } = layout;
+
     if (!waferOutline) {
       return null;
     }
-
-    const column = index % overviewColumns;
-    const row = Math.floor(index / overviewColumns);
-    const tileX = column * (WAFER_OVERVIEW_TILE_SIZE + WAFER_OVERVIEW_TILE_GAP);
-    const tileY = row * (WAFER_OVERVIEW_TILE_SIZE + WAFER_OVERVIEW_TILE_GAP + WAFER_OVERVIEW_LABEL_HEIGHT);
-    const tileViewport = buildSvgViewport(waferOutline.points);
-    const tileViewportSize = tileViewport.halfSpan * 2;
-    const tileScale = WAFER_OVERVIEW_TILE_SIZE / tileViewportSize;
-    const tileMode = getWaferModeFromState(wafer.stateName);
-    const tileChips = buildWaferPieces(waferOutline.points, tileMode);
-    const clipPrefix = `overview-${wafer.id}-`;
 
     return (
       <g
@@ -1744,20 +1785,13 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                 aria-label="Available wafer overview"
                 style={{ aspectRatio: `${overviewWidth} / ${overviewHeight}` }}
               >
-                {wafers.map((wafer, index) => renderWaferOverviewTile(wafer, index))}
+                {overviewTileLayouts.map(renderWaferOverviewTile)}
                 <defs>
-                  {wafers.flatMap((wafer) => {
-                    const tileMode = getWaferModeFromState(wafer.stateName);
-                    const tileChips = buildWaferPieces(waferOutline.points, tileMode);
-                    const tileViewport = buildSvgViewport(waferOutline.points);
-                    const clipPrefix = `overview-${wafer.id}-`;
-
-                    return tileChips.map((chip) => (
-                      <clipPath id={`${clipPrefix}wafer-chip-clip-${chip.id}`} key={`clip-${clipPrefix}${chip.id}`}>
-                        <polygon points={toSvgPoints(chip.points, tileViewport)} />
-                      </clipPath>
-                    ));
-                  })}
+                  {overviewClipDefs.map((clipDef) => (
+                    <clipPath id={clipDef.id} key={clipDef.key}>
+                      <polygon points={clipDef.points} />
+                    </clipPath>
+                  ))}
                   <pattern
                     id={ELECTRODE_PATTERN_ID}
                     x="0"
@@ -1854,7 +1888,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
         {isChipFocusView && isInspectionPanelOpen && activeChipCode && activeChipExpandedName && activeWaferDatabaseId && activeProjectId ? (
           <div className="wafer-inspection-stack">
             <section className="panel wafer-inspection-workspace">
-              {renderActiveInspectionPollingSummary()}
+              {renderActiveInspectionPolingSummary()}
               <DieInspectionMap
                 key={`${activeWaferDatabaseId}:${activeChipCode}:${activeChipInspectionRow}:${activeChipInspectionColumn}`}
                 projectId={activeProjectId}
@@ -1893,7 +1927,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
               />
             </section>
           </div>
-        ) : isChipFocusView ? renderPollingParameterSheet() : null}
+        ) : isChipFocusView ? renderPolingParameterSheet() : null}
       </div>
     </div>
   );

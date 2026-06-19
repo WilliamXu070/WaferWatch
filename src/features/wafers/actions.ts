@@ -9,7 +9,7 @@ import {
   lotCreateSchema,
   waferCreateSchema,
   waferDieDescriptionSchema,
-  waferDiePollingParameterSchema,
+  waferDiePolingParameterSchema,
   waferStatusSchema
 } from "@/features/wafers/schemas";
 import type { Json } from "@/types/database";
@@ -33,6 +33,8 @@ function toRecordObject(value: unknown): Record<string, unknown> {
     ? { ...value }
     : {};
 }
+
+const DIE_POLING_PARAMETERS_KEY = "die_poling_parameters";
 
 export async function createWaferLot(input: unknown) {
   try {
@@ -210,10 +212,10 @@ export async function updateWaferDieDescription(input: unknown) {
   }
 }
 
-export async function updateWaferDiePollingParameter(input: unknown) {
+export async function updateWaferDiePolingParameter(input: unknown) {
   try {
     const account = await requireAccount();
-    const parsed = waferDiePollingParameterSchema.parse(input);
+    const parsed = waferDiePolingParameterSchema.parse(input);
 
     const supabase = await createServerSupabaseClient();
     const { data: wafer, error: waferError } = await supabase
@@ -229,8 +231,8 @@ export async function updateWaferDiePollingParameter(input: unknown) {
     await assertProjectAccess(wafer.project_id, "write");
 
     const metadata = toMetadataObject(wafer.metadata as Json);
-    const diePollingParameters = toRecordObject(metadata.die_polling_parameters);
-    const dieParameters = toRecordObject(diePollingParameters[parsed.dieCode]);
+    const diePolingParameters = toRecordObject(metadata[DIE_POLING_PARAMETERS_KEY]);
+    const dieParameters = toRecordObject(diePolingParameters[parsed.dieCode]);
     const rowKey = `R${parsed.row}`;
     const columnKey = `C${parsed.column}`;
     const rowParameters = toRecordObject(dieParameters[rowKey]);
@@ -262,20 +264,20 @@ export async function updateWaferDiePollingParameter(input: unknown) {
       delete nextDieParameters[rowKey];
     }
 
-    const nextDiePollingParameters = {
-      ...diePollingParameters,
+    const nextDiePolingParameters = {
+      ...diePolingParameters,
       [parsed.dieCode]: nextDieParameters
     };
 
     if (Object.keys(nextDieParameters).length === 0) {
-      delete nextDiePollingParameters[parsed.dieCode];
+      delete nextDiePolingParameters[parsed.dieCode];
     }
 
-    const nextMetadata = {
+    const nextMetadata: Record<string, unknown> = {
       ...metadata,
-      die_polling_parameters: nextDiePollingParameters,
-      die_polling_parameter_updated_by: account.userId,
-      die_polling_parameter_updated_at: new Date().toISOString()
+      [DIE_POLING_PARAMETERS_KEY]: nextDiePolingParameters,
+      die_poling_parameter_updated_by: account.userId,
+      die_poling_parameter_updated_at: new Date().toISOString()
     };
 
     const { data, error } = await supabase

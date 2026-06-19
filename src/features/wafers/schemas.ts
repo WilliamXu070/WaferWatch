@@ -30,7 +30,7 @@ export const waferDieDescriptionSchema = z.object({
   description: z.string().max(4000)
 });
 
-export const waferDiePollingParameterSchema = z.object({
+export const waferDiePolingParameterSchema = z.object({
   waferId: uuidSchema,
   dieCode: z.string().trim().min(2).max(32).regex(/^[A-Z][1-8]-V\d+$/),
   row: z.number().int().min(1).max(64),

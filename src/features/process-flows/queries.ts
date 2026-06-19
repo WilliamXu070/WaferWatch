@@ -40,7 +40,7 @@ export type ProcessDashboardWaferState = {
   nextStepName: string | null;
   currentHandlerName: string | null;
   dieDescriptions: Record<string, string>;
-  diePollingParameters: Record<string, Record<string, Record<string, Record<string, string>>>>;
+  diePolingParameters: Record<string, Record<string, Record<string, Record<string, string>>>>;
 };
 
 export type ProcessDashboardCalendarEvent = {
@@ -179,12 +179,14 @@ function extractDieDescriptions(metadata: Json): Record<string, string> {
   );
 }
 
-function extractDiePollingParameters(metadata: Json): Record<string, Record<string, Record<string, Record<string, string>>>> {
+const DIE_POLING_PARAMETERS_KEY = "die_poling_parameters";
+
+function extractDiePolingParameters(metadata: Json): Record<string, Record<string, Record<string, Record<string, string>>>> {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
     return {};
   }
 
-  const rawParameters = metadata.die_polling_parameters;
+  const rawParameters = metadata[DIE_POLING_PARAMETERS_KEY];
   if (!rawParameters || typeof rawParameters !== "object" || Array.isArray(rawParameters)) {
     return {};
   }
@@ -535,7 +537,7 @@ export async function getProcessDashboardData(
       nextStepName: nextStep?.name ?? null,
       currentHandlerName: handlerProfileId ? handlerNameById.get(handlerProfileId) ?? null : null,
       dieDescriptions: extractDieDescriptions(wafer.metadata as Json),
-      diePollingParameters: extractDiePollingParameters(wafer.metadata as Json)
+      diePolingParameters: extractDiePolingParameters(wafer.metadata as Json)
     };
 
     workspaceWaferStates.push(waferState);
@@ -570,7 +572,7 @@ export async function getProcessDashboardData(
       nextStepName: null,
       currentHandlerName: null,
       dieDescriptions: extractDieDescriptions(seededWafer.metadata as Json),
-      diePollingParameters: extractDiePollingParameters(seededWafer.metadata as Json)
+      diePolingParameters: extractDiePolingParameters(seededWafer.metadata as Json)
     });
   }
 

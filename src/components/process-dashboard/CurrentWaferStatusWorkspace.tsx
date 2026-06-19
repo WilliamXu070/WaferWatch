@@ -59,7 +59,7 @@ export function CurrentWaferStatusWorkspace({ states }: ChipWorkspaceProps) {
     nextStepName: state.nextStepName,
     currentHandlerName: state.currentHandlerName,
     dieDescriptions: state.dieDescriptions,
-    diePollingParameters: state.diePollingParameters
+    diePolingParameters: state.diePolingParameters
   }));
 
   if (availableStates.length === 0) {

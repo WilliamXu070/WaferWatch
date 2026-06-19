@@ -1356,7 +1356,7 @@ export function ProcessCalendarBoard({
                 <input
                   value={manualAction}
                   onChange={(event) => setManualAction(event.target.value)}
-                  placeholder="Polling"
+                  placeholder="Poling"
                 />
               </label>
             ) : null}

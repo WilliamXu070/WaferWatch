@@ -1865,6 +1865,7 @@ textarea {
 
 .wafer-visualizer {
   width: 100%;
+  contain: layout;
 }
 
 .wafer-visualizer-layout {
@@ -1872,6 +1873,7 @@ textarea {
   grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
   gap: 16px;
   align-items: start;
+  contain: layout paint;
 }
 
 .wafer-visualizer-layout--overview {
@@ -1937,6 +1939,8 @@ textarea {
   overflow: hidden;
   padding: 24px;
   box-sizing: border-box;
+  contain: layout paint;
+  isolation: isolate;
 }
 
 .wafer-stage-shell--focused {
@@ -1976,6 +1980,8 @@ textarea {
     rgba(166, 230, 78, 0.2) 20px
   );
   display: block;
+  contain: layout paint;
+  will-change: transform;
 }
 
 .wafer-svg-canvas--focused {
@@ -2224,26 +2230,26 @@ textarea {
   border: 0;
 }
 
-.wafer-polling-panel {
+.wafer-poling-panel {
   grid-column: 1 / -1;
   display: grid;
   gap: 12px;
   overflow: hidden;
 }
 
-.wafer-visualizer-layout--chip-focus .wafer-polling-panel {
+.wafer-visualizer-layout--chip-focus .wafer-poling-panel {
   grid-column: 2;
   grid-row: 1 / span 2;
 }
 
-.wafer-polling-header {
+.wafer-poling-header {
   display: flex;
   align-items: start;
   justify-content: space-between;
   gap: 16px;
 }
 
-.wafer-polling-header h3 {
+.wafer-poling-header h3 {
   margin: 0;
   font-family: var(--font-headline);
   font-size: clamp(24px, 2.8vw, 34px);
@@ -2252,38 +2258,38 @@ textarea {
   letter-spacing: -0.02em;
 }
 
-.wafer-polling-intro {
+.wafer-poling-intro {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 18px;
 }
 
-.wafer-polling-intro .muted {
+.wafer-poling-intro .muted {
   margin: 0;
 }
 
-.wafer-polling-sheet {
+.wafer-poling-sheet {
   display: grid;
   gap: 16px;
 }
 
-.wafer-polling-row-block {
+.wafer-poling-row-block {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
   align-items: start;
   padding: 12px;
-  border: 1px solid var(--polling-row-line);
+  border: 1px solid var(--poling-row-line);
   border-radius: 12px;
   background:
-    linear-gradient(90deg, var(--polling-row-soft), transparent 62%),
+    linear-gradient(90deg, var(--poling-row-soft), transparent 62%),
     var(--panel);
 }
 
-.wafer-polling-row-block h4 {
+.wafer-poling-row-block h4 {
   position: static;
   margin: 0;
-  color: var(--polling-row-color);
+  color: var(--poling-row-color);
   font-family: var(--font-headline);
   font-size: clamp(17px, 1.6vw, 24px);
   font-style: italic;
@@ -2293,7 +2299,7 @@ textarea {
   text-underline-offset: 4px;
 }
 
-.wafer-polling-grid {
+.wafer-poling-grid {
   min-width: 0;
   display: grid;
   align-items: stretch;
@@ -2303,16 +2309,16 @@ textarea {
   background: var(--panel);
 }
 
-.wafer-polling-corner,
-.wafer-polling-column-header,
-.wafer-polling-row-label,
-.wafer-polling-cell {
+.wafer-poling-corner,
+.wafer-poling-column-header,
+.wafer-poling-row-label,
+.wafer-poling-cell {
   border-right: 1px solid color-mix(in srgb, var(--border) 18%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 18%, transparent);
 }
 
-.wafer-polling-corner,
-.wafer-polling-column-header {
+.wafer-poling-corner,
+.wafer-poling-column-header {
   min-height: 40px;
   display: flex;
   align-items: center;
@@ -2322,44 +2328,44 @@ textarea {
   font-weight: 900;
 }
 
-.wafer-polling-corner {
+.wafer-poling-corner {
   background: color-mix(in srgb, var(--foreground) 76%, var(--panel));
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.wafer-polling-column-header {
-  background: var(--polling-column-header);
+.wafer-poling-column-header {
+  background: var(--poling-column-header);
 }
 
-.wafer-polling-field-row {
+.wafer-poling-field-row {
   display: contents;
 }
 
-.wafer-polling-row-label {
+.wafer-poling-row-label {
   display: flex;
   align-items: center;
-  background: color-mix(in srgb, var(--panel) 78%, var(--polling-row-soft));
+  background: color-mix(in srgb, var(--panel) 78%, var(--poling-row-soft));
   padding: 9px 10px;
   color: var(--foreground);
   font-size: 13px;
   font-weight: 850;
 }
 
-.wafer-polling-cell {
+.wafer-poling-cell {
   min-height: 42px;
   display: grid;
   align-content: stretch;
-  background: var(--polling-column-body);
+  background: var(--poling-column-body);
   padding: 0;
 }
 
-.wafer-polling-cell--description {
+.wafer-poling-cell--description {
   min-height: 52px;
 }
 
-.wafer-polling-cell-editor {
+.wafer-poling-cell-editor {
   min-height: 42px;
   width: 100%;
   height: auto;
@@ -2381,14 +2387,14 @@ textarea {
   cursor: text;
 }
 
-.wafer-polling-cell--description .wafer-polling-cell-editor {
+.wafer-poling-cell--description .wafer-poling-cell-editor {
   min-height: 52px;
 }
 
-.wafer-polling-cell:focus-within {
+.wafer-poling-cell:focus-within {
   box-shadow:
-    inset 0 0 0 2px var(--polling-row-color),
-    0 0 0 2px color-mix(in srgb, var(--polling-row-color) 18%, transparent);
+    inset 0 0 0 2px var(--poling-row-color),
+    0 0 0 2px color-mix(in srgb, var(--poling-row-color) 18%, transparent);
   z-index: 1;
 }
 
@@ -2400,7 +2406,7 @@ textarea {
   align-content: start;
 }
 
-.wafer-inspection-stack .wafer-polling-panel {
+.wafer-inspection-stack .wafer-poling-panel {
   grid-column: auto;
   grid-row: auto;
 }
@@ -2735,11 +2741,11 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .wafer-polling-row-block {
+  .wafer-poling-row-block {
     grid-template-columns: 1fr;
   }
 
-  .wafer-polling-row-block h4 {
+  .wafer-poling-row-block h4 {
     position: static;
   }
 }
@@ -2784,15 +2790,15 @@ textarea {
     white-space: normal;
   }
 
-  .wafer-polling-header {
+  .wafer-poling-header {
     display: grid;
   }
 
-  .wafer-polling-row-block {
+  .wafer-poling-row-block {
     padding: 12px;
   }
 
-  .wafer-polling-grid {
+  .wafer-poling-grid {
     overflow-x: auto;
   }
 }
