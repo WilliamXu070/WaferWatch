@@ -37,10 +37,10 @@ npm run dev
 ## Required Supabase values
 
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `SUPABASE_SECRET_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (alias `NEXT_PUBLIC_SUPABASE_ANON_KEY` also accepted)
+- `SUPABASE_SERVICE_ROLE_KEY` (alias `SUPABASE_SECRET_KEY` also accepted)
 
-If your project still uses legacy API keys, set `SUPABASE_SERVICE_ROLE_KEY` instead of `SUPABASE_SECRET_KEY`.
+Copy `.env.example` to `.env.local` and fill these values.
 
 ## First account setup
 

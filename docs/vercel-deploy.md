@@ -1,13 +1,21 @@
 # Vercel Deployment
 
-The app deploys as a standard Next.js project. Use `npx.cmd vercel` instead of installing Vercel CLI into the repo.
+The app deploys as a standard Next.js project.
+
+Use:
+
+```bash
+npx vercel login
+```
+
+or install the Vercel CLI and run `vercel` directly.
 
 ## Sign in
 
 Run:
 
-```powershell
-npx.cmd vercel login
+```bash
+npx vercel login
 ```
 
 This opens Vercel's browser/device login flow.
@@ -16,8 +24,8 @@ This opens Vercel's browser/device login flow.
 
 From the repo root:
 
-```powershell
-npx.cmd vercel link
+```bash
+npx vercel link
 ```
 
 Choose or create the Vercel project for `WaferWatch`.
@@ -28,32 +36,32 @@ Add these to Vercel for Production, Preview, and Development unless you intentio
 
 ```text
 NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-SUPABASE_SECRET_KEY
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY)
+SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SECRET_KEY)
 NEXT_PUBLIC_APP_URL
 ```
 
 You can add them in the Vercel dashboard or with:
 
-```powershell
-npx.cmd vercel env add NEXT_PUBLIC_SUPABASE_URL
-npx.cmd vercel env add NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-npx.cmd vercel env add SUPABASE_SECRET_KEY
-npx.cmd vercel env add NEXT_PUBLIC_APP_URL
+```bash
+npx vercel env add NEXT_PUBLIC_SUPABASE_URL
+npx vercel env add NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+npx vercel env add SUPABASE_SERVICE_ROLE_KEY
+npx vercel env add NEXT_PUBLIC_APP_URL
 ```
 
 ## Deploy
 
 Preview:
 
-```powershell
-npm.cmd run deploy:preview
+```bash
+npm run deploy:preview
 ```
 
 Production:
 
-```powershell
-npm.cmd run deploy:prod
+```bash
+npm run deploy:prod
 ```
 
 ## Supabase Auth URLs
