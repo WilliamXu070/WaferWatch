@@ -72,10 +72,7 @@ export function ProcessDashboardTabsClient({
   calendarEvents
 }: Props) {
   const [activeTab, setActiveTab] = useState<DashboardView>(initialView);
-  const [isFlowMounted, setIsFlowMounted] = useState(initialView === "flow");
-  const [isWafersMounted, setIsWafersMounted] = useState(initialView === "wafers");
   const [isCalendarLoaded, setIsCalendarLoaded] = useState(initialView === "calendar");
-  const [isCalendarMounted, setIsCalendarMounted] = useState(initialView === "calendar");
   const [calendarDataPeople, setCalendarDataPeople] = useState(calendarPeople);
   const [calendarDataEvents, setCalendarDataEvents] = useState(calendarEvents);
   const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
@@ -113,16 +110,10 @@ export function ProcessDashboardTabsClient({
   }, [calendarRange.endDate, calendarRange.startDate, isCalendarLoaded, isLoadingCalendar, process.id]);
 
   const handleSelectTab = async (tab: DashboardView) => {
-    if (tab === "flow") {
-      setIsFlowMounted(true);
-    } else if (tab === "wafers") {
-      setIsWafersMounted(true);
-    } else if (tab === "calendar") {
+    if (tab === "calendar") {
       if (!isCalendarLoaded) {
         await loadCalendar();
       }
-
-      setIsCalendarMounted(true);
     }
 
     setActiveTab(tab);
@@ -157,48 +148,42 @@ export function ProcessDashboardTabsClient({
       </nav>
 
       <section className="panel dashboard-panel">
-        {isFlowMounted ? (
-          <div style={{ display: activeTab === "flow" ? "block" : "none" }}>
-            <ProcessFlowDiagram
-              steps={flowColumns.map((step) => ({
-                ...step,
-                wafers: step.wafers
-              }))}
-            />
-          </div>
+        {activeTab === "flow" ? (
+          <ProcessFlowDiagram
+            steps={flowColumns.map((step) => ({
+              ...step,
+              wafers: step.wafers
+            }))}
+          />
         ) : null}
 
-        {isWafersMounted ? (
-          <div style={{ display: activeTab === "wafers" ? "block" : "none" }}>
-            <CurrentWaferStatusWorkspace
-              states={workspaceWaferStates.length ? workspaceWaferStates : activeWaferStates}
-            />
-          </div>
+        {activeTab === "wafers" ? (
+          <CurrentWaferStatusWorkspace
+            states={workspaceWaferStates.length ? workspaceWaferStates : activeWaferStates}
+          />
         ) : null}
 
-        {isCalendarMounted ? (
-          <div style={{ display: activeTab === "calendar" ? "block" : "none" }}>
-            <>
-              <div className="section-heading">
-                <h2>Calendar</h2>
-                <p className="muted">Process work across McMaster, Waterloo, and Toronto.</p>
-              </div>
+        {activeTab === "calendar" ? (
+          <>
+            <div className="section-heading">
+              <h2>Calendar</h2>
+              <p className="muted">Process work across McMaster, Waterloo, and Toronto.</p>
+            </div>
 
-              {isLoadingCalendar ? <p className="muted">Loading calendar...</p> : null}
+            {isLoadingCalendar ? <p className="muted">Loading calendar...</p> : null}
 
-              <LazyProcessCalendarBoard
-                processTemplateId={process.id}
-                calendarStartDate={new Date(calendarRange.startDate).toISOString().slice(0, 10)}
-                days={getWeekdayCount(calendarRange.startDate, calendarRange.endDate)}
-                steps={process.process_steps
-                  .slice()
-                  .sort((a, b) => a.step_order - b.step_order)
-                  .map((step) => ({ id: step.id, name: step.name }))}
-                people={calendarDataPeople}
-                initialEvents={calendarDataEvents}
-              />
-            </>
-          </div>
+            <LazyProcessCalendarBoard
+              processTemplateId={process.id}
+              calendarStartDate={new Date(calendarRange.startDate).toISOString().slice(0, 10)}
+              days={getWeekdayCount(calendarRange.startDate, calendarRange.endDate)}
+              steps={process.process_steps
+                .slice()
+                .sort((a, b) => a.step_order - b.step_order)
+                .map((step) => ({ id: step.id, name: step.name }))}
+              people={calendarDataPeople}
+              initialEvents={calendarDataEvents}
+            />
+          </>
         ) : null}
       </section>
     </>

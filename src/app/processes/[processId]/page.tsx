@@ -4,9 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getProcessDashboardData } from "@/features/process-flows/queries";
 import { getProcessCalendarSchedule } from "@/features/calendar/queries";
 import { signOut } from "@/features/accounts/actions";
-import { ProcessFlowDiagram } from "@/components/ProcessFlowDiagram";
-import { CurrentWaferStatusWorkspace } from "@/components/process-dashboard/CurrentWaferStatusWorkspace";
-import { LazyProcessCalendarBoard } from "@/components/process-dashboard/LazyProcessCalendarBoard";
+import { ProcessDashboardTabsClient } from "@/components/process-dashboard/ProcessDashboardTabsClient";
 
 export const dynamic = "force-dynamic";
 
@@ -21,14 +19,6 @@ function getActiveView(raw: string | string[] | undefined): DashboardView {
 
   return "flow";
 }
-
-const dashboardTabs: Array<{ key: DashboardView; label: string }> = [
-  { key: "flow", label: "Process flow" },
-  { key: "calendar", label: "Calendar" },
-  { key: "wafers", label: "Current wafers / die status" }
-];
-
-const CALENDAR_WEEK_DAYS = 7;
 
 function getMondayWeekStart(date: Date) {
   const weekStart = new Date(date);
@@ -57,12 +47,18 @@ export default async function ProcessDashboardPage({
     redirect("/");
   }
 
+  const calendarStart = getMondayWeekStart(new Date());
+  const calendarEnd = new Date(calendarStart);
+  calendarEnd.setDate(calendarStart.getDate() + 6);
+  calendarEnd.setHours(23, 59, 59, 999);
+
   const shouldLoadCalendar = activeView === "calendar";
   const dashboardData = await getProcessDashboardData(
     processId,
-    shouldLoadCalendar ? CALENDAR_WEEK_DAYS : 14,
+    shouldLoadCalendar ? 7 : 14,
     shouldLoadCalendar
   ).catch(() => null);
+
   if (!dashboardData) {
     redirect("/processes");
   }
@@ -70,17 +66,26 @@ export default async function ProcessDashboardPage({
   const { process, activeWaferStates, workspaceWaferStates } = dashboardData;
   const sortedSteps = [...process.process_steps].sort((a, b) => a.step_order - b.step_order);
   const flowColumns = sortedSteps.map((step) => ({
-    ...step,
-    wafers: activeWaferStates.filter((state) => state.currentStepId === step.id)
+    id: step.id,
+    name: step.name,
+    process_area: step.process_area,
+    step_order: step.step_order,
+    wafers: activeWaferStates
+      .filter((state) => state.currentStepId === step.id)
+      .map((state) => ({
+        assignmentId: state.assignmentId,
+        waferCode: state.waferCode,
+        dieLabel: state.dieLabel,
+        currentStepStatus: state.currentStepStatus
+      }))
   }));
 
-  const calendarStart = getMondayWeekStart(new Date());
-  const calendarEnd = new Date(calendarStart);
-  calendarEnd.setDate(calendarStart.getDate() + CALENDAR_WEEK_DAYS - 1);
-  calendarEnd.setHours(23, 59, 59, 999);
-
   const calendarSchedule = shouldLoadCalendar
-    ? await getProcessCalendarSchedule(process.id, calendarStart.toISOString(), calendarEnd.toISOString())
+    ? await getProcessCalendarSchedule(
+        process.id,
+        calendarStart.toISOString(),
+        calendarEnd.toISOString()
+      )
     : null;
 
   return (
@@ -111,62 +116,19 @@ export default async function ProcessDashboardPage({
         </p>
       </section>
 
-      <nav className="dashboard-tab-bar" aria-label="Process dashboard view">
-        {dashboardTabs.map((tab) => {
-          const isActive = activeView === tab.key;
-
-          return (
-            <Link
-              href={`/processes/${process.id}?view=${tab.key}`}
-              key={tab.key}
-              className={isActive ? "dashboard-tab active" : "dashboard-tab"}
-              aria-current={isActive ? "page" : undefined}
-            >
-              {tab.label}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <section className="panel dashboard-panel">
-        {activeView === "flow" ? (
-          <>
-            <ProcessFlowDiagram
-              steps={flowColumns.map((step) => ({
-                id: step.id,
-                name: step.name,
-                process_area: step.process_area,
-                step_order: step.step_order,
-                wafers: step.wafers
-              }))}
-            />
-          </>
-        ) : null}
-
-        {activeView === "wafers" ? (
-          <>
-            <CurrentWaferStatusWorkspace states={workspaceWaferStates.length ? workspaceWaferStates : activeWaferStates} />
-          </>
-        ) : null}
-
-        {activeView === "calendar" ? (
-          <>
-            <div className="section-heading">
-              <h2>Calendar</h2>
-              <p className="muted">Process work across McMaster, Waterloo, and Toronto.</p>
-            </div>
-
-            <LazyProcessCalendarBoard
-              processTemplateId={process.id}
-              calendarStartDate={calendarStart.toISOString().slice(0, 10)}
-              days={CALENDAR_WEEK_DAYS}
-              steps={sortedSteps.map((step) => ({ id: step.id, name: step.name }))}
-              people={calendarSchedule?.people ?? []}
-              initialEvents={calendarSchedule?.events ?? []}
-            />
-          </>
-        ) : null}
-      </section>
+      <ProcessDashboardTabsClient
+        process={process}
+        flowColumns={flowColumns}
+        activeWaferStates={activeWaferStates}
+        workspaceWaferStates={workspaceWaferStates}
+        calendarRange={{
+          startDate: calendarStart.toISOString(),
+          endDate: calendarEnd.toISOString()
+        }}
+        initialView={activeView}
+        calendarPeople={calendarSchedule?.people ?? []}
+        calendarEvents={calendarSchedule?.events ?? []}
+      />
     </main>
   );
 }
