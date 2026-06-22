@@ -390,6 +390,11 @@ export function ProcessCalendarBoard({
   const undoStackRef = useRef<Array<{ eventId: string; previous: MoveWindow; next: MoveWindow }>>([]);
   const moveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestMoveRequestRef = useRef(0);
+  const timelineScrollSyncRef = useRef<{
+    start: number;
+    end: number;
+    updateScrollCanvas: (start: number, end: number) => void;
+  } | null>(null);
   const [timelinePanPointerId, setTimelinePanPointerId] = useState<number | null>(null);
   const [isTimelinePanning, setIsTimelinePanning] = useState(false);
 
@@ -950,42 +955,54 @@ export function ProcessCalendarBoard({
       const maxEnd = timelineEnd;
       const requestedSpan = visibleTimeEnd - visibleTimeStart;
       const maxSpan = maxEnd - minStart;
+      const currentSpan = visibleRange.end - visibleRange.start;
+      const wasZoom = requestedSpan !== currentSpan;
 
-      setVisibleRange((previousRange) => {
-        let nextStart = visibleTimeStart;
-        let nextEnd = visibleTimeEnd;
-        const wasZoom = requestedSpan !== previousRange.end - previousRange.start;
+      let nextStart = visibleTimeStart;
+      let nextEnd = visibleTimeEnd;
 
-        if (requestedSpan >= maxSpan) {
-          nextStart = minStart;
-          nextEnd = maxEnd;
-        } else if (wasZoom) {
-          const previousCenter = (previousRange.start + previousRange.end) / 2;
-          const halfSpan = requestedSpan / 2;
-          nextStart = previousCenter - halfSpan;
-          nextEnd = previousCenter + halfSpan;
-        }
+      if (requestedSpan >= maxSpan) {
+        nextStart = minStart;
+        nextEnd = maxEnd;
+      } else if (wasZoom) {
+        const previousCenter = (visibleRange.start + visibleRange.end) / 2;
+        const halfSpan = requestedSpan / 2;
+        nextStart = previousCenter - halfSpan;
+        nextEnd = previousCenter + halfSpan;
+      }
 
-        if (nextStart < minStart) {
-          nextStart = minStart;
-          nextEnd = minStart + requestedSpan;
-        } else if (nextEnd > maxEnd) {
-          nextEnd = maxEnd;
-          nextStart = maxEnd - requestedSpan;
-        }
+      if (nextStart < minStart) {
+        nextStart = minStart;
+        nextEnd = minStart + requestedSpan;
+      } else if (nextEnd > maxEnd) {
+        nextEnd = maxEnd;
+        nextStart = maxEnd - requestedSpan;
+      }
 
-        updateScrollCanvas(nextStart, nextEnd);
-
-        return {
-          boundsStart: timelineStart,
-          boundsEnd: timelineEnd,
-          start: nextStart,
-          end: nextEnd
-        };
+      timelineScrollSyncRef.current = { start: nextStart, end: nextEnd, updateScrollCanvas };
+      setVisibleRange({
+        boundsStart: timelineStart,
+        boundsEnd: timelineEnd,
+        start: nextStart,
+        end: nextEnd
       });
     },
-    [timelineEnd, timelineStart]
+    [visibleRange, timelineEnd, timelineStart]
   );
+
+  useEffect(() => {
+    const pending = timelineScrollSyncRef.current;
+    if (!pending) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      pending.updateScrollCanvas(pending.start, pending.end);
+      timelineScrollSyncRef.current = null;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [visibleRange]);
 
   const renderTimelineItem = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["itemRenderer"]>>(
     ({ item, itemContext, getItemProps, getResizeProps }) => {
