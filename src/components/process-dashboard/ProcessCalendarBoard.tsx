@@ -313,13 +313,18 @@ function createCurrentDayHeaderRenderer(highlightDay: boolean) {
     intervalContext: { intervalText: string; interval: { startTime: Dayjs } };
     getIntervalProps: (props?: { style?: CSSProperties }) => HTMLAttributes<HTMLElement>;
   }) {
-    const intervalProps = getIntervalProps();
+    const intervalProps = getIntervalProps() as HTMLAttributes<HTMLElement> & {
+      key?: string | number;
+      className?: string;
+    };
+    const { key: intervalKey, className: intervalClassName, ...safeIntervalProps } = intervalProps;
 
     return (
       <div
-        {...intervalProps}
+        key={intervalKey}
+        {...safeIntervalProps}
         className={[
-          intervalProps.className,
+          intervalClassName,
           "ww-timeline-date-header",
           isCurrentDay(intervalContext.interval.startTime.valueOf())
             ? "ww-timeline-date-header--today"

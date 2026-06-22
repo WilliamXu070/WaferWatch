@@ -45,6 +45,8 @@ function getCalendarWindowFromEvents(
   fallbackDate: Date,
   minimumWeeks = 52
 ) {
+  const minimumDays = minimumWeeks * 7 - 1;
+
   if (events.length === 0) {
     const start = getMondayWeekStart(fallbackDate);
     const end = getSundayWeekEnd(start);
@@ -73,7 +75,18 @@ function getCalendarWindowFromEvents(
   const start = getMondayWeekStart(new Date(Math.min(...starts)));
   const end = getSundayWeekEnd(new Date(Math.max(...ends)));
 
-  return { start, end };
+  const spanDays = Math.max(0, Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
+  if (spanDays >= minimumDays) {
+    return { start, end };
+  }
+
+  const extendedEnd = new Date(start);
+  extendedEnd.setDate(extendedEnd.getDate() + minimumDays);
+
+  return {
+    start,
+    end: extendedEnd
+  };
 }
 
 export default async function ProcessDashboardPage({
