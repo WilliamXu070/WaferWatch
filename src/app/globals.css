@@ -915,6 +915,12 @@ textarea {
   overflow: hidden;
 }
 
+.calendar-timeline-panel--item-dragging,
+.calendar-timeline-panel--item-dragging * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .calendar-timeline-panel--panning {
   cursor: grabbing;
 }
@@ -1039,12 +1045,6 @@ textarea {
 
 .ww-timeline-item--draft-active {
   pointer-events: none;
-}
-
-.ww-timeline-item--dragging,
-.ww-timeline-item--dragging .ww-timeline-item-content {
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 .ww-timeline-item-content {

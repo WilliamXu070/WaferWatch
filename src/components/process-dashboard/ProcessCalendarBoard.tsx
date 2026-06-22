@@ -395,11 +395,9 @@ export function ProcessCalendarBoard({
     end: number;
     updateScrollCanvas: (start: number, end: number) => void;
   } | null>(null);
-  const isItemMovingRef = useRef(false);
-  const itemMoveTimeoutRef = useRef<number | null>(null);
+  const isItemDragActiveRef = useRef(false);
   const [timelinePanPointerId, setTimelinePanPointerId] = useState<number | null>(null);
   const [isTimelinePanning, setIsTimelinePanning] = useState(false);
-  const [isItemMoving, setIsItemMoving] = useState(false);
 
   const startDate = useMemo(() => new Date(`${calendarStartDate}T00:00:00`), [calendarStartDate]);
   const timelineStart = useMemo(() => buildDateAtMinute(startDate, START_MINUTE).getTime(), [startDate]);
@@ -743,34 +741,27 @@ export function ProcessCalendarBoard({
     });
   }, [events]);
 
-  const stopItemMove = useCallback(() => {
-    if (itemMoveTimeoutRef.current !== null) {
-      window.clearTimeout(itemMoveTimeoutRef.current);
-      itemMoveTimeoutRef.current = null;
-    }
-
-    if (!isItemMovingRef.current) {
+  const startItemDragSelectionBlock = useCallback(() => {
+    if (isItemDragActiveRef.current) {
       return;
     }
 
-    isItemMovingRef.current = false;
-    setIsItemMoving(false);
+    isItemDragActiveRef.current = true;
+    timelinePanelRef.current?.classList.add("calendar-timeline-panel--item-dragging");
   }, []);
 
-  const markItemMoving = useCallback(() => {
-    isItemMovingRef.current = true;
-    setIsItemMoving(true);
-
-    if (itemMoveTimeoutRef.current !== null) {
-      window.clearTimeout(itemMoveTimeoutRef.current);
+  const stopItemDragSelectionBlock = useCallback(() => {
+    if (!isItemDragActiveRef.current) {
+      return;
     }
 
-    itemMoveTimeoutRef.current = window.setTimeout(stopItemMove, 160);
-  }, [stopItemMove]);
+    isItemDragActiveRef.current = false;
+    timelinePanelRef.current?.classList.remove("calendar-timeline-panel--item-dragging");
+  }, []);
 
   const handleItemMove = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onItemMove"]>>(
     (itemId, dragTime, newGroupOrder) => {
-      markItemMoving();
+      startItemDragSelectionBlock();
 
       const eventId = String(itemId);
       const group = groups[newGroupOrder];
@@ -812,26 +803,30 @@ export function ProcessCalendarBoard({
         recordUndo: true
       });
     },
-    [commitMove, draft, events, groups, markItemMoving]
+    [commitMove, draft, events, groups, startItemDragSelectionBlock]
   );
 
   useEffect(() => {
     const stopMoving = () => {
-      stopItemMove();
+      stopItemDragSelectionBlock();
     };
 
     window.addEventListener("pointerup", stopMoving);
     window.addEventListener("pointercancel", stopMoving);
+    window.addEventListener("blur", stopMoving);
 
     return () => {
       stopMoving();
       window.removeEventListener("pointerup", stopMoving);
       window.removeEventListener("pointercancel", stopMoving);
+      window.removeEventListener("blur", stopMoving);
     };
-  }, [stopItemMove]);
+  }, [stopItemDragSelectionBlock]);
 
   const handleItemResize = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onItemResize"]>>(
     (itemId, resizeTime, edge) => {
+      startItemDragSelectionBlock();
+
       const eventId = String(itemId);
       if (!edge) {
         return;
@@ -883,8 +878,8 @@ export function ProcessCalendarBoard({
         },
         recordUndo: true
       });
-    },
-    [commitMove, draft, events]
+  },
+    [commitMove, draft, events, startItemDragSelectionBlock]
   );
 
   const handleCanvasDoubleClick = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onCanvasDoubleClick"]>>(
@@ -1052,15 +1047,34 @@ export function ProcessCalendarBoard({
   const renderTimelineItem = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["itemRenderer"]>>(
     ({ item, itemContext, getItemProps, getResizeProps }) => {
       const resizeProps = getResizeProps();
-      const movingClass = isItemMoving ? "ww-timeline-item--dragging" : "";
-      const { key, ...itemProps } = getItemProps({
-        className: `ww-timeline-item ${item.toneClass} ${itemContext.selected ? "ww-timeline-item--selected" : ""} ${movingClass}`
-      });
+      const { key, onPointerDown, onPointerUp, onPointerCancel, ...itemProps } = getItemProps({
+        className: `ww-timeline-item ${item.toneClass} ${itemContext.selected ? "ww-timeline-item--selected" : ""}`
+      }) as HTMLAttributes<HTMLDivElement> & {
+        key?: React.Key;
+      };
+
+      const handleItemPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+        startItemDragSelectionBlock();
+        onPointerDown?.(event);
+      };
+
+      const handleItemPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+        onPointerUp?.(event);
+        stopItemDragSelectionBlock();
+      };
+
+      const handleItemPointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
+        onPointerCancel?.(event);
+        stopItemDragSelectionBlock();
+      };
 
       return (
         <div
           key={key}
           {...itemProps}
+          onPointerDown={handleItemPointerDown}
+          onPointerUp={handleItemPointerUp}
+          onPointerCancel={handleItemPointerCancel}
         >
           {itemContext.useResizeHandle ? <div {...resizeProps.left} className="ww-timeline-resize ww-timeline-resize--left" /> : null}
           <div className="ww-timeline-item-content">
@@ -1071,7 +1085,7 @@ export function ProcessCalendarBoard({
         </div>
       );
     },
-    [isItemMoving]
+    [startItemDragSelectionBlock, stopItemDragSelectionBlock]
   );
 
   function addPerson(person: ProcessCalendarPersonOption) {
