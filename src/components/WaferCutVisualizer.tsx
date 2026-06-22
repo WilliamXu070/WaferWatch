@@ -144,12 +144,12 @@ const POST_DICE_STATUS_SEQUENCE: DieStatus[] = [
   "post_inspection"
 ];
 const POST_ELB_GRID_DEFAULT_INCHES: DieStructureGridTemplateInInches = {
-  columns: 3,
-  rows: 4,
-  rectWidthIn: 1.5,
+  columns: 15,
+  rows: 3,
+  rectWidthIn: 1,
   rectHeightIn: 1,
-  gapXIn: 0.22,
-  gapYIn: 0.20,
+  gapXIn: 0.18,
+  gapYIn: 0.22,
   insetIn: 0,
   clusterSpanFraction: 1,
   rowDirection: "top-to-bottom"
@@ -161,6 +161,7 @@ const WAFER_OVERVIEW_LABEL_HEIGHT = 42;
 const WAFER_REUSE_PREFIX = "V";
 const WAFER_REUSE_CYCLE = 1;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const POLING_MATRIX_ROW_COUNT = 3;
 const POLING_MATRIX_COLUMN_COUNT = 15;
 const POLING_PARAMETER_FIELDS: Array<{
   key: VisiblePolingParameterField;
@@ -1348,11 +1349,11 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     }));
   };
 
-  const renderPolingRecipeHeader = (row: number, selectedColumn?: number) => {
-    const rowCode = `R${row}`;
-    const cellRange = selectedColumn
-      ? `${rowCode}C${selectedColumn}`
-      : `${rowCode}C1-C${POLING_MATRIX_COLUMN_COUNT}`;
+  const renderPolingRecipeHeader = (row: number | null, selectedColumn?: number) => {
+    const rowCode = row ? `R${row}` : `R1-R${POLING_MATRIX_ROW_COUNT}`;
+    const cellRange = row && selectedColumn
+      ? `R${row}C${selectedColumn}`
+      : `R1C1-R${POLING_MATRIX_ROW_COUNT}C${POLING_MATRIX_COLUMN_COUNT}`;
     const recipeId = activeChipCode ?? `${activeWaferPrefix || "W"}${rowCode}`;
     const headerCells = [
       { label: "fabricated by", value: selectedWafer?.currentHandlerName ?? "" },
@@ -1393,12 +1394,17 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     const rowCode = `R${row}`;
     const gridStyle = {
       gridTemplateColumns: selectedColumn
-        ? "116px minmax(176px, 1fr)"
-        : `116px repeat(${columns.length}, minmax(86px, 1fr))`
+        ? "84px minmax(160px, 1fr)"
+        : `84px repeat(${columns.length}, minmax(38px, 1fr))`
     };
 
     return (
-      <div className="wafer-poling-grid" style={gridStyle}>
+      <div
+        className="wafer-poling-grid"
+        key={`poling-grid-${rowCode}-${selectedColumn ?? "all"}`}
+        style={gridStyle}
+        aria-label={`${rowCode} poling parameter matrix`}
+      >
         <div className="wafer-poling-corner">Period<br />2.5</div>
         {columns.map((column) => (
           <div
@@ -1461,11 +1467,11 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   };
 
   const renderActiveInspectionPolingSummary = () => {
-    if (!activePolingTemplate || !activeChip || !activeChipCode || !activeWaferDatabaseId) {
+    if (!activePolingTemplate || !activeChip || !activeChipCode) {
       return null;
     }
 
-    const row = activeChip.label;
+    const row = activeChipInspectionRow;
 
     return (
       <div
@@ -1498,7 +1504,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       return null;
     }
 
-    const row = activeChip.label;
+    const rows = Array.from({ length: POLING_MATRIX_ROW_COUNT }, (_, rowIndex) => rowIndex + 1);
 
     return (
       <section className="panel wafer-poling-panel" aria-label={`${activeChipCode} poling parameters`}>
@@ -1506,8 +1512,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
           <h3>Poling parameters</h3>
         </div>
         <div className="wafer-poling-sheet">
-          {renderPolingRecipeHeader(row)}
-          {renderPolingMatrix(row)}
+          {renderPolingRecipeHeader(null)}
+          {rows.map((row) => renderPolingMatrix(row))}
         </div>
       </section>
     );
@@ -1868,46 +1874,48 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
           </aside>
         ) : null}
         </div>
-        {isChipFocusView && isInspectionPanelOpen && activeChipCode && activeChipExpandedName && activeWaferDatabaseId && activeProjectId ? (
+        {isChipFocusView && isInspectionPanelOpen && activeChipCode && activeChipExpandedName ? (
           <div className="wafer-inspection-stack">
             <section className="panel wafer-inspection-workspace">
               {renderActiveInspectionPolingSummary()}
-              <DieInspectionMap
-                key={`${activeWaferDatabaseId}:${activeChipCode}:${activeChipInspectionRow}:${activeChipInspectionColumn}`}
-                projectId={activeProjectId}
-                waferId={activeWaferDatabaseId}
-                dieCode={activeChipCode}
-                dieName={activeChipExpandedName}
-                row={activeChipInspectionRow}
-                column={activeChipInspectionColumn}
-                hue={activeInspectionHue}
-                preloadedInspections={activeInspectionRecords}
-                onInspectionsChange={(updatedInspections) => {
-                  setInspectionCellState((current) => {
-                    if (current.scope !== activeInspectionCellScope) {
-                      return current;
-                    }
+              {activeWaferDatabaseId && activeProjectId ? (
+                <DieInspectionMap
+                  key={`${activeWaferDatabaseId}:${activeChipCode}:${activeChipInspectionRow}:${activeChipInspectionColumn}`}
+                  projectId={activeProjectId}
+                  waferId={activeWaferDatabaseId}
+                  dieCode={activeChipCode}
+                  dieName={activeChipExpandedName}
+                  row={activeChipInspectionRow}
+                  column={activeChipInspectionColumn}
+                  hue={activeInspectionHue}
+                  preloadedInspections={activeInspectionRecords}
+                  onInspectionsChange={(updatedInspections) => {
+                    setInspectionCellState((current) => {
+                      if (current.scope !== activeInspectionCellScope) {
+                        return current;
+                      }
 
-                    const nextCells = { ...current.cells };
-                    const nextInspectionsByCell = {
-                      ...current.inspectionsByCell,
-                      [activeInspectionCellKey]: updatedInspections
-                    };
+                      const nextCells = { ...current.cells };
+                      const nextInspectionsByCell = {
+                        ...current.inspectionsByCell,
+                        [activeInspectionCellKey]: updatedInspections
+                      };
 
-                    if (updatedInspections.length > 0) {
-                      nextCells[activeInspectionCellKey] = true;
-                    } else {
-                      delete nextCells[activeInspectionCellKey];
-                    }
+                      if (updatedInspections.length > 0) {
+                        nextCells[activeInspectionCellKey] = true;
+                      } else {
+                        delete nextCells[activeInspectionCellKey];
+                      }
 
-                    return {
-                      ...current,
-                      cells: nextCells,
-                      inspectionsByCell: nextInspectionsByCell
-                    };
-                  });
-                }}
-              />
+                      return {
+                        ...current,
+                        cells: nextCells,
+                        inspectionsByCell: nextInspectionsByCell
+                      };
+                    });
+                  }}
+                />
+              ) : null}
             </section>
           </div>
         ) : isChipFocusView ? renderPolingParameterSheet() : null}

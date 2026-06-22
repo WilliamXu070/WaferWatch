@@ -1900,8 +1900,8 @@ textarea {
 }
 
 .wafer-visualizer-layout--chip-focus {
-  grid-template-columns: minmax(250px, 330px) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 12px;
 }
 
 .wafer-focus-rail {
@@ -2008,7 +2008,7 @@ textarea {
 }
 
 .wafer-visualizer-layout--chip-focus .wafer-svg-canvas--focused {
-  width: min(100%, 300px);
+  width: min(100%, 340px);
 }
 
 .wafer-svg-canvas--overview {
@@ -2291,7 +2291,8 @@ textarea {
 .wafer-poling-sheet {
   display: block;
   min-width: 0;
-  overflow-x: auto;
+  max-height: calc(100vh - 250px);
+  overflow: auto;
   border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   border-radius: 4px;
   background:
@@ -2301,13 +2302,14 @@ textarea {
 }
 
 .wafer-poling-sheet--single {
-  overflow-x: visible;
+  max-height: calc(100vh - 230px);
+  overflow: auto;
 }
 
 .wafer-poling-recipe-header {
-  min-width: 1404px;
+  min-width: max(704px, 100%);
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 184px 1fr;
   border-bottom: 2px solid #0d0d0d;
   background: color-mix(in srgb, var(--panel) 98%, var(--background));
 }
@@ -2318,13 +2320,13 @@ textarea {
 }
 
 .wafer-poling-recipe-id {
-  min-height: 128px;
+  min-height: 58px;
   display: flex;
   align-items: center;
-  padding: 18px 10px;
+  padding: 8px 7px;
   border-right: 2px solid color-mix(in srgb, #0d0d0d 72%, transparent);
   color: #ff344f;
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 900;
   line-height: 1;
   overflow-wrap: anywhere;
@@ -2332,22 +2334,22 @@ textarea {
 
 .wafer-poling-recipe-meta {
   display: grid;
-  grid-template-columns: repeat(10, minmax(92px, 1fr));
+  grid-template-columns: repeat(10, minmax(44px, 1fr));
 }
 
 .wafer-poling-sheet--single .wafer-poling-recipe-meta {
-  grid-template-columns: repeat(5, minmax(82px, 1fr));
+  grid-template-columns: repeat(5, minmax(64px, 1fr));
 }
 
 .wafer-poling-recipe-meta-cell {
-  min-height: 128px;
+  min-height: 58px;
   display: grid;
   align-content: start;
-  gap: 6px;
-  padding: 8px 6px;
+  gap: 2px;
+  padding: 5px 4px;
   border-right: 1px solid color-mix(in srgb, var(--border) 44%, transparent);
   color: color-mix(in srgb, var(--foreground) 76%, var(--panel));
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 700;
   line-height: 1.2;
   overflow-wrap: anywhere;
@@ -2359,16 +2361,20 @@ textarea {
 
 .wafer-poling-recipe-meta-cell strong {
   color: color-mix(in srgb, var(--foreground) 88%, var(--panel));
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 850;
 }
 
 .wafer-poling-grid {
-  min-width: 1404px;
+  min-width: max(704px, 100%);
   display: grid;
   align-items: stretch;
   border: 0;
   background: color-mix(in srgb, var(--panel) 98%, var(--background));
+}
+
+.wafer-poling-grid + .wafer-poling-grid {
+  border-top: 4px solid #050505;
 }
 
 .wafer-poling-sheet--single .wafer-poling-grid {
@@ -2387,14 +2393,14 @@ textarea {
 
 .wafer-poling-corner,
 .wafer-poling-column-header {
-  min-height: 52px;
+  min-height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 6px;
+  padding: 2px 3px;
   background: #050505;
   color: #f7f7f7;
-  font-size: 15px;
+  font-size: 10px;
   font-weight: 900;
   line-height: 1.1;
   text-align: center;
@@ -2403,24 +2409,24 @@ textarea {
 .wafer-poling-corner {
   justify-content: flex-start;
   color: #f3f3f3;
-  font-size: 14px;
+  font-size: 10px;
   text-align: left;
 }
 
 .wafer-poling-row-subhead {
-  min-height: 50px;
+  min-height: 18px;
   display: flex;
   align-items: center;
-  padding: 7px 6px;
+  padding: 2px 3px;
   background: #050505;
   color: #f7f7f7;
-  font-size: 14px;
+  font-size: 10px;
   font-weight: 850;
   line-height: 1.15;
 }
 
 .wafer-poling-column-spacer {
-  min-height: 50px;
+  min-height: 18px;
   background: color-mix(in srgb, var(--panel) 99%, var(--background));
 }
 
@@ -2431,17 +2437,17 @@ textarea {
 .wafer-poling-row-label {
   display: flex;
   align-items: center;
-  padding: 7px 5px;
+  padding: 2px 3px;
   background: color-mix(in srgb, var(--panel) 94%, var(--background));
   color: color-mix(in srgb, var(--foreground) 74%, var(--panel));
-  font-size: 13px;
+  font-size: 9px;
   font-weight: 780;
   line-height: 1.12;
   overflow-wrap: anywhere;
 }
 
 .wafer-poling-cell {
-  min-height: 58px;
+  min-height: 24px;
   display: grid;
   align-content: stretch;
   background: color-mix(in srgb, var(--panel) 98%, var(--background));
@@ -2450,7 +2456,7 @@ textarea {
 
 .wafer-poling-row-label--postPulseVoltage,
 .wafer-poling-cell--postPulseVoltage {
-  min-height: 212px;
+  min-height: 44px;
   align-items: end;
 }
 
@@ -2460,21 +2466,21 @@ textarea {
 
 .wafer-poling-row-label--postPulseWidth,
 .wafer-poling-cell--postPulseWidth {
-  min-height: 78px;
+  min-height: 26px;
 }
 
 .wafer-poling-cell-editor {
-  min-height: 58px;
+  min-height: 24px;
   width: 100%;
   height: auto;
   display: block;
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 7px 4px;
+  padding: 2px;
   color: var(--foreground);
   font: inherit;
-  font-size: 35px;
+  font-size: 16px;
   font-weight: 500;
   line-height: 1;
   text-align: center;
@@ -2487,11 +2493,11 @@ textarea {
 }
 
 .wafer-poling-cell--postPulseVoltage .wafer-poling-cell-editor {
-  min-height: 72px;
+  min-height: 34px;
 }
 
 .wafer-poling-cell--postPulseWidth .wafer-poling-cell-editor {
-  min-height: 78px;
+  min-height: 26px;
 }
 
 .wafer-poling-cell:focus-within {
