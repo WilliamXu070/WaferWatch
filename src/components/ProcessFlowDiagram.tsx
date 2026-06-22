@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
 import type { StepStatus } from "@/types/database";
 
@@ -48,6 +48,13 @@ type ConnectionDraft = {
   x: number;
   y: number;
   hasMoved: boolean;
+};
+
+type ZoomAnchor = {
+  paneX: number;
+  paneY: number;
+  sceneX: number;
+  sceneY: number;
 };
 
 const NODE_WIDTH = 232;
@@ -217,6 +224,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   const scaleRef = useRef(1);
   const pinchBaseScaleRef = useRef(1);
   const nextNodeNumberRef = useRef(1);
+  const pendingZoomAnchorRef = useRef<ZoomAnchor | null>(null);
   const panStateRef = useRef<{
     startX: number;
     startY: number;
@@ -240,31 +248,54 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
-  const applyCenteredScale = (nextScale: number) => {
+  const getPaneAnchor = useCallback((clientX?: number, clientY?: number) => {
+    const frame = frameRef.current;
+    if (!frame) {
+      return null;
+    }
+
+    if (clientX === undefined || clientY === undefined) {
+      return {
+        paneX: frame.clientWidth / 2,
+        paneY: frame.clientHeight / 2
+      };
+    }
+
+    const frameRect = frame.getBoundingClientRect();
+    return {
+      paneX: clientX - frameRect.left,
+      paneY: clientY - frameRect.top
+    };
+  }, []);
+
+  const applyScaleAtAnchor = useCallback((
+    nextScale: number,
+    anchor: { paneX: number; paneY: number } | null = getPaneAnchor()
+  ) => {
     const frame = frameRef.current;
     const currentScale = scaleRef.current;
     const boundedScale = clampScale(nextScale);
 
-    if (!frame || boundedScale === currentScale) {
+    if (!frame || !anchor || boundedScale === currentScale) {
       setScale(boundedScale);
+      scaleRef.current = boundedScale;
       return;
     }
 
-    const centerX = (frame.scrollLeft + frame.clientWidth / 2) / currentScale;
-    const centerY = (frame.scrollTop + frame.clientHeight / 2) / currentScale;
+    pendingZoomAnchorRef.current = {
+      paneX: anchor.paneX,
+      paneY: anchor.paneY,
+      sceneX: (frame.scrollLeft + anchor.paneX) / currentScale,
+      sceneY: (frame.scrollTop + anchor.paneY) / currentScale
+    };
 
-    setScale(boundedScale);
     scaleRef.current = boundedScale;
+    setScale(boundedScale);
+  }, [getPaneAnchor]);
 
-    requestAnimationFrame(() => {
-      frame.scrollLeft = centerX * boundedScale - frame.clientWidth / 2;
-      frame.scrollTop = centerY * boundedScale - frame.clientHeight / 2;
-    });
-  };
-
-  const zoomIn = () => applyCenteredScale(scaleRef.current + BUTTON_ZOOM_STEP);
-  const zoomOut = () => applyCenteredScale(scaleRef.current - BUTTON_ZOOM_STEP);
-  const zoomReset = () => applyCenteredScale(1);
+  const zoomIn = () => applyScaleAtAnchor(scaleRef.current + BUTTON_ZOOM_STEP);
+  const zoomOut = () => applyScaleAtAnchor(scaleRef.current - BUTTON_ZOOM_STEP);
+  const zoomReset = () => applyScaleAtAnchor(1);
   const clearCanvas = () => {
     setNodes([]);
     setEdges([]);
@@ -274,6 +305,19 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
 
   useEffect(() => {
     scaleRef.current = scale;
+  }, [scale]);
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    const anchor = pendingZoomAnchorRef.current;
+
+    if (!frame || !anchor) {
+      return;
+    }
+
+    frame.scrollLeft = anchor.sceneX * scale - anchor.paneX;
+    frame.scrollTop = anchor.sceneY * scale - anchor.paneY;
+    pendingZoomAnchorRef.current = null;
   }, [scale]);
 
   const getScenePoint = (event: { clientX: number; clientY: number }) => {
@@ -462,7 +506,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
       }
 
       const delta = event.deltaY > 0 ? -WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
-      applyCenteredScale(scaleRef.current + delta);
+      applyScaleAtAnchor(scaleRef.current + delta, getPaneAnchor(event.clientX, event.clientY));
     };
 
     const handleGestureStart = (event: Event) => {
@@ -484,7 +528,14 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
         return;
       }
 
-      applyCenteredScale(pinchBaseScaleRef.current * gestureScale);
+      const clientPoint =
+        "clientX" in event && "clientY" in event
+          ? getPaneAnchor(
+              (event as Event & { clientX: number }).clientX,
+              (event as Event & { clientY: number }).clientY
+            )
+          : getPaneAnchor();
+      applyScaleAtAnchor(pinchBaseScaleRef.current * gestureScale, clientPoint);
       event.preventDefault();
       event.stopPropagation();
     };
@@ -505,7 +556,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
       frame.removeEventListener("gesturechange", handleGestureChange);
       frame.removeEventListener("gestureend", handleGestureEnd);
     };
-  }, []);
+  }, [applyScaleAtAnchor, getPaneAnchor]);
 
   const draftSourceNode = connectionDraft ? nodeById.get(connectionDraft.from) : null;
   const draftPath = draftSourceNode
