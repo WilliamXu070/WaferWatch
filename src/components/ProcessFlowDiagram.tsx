@@ -236,9 +236,31 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
-  const zoomIn = () => setScale((value) => Math.min(2.6, value + 0.1));
-  const zoomOut = () => setScale((value) => Math.max(0.6, value - 0.1));
-  const zoomReset = () => setScale(1);
+  const applyCenteredScale = (nextScale: number) => {
+    const frame = frameRef.current;
+    const currentScale = scaleRef.current;
+    const boundedScale = clampScale(nextScale);
+
+    if (!frame || boundedScale === currentScale) {
+      setScale(boundedScale);
+      return;
+    }
+
+    const centerX = (frame.scrollLeft + frame.clientWidth / 2) / currentScale;
+    const centerY = (frame.scrollTop + frame.clientHeight / 2) / currentScale;
+
+    setScale(boundedScale);
+    scaleRef.current = boundedScale;
+
+    requestAnimationFrame(() => {
+      frame.scrollLeft = centerX * boundedScale - frame.clientWidth / 2;
+      frame.scrollTop = centerY * boundedScale - frame.clientHeight / 2;
+    });
+  };
+
+  const zoomIn = () => applyCenteredScale(scaleRef.current + 0.1);
+  const zoomOut = () => applyCenteredScale(scaleRef.current - 0.1);
+  const zoomReset = () => applyCenteredScale(1);
   const clearCanvas = () => {
     setNodes([]);
     setEdges([]);
@@ -419,11 +441,6 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
       return;
     }
 
-    const applyScale = (nextScale: number) => {
-      const bounded = clampScale(nextScale);
-      setScale((current) => (current === bounded ? current : bounded));
-    };
-
     const handleWheelFallback = (event: globalThis.WheelEvent) => {
       event.preventDefault();
       event.stopPropagation();
@@ -436,7 +453,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
       }
 
       const delta = event.deltaY > 0 ? -0.08 : 0.08;
-      applyScale(scaleRef.current + delta);
+      applyCenteredScale(scaleRef.current + delta);
     };
 
     const handleGestureStart = (event: Event) => {
@@ -458,7 +475,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
         return;
       }
 
-      applyScale(pinchBaseScaleRef.current * gestureScale);
+      applyCenteredScale(pinchBaseScaleRef.current * gestureScale);
       event.preventDefault();
       event.stopPropagation();
     };
