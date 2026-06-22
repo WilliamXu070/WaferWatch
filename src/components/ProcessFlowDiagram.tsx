@@ -56,6 +56,8 @@ const SCENE_WIDTH = 2200;
 const SCENE_HEIGHT = 1600;
 const MIN_SCALE = 0.8;
 const MAX_SCALE = 2.6;
+const BUTTON_ZOOM_STEP = 0.25;
+const WHEEL_ZOOM_STEP = 0.18;
 const LAYOUT_CENTER_X = 520;
 const LAYOUT_TOP_Y = 96;
 const LAYOUT_GAP_Y = 168;
@@ -260,8 +262,8 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     });
   };
 
-  const zoomIn = () => applyCenteredScale(scaleRef.current + 0.1);
-  const zoomOut = () => applyCenteredScale(scaleRef.current - 0.1);
+  const zoomIn = () => applyCenteredScale(scaleRef.current + BUTTON_ZOOM_STEP);
+  const zoomOut = () => applyCenteredScale(scaleRef.current - BUTTON_ZOOM_STEP);
   const zoomReset = () => applyCenteredScale(1);
   const clearCanvas = () => {
     setNodes([]);
@@ -454,7 +456,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
         return;
       }
 
-      const delta = event.deltaY > 0 ? -0.08 : 0.08;
+      const delta = event.deltaY > 0 ? -WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
       applyCenteredScale(scaleRef.current + delta);
     };
 
