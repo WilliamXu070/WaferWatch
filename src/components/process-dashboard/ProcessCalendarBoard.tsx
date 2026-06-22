@@ -946,30 +946,43 @@ export function ProcessCalendarBoard({
 
   const handleTimeChange = useCallback<OnTimeChange<CalendarTimelineItem, TimelineLocationGroup>>(
     (visibleTimeStart, visibleTimeEnd, updateScrollCanvas) => {
-      const span = visibleTimeEnd - visibleTimeStart;
       const minStart = timelineStart;
       const maxEnd = timelineEnd;
-      let nextStart = visibleTimeStart;
-      let nextEnd = visibleTimeEnd;
+      const requestedSpan = visibleTimeEnd - visibleTimeStart;
+      const maxSpan = maxEnd - minStart;
 
-      if (span >= maxEnd - minStart) {
-        nextStart = minStart;
-        nextEnd = maxEnd;
-      } else if (nextStart < minStart) {
-        nextStart = minStart;
-        nextEnd = minStart + span;
-      } else if (nextEnd > maxEnd) {
-        nextEnd = maxEnd;
-        nextStart = maxEnd - span;
-      }
+      setVisibleRange((previousRange) => {
+        let nextStart = visibleTimeStart;
+        let nextEnd = visibleTimeEnd;
+        const wasZoom = requestedSpan !== previousRange.end - previousRange.start;
 
-      setVisibleRange({
-        boundsStart: timelineStart,
-        boundsEnd: timelineEnd,
-        start: nextStart,
-        end: nextEnd
+        if (requestedSpan >= maxSpan) {
+          nextStart = minStart;
+          nextEnd = maxEnd;
+        } else if (wasZoom) {
+          const previousCenter = (previousRange.start + previousRange.end) / 2;
+          const halfSpan = requestedSpan / 2;
+          nextStart = previousCenter - halfSpan;
+          nextEnd = previousCenter + halfSpan;
+        }
+
+        if (nextStart < minStart) {
+          nextStart = minStart;
+          nextEnd = minStart + requestedSpan;
+        } else if (nextEnd > maxEnd) {
+          nextEnd = maxEnd;
+          nextStart = maxEnd - requestedSpan;
+        }
+
+        updateScrollCanvas(nextStart, nextEnd);
+
+        return {
+          boundsStart: timelineStart,
+          boundsEnd: timelineEnd,
+          start: nextStart,
+          end: nextEnd
+        };
       });
-      updateScrollCanvas(nextStart, nextEnd);
     },
     [timelineEnd, timelineStart]
   );
