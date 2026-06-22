@@ -521,6 +521,15 @@ textarea {
   cursor: grab;
 }
 
+.flow-node--dragging {
+  cursor: grabbing;
+}
+
+.flow-node--dragging .flow-node-card {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
 .flow-node--connecting {
   cursor: crosshair;
 }
@@ -534,6 +543,14 @@ textarea {
   fill: var(--accent);
   stroke: var(--panel);
   stroke-width: 2;
+}
+
+.flow-node-port-hit {
+  cursor: crosshair;
+}
+
+.flow-node-port-target {
+  fill: transparent;
 }
 
 .flow-node-title {

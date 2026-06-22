@@ -50,6 +50,13 @@ type ConnectionDraft = {
   hasMoved: boolean;
 };
 
+type NodeDrag = {
+  nodeId: string;
+  pointerId: number;
+  offsetX: number;
+  offsetY: number;
+};
+
 type ZoomAnchor = {
   paneX: number;
   paneY: number;
@@ -117,33 +124,29 @@ function orderNodes(nodes: FlowNode[], edges: FlowEdge[]) {
     incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
   }
 
-  const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]));
-  const queue = nodes
-    .filter((node) => (incoming.get(node.id) ?? 0) === 0)
-    .sort((a, b) => a.order - b.order)
-    .map((node) => node.id);
+  const orderedNodes = [...nodes].sort((a, b) => a.order - b.order);
+  const visited = new Set<string>();
   const sortedIds: string[] = [];
+  const roots = orderedNodes.filter((node) => (incoming.get(node.id) ?? 0) === 0);
+  const starts = roots.length ? roots : orderedNodes.slice(0, 1);
 
-  while (queue.length > 0) {
-    const currentId = queue.shift();
-    if (!currentId) {
-      break;
+  const visit = (nodeId: string) => {
+    if (visited.has(nodeId)) {
+      return;
     }
 
-    sortedIds.push(currentId);
+    visited.add(nodeId);
+    sortedIds.push(nodeId);
 
-    for (const nextId of outgoing.get(currentId) ?? []) {
-      const nextIncoming = (incoming.get(nextId) ?? 0) - 1;
-      incoming.set(nextId, nextIncoming);
-      if (nextIncoming === 0) {
-        queue.push(nextId);
-        queue.sort((a, b) => (nodeOrder.get(a) ?? 0) - (nodeOrder.get(b) ?? 0));
-      }
+    for (const nextId of outgoing.get(nodeId) ?? []) {
+      visit(nextId);
     }
-  }
+  };
+
+  starts.forEach((node) => visit(node.id));
 
   const missing = nodes
-    .filter((node) => !sortedIds.includes(node.id))
+    .filter((node) => !visited.has(node.id))
     .sort((a, b) => a.order - b.order)
     .map((node) => node.id);
 
@@ -159,20 +162,58 @@ function autoLayoutNodes(nodes: FlowNode[], edges: FlowEdge[]) {
   const rankById = new Map(nodes.map((node) => [node.id, 0]));
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const orderIndexById = new Map(orderedIds.map((id, index) => [id, index]));
-  const sortedEdges = [...edges].sort(
-    (a, b) => (orderIndexById.get(a.from) ?? 0) - (orderIndexById.get(b.from) ?? 0)
-  );
+  const incomingCount = new Map(nodes.map((node) => [node.id, 0]));
+  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]));
 
-  for (const id of orderedIds) {
-    for (const edge of sortedEdges.filter((candidate) => candidate.from === id)) {
-      const fromRank = rankById.get(edge.from) ?? 0;
-      const toRank = rankById.get(edge.to) ?? 0;
-      const isForward = (orderIndexById.get(edge.from) ?? 0) < (orderIndexById.get(edge.to) ?? 0);
-
-      if (isForward) {
-        rankById.set(edge.to, Math.max(toRank, fromRank + 1));
-      }
+  for (const edge of edges) {
+    if (!nodeById.has(edge.from) || !nodeById.has(edge.to)) {
+      continue;
     }
+
+    outgoing.get(edge.from)?.push(edge.to);
+    incomingCount.set(edge.to, (incomingCount.get(edge.to) ?? 0) + 1);
+  }
+
+  const starts = orderedIds.filter((id) => (incomingCount.get(id) ?? 0) === 0);
+  const seedIds = starts.length ? starts : orderedIds.slice(0, 1);
+  const visited = new Set<string>();
+
+  const assignRanks = (nodeId: string, rank: number, activePath: Set<string>) => {
+    const currentRank = rankById.get(nodeId) ?? 0;
+    rankById.set(nodeId, Math.max(currentRank, rank));
+
+    if (activePath.has(nodeId)) {
+      return;
+    }
+
+    const nextPath = new Set(activePath);
+    nextPath.add(nodeId);
+    visited.add(nodeId);
+
+    const nextIds = (outgoing.get(nodeId) ?? []).sort(
+      (a, b) => (orderIndexById.get(a) ?? 0) - (orderIndexById.get(b) ?? 0)
+    );
+
+    for (const nextId of nextIds) {
+      if (nextPath.has(nextId)) {
+        continue;
+      }
+
+      assignRanks(nextId, rank + 1, nextPath);
+    }
+  };
+
+  seedIds.forEach((id) => assignRanks(id, 0, new Set()));
+
+  let disconnectedRank = 0;
+  for (const id of orderedIds) {
+    if (visited.has(id)) {
+      disconnectedRank = Math.max(disconnectedRank, rankById.get(id) ?? 0);
+      continue;
+    }
+
+    assignRanks(id, disconnectedRank + 1, new Set());
+    disconnectedRank = Math.max(disconnectedRank, rankById.get(id) ?? 0);
   }
 
   const lanesByRank = new Map<number, string[]>();
@@ -220,6 +261,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
+  const [nodeDrag, setNodeDrag] = useState<NodeDrag | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const scaleRef = useRef(1);
   const pinchBaseScaleRef = useRef(1);
@@ -296,10 +338,14 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   const zoomIn = () => applyScaleAtAnchor(scaleRef.current + BUTTON_ZOOM_STEP);
   const zoomOut = () => applyScaleAtAnchor(scaleRef.current - BUTTON_ZOOM_STEP);
   const zoomReset = () => applyScaleAtAnchor(1);
+  const organizeCanvas = () => {
+    setNodes((currentNodes) => autoLayoutNodes(currentNodes, edges));
+  };
   const clearCanvas = () => {
     setNodes([]);
     setEdges([]);
     setConnectionDraft(null);
+    setNodeDrag(null);
     nextNodeNumberRef.current = 1;
   };
 
@@ -337,7 +383,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     const isMiddleMousePan = event.button === 1;
     const isModifiedLeftPan = event.button === 0 && event.altKey;
 
-    if ((!isMiddleMousePan && !isModifiedLeftPan) || connectionDraft) {
+    if ((!isMiddleMousePan && !isModifiedLeftPan) || connectionDraft || nodeDrag) {
       return;
     }
 
@@ -359,7 +405,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   };
 
   const updatePan = (event: PointerEvent<HTMLDivElement>) => {
-    if (!isPanning || !panStateRef.current || connectionDraft) {
+    if (!isPanning || !panStateRef.current || connectionDraft || nodeDrag) {
       return;
     }
 
@@ -434,6 +480,52 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
+  const beginNodeDrag = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
+    if (event.button !== 0 || connectionDraft) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const point = getScenePoint(event);
+    setNodeDrag({
+      nodeId: node.id,
+      pointerId: event.pointerId,
+      offsetX: point.x - node.x,
+      offsetY: point.y - node.y
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const updateNodeDrag = (event: PointerEvent<SVGGElement>) => {
+    if (!nodeDrag || nodeDrag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const point = getScenePoint(event);
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === nodeDrag.nodeId
+          ? {
+              ...node,
+              x: Math.max(24, Math.round(point.x - nodeDrag.offsetX)),
+              y: Math.max(24, Math.round(point.y - nodeDrag.offsetY))
+            }
+          : node
+      )
+    );
+  };
+
+  const finishNodeDrag = (event: PointerEvent<SVGGElement>) => {
+    if (!nodeDrag || nodeDrag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    setNodeDrag(null);
+  };
+
   const updateConnection = (event: PointerEvent<SVGSVGElement>) => {
     if (!connectionDraft || connectionDraft.pointerId !== event.pointerId) {
       return;
@@ -480,7 +572,6 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
           }
         ];
 
-        setNodes((currentNodes) => autoLayoutNodes(currentNodes, nextEdges));
         return nextEdges;
       });
     }
@@ -584,6 +675,9 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
           <button className="button button-secondary" type="button" onClick={zoomReset}>
             Reset
           </button>
+          <button className="button button-secondary" type="button" onClick={organizeCanvas} disabled={nodes.length < 2}>
+            Organize
+          </button>
           <button className="button button-secondary" type="button" onClick={clearCanvas} disabled={nodes.length === 0}>
             Clear
           </button>
@@ -668,13 +762,24 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
           {nodes.map((node) => (
             <g
               key={node.id}
-              className={`flow-node flow-node--${node.role} ${connectionDraft?.from === node.id ? "flow-node--connecting" : ""}`}
+              className={`flow-node flow-node--${node.role} ${connectionDraft?.from === node.id ? "flow-node--connecting" : ""} ${
+                nodeDrag?.nodeId === node.id ? "flow-node--dragging" : ""
+              }`}
               transform={`translate(${node.x} ${node.y})`}
-              onPointerDown={(event) => beginConnection(event, node.id)}
+              onPointerDown={(event) => beginNodeDrag(event, node)}
+              onPointerMove={updateNodeDrag}
+              onPointerUp={finishNodeDrag}
+              onPointerCancel={finishNodeDrag}
               onDoubleClick={(event) => event.stopPropagation()}
             >
               <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" />
-              <circle cx={node.width - 24} cy="24" r="8" className="flow-node-port" />
+              <g
+                className="flow-node-port-hit"
+                onPointerDown={(event) => beginConnection(event, node.id)}
+              >
+                <circle cx={node.width - 24} cy="24" r="14" className="flow-node-port-target" />
+                <circle cx={node.width - 24} cy="24" r="8" className="flow-node-port" />
+              </g>
               <text x="14" y="30" className="flow-node-title">
                 {node.label}
               </text>
