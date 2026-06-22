@@ -52,15 +52,17 @@ type ConnectionDraft = {
 
 const NODE_WIDTH = 232;
 const NODE_HEIGHT = 112;
-const SCENE_WIDTH = 1280;
-const SCENE_HEIGHT = 900;
+const SCENE_WIDTH = 2200;
+const SCENE_HEIGHT = 1600;
+const MIN_SCALE = 0.8;
+const MAX_SCALE = 2.6;
 const LAYOUT_CENTER_X = 520;
 const LAYOUT_TOP_Y = 96;
 const LAYOUT_GAP_Y = 168;
 const LAYOUT_LANE_GAP_X = 292;
 
 function clampScale(nextScale: number) {
-  return Math.min(2.6, Math.max(0.6, Number(nextScale.toFixed(2))));
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(nextScale.toFixed(2))));
 }
 
 function makeNodePath(from: FlowNode, to: FlowNode) {
