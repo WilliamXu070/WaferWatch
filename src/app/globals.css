@@ -990,6 +990,19 @@ textarea {
   background: color-mix(in srgb, var(--panel-soft) 16%, var(--panel));
 }
 
+.ww-process-timeline .rct-vertical-lines .rct-vl.ww-timeline-vline-today {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.ww-timeline-date-header.ww-timeline-date-header--today {
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
+}
+
+.ww-timeline-date-header.ww-timeline-date-header--today > div {
+  font-weight: 900;
+}
+
 .ww-timeline-item {
   border: 1px solid color-mix(in srgb, var(--foreground) 42%, transparent);
   border-radius: 5px;

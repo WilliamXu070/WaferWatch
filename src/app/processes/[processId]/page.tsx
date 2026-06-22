@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getProcessDashboardData } from "@/features/process-flows/queries";
-import { getProcessCalendarSchedule } from "@/features/calendar/queries";
+import { getProcessCalendarSchedule, type ProcessCalendarEventView } from "@/features/calendar/queries";
 import { signOut } from "@/features/accounts/actions";
 import { ProcessDashboardTabsClient } from "@/components/process-dashboard/ProcessDashboardTabsClient";
 
@@ -30,6 +30,52 @@ function getMondayWeekStart(date: Date) {
   return weekStart;
 }
 
+function getSundayWeekEnd(date: Date) {
+  const weekEnd = new Date(date);
+  const day = weekEnd.getDay();
+  const offset = day === 0 ? 0 : 7 - day;
+
+  weekEnd.setDate(weekEnd.getDate() + offset);
+  weekEnd.setHours(23, 59, 59, 999);
+  return weekEnd;
+}
+
+function getCalendarWindowFromEvents(
+  events: ProcessCalendarEventView[],
+  fallbackDate: Date,
+  minimumWeeks = 52
+) {
+  if (events.length === 0) {
+    const start = getMondayWeekStart(fallbackDate);
+    const end = getSundayWeekEnd(start);
+    end.setDate(start.getDate() + minimumWeeks * 7 - 1);
+
+    return {
+      start,
+      end
+    };
+  }
+
+  const starts = events
+    .map((event) => new Date(event.starts_at).getTime())
+    .filter((time) => Number.isFinite(time));
+  const ends = events
+    .map((event) => new Date(event.ends_at).getTime())
+    .filter((time) => Number.isFinite(time));
+
+  if (starts.length === 0 || ends.length === 0) {
+    const start = getMondayWeekStart(fallbackDate);
+    const end = getSundayWeekEnd(fallbackDate);
+
+    return { start, end };
+  }
+
+  const start = getMondayWeekStart(new Date(Math.min(...starts)));
+  const end = getSundayWeekEnd(new Date(Math.max(...ends)));
+
+  return { start, end };
+}
+
 export default async function ProcessDashboardPage({
   params,
   searchParams
@@ -47,10 +93,9 @@ export default async function ProcessDashboardPage({
     redirect("/");
   }
 
-  const calendarStart = getMondayWeekStart(new Date());
-  const calendarEnd = new Date(calendarStart);
-  calendarEnd.setDate(calendarStart.getDate() + 6);
-  calendarEnd.setHours(23, 59, 59, 999);
+  const calendarReferenceDate = new Date();
+  const calendarScheduleQueryStart = new Date(2000, 0, 1);
+  const calendarScheduleQueryEnd = new Date(2099, 11, 31, 23, 59, 59, 999);
 
   const shouldLoadCalendar = activeView === "calendar";
   const dashboardData = await getProcessDashboardData(
@@ -83,10 +128,15 @@ export default async function ProcessDashboardPage({
   const calendarSchedule = shouldLoadCalendar
     ? await getProcessCalendarSchedule(
         process.id,
-        calendarStart.toISOString(),
-        calendarEnd.toISOString()
+        calendarScheduleQueryStart.toISOString(),
+        calendarScheduleQueryEnd.toISOString()
       )
     : null;
+
+  const { start: calendarStart, end: calendarEnd } = getCalendarWindowFromEvents(
+    calendarSchedule?.events ?? [],
+    calendarReferenceDate
+  );
 
   return (
     <main className="page-shell">

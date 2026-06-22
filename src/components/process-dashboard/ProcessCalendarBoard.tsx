@@ -1,8 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  CSSProperties,
+  HTMLAttributes,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition
+} from "react";
 import type { Dayjs } from "dayjs";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import dayjs from "dayjs";
 import Timeline, {
   DateHeader,
   SidebarHeader,
@@ -287,6 +297,43 @@ function getHeaderScale(visibleSpan: number): TimelineHeaderScale {
   return HEADER_SCALES.days;
 }
 
+function isCurrentDay(timestamp: number) {
+  return dayjs(timestamp).isSame(dayjs(), "day");
+}
+
+function createCurrentDayHeaderRenderer(highlightDay: boolean) {
+  if (!highlightDay) {
+    return undefined;
+  }
+
+  return function CurrentDayHeaderRenderer({
+    intervalContext,
+    getIntervalProps
+  }: {
+    intervalContext: { intervalText: string; interval: { startTime: Dayjs } };
+    getIntervalProps: (props?: { style?: CSSProperties }) => HTMLAttributes<HTMLElement>;
+  }) {
+    const intervalProps = getIntervalProps();
+
+    return (
+      <div
+        {...intervalProps}
+        className={[
+          intervalProps.className,
+          "ww-timeline-date-header",
+          isCurrentDay(intervalContext.interval.startTime.valueOf())
+            ? "ww-timeline-date-header--today"
+            : undefined
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {intervalContext.intervalText}
+      </div>
+    );
+  };
+}
+
 function isBlankTimelineTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -364,6 +411,10 @@ export function ProcessCalendarBoard({
   const headerScale = useMemo(
     () => getHeaderScale(effectiveVisibleRange.end - effectiveVisibleRange.start),
     [effectiveVisibleRange.end, effectiveVisibleRange.start]
+  );
+  const todayVerticalLines = useCallback(
+    (lineStart: number) => (isCurrentDay(lineStart) ? ["ww-timeline-vline-today"] : []),
+    []
   );
 
   const stepsById = useMemo(() => new Map(steps.map((step) => [step.id, step.name])), [steps]);
@@ -1208,6 +1259,7 @@ export function ProcessCalendarBoard({
           ref={setTimelineRef}
           selected={draft ? ["__draft-create__"] : selectedEventId ? [selectedEventId] : []}
           sidebarWidth={132}
+          verticalLineClassNamesForTime={todayVerticalLines}
           stackItems
           timeSteps={{ second: 1, minute: 15, hour: headerScale.hourStep, day: 1, month: 1, year: 1 }}
           useResizeHandle
@@ -1222,11 +1274,13 @@ export function ProcessCalendarBoard({
               key={`primary-${headerScale.id}`}
               labelFormat={headerScale.primaryLabelFormat}
               unit={headerScale.primaryUnit}
+              intervalRenderer={createCurrentDayHeaderRenderer(headerScale.primaryUnit === "day")}
             />
             <DateHeader
               key={`secondary-${headerScale.id}`}
               labelFormat={headerScale.secondaryLabelFormat}
               unit={headerScale.secondaryUnit}
+              intervalRenderer={createCurrentDayHeaderRenderer(headerScale.secondaryUnit === "day")}
             />
           </TimelineHeaders>
         </Timeline>
