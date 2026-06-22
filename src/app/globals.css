@@ -2252,7 +2252,8 @@ textarea {
 .wafer-poling-panel {
   grid-column: 1 / -1;
   display: grid;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -2263,18 +2264,18 @@ textarea {
 
 .wafer-poling-header {
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 
 .wafer-poling-header h3 {
   margin: 0;
-  font-family: var(--font-headline);
-  font-size: clamp(24px, 2.8vw, 34px);
+  font-size: 14px;
   font-weight: 850;
-  line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
+  line-height: 1.1;
+  text-transform: uppercase;
 }
 
 .wafer-poling-intro {
@@ -2288,74 +2289,139 @@ textarea {
 }
 
 .wafer-poling-sheet {
-  display: grid;
-  gap: 16px;
-}
-
-.wafer-poling-row-block {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-  align-items: start;
-  padding: 12px;
-  border: 1px solid var(--poling-row-line);
-  border-radius: 12px;
+  display: block;
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: 4px;
   background:
-    linear-gradient(90deg, var(--poling-row-soft), transparent 62%),
-    var(--panel);
+    linear-gradient(90deg, color-mix(in srgb, var(--border) 26%, transparent) 1px, transparent 1px) 0 0 / 80px 100%,
+    linear-gradient(color-mix(in srgb, var(--border) 18%, transparent) 1px, transparent 1px) 0 0 / 100% 32px,
+    color-mix(in srgb, var(--panel) 96%, var(--background));
 }
 
-.wafer-poling-row-block h4 {
-  position: static;
-  margin: 0;
-  color: var(--poling-row-color);
-  font-family: var(--font-headline);
-  font-size: clamp(17px, 1.6vw, 24px);
-  font-style: italic;
+.wafer-poling-sheet--single {
+  overflow-x: visible;
+}
+
+.wafer-poling-recipe-header {
+  min-width: 1404px;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  border-bottom: 2px solid #0d0d0d;
+  background: color-mix(in srgb, var(--panel) 98%, var(--background));
+}
+
+.wafer-poling-sheet--single .wafer-poling-recipe-header {
+  min-width: 0;
+  grid-template-columns: minmax(160px, 0.7fr) 1fr;
+}
+
+.wafer-poling-recipe-id {
+  min-height: 128px;
+  display: flex;
+  align-items: center;
+  padding: 18px 10px;
+  border-right: 2px solid color-mix(in srgb, #0d0d0d 72%, transparent);
+  color: #ff344f;
+  font-size: 28px;
   font-weight: 900;
   line-height: 1;
-  text-decoration: underline;
-  text-underline-offset: 4px;
+  overflow-wrap: anywhere;
+}
+
+.wafer-poling-recipe-meta {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(92px, 1fr));
+}
+
+.wafer-poling-sheet--single .wafer-poling-recipe-meta {
+  grid-template-columns: repeat(5, minmax(82px, 1fr));
+}
+
+.wafer-poling-recipe-meta-cell {
+  min-height: 128px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 8px 6px;
+  border-right: 1px solid color-mix(in srgb, var(--border) 44%, transparent);
+  color: color-mix(in srgb, var(--foreground) 76%, var(--panel));
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.wafer-poling-recipe-meta-cell span {
+  color: color-mix(in srgb, var(--foreground) 58%, var(--panel));
+}
+
+.wafer-poling-recipe-meta-cell strong {
+  color: color-mix(in srgb, var(--foreground) 88%, var(--panel));
+  font-size: 13px;
+  font-weight: 850;
 }
 
 .wafer-poling-grid {
-  min-width: 0;
+  min-width: 1404px;
   display: grid;
   align-items: stretch;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--border) 26%, transparent);
-  border-radius: 10px;
-  background: var(--panel);
+  border: 0;
+  background: color-mix(in srgb, var(--panel) 98%, var(--background));
+}
+
+.wafer-poling-sheet--single .wafer-poling-grid {
+  min-width: 0;
 }
 
 .wafer-poling-corner,
 .wafer-poling-column-header,
+.wafer-poling-row-subhead,
+.wafer-poling-column-spacer,
 .wafer-poling-row-label,
 .wafer-poling-cell {
-  border-right: 1px solid color-mix(in srgb, var(--border) 18%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 18%, transparent);
+  border-right: 2px solid color-mix(in srgb, #0d0d0d 44%, transparent);
+  border-bottom: 2px solid color-mix(in srgb, #0d0d0d 44%, transparent);
 }
 
 .wafer-poling-corner,
 .wafer-poling-column-header {
-  min-height: 40px;
+  min-height: 52px;
   display: flex;
   align-items: center;
-  padding: 8px 10px;
-  color: color-mix(in srgb, var(--background) 96%, var(--foreground));
-  font-size: 17px;
+  justify-content: center;
+  padding: 8px 6px;
+  background: #050505;
+  color: #f7f7f7;
+  font-size: 15px;
   font-weight: 900;
+  line-height: 1.1;
+  text-align: center;
 }
 
 .wafer-poling-corner {
-  background: color-mix(in srgb, var(--foreground) 76%, var(--panel));
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  justify-content: flex-start;
+  color: #f3f3f3;
+  font-size: 14px;
+  text-align: left;
 }
 
-.wafer-poling-column-header {
-  background: var(--poling-column-header);
+.wafer-poling-row-subhead {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  padding: 7px 6px;
+  background: #050505;
+  color: #f7f7f7;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.wafer-poling-column-spacer {
+  min-height: 50px;
+  background: color-mix(in srgb, var(--panel) 99%, var(--background));
 }
 
 .wafer-poling-field-row {
@@ -2365,39 +2431,53 @@ textarea {
 .wafer-poling-row-label {
   display: flex;
   align-items: center;
-  background: color-mix(in srgb, var(--panel) 78%, var(--poling-row-soft));
-  padding: 9px 10px;
-  color: var(--foreground);
+  padding: 7px 5px;
+  background: color-mix(in srgb, var(--panel) 94%, var(--background));
+  color: color-mix(in srgb, var(--foreground) 74%, var(--panel));
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 780;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
 }
 
 .wafer-poling-cell {
-  min-height: 42px;
+  min-height: 58px;
   display: grid;
   align-content: stretch;
-  background: var(--poling-column-body);
+  background: color-mix(in srgb, var(--panel) 98%, var(--background));
   padding: 0;
 }
 
-.wafer-poling-cell--description {
-  min-height: 52px;
+.wafer-poling-row-label--postPulseVoltage,
+.wafer-poling-cell--postPulseVoltage {
+  min-height: 212px;
+  align-items: end;
+}
+
+.wafer-poling-cell--postPulseVoltage {
+  align-content: end;
+}
+
+.wafer-poling-row-label--postPulseWidth,
+.wafer-poling-cell--postPulseWidth {
+  min-height: 78px;
 }
 
 .wafer-poling-cell-editor {
-  min-height: 42px;
+  min-height: 58px;
   width: 100%;
   height: auto;
   display: block;
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 8px 10px;
+  padding: 7px 4px;
   color: var(--foreground);
   font: inherit;
-  font-size: 15px;
-  font-weight: 650;
-  line-height: 1.22;
+  font-size: 35px;
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   overflow: hidden;
@@ -2406,14 +2486,18 @@ textarea {
   cursor: text;
 }
 
-.wafer-poling-cell--description .wafer-poling-cell-editor {
-  min-height: 52px;
+.wafer-poling-cell--postPulseVoltage .wafer-poling-cell-editor {
+  min-height: 72px;
+}
+
+.wafer-poling-cell--postPulseWidth .wafer-poling-cell-editor {
+  min-height: 78px;
 }
 
 .wafer-poling-cell:focus-within {
   box-shadow:
-    inset 0 0 0 2px var(--poling-row-color),
-    0 0 0 2px color-mix(in srgb, var(--poling-row-color) 18%, transparent);
+    inset 0 0 0 2px #ff344f,
+    0 0 0 2px color-mix(in srgb, #ff344f 22%, transparent);
   z-index: 1;
 }
 
@@ -2760,13 +2844,6 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .wafer-poling-row-block {
-    grid-template-columns: 1fr;
-  }
-
-  .wafer-poling-row-block h4 {
-    position: static;
-  }
 }
 
 @media (max-width: 860px) {
@@ -2811,10 +2888,6 @@ textarea {
 
   .wafer-poling-header {
     display: grid;
-  }
-
-  .wafer-poling-row-block {
-    padding: 12px;
   }
 
   .wafer-poling-grid {
