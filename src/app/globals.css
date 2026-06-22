@@ -546,7 +546,7 @@ textarea {
 }
 
 .flow-node-port-hit {
-  cursor: crosshair;
+  cursor: grab;
 }
 
 .flow-node-port-target {

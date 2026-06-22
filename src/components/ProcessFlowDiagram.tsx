@@ -460,7 +460,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   };
 
   const beginConnection = (event: PointerEvent<SVGGElement>, nodeId: string) => {
-    if (event.button !== 0) {
+    if (event.button !== 0 || !event.shiftKey) {
       return;
     }
 
@@ -478,6 +478,15 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
       hasMoved: false
     });
     event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleNodePointerDown = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
+    if (event.shiftKey) {
+      beginConnection(event, node.id);
+      return;
+    }
+
+    beginNodeDrag(event, node);
   };
 
   const beginNodeDrag = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
@@ -766,7 +775,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
                 nodeDrag?.nodeId === node.id ? "flow-node--dragging" : ""
               }`}
               transform={`translate(${node.x} ${node.y})`}
-              onPointerDown={(event) => beginNodeDrag(event, node)}
+              onPointerDown={(event) => handleNodePointerDown(event, node)}
               onPointerMove={updateNodeDrag}
               onPointerUp={finishNodeDrag}
               onPointerCancel={finishNodeDrag}
@@ -775,7 +784,6 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
               <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" />
               <g
                 className="flow-node-port-hit"
-                onPointerDown={(event) => beginConnection(event, node.id)}
               >
                 <circle cx={node.width - 24} cy="24" r="14" className="flow-node-port-target" />
                 <circle cx={node.width - 24} cy="24" r="8" className="flow-node-port" />
