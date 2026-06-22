@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent } from "react";
+import type { MouseEvent, PointerEvent } from "react";
 import type { StepStatus } from "@/types/database";
 
 type WaferPin = {
@@ -19,7 +19,9 @@ type DiagramStep = {
   wafers: WaferPin[];
 };
 
-type DiagramNode = {
+type FlowNodeRole = "normal" | "start" | "end";
+
+type FlowNode = {
   id: string;
   label: string;
   subLabel: string;
@@ -27,102 +29,190 @@ type DiagramNode = {
   y: number;
   width: number;
   height: number;
-  wafers: WaferPin[];
-  type: "normal" | "start" | "end";
-  lane: number;
+  role: FlowNodeRole;
+  order: number;
 };
 
-type DiagramEdge = {
+type FlowEdge = {
+  id: string;
   from: string;
   to: string;
-  label?: string;
-  kind: "flow" | "loop" | "return";
+  kind: "flow" | "return";
 };
 
-function formatWaferLabel(waferCode: string, dieLabel: string | null) {
-  return dieLabel ? `${waferCode} • ${dieLabel}` : waferCode;
+type ConnectionDraft = {
+  from: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  hasMoved: boolean;
+};
+
+const NODE_WIDTH = 232;
+const NODE_HEIGHT = 112;
+const SCENE_WIDTH = 1280;
+const SCENE_HEIGHT = 900;
+const LAYOUT_CENTER_X = 520;
+const LAYOUT_TOP_Y = 96;
+const LAYOUT_GAP_Y = 168;
+const LAYOUT_LANE_GAP_X = 292;
+
+function clampScale(nextScale: number) {
+  return Math.min(2.6, Math.max(0.6, Number(nextScale.toFixed(2))));
 }
 
-function statusTokenClass(status: StepStatus | null) {
-  if (status === "running") {
-    return "status-token--running";
+function makeNodePath(from: FlowNode, to: FlowNode) {
+  const fromCenterX = from.x + from.width / 2;
+  const toCenterX = to.x + to.width / 2;
+  const fromBottom = from.y + from.height;
+  const fromTop = from.y;
+  const toTop = to.y;
+  const toBottom = to.y + to.height;
+  const downDirection = toTop >= fromBottom;
+  const startY = downDirection ? fromBottom : fromTop;
+  const endY = downDirection ? toTop : toBottom;
+  const midY = (startY + endY) / 2;
+
+  if (Math.abs(fromCenterX - toCenterX) < 1) {
+    return `M ${fromCenterX} ${startY} C ${fromCenterX} ${midY} ${toCenterX} ${midY} ${toCenterX} ${endY}`;
   }
 
-  if (status === "queued") {
-    return "status-token--queued";
-  }
-
-  if (status === "failed" || status === "blocked") {
-    return "status-token--failed";
-  }
-
-  return "status-token--done";
+  const cornerX = fromCenterX + (toCenterX > fromCenterX ? 72 : -72);
+  return `M ${fromCenterX} ${startY} C ${cornerX} ${startY} ${cornerX} ${endY} ${toCenterX} ${endY}`;
 }
 
-function ProcessChip({ pin, index, active }: { pin: WaferPin; index: number; active: boolean }) {
+function nodeContainsPoint(node: FlowNode, point: { x: number; y: number }) {
   return (
-    <g transform={`translate(${20}, ${56 + index * 18})`}>
-      <rect
-        x="0"
-        y="0"
-        width="186"
-        height="16"
-        rx="8"
-        className="flow-token"
-      />
-      <circle cx="10" cy="8" r="4" className={`status-dot ${statusTokenClass(pin.currentStepStatus)}`} />
-      <text x="20" y="12" className="flow-token-text">
-        {formatWaferLabel(pin.waferCode, pin.dieLabel)}
-      </text>
-      {active ? null : <text x="170" y="12" className="flow-token-status">queued</text>}
-    </g>
+    point.x >= node.x &&
+    point.x <= node.x + node.width &&
+    point.y >= node.y &&
+    point.y <= node.y + node.height
   );
 }
 
-function makeLinePath(from: DiagramNode, to: DiagramNode, kind: "flow" | "loop" | "return") {
-  const startX = from.x + from.width / 2;
-  const endX = to.x + to.width / 2;
-  const startBottom = from.y + from.height;
-  const startTop = from.y;
-  const endBottom = to.y + to.height;
-  const endTop = to.y;
+function orderNodes(nodes: FlowNode[], edges: FlowEdge[]) {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const incoming = new Map(nodes.map((node) => [node.id, 0]));
+  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]));
 
-  if (kind === "flow") {
-    const downDirection = endTop >= startBottom;
-    const startY = downDirection ? startBottom : startTop;
-    const endY = downDirection ? endTop : endBottom;
-    const midY = (startY + endY) / 2;
-
-    if (startX === endX) {
-      return `M ${startX} ${startY} C ${startX} ${midY} ${endX} ${midY} ${endX} ${endY}`;
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+      continue;
     }
 
-    const cornerX = startX + (endX > startX ? 60 : -60);
-    return `M ${startX} ${startY} C ${cornerX} ${startY} ${cornerX} ${endY} ${endX} ${endY}`;
+    outgoing.get(edge.from)?.push(edge.to);
+    incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
   }
 
-  if (kind === "loop") {
-    const fromY = startBottom;
-    const toY = endTop;
-    const side = to.x > from.x ? 1 : -1;
-    const sideOffset = 110 * (from.lane + 1);
-    const controlX = startX + sideOffset * side;
-    return `M ${startX} ${fromY} C ${controlX} ${fromY + 55} ${controlX} ${toY - 55} ${endX} ${toY}`;
+  const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]));
+  const queue = nodes
+    .filter((node) => (incoming.get(node.id) ?? 0) === 0)
+    .sort((a, b) => a.order - b.order)
+    .map((node) => node.id);
+  const sortedIds: string[] = [];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    if (!currentId) {
+      break;
+    }
+
+    sortedIds.push(currentId);
+
+    for (const nextId of outgoing.get(currentId) ?? []) {
+      const nextIncoming = (incoming.get(nextId) ?? 0) - 1;
+      incoming.set(nextId, nextIncoming);
+      if (nextIncoming === 0) {
+        queue.push(nextId);
+        queue.sort((a, b) => (nodeOrder.get(a) ?? 0) - (nodeOrder.get(b) ?? 0));
+      }
+    }
   }
 
-  const fromY = startTop;
-  const toY = endTop;
-  const side = to.x > from.x ? -1 : 1;
-  const sideOffset = 130 * (from.lane + 1);
-  const controlX = endX + sideOffset * side;
-  return `M ${startX} ${fromY} C ${controlX} ${fromY - 55} ${controlX} ${toY + 55} ${endX} ${toY}`;
+  const missing = nodes
+    .filter((node) => !sortedIds.includes(node.id))
+    .sort((a, b) => a.order - b.order)
+    .map((node) => node.id);
+
+  return [...sortedIds, ...missing];
 }
 
-export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
+function autoLayoutNodes(nodes: FlowNode[], edges: FlowEdge[]) {
+  if (nodes.length === 0) {
+    return nodes;
+  }
+
+  const orderedIds = orderNodes(nodes, edges);
+  const rankById = new Map(nodes.map((node) => [node.id, 0]));
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const orderIndexById = new Map(orderedIds.map((id, index) => [id, index]));
+  const sortedEdges = [...edges].sort(
+    (a, b) => (orderIndexById.get(a.from) ?? 0) - (orderIndexById.get(b.from) ?? 0)
+  );
+
+  for (const id of orderedIds) {
+    for (const edge of sortedEdges.filter((candidate) => candidate.from === id)) {
+      const fromRank = rankById.get(edge.from) ?? 0;
+      const toRank = rankById.get(edge.to) ?? 0;
+      const isForward = (orderIndexById.get(edge.from) ?? 0) < (orderIndexById.get(edge.to) ?? 0);
+
+      if (isForward) {
+        rankById.set(edge.to, Math.max(toRank, fromRank + 1));
+      }
+    }
+  }
+
+  const lanesByRank = new Map<number, string[]>();
+  for (const id of orderedIds) {
+    const rank = rankById.get(id) ?? 0;
+    const current = lanesByRank.get(rank);
+    if (current) {
+      current.push(id);
+    } else {
+      lanesByRank.set(rank, [id]);
+    }
+  }
+
+  const positioned = new Map<string, FlowNode>();
+  for (const [rank, ids] of lanesByRank) {
+    const startX = LAYOUT_CENTER_X - ((ids.length - 1) * LAYOUT_LANE_GAP_X) / 2;
+
+    ids.forEach((id, laneIndex) => {
+      const node = nodeById.get(id);
+      if (!node) {
+        return;
+      }
+
+      positioned.set(id, {
+        ...node,
+        x: Math.round(startX + laneIndex * LAYOUT_LANE_GAP_X),
+        y: LAYOUT_TOP_Y + rank * LAYOUT_GAP_Y
+      });
+    });
+  }
+
+  return nodes.map((node) => positioned.get(node.id) ?? node);
+}
+
+function describeRole(role: FlowNodeRole) {
+  if (role === "start") return "Start";
+  if (role === "end") return "End";
+  return "Step";
+}
+
+export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) {
+  void _steps;
+
   const [scale, setScale] = useState(1);
+  const [nodes, setNodes] = useState<FlowNode[]>([]);
+  const [edges, setEdges] = useState<FlowEdge[]>([]);
+  const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const scaleRef = useRef(1);
   const pinchBaseScaleRef = useRef(1);
+  const nextNodeNumberRef = useRef(1);
   const panStateRef = useRef<{
     startX: number;
     startY: number;
@@ -130,194 +220,51 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     startScrollTop: number;
   } | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
-  const sortedSteps = useMemo(
-    () => [...steps].sort((a, b) => a.step_order - b.step_order),
-    [steps]
-  );
-
-  const graph = useMemo(() => {
-    const nodeWidth = 232;
-    const nodeHeight = 112;
-    const gapY = 170;
-    const laneSpacing = 290;
-    const nodeY = 72;
-    const startX = 360;
-
-    const sanitized = sortedSteps.map((step, index) => ({
-      id: step.id,
-      name: step.name,
-      subLabel: step.process_area,
-      wafers: step.wafers,
-      order: index
-    }));
-
-    const hasSteps = sanitized.length > 0;
-
-    const loopLaneByStepId = new Map<string, number>();
-    let loopLaneCounter = 1;
-
-    sortedSteps.forEach((step, index) => {
-      const nextStep = sortedSteps[index + 1];
-      if (!nextStep) {
-        return;
-      }
-
-      const isInspectionStep = step.name.toLowerCase().includes("inspection");
-      const nextIsClean = nextStep.name.toLowerCase().includes("clean");
-
-      if (isInspectionStep && nextIsClean && !loopLaneByStepId.has(nextStep.id)) {
-        loopLaneByStepId.set(nextStep.id, loopLaneCounter);
-        loopLaneCounter += 1;
-      }
-    });
-
-    const nodes: DiagramNode[] = [
-      {
-        id: "start",
-        label: "Start",
-        subLabel: "Wafer intake",
-        x: startX,
-        y: nodeY,
-        width: nodeWidth,
-        height: nodeHeight,
-        wafers: [],
-        type: "start" as const,
-        lane: 0
-      },
-      ...sanitized.map((step, index) => {
-        const lane = loopLaneByStepId.get(step.id) ?? 0;
-        const x = startX + lane * laneSpacing;
-        const y = nodeY + (index + 1) * gapY;
-
-        return {
-          id: step.id,
-          label: step.name,
-          subLabel: step.subLabel,
-          x,
-          y,
-          width: nodeWidth,
-          height: nodeHeight,
-          wafers: step.wafers,
-          type: "normal" as const,
-          lane
-        };
-      }),
-      {
-        id: "end",
-        label: "Process end",
-        subLabel: "All dies complete",
-        x: startX,
-        y: nodeY + (sanitized.length + 1) * gapY,
-        width: nodeWidth,
-        height: nodeHeight,
-        wafers: [],
-        type: "end" as const,
-        lane: 0
-      }
-    ];
-
-    const normalEdges: DiagramEdge[] = [];
-    for (let i = 0; i < nodes.length - 1; i += 1) {
-      normalEdges.push({
-        from: nodes[i].id,
-        to: nodes[i + 1].id,
-        kind: "flow"
-      });
-    }
-
-    const loopPairs = sortedSteps
-      .map((step, index) => ({ step, index }))
-      .filter(
-        ({ step }) => step.name.toLowerCase().includes("inspection")
-      )
-      .map(({ index }) => {
-        const cleanStep = sortedSteps[index + 1];
-        if (!cleanStep || !cleanStep.name.toLowerCase().includes("clean")) {
-          return null;
-        }
-
-        const nextStep = sortedSteps[index + 2];
-        const nextAfterCleanId = nextStep ? nextStep.id : "end";
-
-        return {
-          inspectStepId: sortedSteps[index].id,
-          cleanStepId: cleanStep.id,
-          nextAfterCleanId
-        };
-      })
-      .filter((pair): pair is NonNullable<{
-        inspectStepId: string;
-        cleanStepId: string;
-        nextAfterCleanId: string;
-      }> => pair !== null);
-
-    // See docs/process-loop-summary.md for canonical loop contract:
-    // inspection failure routes through clean, then back to EBL.
-    let edges = normalEdges;
-    if (loopPairs.length > 0) {
-      for (const pair of loopPairs) {
-        edges = edges.filter(
-          (edge) =>
-            !(edge.from === pair.inspectStepId && edge.to === pair.cleanStepId)
-        );
-      }
-
-      edges = [
-        ...edges,
-        ...loopPairs.map((pair) => ({
-          from: pair.inspectStepId,
-          to: pair.cleanStepId,
-          kind: "loop" as const,
-          label: "Fail"
-        })),
-        ...loopPairs.map((pair) => ({
-          from: pair.cleanStepId,
-          to: pair.inspectStepId,
-          kind: "return" as const,
-          label: "Retry"
-        })),
-        ...loopPairs.map((pair) => ({
-          from: pair.inspectStepId,
-          to: pair.nextAfterCleanId,
-          kind: "flow" as const,
-          label: "Pass"
-        }))
-      ];
-    }
-
-    const allX = nodes.map((node) => node.x + node.width);
-    const maxX = Math.max(...allX);
-    const maxY = Math.max(...nodes.map((node) => node.y + node.height));
-
-    const width = hasSteps ? maxX + 240 : 800;
-    const height = Math.max(maxY + 140, nodeY + 860);
-
+  const sceneBounds = useMemo(() => {
+    const maxNodeX = nodes.length ? Math.max(...nodes.map((node) => node.x + node.width)) + 160 : SCENE_WIDTH;
+    const maxNodeY = nodes.length ? Math.max(...nodes.map((node) => node.y + node.height)) + 160 : SCENE_HEIGHT;
     return {
-      nodes,
-      edges,
-      width,
-      height,
-      hasSteps
+      width: Math.max(SCENE_WIDTH, maxNodeX),
+      height: Math.max(SCENE_HEIGHT, maxNodeY)
     };
-  }, [sortedSteps]);
+  }, [nodes]);
 
-  const sceneWidth = graph.width;
-  const sceneHeight = graph.height;
-  const s = Math.min(2.6, Math.max(0.6, scale));
-  const scaledWidth = Math.round(sceneWidth * s);
-  const scaledHeight = Math.round(sceneHeight * s);
+  const s = clampScale(scale);
+  const scaledWidth = Math.round(sceneBounds.width * s);
+  const scaledHeight = Math.round(sceneBounds.height * s);
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
   const zoomIn = () => setScale((value) => Math.min(2.6, value + 0.1));
   const zoomOut = () => setScale((value) => Math.max(0.6, value - 0.1));
   const zoomReset = () => setScale(1);
+  const clearCanvas = () => {
+    setNodes([]);
+    setEdges([]);
+    setConnectionDraft(null);
+    nextNodeNumberRef.current = 1;
+  };
 
   useEffect(() => {
     scaleRef.current = scale;
   }, [scale]);
 
+  const getScenePoint = (event: { clientX: number; clientY: number }) => {
+    const svg = svgRef.current;
+    if (!svg) {
+      return { x: 0, y: 0 };
+    }
+
+    const rect = svg.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) / scaleRef.current,
+      y: (event.clientY - rect.top) / scaleRef.current
+    };
+  };
+
   const beginPan = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) {
+    if (event.button !== 0 || connectionDraft) {
       return;
     }
 
@@ -337,7 +284,7 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
   };
 
   const updatePan = (event: PointerEvent<HTMLDivElement>) => {
-    if (!isPanning || !panStateRef.current) {
+    if (!isPanning || !panStateRef.current || connectionDraft) {
       return;
     }
 
@@ -366,14 +313,111 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     panStateRef.current = null;
   };
 
+  const createNode = (event: MouseEvent<SVGSVGElement>) => {
+    if (event.detail !== 2 || event.button !== 0) {
+      return;
+    }
+
+    const point = getScenePoint(event);
+    const nodeNumber = nextNodeNumberRef.current;
+    nextNodeNumberRef.current += 1;
+
+    setNodes((currentNodes) => [
+      ...currentNodes,
+      {
+        id: `local-step-${Date.now()}-${nodeNumber}`,
+        label: `Step ${nodeNumber}`,
+        subLabel: "Process step",
+        x: Math.max(24, Math.round(point.x - NODE_WIDTH / 2)),
+        y: Math.max(24, Math.round(point.y - NODE_HEIGHT / 2)),
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        role: "normal",
+        order: currentNodes.length
+      }
+    ]);
+  };
+
+  const beginConnection = (event: PointerEvent<SVGGElement>, nodeId: string) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const point = getScenePoint(event);
+    setConnectionDraft({
+      from: nodeId,
+      pointerId: event.pointerId,
+      startX: point.x,
+      startY: point.y,
+      x: point.x,
+      y: point.y,
+      hasMoved: false
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const updateConnection = (event: PointerEvent<SVGSVGElement>) => {
+    if (!connectionDraft || connectionDraft.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const point = getScenePoint(event);
+    setConnectionDraft((draft) =>
+      draft
+        ? {
+            ...draft,
+            x: point.x,
+            y: point.y,
+            hasMoved:
+              draft.hasMoved ||
+              Math.abs(point.x - draft.startX) > 6 ||
+              Math.abs(point.y - draft.startY) > 6
+          }
+        : draft
+    );
+  };
+
+  const finishConnection = (event: PointerEvent<SVGSVGElement>) => {
+    if (!connectionDraft || connectionDraft.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const point = getScenePoint(event);
+    const target = nodes.find((node) => node.id !== connectionDraft.from && nodeContainsPoint(node, point));
+
+    if (target && connectionDraft.hasMoved) {
+      setEdges((currentEdges) => {
+        const exists = currentEdges.some((edge) => edge.from === connectionDraft.from && edge.to === target.id);
+        if (exists) {
+          return currentEdges;
+        }
+
+        const nextEdges: FlowEdge[] = [
+          ...currentEdges,
+          {
+            id: `${connectionDraft.from}->${target.id}`,
+            from: connectionDraft.from,
+            to: target.id,
+            kind: "flow"
+          }
+        ];
+
+        setNodes((currentNodes) => autoLayoutNodes(currentNodes, nextEdges));
+        return nextEdges;
+      });
+    }
+
+    setConnectionDraft(null);
+  };
+
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) {
       return;
     }
-
-    const clampScale = (nextScale: number) =>
-      Math.min(2.6, Math.max(0.6, Number(nextScale.toFixed(2))));
 
     const applyScale = (nextScale: number) => {
       const bounded = clampScale(nextScale);
@@ -437,28 +481,34 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     };
   }, []);
 
+  const draftSourceNode = connectionDraft ? nodeById.get(connectionDraft.from) : null;
+  const draftPath = draftSourceNode
+    ? `M ${draftSourceNode.x + draftSourceNode.width / 2} ${draftSourceNode.y + draftSourceNode.height / 2} L ${connectionDraft?.x ?? 0} ${connectionDraft?.y ?? 0}`
+    : null;
+
   return (
     <section className="flow-map-shell">
       <div className="flow-map-toolbar" aria-label="Flow map controls">
-        <div>
-          <p className="flow-map-help">
-            Use this map to scan the process flow. Ctrl/Cmd + scroll to zoom,
-            drag to pan.
-          </p>
-          <p className="flow-map-help flow-map-reference">
-            Logic reference: docs/process-loop-summary.md
-          </p>
+        <div className="flow-map-summary" aria-live="polite">
+          <strong>Process graph</strong>
+          <span>
+            {nodes.length} step{nodes.length === 1 ? "" : "s"} · {edges.length} path
+            {edges.length === 1 ? "" : "s"}
+          </span>
         </div>
-        <div className="flow-map-actions" role="group" aria-label="Zoom controls">
-          <button className="button button-secondary" type="button" onClick={zoomOut}>
+        <div className="flow-map-actions" role="group" aria-label="Canvas controls">
+          <button className="button button-secondary flow-icon-button" type="button" onClick={zoomOut} aria-label="Zoom out">
             −
           </button>
           <span className="flow-map-zoom">{Math.round(s * 100)}%</span>
-          <button className="button button-secondary" type="button" onClick={zoomIn}>
+          <button className="button button-secondary flow-icon-button" type="button" onClick={zoomIn} aria-label="Zoom in">
             +
           </button>
           <button className="button button-secondary" type="button" onClick={zoomReset}>
             Reset
+          </button>
+          <button className="button button-secondary" type="button" onClick={clearCanvas} disabled={nodes.length === 0}>
+            Clear
           </button>
         </div>
       </div>
@@ -472,87 +522,95 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
         onPointerCancel={endPan}
         onPointerLeave={endPan}
       >
-        {graph.hasSteps ? (
-          <svg
-            className="flow-map-canvas"
-            width={scaledWidth}
-            height={scaledHeight}
-            viewBox={`0 0 ${sceneWidth} ${sceneHeight}`}
-            style={{ width: `${scaledWidth}px`, height: `${scaledHeight}px` }}
-          >
-            <defs>
-              <marker
-                id="flowMapArrow"
-                markerWidth="10"
-                markerHeight="10"
-                refX="9"
-                refY="5"
-                orient="auto"
-                markerUnits="strokeWidth"
-              >
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-blue)" />
-              </marker>
-            </defs>
+        <svg
+          ref={svgRef}
+          className="flow-map-canvas flow-map-canvas--editable"
+          width={scaledWidth}
+          height={scaledHeight}
+          viewBox={`0 0 ${sceneBounds.width} ${sceneBounds.height}`}
+          style={{ width: `${scaledWidth}px`, height: `${scaledHeight}px` }}
+          onPointerMove={updateConnection}
+          onPointerUp={finishConnection}
+          onPointerCancel={() => setConnectionDraft(null)}
+          onDoubleClick={createNode}
+        >
+          <defs>
+            <marker
+              id="flowMapArrow"
+              markerWidth="10"
+              markerHeight="10"
+              refX="9"
+              refY="5"
+              orient="auto"
+              markerUnits="strokeWidth"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-blue)" />
+            </marker>
+          </defs>
 
-            {graph.edges.map((edge) => {
-              const from = graph.nodes.find((node) => node.id === edge.from);
-              const to = graph.nodes.find((node) => node.id === edge.to);
-              if (!from || !to) {
-                return null;
-              }
+          <rect className="flow-map-hit-area" x="0" y="0" width={sceneBounds.width} height={sceneBounds.height} />
 
-              const path = makeLinePath(from, to, edge.kind);
-              const labelX = (from.x + to.x) / 2;
-              const labelY = (from.y + to.y) / 2 - 10;
+          {edges.map((edge) => {
+            const from = nodeById.get(edge.from);
+            const to = nodeById.get(edge.to);
+            if (!from || !to) {
+              return null;
+            }
 
-              return (
-                <g key={`${edge.from}-${edge.to}-${edge.label ?? ""}`}>
-                  <path d={path} fill="none" className={`flow-edge flow-edge--${edge.kind}`} markerEnd="url(#flowMapArrow)" />
-                  {edge.label ? (
-                    <text x={labelX} y={labelY} className="flow-edge-label">
-                      {edge.label}
-                    </text>
-                  ) : null}
-                </g>
-              );
-            })}
+            const isReturn = to.y <= from.y;
+            const path = makeNodePath(from, to);
 
-            {graph.nodes.map((node) => {
-              const pinPreview = node.wafers.slice(0, 4);
+            return (
+              <path
+                key={edge.id}
+                d={path}
+                className={`flow-edge ${isReturn ? "flow-edge--return" : ""}`}
+                markerEnd="url(#flowMapArrow)"
+              />
+            );
+          })}
 
-              return (
-                <g
-                  key={node.id}
-                  className={`flow-node flow-node--${node.type}`}
-                  transform={`translate(${node.x} ${node.y})`}
-                >
-                  <rect x="0" y="0" width={node.width} height={node.height} rx="12" className="flow-node-card" />
-                  <text x="12" y="28" className="flow-node-title">
-                    {node.label}
-                  </text>
-                  <text x="12" y="46" className="flow-node-subtitle">
-                    {node.subLabel}
-                  </text>
-                  <text x="12" y="66" className="flow-node-meta">
-                    {node.wafers.length} die{node.wafers.length === 1 ? "" : "s"}
-                  </text>
-                  <g>
-                    {pinPreview.map((pin, pinIndex) => (
-                      <ProcessChip key={pin.assignmentId} pin={pin} index={pinIndex} active={pin.currentStepStatus === "running"} />
-                    ))}
-                  </g>
-                </g>
-              );
-            })}
-          </svg>
-        ) : null}
+          {draftPath ? (
+            <path
+              d={draftPath}
+              className="flow-edge flow-edge--draft"
+              markerEnd="url(#flowMapArrow)"
+            />
+          ) : null}
+
+          {nodes.length === 0 ? (
+            <g className="flow-empty-state" transform={`translate(${sceneBounds.width / 2} ${sceneBounds.height / 2})`}>
+              <circle cx="0" cy="-8" r="28" />
+              <path d="M -10 -8 H 10 M 0 -18 V 2" />
+              <text x="0" y="46">
+                Blank process canvas
+              </text>
+            </g>
+          ) : null}
+
+          {nodes.map((node) => (
+            <g
+              key={node.id}
+              className={`flow-node flow-node--${node.role} ${connectionDraft?.from === node.id ? "flow-node--connecting" : ""}`}
+              transform={`translate(${node.x} ${node.y})`}
+              onPointerDown={(event) => beginConnection(event, node.id)}
+              onDoubleClick={(event) => event.stopPropagation()}
+            >
+              <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" />
+              <circle cx={node.width - 24} cy="24" r="8" className="flow-node-port" />
+              <text x="14" y="30" className="flow-node-title">
+                {node.label}
+              </text>
+              <text x="14" y="52" className="flow-node-subtitle">
+                {node.subLabel}
+              </text>
+              <text x="14" y="78" className="flow-node-meta">
+                {describeRole(node.role)}
+              </text>
+            </g>
+          ))}
+        </svg>
       </div>
-
-      {graph.hasSteps ? null : (
-        <p className="muted" style={{ margin: 0 }}>
-          No configured flow steps for this process.
-        </p>
-      )}
     </section>
   );
 }

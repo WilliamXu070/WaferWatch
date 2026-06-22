@@ -422,6 +422,24 @@ textarea {
   gap: 10px;
 }
 
+.flow-map-summary {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.flow-map-summary strong {
+  font-size: 14px;
+}
+
+.flow-map-summary span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .flow-map-help {
   margin: 0;
   color: var(--muted);
@@ -436,8 +454,15 @@ textarea {
 
 .flow-map-actions {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.flow-icon-button {
+  width: 38px;
+  padding-right: 0;
+  padding-left: 0;
 }
 
 .flow-map-zoom {
@@ -457,7 +482,7 @@ textarea {
   background: var(--panel-soft);
   padding: 12px;
   box-shadow: var(--shadow);
-  cursor: grab;
+  cursor: crosshair;
   touch-action: none;
   overscroll-behavior: contain;
 }
@@ -472,15 +497,43 @@ textarea {
   min-height: 560px;
 }
 
+.flow-map-canvas--editable {
+  border-radius: 10px;
+}
+
+.flow-map-hit-area {
+  fill: transparent;
+}
+
 .flow-node-card {
   fill: var(--panel);
   stroke: var(--border);
   stroke-width: 1;
+  filter: drop-shadow(0 8px 18px rgb(38 55 70 / 0.08));
 }
 
 .flow-node--start .flow-node-card,
 .flow-node--end .flow-node-card {
   fill: var(--panel-soft);
+}
+
+.flow-node {
+  cursor: grab;
+}
+
+.flow-node--connecting {
+  cursor: crosshair;
+}
+
+.flow-node--connecting .flow-node-card {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.flow-node-port {
+  fill: var(--accent);
+  stroke: var(--panel);
+  stroke-width: 2;
 }
 
 .flow-node-title {
@@ -517,6 +570,31 @@ textarea {
 .flow-edge--loop,
 .flow-edge--return {
   stroke-dasharray: 8 5;
+}
+
+.flow-edge--draft {
+  stroke: var(--accent);
+  stroke-dasharray: 6 5;
+  opacity: 0.95;
+}
+
+.flow-empty-state circle {
+  fill: var(--panel);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.flow-empty-state path {
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.flow-empty-state text {
+  fill: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-anchor: middle;
 }
 
 .flow-token {

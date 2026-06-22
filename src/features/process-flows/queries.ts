@@ -345,14 +345,12 @@ export async function getProcessDashboardData(
     "in_progress",
     "on_hold"
   ];
-  const seededWaferCodes = ["alpha"];
   const activeStatusSet = new Set(activeStatuses);
 
   const stepOrderById = new Map(process.process_steps.map((step) => [step.id, step.step_order]));
   const stepNameById = new Map(process.process_steps.map((step) => [step.id, step.name]));
   const stepAreaById = new Map(process.process_steps.map((step) => [step.id, step.process_area]));
   const sortedProcessSteps = [...process.process_steps].sort((a, b) => a.step_order - b.step_order);
-  const seededWaferPostDiceStepName = "Post EBL";
 
   const assignmentsResult = await supabase
     .from("wafer_process_assignments")
@@ -367,14 +365,6 @@ export async function getProcessDashboardData(
 
   const assignmentIds = assignments.map((assignment) => assignment.id);
   const waferIds = assignments.map((assignment) => assignment.wafer_id);
-  const seededWaferFilter = seededWaferCodes.map((seed) => `wafer_code.ilike.%${seed}%`).join(",");
-  const seededQuery = process.owner_project_id
-    ? supabase
-        .from("wafers")
-        .select("id, wafer_code, project_id, metadata")
-        .eq("project_id", process.owner_project_id)
-        .or(seededWaferFilter)
-    : supabase.from("wafers").select("id, wafer_code, project_id, metadata").or(seededWaferFilter);
   const assignedWafersQuery = waferIds.length
     ? supabase
         .from("wafers")
@@ -382,23 +372,18 @@ export async function getProcessDashboardData(
         .in("id", waferIds)
     : Promise.resolve({ data: [], error: null } as const);
 
-  const [stepExecutionsResult, seededWafersResult, assignedWafersResult] = await Promise.all([
+  const [stepExecutionsResult, assignedWafersResult] = await Promise.all([
     assignmentIds.length
       ? supabase
           .from("step_executions")
           .select("id, assignment_id, process_step_id, status, tool_id, operator_id, completed_by, created_at")
           .in("assignment_id", assignmentIds)
       : Promise.resolve({ data: [], error: null } as const),
-    seededQuery,
     assignedWafersQuery
   ]);
 
   if (stepExecutionsResult.error) {
     throw stepExecutionsResult.error;
-  }
-
-  if (seededWafersResult.error) {
-    throw seededWafersResult.error;
   }
 
   if (assignedWafersResult.error) {
@@ -407,9 +392,6 @@ export async function getProcessDashboardData(
 
   const mergedWafersById = new Map<string, { id: string; wafer_code: string; project_id: string; metadata: unknown }>();
   for (const wafer of assignedWafersResult.data ?? []) {
-    mergedWafersById.set(wafer.id, wafer);
-  }
-  for (const wafer of seededWafersResult.data ?? []) {
     mergedWafersById.set(wafer.id, wafer);
   }
 
@@ -500,7 +482,6 @@ export async function getProcessDashboardData(
 
   const workspaceWaferStates: ProcessDashboardWaferState[] = [];
   const activeWaferStates: ProcessDashboardWaferState[] = [];
-  const assignedWaferIds = new Set(assignments.map((assignment) => assignment.wafer_id));
 
   for (const assignment of assignments) {
     const wafer = wafersById.get(assignment.wafer_id);
@@ -544,36 +525,6 @@ export async function getProcessDashboardData(
     if (activeStatusSet.has(assignment.status)) {
       activeWaferStates.push(waferState);
     }
-  }
-
-  const seededWaferStates = Array.from(wafersById.values()).filter((wafer) => {
-    if (assignedWaferIds.has(wafer.id)) {
-      return false;
-    }
-
-    const normalizedCode = wafer.wafer_code.toLowerCase();
-    return seededWaferCodes.some((seed) => normalizedCode.includes(seed));
-  });
-
-  for (const seededWafer of seededWaferStates) {
-    workspaceWaferStates.push({
-      assignmentId: `seed:${seededWafer.id}`,
-      assignmentStatus: "planned",
-      waferId: seededWafer.id,
-      waferCode: seededWafer.wafer_code,
-      projectId: seededWafer.project_id,
-      dieLabel: extractDieLabel(seededWafer.metadata as Json),
-      currentStepId: null,
-      currentStepName: seededWaferPostDiceStepName,
-      currentStepOrder: null,
-      currentStepStatus: "running",
-      currentStepArea: null,
-      currentToolId: null,
-      nextStepName: null,
-      currentHandlerName: null,
-      dieDescriptions: extractDieDescriptions(seededWafer.metadata as Json),
-      diePolingParameters: extractDiePolingParameters(seededWafer.metadata as Json)
-    });
   }
 
   if (!includeCalendar) {
