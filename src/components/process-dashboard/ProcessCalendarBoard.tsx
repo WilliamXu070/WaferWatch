@@ -108,6 +108,7 @@ const MIN_EVENT_MS = 30 * 60 * 1000;
 const DEFAULT_EVENT_MS = 60 * 60 * 1000;
 const TRAVEL_BUFFER_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_WEEK_ZOOM_MS = 7 * DAY_MS;
 const HOUR_MS = 60 * 60 * 1000;
 const MANUAL_STAGE_FILTER_ID = "__manual__";
 
@@ -398,11 +399,16 @@ export function ProcessCalendarBoard({
     () => buildDateAtMinute(addDays(startDate, Math.max(0, days - 1)), END_MINUTE).getTime(),
     [days, startDate]
   );
+  const maxZoomMs = useMemo(
+    () => Math.min(MAX_WEEK_ZOOM_MS, Math.max(1, timelineEnd - timelineStart)),
+    [timelineEnd, timelineStart]
+  );
+  const initialVisibleWindowEnd = useMemo(() => timelineStart + maxZoomMs, [maxZoomMs, timelineStart]);
   const [visibleRange, setVisibleRange] = useState(() => ({
     boundsStart: timelineStart,
     boundsEnd: timelineEnd,
     start: timelineStart,
-    end: timelineEnd
+    end: initialVisibleWindowEnd
   }));
   const effectiveVisibleRange =
     visibleRange.boundsStart === timelineStart && visibleRange.boundsEnd === timelineEnd
@@ -1251,7 +1257,7 @@ export function ProcessCalendarBoard({
           items={timelineItems}
           keys={TIMELINE_KEYS}
           lineHeight={46}
-          maxZoom={days * 24 * 60 * 60 * 1000}
+          maxZoom={maxZoomMs}
           minZoom={2 * 60 * 60 * 1000}
           moveResizeValidator={moveResizeValidator}
           onCanvasClick={handleCanvasClick}
