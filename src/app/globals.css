@@ -1041,6 +1041,12 @@ textarea {
   pointer-events: none;
 }
 
+.ww-timeline-item--dragging,
+.ww-timeline-item--dragging .ww-timeline-item-content {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .ww-timeline-item-content {
   height: 100%;
   min-width: 0;

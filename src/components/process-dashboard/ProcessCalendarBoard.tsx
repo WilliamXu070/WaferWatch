@@ -395,8 +395,11 @@ export function ProcessCalendarBoard({
     end: number;
     updateScrollCanvas: (start: number, end: number) => void;
   } | null>(null);
+  const isItemMovingRef = useRef(false);
+  const itemMoveTimeoutRef = useRef<number | null>(null);
   const [timelinePanPointerId, setTimelinePanPointerId] = useState<number | null>(null);
   const [isTimelinePanning, setIsTimelinePanning] = useState(false);
+  const [isItemMoving, setIsItemMoving] = useState(false);
 
   const startDate = useMemo(() => new Date(`${calendarStartDate}T00:00:00`), [calendarStartDate]);
   const timelineStart = useMemo(() => buildDateAtMinute(startDate, START_MINUTE).getTime(), [startDate]);
@@ -737,11 +740,38 @@ export function ProcessCalendarBoard({
           );
           setError(moveError instanceof Error ? moveError.message : "Move failed. Try again.");
         }
-      });
+    });
   }, [events]);
+
+  const stopItemMove = useCallback(() => {
+    if (itemMoveTimeoutRef.current !== null) {
+      window.clearTimeout(itemMoveTimeoutRef.current);
+      itemMoveTimeoutRef.current = null;
+    }
+
+    if (!isItemMovingRef.current) {
+      return;
+    }
+
+    isItemMovingRef.current = false;
+    setIsItemMoving(false);
+  }, []);
+
+  const markItemMoving = useCallback(() => {
+    isItemMovingRef.current = true;
+    setIsItemMoving(true);
+
+    if (itemMoveTimeoutRef.current !== null) {
+      window.clearTimeout(itemMoveTimeoutRef.current);
+    }
+
+    itemMoveTimeoutRef.current = window.setTimeout(stopItemMove, 160);
+  }, [stopItemMove]);
 
   const handleItemMove = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onItemMove"]>>(
     (itemId, dragTime, newGroupOrder) => {
+      markItemMoving();
+
       const eventId = String(itemId);
       const group = groups[newGroupOrder];
       if (!group) {
@@ -782,8 +812,23 @@ export function ProcessCalendarBoard({
         recordUndo: true
       });
     },
-    [commitMove, draft, events, groups]
+    [commitMove, draft, events, groups, markItemMoving]
   );
+
+  useEffect(() => {
+    const stopMoving = () => {
+      stopItemMove();
+    };
+
+    window.addEventListener("pointerup", stopMoving);
+    window.addEventListener("pointercancel", stopMoving);
+
+    return () => {
+      stopMoving();
+      window.removeEventListener("pointerup", stopMoving);
+      window.removeEventListener("pointercancel", stopMoving);
+    };
+  }, [stopItemMove]);
 
   const handleItemResize = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onItemResize"]>>(
     (itemId, resizeTime, edge) => {
@@ -1007,8 +1052,9 @@ export function ProcessCalendarBoard({
   const renderTimelineItem = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["itemRenderer"]>>(
     ({ item, itemContext, getItemProps, getResizeProps }) => {
       const resizeProps = getResizeProps();
+      const movingClass = isItemMoving ? "ww-timeline-item--dragging" : "";
       const { key, ...itemProps } = getItemProps({
-        className: `ww-timeline-item ${item.toneClass} ${itemContext.selected ? "ww-timeline-item--selected" : ""}`
+        className: `ww-timeline-item ${item.toneClass} ${itemContext.selected ? "ww-timeline-item--selected" : ""} ${movingClass}`
       });
 
       return (
@@ -1025,7 +1071,7 @@ export function ProcessCalendarBoard({
         </div>
       );
     },
-    []
+    [isItemMoving]
   );
 
   function addPerson(person: ProcessCalendarPersonOption) {
