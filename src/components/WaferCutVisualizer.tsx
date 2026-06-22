@@ -1477,7 +1477,10 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
           <button
             type="button"
             className="button button-secondary"
-            onClick={() => setIsInspectionPanelOpen(false)}
+            onClick={() => {
+              setSelectedInspectionCell(null);
+              setIsInspectionPanelOpen(false);
+            }}
           >
             Close
           </button>
@@ -1569,6 +1572,12 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
               }
 
               event.stopPropagation();
+              if (isActiveInspectionCell) {
+                setSelectedInspectionCell(null);
+                setIsInspectionPanelOpen(false);
+                return;
+              }
+
               setSelectedInspectionCell({
                 row: inspectionRow,
                 column: inspectionColumn
@@ -1593,7 +1602,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                 strokeWidth={1}
                 vectorEffect="non-scaling-stroke"
                 onMouseDown={isFocusedView ? openInspectionCell : undefined}
-                onClick={isFocusedView ? openInspectionCell : undefined}
                 style={isFocusedView ? { pointerEvents: "auto", cursor: "pointer" } : undefined}
               />
               {isActiveInspectionCell ? (
