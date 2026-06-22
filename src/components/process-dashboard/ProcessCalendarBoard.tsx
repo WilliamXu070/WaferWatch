@@ -910,6 +910,10 @@ export function ProcessCalendarBoard({
   }, []);
 
   const handleTimelinePointerDownCapture = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.target instanceof Element && event.target.closest(".ww-timeline-item")) {
+      startItemDragSelectionBlock();
+    }
+
     if (event.button !== 0 || !isBlankTimelineTarget(event.target)) {
       return;
     }
@@ -964,6 +968,7 @@ export function ProcessCalendarBoard({
     effectiveVisibleRange.end,
     effectiveVisibleRange.start,
     getTimelinePointerTarget,
+    startItemDragSelectionBlock,
     resetDraftForm,
     setActiveDraftDrag,
     timelineEnd,
