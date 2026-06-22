@@ -474,6 +474,7 @@ textarea {
 }
 
 .flow-map-frame {
+  position: relative;
   width: 100%;
   height: clamp(680px, 72vh, 860px);
   overflow: auto;
@@ -503,6 +504,14 @@ textarea {
 
 .flow-map-hit-area {
   fill: transparent;
+}
+
+.flow-snap-guide {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 6;
+  opacity: 0.72;
+  pointer-events: none;
 }
 
 .flow-node-card {
@@ -593,6 +602,41 @@ textarea {
   stroke: var(--accent);
   stroke-dasharray: 6 5;
   opacity: 0.95;
+}
+
+.flow-role-menu {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  min-width: 164px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.flow-role-menu button {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.flow-role-menu button:last-child {
+  border-bottom: 0;
+}
+
+.flow-role-menu button:hover,
+.flow-role-menu button:focus-visible {
+  background: var(--panel-soft);
+  outline: none;
 }
 
 .flow-empty-state circle {

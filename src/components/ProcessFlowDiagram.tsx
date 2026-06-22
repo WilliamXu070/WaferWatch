@@ -57,6 +57,20 @@ type NodeDrag = {
   offsetY: number;
 };
 
+type SnapGuide = {
+  id: string;
+  orientation: "horizontal" | "vertical";
+  value: number;
+  start: number;
+  end: number;
+};
+
+type RoleMenu = {
+  nodeId: string;
+  paneX: number;
+  paneY: number;
+};
+
 type ZoomAnchor = {
   paneX: number;
   paneY: number;
@@ -72,6 +86,7 @@ const MIN_SCALE = 0.8;
 const MAX_SCALE = 2.6;
 const BUTTON_ZOOM_STEP = 0.25;
 const WHEEL_ZOOM_STEP = 0.18;
+const SNAP_THRESHOLD = 16;
 const LAYOUT_CENTER_X = 520;
 const LAYOUT_TOP_Y = 96;
 const LAYOUT_GAP_Y = 168;
@@ -82,23 +97,113 @@ function clampScale(nextScale: number) {
 }
 
 function makeNodePath(from: FlowNode, to: FlowNode) {
-  const fromCenterX = from.x + from.width / 2;
-  const toCenterX = to.x + to.width / 2;
-  const fromBottom = from.y + from.height;
-  const fromTop = from.y;
-  const toTop = to.y;
-  const toBottom = to.y + to.height;
-  const downDirection = toTop >= fromBottom;
-  const startY = downDirection ? fromBottom : fromTop;
-  const endY = downDirection ? toTop : toBottom;
-  const midY = (startY + endY) / 2;
+  const fromPoint = getNodeBoundaryPoint(from, getNodeCenter(to));
+  const toPoint = getNodeBoundaryPoint(to, getNodeCenter(from));
 
-  if (Math.abs(fromCenterX - toCenterX) < 1) {
-    return `M ${fromCenterX} ${startY} C ${fromCenterX} ${midY} ${toCenterX} ${midY} ${toCenterX} ${endY}`;
+  return `M ${fromPoint.x} ${fromPoint.y} L ${toPoint.x} ${toPoint.y}`;
+}
+
+function getNodeCenter(node: FlowNode) {
+  return {
+    x: node.x + node.width / 2,
+    y: node.y + node.height / 2
+  };
+}
+
+function getNodeBoundaryPoint(node: FlowNode, target: { x: number; y: number }) {
+  const center = getNodeCenter(node);
+  const dx = target.x - center.x;
+  const dy = target.y - center.y;
+
+  if (dx === 0 && dy === 0) {
+    return { x: center.x, y: center.y };
   }
 
-  const cornerX = fromCenterX + (toCenterX > fromCenterX ? 72 : -72);
-  return `M ${fromCenterX} ${startY} C ${cornerX} ${startY} ${cornerX} ${endY} ${toCenterX} ${endY}`;
+  const halfWidth = node.width / 2;
+  const halfHeight = node.height / 2;
+  const xScale = dx === 0 ? Number.POSITIVE_INFINITY : halfWidth / Math.abs(dx);
+  const yScale = dy === 0 ? Number.POSITIVE_INFINITY : halfHeight / Math.abs(dy);
+  const scale = Math.min(xScale, yScale);
+
+  return {
+    x: Math.round(center.x + dx * scale),
+    y: Math.round(center.y + dy * scale)
+  };
+}
+
+function makeDraftPath(from: FlowNode, target: { x: number; y: number }) {
+  const fromPoint = getNodeBoundaryPoint(from, target);
+  return `M ${fromPoint.x} ${fromPoint.y} L ${target.x} ${target.y}`;
+}
+
+function getSnappedNodePosition(node: FlowNode, proposedX: number, proposedY: number, nodes: FlowNode[]) {
+  let x = proposedX;
+  let y = proposedY;
+  let bestXDelta = SNAP_THRESHOLD + 1;
+  let bestYDelta = SNAP_THRESHOLD + 1;
+  let verticalGuide: SnapGuide | null = null;
+  let horizontalGuide: SnapGuide | null = null;
+
+  const proposedCenterX = proposedX + node.width / 2;
+  const proposedCenterY = proposedY + node.height / 2;
+  const proposedRight = proposedX + node.width;
+  const proposedBottom = proposedY + node.height;
+
+  for (const other of nodes) {
+    if (other.id === node.id) {
+      continue;
+    }
+
+    const otherCenter = getNodeCenter(other);
+    const xCandidates = [
+      { value: otherCenter.x, delta: otherCenter.x - proposedCenterX, alignment: "center" },
+      { value: other.x, delta: other.x - proposedX, alignment: "left" },
+      { value: other.x + other.width, delta: other.x + other.width - proposedRight, alignment: "right" }
+    ];
+    const yCandidates = [
+      { value: otherCenter.y, delta: otherCenter.y - proposedCenterY, alignment: "center" },
+      { value: other.y, delta: other.y - proposedY, alignment: "top" },
+      { value: other.y + other.height, delta: other.y + other.height - proposedBottom, alignment: "bottom" }
+    ];
+
+    for (const candidate of xCandidates) {
+      const distance = Math.abs(candidate.delta);
+      if (distance < bestXDelta) {
+        bestXDelta = distance;
+        x = Math.round(proposedX + candidate.delta);
+        const draggedCenterY = proposedY + node.height / 2;
+        verticalGuide = {
+          id: `v-${other.id}-${candidate.alignment}`,
+          orientation: "vertical",
+          value: Math.round(candidate.value),
+          start: Math.round(Math.min(draggedCenterY, otherCenter.y) - 80),
+          end: Math.round(Math.max(draggedCenterY, otherCenter.y) + 80)
+        };
+      }
+    }
+
+    for (const candidate of yCandidates) {
+      const distance = Math.abs(candidate.delta);
+      if (distance < bestYDelta) {
+        bestYDelta = distance;
+        y = Math.round(proposedY + candidate.delta);
+        const draggedCenterX = proposedX + node.width / 2;
+        horizontalGuide = {
+          id: `h-${other.id}-${candidate.alignment}`,
+          orientation: "horizontal",
+          value: Math.round(candidate.value),
+          start: Math.round(Math.min(draggedCenterX, otherCenter.x) - 100),
+          end: Math.round(Math.max(draggedCenterX, otherCenter.x) + 100)
+        };
+      }
+    }
+  }
+
+  return {
+    x: Math.max(24, x),
+    y: Math.max(24, y),
+    guides: [verticalGuide, horizontalGuide].filter((guide): guide is SnapGuide => Boolean(guide))
+  };
 }
 
 function nodeContainsPoint(node: FlowNode, point: { x: number; y: number }) {
@@ -262,6 +367,8 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
   const [nodeDrag, setNodeDrag] = useState<NodeDrag | null>(null);
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
+  const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const scaleRef = useRef(1);
   const pinchBaseScaleRef = useRef(1);
@@ -346,6 +453,8 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     setEdges([]);
     setConnectionDraft(null);
     setNodeDrag(null);
+    setSnapGuides([]);
+    setRoleMenu(null);
     nextNodeNumberRef.current = 1;
   };
 
@@ -386,6 +495,8 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     if ((!isMiddleMousePan && !isModifiedLeftPan) || connectionDraft || nodeDrag) {
       return;
     }
+
+    setRoleMenu(null);
 
     const frame = frameRef.current;
     if (!frame) {
@@ -442,6 +553,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     const point = getScenePoint(event);
     const nodeNumber = nextNodeNumberRef.current;
     nextNodeNumberRef.current += 1;
+    setRoleMenu(null);
 
     setNodes((currentNodes) => [
       ...currentNodes,
@@ -466,6 +578,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
 
     event.preventDefault();
     event.stopPropagation();
+    setRoleMenu(null);
 
     const point = getScenePoint(event);
     setConnectionDraft({
@@ -496,6 +609,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
 
     event.preventDefault();
     event.stopPropagation();
+    setRoleMenu(null);
 
     const point = getScenePoint(event);
     setNodeDrag({
@@ -513,17 +627,31 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     }
 
     const point = getScenePoint(event);
+    const draggedNode = nodes.find((node) => node.id === nodeDrag.nodeId);
+    if (!draggedNode) {
+      setSnapGuides([]);
+      return;
+    }
+
+    const snapped = getSnappedNodePosition(
+      draggedNode,
+      Math.round(point.x - nodeDrag.offsetX),
+      Math.round(point.y - nodeDrag.offsetY),
+      nodes
+    );
+
     setNodes((currentNodes) =>
       currentNodes.map((node) =>
         node.id === nodeDrag.nodeId
           ? {
               ...node,
-              x: Math.max(24, Math.round(point.x - nodeDrag.offsetX)),
-              y: Math.max(24, Math.round(point.y - nodeDrag.offsetY))
+              x: snapped.x,
+              y: snapped.y
             }
           : node
       )
     );
+    setSnapGuides(snapped.guides);
   };
 
   const finishNodeDrag = (event: PointerEvent<SVGGElement>) => {
@@ -533,6 +661,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
 
     event.currentTarget.releasePointerCapture(event.pointerId);
     setNodeDrag(null);
+    setSnapGuides([]);
   };
 
   const updateConnection = (event: PointerEvent<SVGSVGElement>) => {
@@ -586,6 +715,40 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     }
 
     setConnectionDraft(null);
+  };
+
+  const openRoleMenu = (event: MouseEvent<SVGGElement>, nodeId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const frame = frameRef.current;
+    if (!frame) {
+      return;
+    }
+
+    const frameRect = frame.getBoundingClientRect();
+    setRoleMenu({
+      nodeId,
+      paneX: event.clientX - frameRect.left + frame.scrollLeft,
+      paneY: event.clientY - frameRect.top + frame.scrollTop
+    });
+  };
+
+  const setNodeRole = (nodeId: string, role: FlowNodeRole) => {
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => {
+        if (node.id === nodeId) {
+          return { ...node, role };
+        }
+
+        if (role !== "normal" && node.role === role) {
+          return { ...node, role: "normal" };
+        }
+
+        return node;
+      })
+    );
+    setRoleMenu(null);
   };
 
   useEffect(() => {
@@ -660,8 +823,9 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
 
   const draftSourceNode = connectionDraft ? nodeById.get(connectionDraft.from) : null;
   const draftPath = draftSourceNode
-    ? `M ${draftSourceNode.x + draftSourceNode.width / 2} ${draftSourceNode.y + draftSourceNode.height / 2} L ${connectionDraft?.x ?? 0} ${connectionDraft?.y ?? 0}`
+    ? makeDraftPath(draftSourceNode, { x: connectionDraft?.x ?? 0, y: connectionDraft?.y ?? 0 })
     : null;
+  const roleMenuNode = roleMenu ? nodeById.get(roleMenu.nodeId) : null;
 
   return (
     <section className="flow-map-shell">
@@ -713,6 +877,10 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
           onPointerUp={finishConnection}
           onPointerCancel={() => setConnectionDraft(null)}
           onDoubleClick={createNode}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setRoleMenu(null);
+          }}
         >
           <defs>
             <marker
@@ -729,6 +897,28 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
           </defs>
 
           <rect className="flow-map-hit-area" x="0" y="0" width={sceneBounds.width} height={sceneBounds.height} />
+
+          {snapGuides.map((guide) =>
+            guide.orientation === "vertical" ? (
+              <line
+                key={guide.id}
+                className="flow-snap-guide"
+                x1={guide.value}
+                y1={guide.start}
+                x2={guide.value}
+                y2={guide.end}
+              />
+            ) : (
+              <line
+                key={guide.id}
+                className="flow-snap-guide"
+                x1={guide.start}
+                y1={guide.value}
+                x2={guide.end}
+                y2={guide.value}
+              />
+            )
+          )}
 
           {edges.map((edge) => {
             const from = nodeById.get(edge.from);
@@ -779,6 +969,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
               onPointerMove={updateNodeDrag}
               onPointerUp={finishNodeDrag}
               onPointerCancel={finishNodeDrag}
+              onContextMenu={(event) => openRoleMenu(event, node.id)}
               onDoubleClick={(event) => event.stopPropagation()}
             >
               <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" />
@@ -800,6 +991,28 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
             </g>
           ))}
         </svg>
+
+        {roleMenu && roleMenuNode ? (
+          <div
+            className="flow-role-menu"
+            style={{
+              left: `${roleMenu.paneX}px`,
+              top: `${roleMenu.paneY}px`
+            }}
+            role="menu"
+            aria-label={`${roleMenuNode.label} role`}
+          >
+            <button type="button" role="menuitem" onClick={() => setNodeRole(roleMenu.nodeId, "start")}>
+              Beginning step
+            </button>
+            <button type="button" role="menuitem" onClick={() => setNodeRole(roleMenu.nodeId, "end")}>
+              End step
+            </button>
+            <button type="button" role="menuitem" onClick={() => setNodeRole(roleMenu.nodeId, "normal")}>
+              Normal step
+            </button>
+          </div>
+        ) : null}
       </div>
     </section>
   );
