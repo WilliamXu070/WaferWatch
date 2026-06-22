@@ -290,7 +290,10 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   };
 
   const beginPan = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || connectionDraft) {
+    const isMiddleMousePan = event.button === 1;
+    const isModifiedLeftPan = event.button === 0 && event.altKey;
+
+    if ((!isMiddleMousePan && !isModifiedLeftPan) || connectionDraft) {
       return;
     }
 
@@ -298,6 +301,8 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     if (!frame) {
       return;
     }
+
+    event.preventDefault();
 
     panStateRef.current = {
       startX: event.clientX,
