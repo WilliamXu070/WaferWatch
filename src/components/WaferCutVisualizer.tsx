@@ -1861,7 +1861,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
           </div>
         </section>
 
-        {isChipFocusView && !isInspectionPanelOpen ? (
+        {isChipFocusView ? (
           <aside className="panel wafer-params-panel">
                 {isPostDiceMode ? (
               activeChip && activeChipCode && activeChipExpandedName ? (
