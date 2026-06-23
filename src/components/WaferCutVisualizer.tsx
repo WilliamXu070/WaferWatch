@@ -66,6 +66,7 @@ type DieStructureGridTemplateInInches = {
   insetIn?: number;
   clusterSpanFraction?: number;
   clusterHeightFraction?: number;
+  horizontalOffsetFraction?: number;
   verticalOffsetFraction?: number;
   rowDirection?: DieGridRowDirection;
 };
@@ -149,13 +150,14 @@ const POST_ELB_GRID_DEFAULT_INCHES: DieStructureGridTemplateInInches = {
   columns: 15,
   rows: 3,
   rectWidthIn: 1,
-  rectHeightIn: 0.62,
+  rectHeightIn: 0.48,
   gapXIn: 0.18,
-  gapYIn: 0.26,
+  gapYIn: 0.24,
   insetIn: 0,
-  clusterSpanFraction: 1,
-  clusterHeightFraction: 0.68,
-  verticalOffsetFraction: 0.18,
+  clusterSpanFraction: 0.74,
+  clusterHeightFraction: 0.48,
+  horizontalOffsetFraction: 0.08,
+  verticalOffsetFraction: 0.04,
   rowDirection: "top-to-bottom"
 };
 const POST_ELB_CLUSTER_SPAN_FRACTION = 1;
@@ -806,6 +808,10 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
     1,
     Math.max(0, template.verticalOffsetFraction ?? 0.5)
   );
+  const horizontalOffsetFraction = Math.min(
+    1,
+    Math.max(0, template.horizontalOffsetFraction ?? 0.5)
+  );
 
   if (columns === 0 || rows === 0 || rawRectWidth === 0 || rawRectHeight === 0) {
     return [];
@@ -829,7 +835,7 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
   const gapX = rectWidth * gapXToRectWidth;
   const gapY = rectHeight * gapYToRectHeight;
 
-  const startX = bounds.minX + inset + (innerWidth - spanWidth) / 2 + gapX;
+  const startX = bounds.minX + inset + (innerWidth - spanWidth) * horizontalOffsetFraction + gapX;
   const startY = bounds.minY + inset + (innerHeight - spanHeight) * verticalOffsetFraction + gapY;
   const rowDirection = template.rowDirection ?? "top-to-bottom";
 
