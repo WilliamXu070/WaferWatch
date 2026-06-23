@@ -411,6 +411,8 @@ function autoLayoutNodes(nodes: FlowNode[], edges: FlowEdge[]) {
     disconnectedRank = Math.max(disconnectedRank, componentRank.get(component.id) ?? 0);
   }
 
+  normalizeComponentRanks(components, componentRank);
+
   const lanesByRank = new Map<number, LayoutComponent[]>();
   for (const component of components) {
     const rank = componentRank.get(component.id) ?? 0;
@@ -426,7 +428,7 @@ function autoLayoutNodes(nodes: FlowNode[], edges: FlowEdge[]) {
   let rowY = LAYOUT_TOP_Y;
 
   for (const rank of [...lanesByRank.keys()].sort((a, b) => a - b)) {
-    const rowComponents = (lanesByRank.get(rank) ?? []).sort((a, b) => a.order - b.order);
+    const rowComponents = (lanesByRank.get(rank) ?? []).sort(compareLayoutComponents);
     const rowHeight = Math.max(...rowComponents.map((component) => component.height));
     const rowWidth = rowComponents.reduce((width, component) => width + component.width, 0) +
       Math.max(0, rowComponents.length - 1) * LAYOUT_LANE_GAP_X;
@@ -450,26 +452,92 @@ type LayoutComponent = {
   order: number;
   width: number;
   height: number;
+  hasStart: boolean;
+  hasEnd: boolean;
 };
 
 function buildLayoutComponents(nodes: FlowNode[], edges: FlowEdge[], orderedIds: string[]): LayoutComponent[] {
   const orderIndexById = new Map(orderedIds.map((id, index) => [id, index]));
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const stronglyConnected = getStronglyConnectedComponents(nodes, edges, orderIndexById);
 
   return stronglyConnected
     .map((nodeIds, index) => {
-      const sortedNodeIds = [...nodeIds].sort((a, b) => (orderIndexById.get(a) ?? 0) - (orderIndexById.get(b) ?? 0));
-      const dimensions = getComponentDimensions(sortedNodeIds.length);
+      const sortedNodeIds = [...nodeIds].sort((a, b) =>
+        compareNodeIdsForLayout(a, b, nodeById, orderIndexById)
+      );
+      const hasStart = sortedNodeIds.some((id) => nodeById.get(id)?.role === "start");
+      const hasEnd = sortedNodeIds.some((id) => nodeById.get(id)?.role === "end");
+      const dimensions = getComponentDimensions(sortedNodeIds.length, hasStart || hasEnd);
 
       return {
         id: `component-${index}`,
         nodeIds: sortedNodeIds,
         order: Math.min(...sortedNodeIds.map((id) => orderIndexById.get(id) ?? 0)),
         width: dimensions.width,
-        height: dimensions.height
+        height: dimensions.height,
+        hasStart,
+        hasEnd
       };
     })
-    .sort((a, b) => a.order - b.order);
+    .sort(compareLayoutComponents);
+}
+
+function normalizeComponentRanks(components: LayoutComponent[], componentRank: Map<string, number>) {
+  const startComponents = components.filter((component) => component.hasStart);
+  const endComponents = components.filter((component) => component.hasEnd);
+
+  for (const component of startComponents) {
+    componentRank.set(component.id, 0);
+  }
+
+  const maxNonEndRank = components
+    .filter((component) => !component.hasEnd)
+    .reduce((maxRank, component) => Math.max(maxRank, componentRank.get(component.id) ?? 0), 0);
+
+  for (const component of endComponents) {
+    if (component.hasStart) {
+      continue;
+    }
+
+    componentRank.set(component.id, maxNonEndRank + 1);
+  }
+}
+
+function compareLayoutComponents(a: LayoutComponent, b: LayoutComponent) {
+  const roleDelta = getComponentRoleSortWeight(a) - getComponentRoleSortWeight(b);
+  if (roleDelta !== 0) {
+    return roleDelta;
+  }
+
+  return a.order - b.order;
+}
+
+function getComponentRoleSortWeight(component: LayoutComponent) {
+  if (component.hasStart) return -1;
+  if (component.hasEnd) return 1;
+  return 0;
+}
+
+function compareNodeIdsForLayout(
+  a: string,
+  b: string,
+  nodeById: Map<string, FlowNode>,
+  orderIndexById: Map<string, number>
+) {
+  const roleDelta = getNodeRoleSortWeight(nodeById.get(a)?.role ?? "normal") -
+    getNodeRoleSortWeight(nodeById.get(b)?.role ?? "normal");
+  if (roleDelta !== 0) {
+    return roleDelta;
+  }
+
+  return (orderIndexById.get(a) ?? 0) - (orderIndexById.get(b) ?? 0);
+}
+
+function getNodeRoleSortWeight(role: FlowNodeRole) {
+  if (role === "start") return -1;
+  if (role === "end") return 1;
+  return 0;
 }
 
 function getStronglyConnectedComponents(
@@ -539,12 +607,12 @@ function getStronglyConnectedComponents(
   return components;
 }
 
-function getComponentDimensions(nodeCount: number) {
+function getComponentDimensions(nodeCount: number, hasPinnedRole: boolean) {
   if (nodeCount <= 1) {
     return { width: NODE_WIDTH, height: NODE_HEIGHT };
   }
 
-  if (nodeCount === 2) {
+  if (nodeCount === 2 && !hasPinnedRole) {
     return {
       width: NODE_WIDTH * 2 + LAYOUT_LOOP_GAP_X,
       height: NODE_HEIGHT
@@ -572,7 +640,7 @@ function positionComponentNodes(
     return;
   }
 
-  if (component.nodeIds.length === 2) {
+  if (component.nodeIds.length === 2 && !component.hasStart && !component.hasEnd) {
     component.nodeIds.forEach((id, index) => {
       const node = nodeById.get(id);
       if (!node) {
@@ -588,22 +656,93 @@ function positionComponentNodes(
     return;
   }
 
+  const pinnedPositions = getPinnedComponentPositions(component, nodeById);
   const centerX = componentX + component.width / 2;
   const centerY = componentY + component.height / 2;
+  const freeNodeIds = component.nodeIds.filter((id) => !pinnedPositions.has(id));
 
-  component.nodeIds.forEach((id, index) => {
+  for (const [id, point] of pinnedPositions) {
+    const node = nodeById.get(id);
+    if (!node) {
+      continue;
+    }
+
+    positioned.set(id, {
+      ...node,
+      x: Math.round(componentX + point.x - NODE_WIDTH / 2),
+      y: Math.round(componentY + point.y - NODE_HEIGHT / 2)
+    });
+  }
+
+  freeNodeIds.forEach((id, index) => {
     const node = nodeById.get(id);
     if (!node) {
       return;
     }
 
-    const angle = -Math.PI / 2 + (index * Math.PI * 2) / component.nodeIds.length;
+    if (component.hasStart && component.hasEnd) {
+      const point = getPinnedRoleFreeNodePoint(component, index, freeNodeIds.length);
+      positioned.set(id, {
+        ...node,
+        x: Math.round(componentX + point.x - NODE_WIDTH / 2),
+        y: Math.round(componentY + point.y - NODE_HEIGHT / 2)
+      });
+      return;
+    }
+
+    const angle = getFreeNodeAngle(index, freeNodeIds.length, component.hasStart, component.hasEnd);
     positioned.set(id, {
       ...node,
       x: Math.round(centerX + Math.cos(angle) * LAYOUT_LOOP_RADIUS_X - NODE_WIDTH / 2),
       y: Math.round(centerY + Math.sin(angle) * LAYOUT_LOOP_RADIUS_Y - NODE_HEIGHT / 2)
     });
   });
+}
+
+function getPinnedComponentPositions(component: LayoutComponent, nodeById: Map<string, FlowNode>) {
+  const pinned = new Map<string, { x: number; y: number }>();
+  const centerX = component.width / 2;
+
+  const startId = component.nodeIds.find((id) => nodeById.get(id)?.role === "start");
+  if (startId) {
+    pinned.set(startId, { x: centerX, y: NODE_HEIGHT / 2 });
+  }
+
+  const endId = component.nodeIds.find((id) => nodeById.get(id)?.role === "end");
+  if (endId && endId !== startId) {
+    pinned.set(endId, { x: centerX, y: component.height - NODE_HEIGHT / 2 });
+  }
+
+  return pinned;
+}
+
+function getPinnedRoleFreeNodePoint(component: LayoutComponent, index: number, count: number) {
+  const side = index % 2 === 0 ? -1 : 1;
+  const sideIndex = Math.floor(index / 2);
+  const sideCount = Math.ceil(count / 2);
+  const usableHeight = component.height - NODE_HEIGHT * 2;
+  const yGap = usableHeight / Math.max(1, sideCount + 1);
+
+  return {
+    x: component.width / 2 + side * LAYOUT_LOOP_RADIUS_X,
+    y: NODE_HEIGHT + yGap * (sideIndex + 1)
+  };
+}
+
+function getFreeNodeAngle(index: number, count: number, hasStart: boolean, hasEnd: boolean) {
+  if (count <= 1) {
+    return Math.PI;
+  }
+
+  if (hasStart) {
+    return Math.PI * 0.2 + (index * Math.PI * 1.6) / Math.max(1, count - 1);
+  }
+
+  if (hasEnd) {
+    return -Math.PI * 0.8 + (index * Math.PI * 1.6) / Math.max(1, count - 1);
+  }
+
+  return -Math.PI / 2 + (index * Math.PI * 2) / count;
 }
 
 function describeRole(role: FlowNodeRole) {
