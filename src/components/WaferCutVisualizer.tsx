@@ -65,6 +65,8 @@ type DieStructureGridTemplateInInches = {
   gapYIn?: number;
   insetIn?: number;
   clusterSpanFraction?: number;
+  clusterHeightFraction?: number;
+  verticalOffsetFraction?: number;
   rowDirection?: DieGridRowDirection;
 };
 
@@ -147,11 +149,13 @@ const POST_ELB_GRID_DEFAULT_INCHES: DieStructureGridTemplateInInches = {
   columns: 15,
   rows: 3,
   rectWidthIn: 1,
-  rectHeightIn: 1,
+  rectHeightIn: 0.62,
   gapXIn: 0.18,
-  gapYIn: 0.22,
+  gapYIn: 0.26,
   insetIn: 0,
   clusterSpanFraction: 1,
+  clusterHeightFraction: 0.68,
+  verticalOffsetFraction: 0.18,
   rowDirection: "top-to-bottom"
 };
 const POST_ELB_CLUSTER_SPAN_FRACTION = 1;
@@ -794,6 +798,14 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
     1,
     Math.max(0.05, template.clusterSpanFraction ?? POST_ELB_CLUSTER_SPAN_FRACTION)
   );
+  const clampHeightFraction = Math.min(
+    1,
+    Math.max(0.05, template.clusterHeightFraction ?? clampSpanFraction)
+  );
+  const verticalOffsetFraction = Math.min(
+    1,
+    Math.max(0, template.verticalOffsetFraction ?? 0.5)
+  );
 
   if (columns === 0 || rows === 0 || rawRectWidth === 0 || rawRectHeight === 0) {
     return [];
@@ -805,7 +817,7 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
   const innerWidth = Math.max(bounds.width - 2 * inset, 1);
   const innerHeight = Math.max(bounds.height - 2 * inset, 1);
   const spanWidth = Math.max(1, innerWidth * clampSpanFraction);
-  const spanHeight = Math.max(1, innerHeight * clampSpanFraction);
+  const spanHeight = Math.max(1, innerHeight * clampHeightFraction);
 
   // Equal-gutter die-local layout in wafer-space mm:
   // left chip edge gap = internal column gap = right chip edge gap,
@@ -818,7 +830,7 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
   const gapY = rectHeight * gapYToRectHeight;
 
   const startX = bounds.minX + inset + (innerWidth - spanWidth) / 2 + gapX;
-  const startY = bounds.minY + inset + (innerHeight - spanHeight) / 2 + gapY;
+  const startY = bounds.minY + inset + (innerHeight - spanHeight) * verticalOffsetFraction + gapY;
   const rowDirection = template.rowDirection ?? "top-to-bottom";
 
   const structures: DieStructureRectMm[] = [];
