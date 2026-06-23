@@ -89,18 +89,45 @@ const WHEEL_ZOOM_STEP = 0.18;
 const SNAP_THRESHOLD = 16;
 const LAYOUT_CENTER_X = 520;
 const LAYOUT_TOP_Y = 96;
-const LAYOUT_GAP_Y = 168;
-const LAYOUT_LANE_GAP_X = 292;
+const LAYOUT_GAP_Y = 220;
+const LAYOUT_LANE_GAP_X = 340;
+const LAYOUT_LOOP_GAP_X = 180;
+const LAYOUT_LOOP_RADIUS_X = 250;
+const LAYOUT_LOOP_RADIUS_Y = 170;
+const EDGE_CURVE_OFFSET = 48;
 
 function clampScale(nextScale: number) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(nextScale.toFixed(2))));
 }
 
-function makeNodePath(from: FlowNode, to: FlowNode) {
+function makeNodePath(edge: FlowEdge, from: FlowNode, to: FlowNode, edges: FlowEdge[]) {
+  const fromCenter = getNodeCenter(from);
+  const toCenter = getNodeCenter(to);
+
+  if (hasReciprocalEdge(edge, edges)) {
+    return makeOffsetEdgePath(from, to, from.order <= to.order ? -EDGE_CURVE_OFFSET : EDGE_CURVE_OFFSET);
+  }
+
+  if (toCenter.y < fromCenter.y - 1) {
+    return makeReturnEdgePath(from, to);
+  }
+
   const fromPoint = getNodeBoundaryPoint(from, getNodeCenter(to));
   const toPoint = getNodeBoundaryPoint(to, getNodeCenter(from));
 
   return `M ${fromPoint.x} ${fromPoint.y} L ${toPoint.x} ${toPoint.y}`;
+}
+
+function hasReciprocalEdge(edge: FlowEdge, edges: FlowEdge[]) {
+  return edges.some((candidate) => candidate.from === edge.to && candidate.to === edge.from);
+}
+
+function isReturnEdge(edge: FlowEdge, from: FlowNode, to: FlowNode, edges: FlowEdge[]) {
+  if (hasReciprocalEdge(edge, edges)) {
+    return from.order > to.order;
+  }
+
+  return getNodeCenter(to).y < getNodeCenter(from).y - 1;
 }
 
 function getNodeCenter(node: FlowNode) {
@@ -134,6 +161,46 @@ function getNodeBoundaryPoint(node: FlowNode, target: { x: number; y: number }) 
 function makeDraftPath(from: FlowNode, target: { x: number; y: number }) {
   const fromPoint = getNodeBoundaryPoint(from, target);
   return `M ${fromPoint.x} ${fromPoint.y} L ${target.x} ${target.y}`;
+}
+
+function makeOffsetEdgePath(from: FlowNode, to: FlowNode, offset: number) {
+  const fromCenter = getNodeCenter(from);
+  const toCenter = getNodeCenter(to);
+  const dx = toCenter.x - fromCenter.x;
+  const dy = toCenter.y - fromCenter.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const normalX = -dy / length;
+  const normalY = dx / length;
+  const fromPoint = getNodeBoundaryPoint(from, toCenter);
+  const toPoint = getNodeBoundaryPoint(to, fromCenter);
+  const control1 = {
+    x: Math.round(fromPoint.x + normalX * offset + dx * 0.18),
+    y: Math.round(fromPoint.y + normalY * offset + dy * 0.18)
+  };
+  const control2 = {
+    x: Math.round(toPoint.x + normalX * offset - dx * 0.18),
+    y: Math.round(toPoint.y + normalY * offset - dy * 0.18)
+  };
+
+  return `M ${fromPoint.x} ${fromPoint.y} C ${control1.x} ${control1.y} ${control2.x} ${control2.y} ${toPoint.x} ${toPoint.y}`;
+}
+
+function makeReturnEdgePath(from: FlowNode, to: FlowNode) {
+  const fromCenter = getNodeCenter(from);
+  const toCenter = getNodeCenter(to);
+  const side = fromCenter.x <= toCenter.x ? -1 : 1;
+  const sideX = side < 0
+    ? Math.min(from.x, to.x) - controlLaneDistance(from, to)
+    : Math.max(from.x + from.width, to.x + to.width) + controlLaneDistance(from, to);
+  const fromPoint = getNodeBoundaryPoint(from, { x: sideX, y: fromCenter.y });
+  const toPoint = getNodeBoundaryPoint(to, { x: sideX, y: toCenter.y });
+
+  return `M ${fromPoint.x} ${fromPoint.y} C ${sideX} ${fromPoint.y} ${sideX} ${toPoint.y} ${toPoint.x} ${toPoint.y}`;
+}
+
+function controlLaneDistance(from: FlowNode, to: FlowNode) {
+  const verticalDistance = Math.abs(getNodeCenter(from).y - getNodeCenter(to).y);
+  return Math.max(96, Math.min(180, verticalDistance * 0.36));
 }
 
 function getSnappedNodePosition(node: FlowNode, proposedX: number, proposedY: number, nodes: FlowNode[]) {
@@ -264,39 +331,62 @@ function autoLayoutNodes(nodes: FlowNode[], edges: FlowEdge[]) {
   }
 
   const orderedIds = orderNodes(nodes, edges);
-  const rankById = new Map(nodes.map((node) => [node.id, 0]));
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const orderIndexById = new Map(orderedIds.map((id, index) => [id, index]));
-  const incomingCount = new Map(nodes.map((node) => [node.id, 0]));
-  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]));
+  const components = buildLayoutComponents(nodes, edges, orderedIds);
+  const componentByNodeId = new Map<string, string>();
+  const componentById = new Map(components.map((component) => [component.id, component]));
+  const componentRank = new Map(components.map((component) => [component.id, 0]));
+  const incomingCount = new Map(components.map((component) => [component.id, 0]));
+  const outgoing = new Map(components.map((component) => [component.id, [] as string[]]));
+
+  for (const component of components) {
+    for (const nodeId of component.nodeIds) {
+      componentByNodeId.set(nodeId, component.id);
+    }
+  }
 
   for (const edge of edges) {
-    if (!nodeById.has(edge.from) || !nodeById.has(edge.to)) {
+    const fromComponentId = componentByNodeId.get(edge.from);
+    const toComponentId = componentByNodeId.get(edge.to);
+
+    if (!fromComponentId || !toComponentId || fromComponentId === toComponentId) {
       continue;
     }
 
-    outgoing.get(edge.from)?.push(edge.to);
-    incomingCount.set(edge.to, (incomingCount.get(edge.to) ?? 0) + 1);
+    const nextComponents = outgoing.get(fromComponentId);
+    if (nextComponents && !nextComponents.includes(toComponentId)) {
+      nextComponents.push(toComponentId);
+      incomingCount.set(toComponentId, (incomingCount.get(toComponentId) ?? 0) + 1);
+    }
   }
 
-  const starts = orderedIds.filter((id) => (incomingCount.get(id) ?? 0) === 0);
-  const seedIds = starts.length ? starts : orderedIds.slice(0, 1);
+  const explicitStartComponentIds = components
+    .filter((component) => component.nodeIds.some((nodeId) => nodeById.get(nodeId)?.role === "start"))
+    .map((component) => component.id);
+  const rootComponentIds = components
+    .filter((component) => (incomingCount.get(component.id) ?? 0) === 0)
+    .map((component) => component.id);
+  const seedIds = explicitStartComponentIds.length
+    ? explicitStartComponentIds
+    : rootComponentIds.length
+      ? rootComponentIds
+      : components.slice(0, 1).map((component) => component.id);
   const visited = new Set<string>();
 
-  const assignRanks = (nodeId: string, rank: number, activePath: Set<string>) => {
-    const currentRank = rankById.get(nodeId) ?? 0;
-    rankById.set(nodeId, Math.max(currentRank, rank));
+  const assignRanks = (componentId: string, rank: number, activePath: Set<string>) => {
+    const currentRank = componentRank.get(componentId) ?? 0;
+    componentRank.set(componentId, Math.max(currentRank, rank));
 
-    if (activePath.has(nodeId)) {
+    if (activePath.has(componentId)) {
       return;
     }
 
     const nextPath = new Set(activePath);
-    nextPath.add(nodeId);
-    visited.add(nodeId);
+    nextPath.add(componentId);
+    visited.add(componentId);
 
-    const nextIds = (outgoing.get(nodeId) ?? []).sort(
-      (a, b) => (orderIndexById.get(a) ?? 0) - (orderIndexById.get(b) ?? 0)
+    const nextIds = (outgoing.get(componentId) ?? []).sort(
+      (a, b) => (componentById.get(a)?.order ?? 0) - (componentById.get(b)?.order ?? 0)
     );
 
     for (const nextId of nextIds) {
@@ -311,32 +401,179 @@ function autoLayoutNodes(nodes: FlowNode[], edges: FlowEdge[]) {
   seedIds.forEach((id) => assignRanks(id, 0, new Set()));
 
   let disconnectedRank = 0;
-  for (const id of orderedIds) {
-    if (visited.has(id)) {
-      disconnectedRank = Math.max(disconnectedRank, rankById.get(id) ?? 0);
+  for (const component of components) {
+    if (visited.has(component.id)) {
+      disconnectedRank = Math.max(disconnectedRank, componentRank.get(component.id) ?? 0);
       continue;
     }
 
-    assignRanks(id, disconnectedRank + 1, new Set());
-    disconnectedRank = Math.max(disconnectedRank, rankById.get(id) ?? 0);
+    assignRanks(component.id, disconnectedRank + 1, new Set());
+    disconnectedRank = Math.max(disconnectedRank, componentRank.get(component.id) ?? 0);
   }
 
-  const lanesByRank = new Map<number, string[]>();
-  for (const id of orderedIds) {
-    const rank = rankById.get(id) ?? 0;
+  const lanesByRank = new Map<number, LayoutComponent[]>();
+  for (const component of components) {
+    const rank = componentRank.get(component.id) ?? 0;
     const current = lanesByRank.get(rank);
     if (current) {
-      current.push(id);
+      current.push(component);
     } else {
-      lanesByRank.set(rank, [id]);
+      lanesByRank.set(rank, [component]);
     }
   }
 
   const positioned = new Map<string, FlowNode>();
-  for (const [rank, ids] of lanesByRank) {
-    const startX = LAYOUT_CENTER_X - ((ids.length - 1) * LAYOUT_LANE_GAP_X) / 2;
+  let rowY = LAYOUT_TOP_Y;
 
-    ids.forEach((id, laneIndex) => {
+  for (const rank of [...lanesByRank.keys()].sort((a, b) => a - b)) {
+    const rowComponents = (lanesByRank.get(rank) ?? []).sort((a, b) => a.order - b.order);
+    const rowHeight = Math.max(...rowComponents.map((component) => component.height));
+    const rowWidth = rowComponents.reduce((width, component) => width + component.width, 0) +
+      Math.max(0, rowComponents.length - 1) * LAYOUT_LANE_GAP_X;
+    let componentX = Math.max(96, Math.round(LAYOUT_CENTER_X - rowWidth / 2));
+
+    for (const component of rowComponents) {
+      const componentY = Math.round(rowY + (rowHeight - component.height) / 2);
+      positionComponentNodes(component, nodeById, componentX, componentY, positioned);
+      componentX += component.width + LAYOUT_LANE_GAP_X;
+    }
+
+    rowY += rowHeight + LAYOUT_GAP_Y;
+  }
+
+  return nodes.map((node) => positioned.get(node.id) ?? node);
+}
+
+type LayoutComponent = {
+  id: string;
+  nodeIds: string[];
+  order: number;
+  width: number;
+  height: number;
+};
+
+function buildLayoutComponents(nodes: FlowNode[], edges: FlowEdge[], orderedIds: string[]): LayoutComponent[] {
+  const orderIndexById = new Map(orderedIds.map((id, index) => [id, index]));
+  const stronglyConnected = getStronglyConnectedComponents(nodes, edges, orderIndexById);
+
+  return stronglyConnected
+    .map((nodeIds, index) => {
+      const sortedNodeIds = [...nodeIds].sort((a, b) => (orderIndexById.get(a) ?? 0) - (orderIndexById.get(b) ?? 0));
+      const dimensions = getComponentDimensions(sortedNodeIds.length);
+
+      return {
+        id: `component-${index}`,
+        nodeIds: sortedNodeIds,
+        order: Math.min(...sortedNodeIds.map((id) => orderIndexById.get(id) ?? 0)),
+        width: dimensions.width,
+        height: dimensions.height
+      };
+    })
+    .sort((a, b) => a.order - b.order);
+}
+
+function getStronglyConnectedComponents(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  orderIndexById: Map<string, number>
+) {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]));
+
+  for (const edge of edges) {
+    if (nodeIds.has(edge.from) && nodeIds.has(edge.to)) {
+      outgoing.get(edge.from)?.push(edge.to);
+    }
+  }
+
+  for (const nextIds of outgoing.values()) {
+    nextIds.sort((a, b) => (orderIndexById.get(a) ?? 0) - (orderIndexById.get(b) ?? 0));
+  }
+
+  let index = 0;
+  const stack: string[] = [];
+  const stackSet = new Set<string>();
+  const indexById = new Map<string, number>();
+  const lowLinkById = new Map<string, number>();
+  const components: string[][] = [];
+
+  const visit = (nodeId: string) => {
+    indexById.set(nodeId, index);
+    lowLinkById.set(nodeId, index);
+    index += 1;
+    stack.push(nodeId);
+    stackSet.add(nodeId);
+
+    for (const nextId of outgoing.get(nodeId) ?? []) {
+      if (!indexById.has(nextId)) {
+        visit(nextId);
+        lowLinkById.set(nodeId, Math.min(lowLinkById.get(nodeId) ?? 0, lowLinkById.get(nextId) ?? 0));
+      } else if (stackSet.has(nextId)) {
+        lowLinkById.set(nodeId, Math.min(lowLinkById.get(nodeId) ?? 0, indexById.get(nextId) ?? 0));
+      }
+    }
+
+    if (lowLinkById.get(nodeId) !== indexById.get(nodeId)) {
+      return;
+    }
+
+    const component: string[] = [];
+    let currentId: string | undefined;
+    do {
+      currentId = stack.pop();
+      if (currentId) {
+        stackSet.delete(currentId);
+        component.push(currentId);
+      }
+    } while (currentId && currentId !== nodeId);
+
+    components.push(component);
+  };
+
+  for (const node of [...nodes].sort((a, b) => a.order - b.order)) {
+    if (!indexById.has(node.id)) {
+      visit(node.id);
+    }
+  }
+
+  return components;
+}
+
+function getComponentDimensions(nodeCount: number) {
+  if (nodeCount <= 1) {
+    return { width: NODE_WIDTH, height: NODE_HEIGHT };
+  }
+
+  if (nodeCount === 2) {
+    return {
+      width: NODE_WIDTH * 2 + LAYOUT_LOOP_GAP_X,
+      height: NODE_HEIGHT
+    };
+  }
+
+  return {
+    width: LAYOUT_LOOP_RADIUS_X * 2 + NODE_WIDTH,
+    height: LAYOUT_LOOP_RADIUS_Y * 2 + NODE_HEIGHT
+  };
+}
+
+function positionComponentNodes(
+  component: LayoutComponent,
+  nodeById: Map<string, FlowNode>,
+  componentX: number,
+  componentY: number,
+  positioned: Map<string, FlowNode>
+) {
+  if (component.nodeIds.length === 1) {
+    const node = nodeById.get(component.nodeIds[0]);
+    if (node) {
+      positioned.set(node.id, { ...node, x: Math.round(componentX), y: Math.round(componentY) });
+    }
+    return;
+  }
+
+  if (component.nodeIds.length === 2) {
+    component.nodeIds.forEach((id, index) => {
       const node = nodeById.get(id);
       if (!node) {
         return;
@@ -344,13 +581,29 @@ function autoLayoutNodes(nodes: FlowNode[], edges: FlowEdge[]) {
 
       positioned.set(id, {
         ...node,
-        x: Math.round(startX + laneIndex * LAYOUT_LANE_GAP_X),
-        y: LAYOUT_TOP_Y + rank * LAYOUT_GAP_Y
+        x: Math.round(componentX + index * (NODE_WIDTH + LAYOUT_LOOP_GAP_X)),
+        y: Math.round(componentY)
       });
     });
+    return;
   }
 
-  return nodes.map((node) => positioned.get(node.id) ?? node);
+  const centerX = componentX + component.width / 2;
+  const centerY = componentY + component.height / 2;
+
+  component.nodeIds.forEach((id, index) => {
+    const node = nodeById.get(id);
+    if (!node) {
+      return;
+    }
+
+    const angle = -Math.PI / 2 + (index * Math.PI * 2) / component.nodeIds.length;
+    positioned.set(id, {
+      ...node,
+      x: Math.round(centerX + Math.cos(angle) * LAYOUT_LOOP_RADIUS_X - NODE_WIDTH / 2),
+      y: Math.round(centerY + Math.sin(angle) * LAYOUT_LOOP_RADIUS_Y - NODE_HEIGHT / 2)
+    });
+  });
 }
 
 function describeRole(role: FlowNodeRole) {
@@ -936,8 +1189,8 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
               return null;
             }
 
-            const isReturn = to.y <= from.y;
-            const path = makeNodePath(from, to);
+            const isReturn = isReturnEdge(edge, from, to, edges);
+            const path = makeNodePath(edge, from, to, edges);
 
             return (
               <path
