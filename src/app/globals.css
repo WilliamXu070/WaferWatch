@@ -639,6 +639,10 @@ textarea {
   outline: none;
 }
 
+.flow-role-menu-danger {
+  border-top: 1px solid var(--border);
+}
+
 .flow-empty-state circle {
   fill: var(--panel);
   stroke: var(--border);

@@ -751,6 +751,15 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     setRoleMenu(null);
   };
 
+  const deleteNode = (nodeId: string) => {
+    setNodes((currentNodes) => currentNodes.filter((node) => node.id !== nodeId));
+    setEdges((currentEdges) => currentEdges.filter((edge) => edge.from !== nodeId && edge.to !== nodeId));
+    setConnectionDraft((draft) => (draft?.from === nodeId ? null : draft));
+    setNodeDrag((drag) => (drag?.nodeId === nodeId ? null : drag));
+    setSnapGuides([]);
+    setRoleMenu(null);
+  };
+
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) {
@@ -1010,6 +1019,14 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
             </button>
             <button type="button" role="menuitem" onClick={() => setNodeRole(roleMenu.nodeId, "normal")}>
               Normal step
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flow-role-menu-danger"
+              onClick={() => deleteNode(roleMenu.nodeId)}
+            >
+              Delete step
             </button>
           </div>
         ) : null}
