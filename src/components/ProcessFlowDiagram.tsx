@@ -829,7 +829,7 @@ function positionComponentNodes(
       return;
     }
 
-    if (component.hasStart && component.hasEnd) {
+    if (component.hasStart || component.hasEnd) {
       const point = getPinnedRoleFreeNodePoint(component, index, freeNodeIds.length);
       positioned.set(id, {
         ...node,
@@ -839,7 +839,7 @@ function positionComponentNodes(
       return;
     }
 
-    const angle = getFreeNodeAngle(index, freeNodeIds.length, component.hasStart, component.hasEnd);
+    const angle = getFreeNodeAngle(index, freeNodeIds.length);
     positioned.set(id, {
       ...node,
       x: Math.round(centerX + Math.cos(angle) * LAYOUT_LOOP_RADIUS_X - NODE_WIDTH / 2),
@@ -869,26 +869,23 @@ function getPinnedRoleFreeNodePoint(component: LayoutComponent, index: number, c
   const side = index % 2 === 0 ? -1 : 1;
   const sideIndex = Math.floor(index / 2);
   const sideCount = Math.ceil(count / 2);
-  const usableHeight = component.height - NODE_HEIGHT * 2;
-  const yGap = usableHeight / Math.max(1, sideCount + 1);
+  const hasBothRoles = component.hasStart && component.hasEnd;
+  const topPadding = component.hasStart ? NODE_HEIGHT : NODE_HEIGHT / 2;
+  const bottomPadding = component.hasEnd ? NODE_HEIGHT : NODE_HEIGHT / 2;
+  const usableHeight = Math.max(NODE_HEIGHT, component.height - topPadding - bottomPadding);
+  const yGap = hasBothRoles
+    ? usableHeight / Math.max(1, sideCount + 1)
+    : usableHeight / Math.max(1, sideCount);
 
   return {
     x: component.width / 2 + side * LAYOUT_LOOP_RADIUS_X,
-    y: NODE_HEIGHT + yGap * (sideIndex + 1)
+    y: topPadding + yGap * (sideIndex + (hasBothRoles ? 1 : 0.5))
   };
 }
 
-function getFreeNodeAngle(index: number, count: number, hasStart: boolean, hasEnd: boolean) {
+function getFreeNodeAngle(index: number, count: number) {
   if (count <= 1) {
     return Math.PI;
-  }
-
-  if (hasStart) {
-    return Math.PI * 0.2 + (index * Math.PI * 1.6) / Math.max(1, count - 1);
-  }
-
-  if (hasEnd) {
-    return -Math.PI * 0.8 + (index * Math.PI * 1.6) / Math.max(1, count - 1);
   }
 
   return -Math.PI / 2 + (index * Math.PI * 2) / count;
