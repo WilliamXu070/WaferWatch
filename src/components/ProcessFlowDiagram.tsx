@@ -71,6 +71,11 @@ type RoleMenu = {
   paneY: number;
 };
 
+type ScenePoint = {
+  x: number;
+  y: number;
+};
+
 type ZoomAnchor = {
   paneX: number;
   paneY: number;
@@ -474,7 +479,11 @@ function orderNodes(nodes: FlowNode[], edges: FlowEdge[]) {
   return [...sortedIds, ...missing];
 }
 
-function autoLayoutNodes(nodes: FlowNode[], edges: FlowEdge[]) {
+function autoLayoutNodes(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  targetCenter: ScenePoint = { x: SCENE_WIDTH / 2, y: SCENE_HEIGHT / 2 }
+) {
   if (nodes.length === 0) {
     return nodes;
   }
@@ -592,7 +601,41 @@ function autoLayoutNodes(nodes: FlowNode[], edges: FlowEdge[]) {
     rowY += rowHeight + LAYOUT_GAP_Y;
   }
 
+  centerPositionedNodes(positioned, targetCenter);
+
   return nodes.map((node) => positioned.get(node.id) ?? node);
+}
+
+function centerPositionedNodes(positioned: Map<string, FlowNode>, targetCenter: ScenePoint) {
+  const positionedNodes = [...positioned.values()];
+  if (positionedNodes.length === 0) {
+    return;
+  }
+
+  const minX = Math.min(...positionedNodes.map((node) => node.x));
+  const maxX = Math.max(...positionedNodes.map((node) => node.x + node.width));
+  const minY = Math.min(...positionedNodes.map((node) => node.y));
+  const maxY = Math.max(...positionedNodes.map((node) => node.y + node.height));
+  const currentCenterX = (minX + maxX) / 2;
+  const currentCenterY = (minY + maxY) / 2;
+  let dx = Math.round(targetCenter.x - currentCenterX);
+  let dy = Math.round(targetCenter.y - currentCenterY);
+
+  if (minX + dx < 24) {
+    dx = 24 - minX;
+  }
+
+  if (minY + dy < 24) {
+    dy = 24 - minY;
+  }
+
+  for (const [id, node] of positioned) {
+    positioned.set(id, {
+      ...node,
+      x: Math.round(node.x + dx),
+      y: Math.round(node.y + dy)
+    });
+  }
 }
 
 type LayoutComponent = {
@@ -983,8 +1026,20 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   const zoomIn = () => applyScaleAtAnchor(scaleRef.current + BUTTON_ZOOM_STEP);
   const zoomOut = () => applyScaleAtAnchor(scaleRef.current - BUTTON_ZOOM_STEP);
   const zoomReset = () => applyScaleAtAnchor(1);
+  const getVisibleSceneCenter = () => {
+    const frame = frameRef.current;
+    if (!frame) {
+      return { x: sceneBounds.width / 2, y: sceneBounds.height / 2 };
+    }
+
+    return {
+      x: (frame.scrollLeft + frame.clientWidth / 2) / scaleRef.current,
+      y: (frame.scrollTop + frame.clientHeight / 2) / scaleRef.current
+    };
+  };
   const organizeCanvas = () => {
-    setNodes((currentNodes) => autoLayoutNodes(currentNodes, edges));
+    const targetCenter = getVisibleSceneCenter();
+    setNodes((currentNodes) => autoLayoutNodes(currentNodes, edges, targetCenter));
   };
   const clearCanvas = () => {
     setNodes([]);
