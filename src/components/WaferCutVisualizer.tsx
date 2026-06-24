@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, type KeyboardEvent, type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type KeyboardEvent, type MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { DieInspectionMap } from "@/components/DieInspectionMap";
 import {
   listDieInspectionsForDie,
@@ -65,6 +65,9 @@ type DieStructureGridTemplateInInches = {
   gapYIn?: number;
   insetIn?: number;
   clusterSpanFraction?: number;
+  clusterHeightFraction?: number;
+  horizontalOffsetFraction?: number;
+  verticalOffsetFraction?: number;
   rowDirection?: DieGridRowDirection;
 };
 
@@ -74,7 +77,21 @@ type SvgViewport = {
   halfSpan: number;
 };
 
-type DiePolingParameterField = "peakVoltage" | "pulseDuration" | "description";
+const VISIBLE_POLING_PARAMETER_FIELD_KEYS = [
+  "voltage",
+  "width",
+  "pulseCount",
+  "postPulseVoltage",
+  "postPulseWidth"
+] as const;
+const LEGACY_POLING_PARAMETER_FIELD_KEYS = ["peakVoltage", "pulseDuration", "description"] as const;
+const DIE_POLING_PARAMETER_FIELD_KEYS = [
+  ...VISIBLE_POLING_PARAMETER_FIELD_KEYS,
+  ...LEGACY_POLING_PARAMETER_FIELD_KEYS
+] as const;
+
+type VisiblePolingParameterField = typeof VISIBLE_POLING_PARAMETER_FIELD_KEYS[number];
+type DiePolingParameterField = typeof DIE_POLING_PARAMETER_FIELD_KEYS[number];
 
 type DiePolingCellValues = Partial<Record<DiePolingParameterField, string>>;
 
@@ -130,14 +147,17 @@ const POST_DICE_STATUS_SEQUENCE: DieStatus[] = [
   "post_inspection"
 ];
 const POST_ELB_GRID_DEFAULT_INCHES: DieStructureGridTemplateInInches = {
-  columns: 3,
-  rows: 4,
-  rectWidthIn: 1.5,
-  rectHeightIn: 1,
-  gapXIn: 0.22,
-  gapYIn: 0.20,
+  columns: 15,
+  rows: 3,
+  rectWidthIn: 1,
+  rectHeightIn: 0.48,
+  gapXIn: 0.18,
+  gapYIn: 0.24,
   insetIn: 0,
-  clusterSpanFraction: 1,
+  clusterSpanFraction: 0.74,
+  clusterHeightFraction: 0.48,
+  horizontalOffsetFraction: 0.08,
+  verticalOffsetFraction: 0.04,
   rowDirection: "top-to-bottom"
 };
 const POST_ELB_CLUSTER_SPAN_FRACTION = 1;
@@ -147,14 +167,18 @@ const WAFER_OVERVIEW_LABEL_HEIGHT = 42;
 const WAFER_REUSE_PREFIX = "V";
 const WAFER_REUSE_CYCLE = 1;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const POLING_MATRIX_ROW_COUNT = 3;
+const POLING_MATRIX_COLUMN_COUNT = 15;
 const POLING_PARAMETER_FIELDS: Array<{
-  key: DiePolingParameterField;
+  key: VisiblePolingParameterField;
   label: string;
-  placeholder: string;
+  legacyKey?: DiePolingParameterField;
 }> = [
-  { key: "peakVoltage", label: "Peak voltage", placeholder: "" },
-  { key: "pulseDuration", label: "Pulse duration", placeholder: "" },
-  { key: "description", label: "Description", placeholder: "" }
+  { key: "voltage", label: "Voltage (mV)", legacyKey: "peakVoltage" },
+  { key: "width", label: "Width (ms)", legacyKey: "pulseDuration" },
+  { key: "pulseCount", label: "# of Pulses" },
+  { key: "postPulseVoltage", label: "post-pulse voltage" },
+  { key: "postPulseWidth", label: "post-pulse width" }
 ];
 const POLING_ROW_HUES = [202, 190, 172, 154, 218, 32, 284, 122];
 const WAFER_FAMILY_ORDER = [
@@ -776,6 +800,18 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
     1,
     Math.max(0.05, template.clusterSpanFraction ?? POST_ELB_CLUSTER_SPAN_FRACTION)
   );
+  const clampHeightFraction = Math.min(
+    1,
+    Math.max(0.05, template.clusterHeightFraction ?? clampSpanFraction)
+  );
+  const verticalOffsetFraction = Math.min(
+    1,
+    Math.max(0, template.verticalOffsetFraction ?? 0.5)
+  );
+  const horizontalOffsetFraction = Math.min(
+    1,
+    Math.max(0, template.horizontalOffsetFraction ?? 0.5)
+  );
 
   if (columns === 0 || rows === 0 || rawRectWidth === 0 || rawRectHeight === 0) {
     return [];
@@ -787,7 +823,7 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
   const innerWidth = Math.max(bounds.width - 2 * inset, 1);
   const innerHeight = Math.max(bounds.height - 2 * inset, 1);
   const spanWidth = Math.max(1, innerWidth * clampSpanFraction);
-  const spanHeight = Math.max(1, innerHeight * clampSpanFraction);
+  const spanHeight = Math.max(1, innerHeight * clampHeightFraction);
 
   // Equal-gutter die-local layout in wafer-space mm:
   // left chip edge gap = internal column gap = right chip edge gap,
@@ -799,8 +835,8 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
   const gapX = rectWidth * gapXToRectWidth;
   const gapY = rectHeight * gapYToRectHeight;
 
-  const startX = bounds.minX + inset + (innerWidth - spanWidth) / 2 + gapX;
-  const startY = bounds.minY + inset + (innerHeight - spanHeight) / 2 + gapY;
+  const startX = bounds.minX + inset + (innerWidth - spanWidth) * horizontalOffsetFraction + gapX;
+  const startY = bounds.minY + inset + (innerHeight - spanHeight) * verticalOffsetFraction + gapY;
   const rowDirection = template.rowDirection ?? "top-to-bottom";
 
   const structures: DieStructureRectMm[] = [];
@@ -874,12 +910,16 @@ function getPolingCellKey(
   return `${waferId}:${dieCode}:R${row}:C${column}:${field}`;
 }
 
+function isDiePolingParameterField(value: string): value is DiePolingParameterField {
+  return DIE_POLING_PARAMETER_FIELD_KEYS.some((field) => field === value);
+}
+
 function parsePolingCellKey(key: string) {
   const match = key.match(
-    /^([^:]+):([^:]+):R(\d+):C(\d+):(peakVoltage|pulseDuration|description)$/
+    /^([^:]+):([^:]+):R(\d+):C(\d+):([^:]+)$/
   );
 
-  if (!match) {
+  if (!match || !isDiePolingParameterField(match[5])) {
     return null;
   }
 
@@ -888,31 +928,8 @@ function parsePolingCellKey(key: string) {
     dieCode: match[2],
     row: Number(match[3]),
     column: Number(match[4]),
-    field: match[5] as DiePolingParameterField
+    field: match[5]
   };
-}
-
-function getPolingColumnStyle(rowIndex: number, columnIndex: number, totalColumns: number) {
-  const hue = POLING_ROW_HUES[rowIndex % POLING_ROW_HUES.length];
-  const lightnessStep = totalColumns > 1 ? columnIndex / (totalColumns - 1) : 0;
-  const headerLightness = 34 + lightnessStep * 28;
-  const bodyLightness = 92 + lightnessStep * 3;
-
-  return {
-    "--poling-column-header": `hsl(${hue} 52% ${headerLightness}%)`,
-    "--poling-column-body": `hsl(${hue} 58% ${bodyLightness}%)`,
-    "--poling-column-border": `hsl(${hue} 32% 72%)`
-  } as CSSProperties;
-}
-
-function getPolingRowStyle(rowIndex: number) {
-  const hue = POLING_ROW_HUES[rowIndex % POLING_ROW_HUES.length];
-
-  return {
-    "--poling-row-color": `hsl(${hue} 52% 34%)`,
-    "--poling-row-soft": `hsl(${hue} 56% 95%)`,
-    "--poling-row-line": `hsl(${hue} 34% 74%)`
-  } as CSSProperties;
 }
 
 function fitPolingTextareaHeight(textarea: HTMLTextAreaElement) {
@@ -988,10 +1005,10 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
               continue;
             }
 
-            for (const field of POLING_PARAMETER_FIELDS) {
-              const value = fields[field.key];
+            for (const fieldKey of DIE_POLING_PARAMETER_FIELD_KEYS) {
+              const value = fields[fieldKey];
               if (typeof value === "string") {
-                parameters[getPolingCellKey(wafer.waferId, dieCode, row, column, field.key)] = value;
+                parameters[getPolingCellKey(wafer.waferId, dieCode, row, column, fieldKey)] = value;
               }
             }
           }
@@ -1109,8 +1126,8 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
   const isChipFocusView = Boolean(activeChip && activeChipViewport);
   const isWaferFocusView = hasWaferOverview && Boolean(selectedWafer) && !isChipFocusView;
   const activeWaferPrefix = selectedWafer ? waferFamilyPrefixById[selectedWafer.id] : "";
-  const activeChipCode = activeChip && activeWaferPrefix
-    ? `${activeWaferPrefix}${activeChip.label}-${WAFER_REUSE_PREFIX}${WAFER_REUSE_CYCLE}`
+  const activeChipCode = activeChip
+    ? `${activeWaferPrefix || "T"}${activeChip.label}-${WAFER_REUSE_PREFIX}${WAFER_REUSE_CYCLE}`
     : null;
   const activeChipExpandedName = activeChip
     ? `${activeWaferName} wafer, die number ${activeChip.label}, version ${WAFER_REUSE_CYCLE}`
@@ -1163,7 +1180,18 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     }
 
     const key = getPolingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field);
-    return polingValues[key] ?? savedPolingOverrides[key] ?? databasePolingByKey[key] ?? "";
+    const directValue = polingValues[key] ?? savedPolingOverrides[key] ?? databasePolingByKey[key];
+    if (typeof directValue === "string") {
+      return directValue;
+    }
+
+    const legacyKey = POLING_PARAMETER_FIELDS.find((parameter) => parameter.key === field)?.legacyKey;
+    if (!legacyKey) {
+      return "";
+    }
+
+    const fallbackKey = getPolingCellKey(activeWaferDatabaseId, activeChipCode, row, column, legacyKey);
+    return savedPolingOverrides[fallbackKey] ?? databasePolingByKey[fallbackKey] ?? "";
   };
 
   const getPersistedPolingValue = useCallback(
@@ -1339,16 +1367,129 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
     }));
   };
 
+  const renderPolingRecipeHeader = (row: number | null, selectedColumn?: number) => {
+    const rowCode = row ? `R${row}` : `R1-R${POLING_MATRIX_ROW_COUNT}`;
+    const cellRange = row && selectedColumn
+      ? `R${row}C${selectedColumn}`
+      : `R1C1-R${POLING_MATRIX_ROW_COUNT}C${POLING_MATRIX_COLUMN_COUNT}`;
+    const recipeId = activeChipCode ?? `${activeWaferPrefix || "W"}${rowCode}`;
+    const headerCells = [
+      { label: "fabricated by", value: selectedWafer?.currentHandlerName ?? "" },
+      { label: "Wafer", value: activeWaferName },
+      { label: "Wafer id:", value: activeWaferDatabaseId ?? "" },
+      { label: "Poling Date:", value: "" },
+      { label: "M1", value: "1 mm" },
+      { label: "Run", value: activeWaferPrefix || "alpha" },
+      { label: "Piece", value: String(activeChip?.label ?? "") },
+      { label: "Row", value: rowCode },
+      { label: "Revision", value: "R1" },
+      { label: "Cells", value: cellRange }
+    ];
+
+    return (
+      <div className="wafer-poling-recipe-header" aria-label={`${recipeId} recipe details`}>
+        <div className="wafer-poling-recipe-id">{recipeId}</div>
+        <div className="wafer-poling-recipe-meta">
+          {headerCells.map((cell) => (
+            <div className="wafer-poling-recipe-meta-cell" key={`${cell.label}-${cell.value}`}>
+              <span>{cell.label}</span>
+              <strong>{cell.value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderPolingMatrix = (row: number, selectedColumn?: number) => {
+    if (!activeChipCode) {
+      return null;
+    }
+
+    const columns = selectedColumn
+      ? [selectedColumn]
+      : Array.from({ length: POLING_MATRIX_COLUMN_COUNT }, (_, columnIndex) => columnIndex + 1);
+    const rowCode = `R${row}`;
+    const gridStyle = {
+      gridTemplateColumns: selectedColumn
+        ? "84px minmax(160px, 1fr)"
+        : `84px repeat(${columns.length}, minmax(38px, 1fr))`
+    };
+
+    return (
+      <div
+        className="wafer-poling-grid"
+        key={`poling-grid-${rowCode}-${selectedColumn ?? "all"}`}
+        style={gridStyle}
+        aria-label={`${rowCode} poling parameter matrix`}
+      >
+        <div className="wafer-poling-corner">Period<br />2.5</div>
+        {columns.map((column) => (
+          <div
+            className="wafer-poling-column-header"
+            key={`poling-header-${row}-${column}`}
+          >
+            {rowCode}C{column}
+          </div>
+        ))}
+        <div className="wafer-poling-row-subhead">gap 20<br />micron</div>
+        {columns.map((column) => (
+          <div
+            className="wafer-poling-column-spacer"
+            key={`poling-spacer-${row}-${column}`}
+            aria-hidden="true"
+          />
+        ))}
+        {POLING_PARAMETER_FIELDS.map((field) => (
+          <div className="wafer-poling-field-row" key={`poling-${row}-${field.key}`}>
+            <div className={`wafer-poling-row-label wafer-poling-row-label--${field.key}`}>
+              {field.label}
+            </div>
+            {columns.map((column) => {
+              const key = activeWaferDatabaseId && activeChipCode
+                ? getPolingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field.key)
+                : "";
+              const inputValue = getPolingValue(row, column, field.key);
+
+              return (
+                <div
+                  className={`wafer-poling-cell wafer-poling-cell--${field.key}`}
+                  key={`poling-cell-${row}-${column}-${field.key}`}
+                >
+                  <span className="sr-only">
+                    {rowCode}C{column}, {field.label}
+                  </span>
+                  <textarea
+                    className="wafer-poling-cell-editor"
+                    aria-label={`${rowCode}C${column}, ${field.label}`}
+                    rows={1}
+                    value={inputValue}
+                    onChange={(event) => {
+                      handlePolingCellChange(row, column, field.key, event.target.value);
+                      fitPolingTextareaHeight(event.target);
+                    }}
+                    onFocus={(event) => fitPolingTextareaHeight(event.target)}
+                    onBlur={(event) => {
+                      if (key) {
+                        void savePolingCell(key, event.target.value);
+                      }
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderActiveInspectionPolingSummary = () => {
-    if (!activePolingTemplate || !activeChip || !activeChipCode || !activeWaferDatabaseId) {
+    if (!activePolingTemplate || !activeChip || !activeChipCode) {
       return null;
     }
 
     const row = activeChipInspectionRow;
-    const rowIndex = row - 1;
-    const gridStyle = {
-      gridTemplateColumns: "minmax(104px, 0.28fr) minmax(118px, 1fr)"
-    };
 
     return (
       <div
@@ -1360,79 +1501,17 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
           <button
             type="button"
             className="button button-secondary"
-            onClick={() => setIsInspectionPanelOpen(false)}
+            onClick={() => {
+              setSelectedInspectionCell(null);
+              setIsInspectionPanelOpen(false);
+            }}
           >
             Close
           </button>
         </div>
-        <div className="wafer-poling-sheet">
-          <section
-            className="wafer-poling-row-block"
-            key={`inspection-poling-row-${row}`}
-            style={getPolingRowStyle(rowIndex)}
-          >
-            <h4>Row {row}</h4>
-            <div className="wafer-poling-grid" style={gridStyle}>
-              <div className="wafer-poling-corner">Parameter</div>
-              <div
-                className="wafer-poling-column-header"
-                key={`inspection-poling-header-${row}-${activeChipInspectionColumn}`}
-                style={getPolingColumnStyle(rowIndex, activeChipInspectionColumn - 1, activePolingTemplate.columns)}
-              >
-                C{activeChipInspectionColumn}
-              </div>
-              {POLING_PARAMETER_FIELDS.map((field) => (
-                <div className="wafer-poling-field-row" key={`inspection-poling-${row}-${field.key}`}>
-                  <div className="wafer-poling-row-label">{field.label}</div>
-                  {(() => {
-                    const column = activeChipInspectionColumn;
-                    const key = getPolingCellKey(
-                      activeWaferDatabaseId,
-                      activeChipCode,
-                      row,
-                      column,
-                      field.key
-                    );
-                    const inputValue = getPolingValue(row, column, field.key);
-                    const cellStyle = getPolingColumnStyle(
-                      rowIndex,
-                      activeChipInspectionColumn - 1,
-                      activePolingTemplate.columns
-                    );
-
-                    return (
-                      <div
-                        className={[
-                          "wafer-poling-cell",
-                          field.key === "description" ? "wafer-poling-cell--description" : ""
-                        ].join(" ")}
-                        key={`inspection-poling-cell-${row}-${column}-${field.key}`}
-                        style={cellStyle}
-                      >
-                        <span className="sr-only">
-                          Row {row}, column {column}, {field.label}
-                        </span>
-                        <textarea
-                          className="wafer-poling-cell-editor"
-                          aria-label={`Row ${row}, column ${column}, ${field.label}`}
-                          rows={1}
-                          value={inputValue}
-                          onChange={(event) => {
-                            handlePolingCellChange(row, column, field.key, event.target.value);
-                            fitPolingTextareaHeight(event.target);
-                          }}
-                          onFocus={(event) => fitPolingTextareaHeight(event.target)}
-                          onBlur={(event) => {
-                            void savePolingCell(key, event.target.value);
-                          }}
-                        />
-                      </div>
-                    );
-                  })()}
-                </div>
-              ))}
-            </div>
-          </section>
+        <div className="wafer-poling-sheet wafer-poling-sheet--single">
+          {renderPolingRecipeHeader(row, activeChipInspectionColumn)}
+          {renderPolingMatrix(row, activeChipInspectionColumn)}
         </div>
       </div>
     );
@@ -1443,93 +1522,16 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
       return null;
     }
 
-    const rows = sanitizeGridAxisCount(activePolingTemplate.rows);
-    const columns = sanitizeGridAxisCount(activePolingTemplate.columns);
+    const rows = Array.from({ length: POLING_MATRIX_ROW_COUNT }, (_, rowIndex) => rowIndex + 1);
+
     return (
       <section className="panel wafer-poling-panel" aria-label={`${activeChipCode} poling parameters`}>
         <div className="wafer-poling-header">
           <h3>Poling parameters</h3>
         </div>
         <div className="wafer-poling-sheet">
-          {Array.from({ length: rows }, (_, rowIndex) => {
-            const row = rowIndex + 1;
-            const gridStyle = {
-              gridTemplateColumns: `minmax(104px, 0.28fr) repeat(${columns}, minmax(118px, 1fr))`
-            };
-
-            return (
-              <section
-                className="wafer-poling-row-block"
-                key={`poling-row-${row}`}
-                style={getPolingRowStyle(rowIndex)}
-              >
-                <h4>Row {row}</h4>
-                <div className="wafer-poling-grid" style={gridStyle}>
-                  <div className="wafer-poling-corner">Parameter</div>
-                  {Array.from({ length: columns }, (_, columnIndex) => (
-                    <div
-                      className="wafer-poling-column-header"
-                      key={`poling-header-${row}-${columnIndex + 1}`}
-                      style={getPolingColumnStyle(rowIndex, columnIndex, columns)}
-                    >
-                      C{columnIndex + 1}
-                    </div>
-                  ))}
-                  {POLING_PARAMETER_FIELDS.map((field) => (
-                    <div className="wafer-poling-field-row" key={`poling-${row}-${field.key}`}>
-                      <div className="wafer-poling-row-label">{field.label}</div>
-                      {Array.from({ length: columns }, (_, columnIndex) => {
-                        const column = columnIndex + 1;
-                        const key = activeWaferDatabaseId && activeChipCode
-                          ? getPolingCellKey(activeWaferDatabaseId, activeChipCode, row, column, field.key)
-                          : "";
-                        const inputValue = getPolingValue(row, column, field.key);
-                        const cellStyle = getPolingColumnStyle(rowIndex, columnIndex, columns);
-
-                        return (
-                          <div
-                            className={[
-                              "wafer-poling-cell",
-                              field.key === "description" ? "wafer-poling-cell--description" : ""
-                            ].join(" ")}
-                            key={`poling-cell-${row}-${column}-${field.key}`}
-                            style={cellStyle}
-                          >
-                            <span className="sr-only">
-                              Row {row}, column {column}, {field.label}
-                            </span>
-                            <textarea
-                              className="wafer-poling-cell-editor"
-                              aria-label={`Row ${row}, column ${column}, ${field.label}`}
-                              rows={1}
-                              value={inputValue}
-                              onChange={(event) =>
-                                {
-                                  handlePolingCellChange(
-                                    row,
-                                    column,
-                                    field.key,
-                                    event.target.value
-                                  );
-                                  fitPolingTextareaHeight(event.target);
-                                }
-                              }
-                              onFocus={(event) => fitPolingTextareaHeight(event.target)}
-                              onBlur={(event) => {
-                                if (key) {
-                                  void savePolingCell(key, event.target.value);
-                                }
-                              }}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+          {renderPolingRecipeHeader(null)}
+          {rows.map((row) => renderPolingMatrix(row))}
         </div>
       </section>
     );
@@ -1594,6 +1596,12 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
               }
 
               event.stopPropagation();
+              if (isActiveInspectionCell) {
+                setSelectedInspectionCell(null);
+                setIsInspectionPanelOpen(false);
+                return;
+              }
+
               setSelectedInspectionCell({
                 row: inspectionRow,
                 column: inspectionColumn
@@ -1618,7 +1626,6 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
                 strokeWidth={1}
                 vectorEffect="non-scaling-stroke"
                 onMouseDown={isFocusedView ? openInspectionCell : undefined}
-                onClick={isFocusedView ? openInspectionCell : undefined}
                 style={isFocusedView ? { pointerEvents: "auto", cursor: "pointer" } : undefined}
               />
               {isActiveInspectionCell ? (
@@ -1854,7 +1861,7 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
           </div>
         </section>
 
-        {isChipFocusView && !isInspectionPanelOpen ? (
+        {isChipFocusView ? (
           <aside className="panel wafer-params-panel">
                 {isPostDiceMode ? (
               activeChip && activeChipCode && activeChipExpandedName ? (
@@ -1885,46 +1892,48 @@ export function WaferCutVisualizer({ waferStateName, wafers = [] }: WaferCutVisu
           </aside>
         ) : null}
         </div>
-        {isChipFocusView && isInspectionPanelOpen && activeChipCode && activeChipExpandedName && activeWaferDatabaseId && activeProjectId ? (
+        {isChipFocusView && isInspectionPanelOpen && activeChipCode && activeChipExpandedName ? (
           <div className="wafer-inspection-stack">
             <section className="panel wafer-inspection-workspace">
               {renderActiveInspectionPolingSummary()}
-              <DieInspectionMap
-                key={`${activeWaferDatabaseId}:${activeChipCode}:${activeChipInspectionRow}:${activeChipInspectionColumn}`}
-                projectId={activeProjectId}
-                waferId={activeWaferDatabaseId}
-                dieCode={activeChipCode}
-                dieName={activeChipExpandedName}
-                row={activeChipInspectionRow}
-                column={activeChipInspectionColumn}
-                hue={activeInspectionHue}
-                preloadedInspections={activeInspectionRecords}
-                onInspectionsChange={(updatedInspections) => {
-                  setInspectionCellState((current) => {
-                    if (current.scope !== activeInspectionCellScope) {
-                      return current;
-                    }
+              {activeWaferDatabaseId && activeProjectId ? (
+                <DieInspectionMap
+                  key={`${activeWaferDatabaseId}:${activeChipCode}:${activeChipInspectionRow}:${activeChipInspectionColumn}`}
+                  projectId={activeProjectId}
+                  waferId={activeWaferDatabaseId}
+                  dieCode={activeChipCode}
+                  dieName={activeChipExpandedName}
+                  row={activeChipInspectionRow}
+                  column={activeChipInspectionColumn}
+                  hue={activeInspectionHue}
+                  preloadedInspections={activeInspectionRecords}
+                  onInspectionsChange={(updatedInspections) => {
+                    setInspectionCellState((current) => {
+                      if (current.scope !== activeInspectionCellScope) {
+                        return current;
+                      }
 
-                    const nextCells = { ...current.cells };
-                    const nextInspectionsByCell = {
-                      ...current.inspectionsByCell,
-                      [activeInspectionCellKey]: updatedInspections
-                    };
+                      const nextCells = { ...current.cells };
+                      const nextInspectionsByCell = {
+                        ...current.inspectionsByCell,
+                        [activeInspectionCellKey]: updatedInspections
+                      };
 
-                    if (updatedInspections.length > 0) {
-                      nextCells[activeInspectionCellKey] = true;
-                    } else {
-                      delete nextCells[activeInspectionCellKey];
-                    }
+                      if (updatedInspections.length > 0) {
+                        nextCells[activeInspectionCellKey] = true;
+                      } else {
+                        delete nextCells[activeInspectionCellKey];
+                      }
 
-                    return {
-                      ...current,
-                      cells: nextCells,
-                      inspectionsByCell: nextInspectionsByCell
-                    };
-                  });
-                }}
-              />
+                      return {
+                        ...current,
+                        cells: nextCells,
+                        inspectionsByCell: nextInspectionsByCell
+                      };
+                    });
+                  }}
+                />
+              ) : null}
             </section>
           </div>
         ) : isChipFocusView ? renderPolingParameterSheet() : null}
