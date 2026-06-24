@@ -422,6 +422,24 @@ textarea {
   gap: 10px;
 }
 
+.flow-map-summary {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.flow-map-summary strong {
+  font-size: 14px;
+}
+
+.flow-map-summary span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .flow-map-help {
   margin: 0;
   color: var(--muted);
@@ -436,8 +454,15 @@ textarea {
 
 .flow-map-actions {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.flow-icon-button {
+  width: 38px;
+  padding-right: 0;
+  padding-left: 0;
 }
 
 .flow-map-zoom {
@@ -449,15 +474,16 @@ textarea {
 }
 
 .flow-map-frame {
+  position: relative;
   width: 100%;
-  height: 560px;
+  height: clamp(680px, 72vh, 860px);
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--panel-soft);
   padding: 12px;
   box-shadow: var(--shadow);
-  cursor: grab;
+  cursor: crosshair;
   touch-action: none;
   overscroll-behavior: contain;
 }
@@ -469,18 +495,76 @@ textarea {
 .flow-map-canvas {
   display: block;
   min-width: 100%;
-  min-height: 560px;
+  min-height: 820px;
+}
+
+.flow-map-canvas--editable {
+  border-radius: 10px;
+}
+
+.flow-map-hit-area {
+  fill: transparent;
+}
+
+.flow-snap-guide {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 6;
+  opacity: 0.72;
+  pointer-events: none;
 }
 
 .flow-node-card {
   fill: var(--panel);
   stroke: var(--border);
   stroke-width: 1;
+  filter: drop-shadow(0 8px 18px rgb(38 55 70 / 0.08));
 }
 
-.flow-node--start .flow-node-card,
+.flow-node--start .flow-node-card {
+  fill: #fb923c;
+  stroke: #ea580c;
+}
+
 .flow-node--end .flow-node-card {
-  fill: var(--panel-soft);
+  fill: #fdba74;
+  stroke: #fb923c;
+}
+
+.flow-node {
+  cursor: grab;
+}
+
+.flow-node--dragging {
+  cursor: grabbing;
+}
+
+.flow-node--dragging .flow-node-card {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.flow-node--connecting {
+  cursor: crosshair;
+}
+
+.flow-node--connecting .flow-node-card {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.flow-node-port {
+  fill: var(--accent);
+  stroke: var(--panel);
+  stroke-width: 2;
+}
+
+.flow-node-port-hit {
+  cursor: grab;
+}
+
+.flow-node-port-target {
+  fill: transparent;
 }
 
 .flow-node-title {
@@ -517,6 +601,70 @@ textarea {
 .flow-edge--loop,
 .flow-edge--return {
   stroke-dasharray: 8 5;
+}
+
+.flow-edge--draft {
+  stroke: var(--accent);
+  stroke-dasharray: 6 5;
+  opacity: 0.95;
+}
+
+.flow-role-menu {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  min-width: 164px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.flow-role-menu button {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.flow-role-menu button:last-child {
+  border-bottom: 0;
+}
+
+.flow-role-menu button:hover,
+.flow-role-menu button:focus-visible {
+  background: var(--panel-soft);
+  outline: none;
+}
+
+.flow-role-menu-danger {
+  border-top: 1px solid var(--border);
+}
+
+.flow-empty-state circle {
+  fill: var(--panel);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.flow-empty-state path {
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.flow-empty-state text {
+  fill: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-anchor: middle;
 }
 
 .flow-token {

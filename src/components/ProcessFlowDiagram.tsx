@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent, PointerEvent } from "react";
 import type { StepStatus } from "@/types/database";
 
 type WaferPin = {
@@ -19,7 +19,9 @@ type DiagramStep = {
   wafers: WaferPin[];
 };
 
-type DiagramNode = {
+type FlowNodeRole = "normal" | "start" | "end";
+
+type FlowNode = {
   id: string;
   label: string;
   subLabel: string;
@@ -27,102 +29,984 @@ type DiagramNode = {
   y: number;
   width: number;
   height: number;
-  wafers: WaferPin[];
-  type: "normal" | "start" | "end";
-  lane: number;
+  role: FlowNodeRole;
+  order: number;
 };
 
-type DiagramEdge = {
+type FlowEdge = {
+  id: string;
   from: string;
   to: string;
-  label?: string;
-  kind: "flow" | "loop" | "return";
+  kind: "flow" | "return";
 };
 
-function formatWaferLabel(waferCode: string, dieLabel: string | null) {
-  return dieLabel ? `${waferCode} • ${dieLabel}` : waferCode;
+type ConnectionDraft = {
+  from: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  hasMoved: boolean;
+};
+
+type NodeDrag = {
+  nodeId: string;
+  pointerId: number;
+  offsetX: number;
+  offsetY: number;
+};
+
+type SnapGuide = {
+  id: string;
+  orientation: "horizontal" | "vertical";
+  value: number;
+  start: number;
+  end: number;
+};
+
+type RoleMenu = {
+  nodeId: string;
+  paneX: number;
+  paneY: number;
+};
+
+type ScenePoint = {
+  x: number;
+  y: number;
+};
+
+type PanePoint = {
+  paneX: number;
+  paneY: number;
+};
+
+type ZoomAnchor = {
+  paneX: number;
+  paneY: number;
+  sceneX: number;
+  sceneY: number;
+};
+
+const NODE_WIDTH = 276;
+const NODE_HEIGHT = 134;
+const SCENE_WIDTH = 2200;
+const SCENE_HEIGHT = 1600;
+const MIN_SCALE = 0.8;
+const MAX_SCALE = 2.6;
+const BUTTON_ZOOM_STEP = 0.25;
+const WHEEL_ZOOM_STEP = 0.18;
+const SNAP_THRESHOLD = 16;
+const LAYOUT_CENTER_X = 520;
+const LAYOUT_TOP_Y = 96;
+const LAYOUT_GAP_Y = 250;
+const LAYOUT_LANE_GAP_X = 380;
+const LAYOUT_LOOP_GAP_X = 180;
+const LAYOUT_LOOP_RADIUS_X = 250;
+const LAYOUT_LOOP_RADIUS_Y = 170;
+const EDGE_CURVE_OFFSET = 48;
+const EDGE_NODE_CLEARANCE = 10;
+
+function clampScale(nextScale: number) {
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(nextScale.toFixed(2))));
 }
 
-function statusTokenClass(status: StepStatus | null) {
-  if (status === "running") {
-    return "status-token--running";
+function makeNodePath(edge: FlowEdge, from: FlowNode, to: FlowNode, edges: FlowEdge[], nodes: FlowNode[]) {
+  const fromCenter = getNodeCenter(from);
+  const toCenter = getNodeCenter(to);
+  const directPath = makeStraightEdgePath(from, to);
+
+  if (hasReciprocalEdge(edge, edges)) {
+    return makeOffsetEdgePath(from, to, from.order <= to.order ? -EDGE_CURVE_OFFSET : EDGE_CURVE_OFFSET);
   }
 
-  if (status === "queued") {
-    return "status-token--queued";
+  if (!edgeIntersectsAnyNode(from, to, nodes)) {
+    return directPath;
   }
 
-  if (status === "failed" || status === "blocked") {
-    return "status-token--failed";
+  if (toCenter.y < fromCenter.y - 1) {
+    return makeReturnEdgePath(from, to, nodes);
   }
 
-  return "status-token--done";
+  return directPath;
 }
 
-function ProcessChip({ pin, index, active }: { pin: WaferPin; index: number; active: boolean }) {
+function makeStraightEdgePath(from: FlowNode, to: FlowNode) {
+  const fromPoint = getNodeBoundaryPoint(from, getNodeCenter(to));
+  const toPoint = getNodeBoundaryPoint(to, getNodeCenter(from));
+
+  return `M ${fromPoint.x} ${fromPoint.y} L ${toPoint.x} ${toPoint.y}`;
+}
+
+function hasReciprocalEdge(edge: FlowEdge, edges: FlowEdge[]) {
+  return edges.some((candidate) => candidate.from === edge.to && candidate.to === edge.from);
+}
+
+function isReturnEdge(edge: FlowEdge, from: FlowNode, to: FlowNode, edges: FlowEdge[]) {
+  if (hasReciprocalEdge(edge, edges)) {
+    return from.order > to.order;
+  }
+
+  return getNodeCenter(to).y < getNodeCenter(from).y - 1;
+}
+
+function getNodeCenter(node: FlowNode) {
+  return {
+    x: node.x + node.width / 2,
+    y: node.y + node.height / 2
+  };
+}
+
+function getNodeBoundaryPoint(node: FlowNode, target: { x: number; y: number }) {
+  const center = getNodeCenter(node);
+  const dx = target.x - center.x;
+  const dy = target.y - center.y;
+
+  if (dx === 0 && dy === 0) {
+    return { x: center.x, y: center.y };
+  }
+
+  const halfWidth = node.width / 2;
+  const halfHeight = node.height / 2;
+  const xScale = dx === 0 ? Number.POSITIVE_INFINITY : halfWidth / Math.abs(dx);
+  const yScale = dy === 0 ? Number.POSITIVE_INFINITY : halfHeight / Math.abs(dy);
+  const scale = Math.min(xScale, yScale);
+
+  return {
+    x: Math.round(center.x + dx * scale),
+    y: Math.round(center.y + dy * scale)
+  };
+}
+
+function getClosestBoundaryPoints(from: FlowNode, to: FlowNode) {
+  const fromCenter = getNodeCenter(from);
+  const toCenter = getNodeCenter(to);
+
+  return {
+    fromPoint: getNodeBoundaryPoint(from, toCenter),
+    toPoint: getNodeBoundaryPoint(to, fromCenter)
+  };
+}
+
+function makeDraftPath(from: FlowNode, target: { x: number; y: number }) {
+  const fromPoint = getNodeBoundaryPoint(from, target);
+  return `M ${fromPoint.x} ${fromPoint.y} L ${target.x} ${target.y}`;
+}
+
+function makeOffsetEdgePath(from: FlowNode, to: FlowNode, offset: number) {
+  const fromCenter = getNodeCenter(from);
+  const toCenter = getNodeCenter(to);
+  const dx = toCenter.x - fromCenter.x;
+  const dy = toCenter.y - fromCenter.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const normalX = -dy / length;
+  const normalY = dx / length;
+  const { fromPoint, toPoint } = getClosestBoundaryPoints(from, to);
+  const control1 = {
+    x: Math.round(fromPoint.x + normalX * offset + dx * 0.18),
+    y: Math.round(fromPoint.y + normalY * offset + dy * 0.18)
+  };
+  const control2 = {
+    x: Math.round(toPoint.x + normalX * offset - dx * 0.18),
+    y: Math.round(toPoint.y + normalY * offset - dy * 0.18)
+  };
+
+  return `M ${fromPoint.x} ${fromPoint.y} C ${control1.x} ${control1.y} ${control2.x} ${control2.y} ${toPoint.x} ${toPoint.y}`;
+}
+
+function makeReturnEdgePath(from: FlowNode, to: FlowNode, nodes: FlowNode[]) {
+  const fromCenter = getNodeCenter(from);
+  const toCenter = getNodeCenter(to);
+  const { fromPoint, toPoint } = getClosestBoundaryPoints(from, to);
+  const dx = toCenter.x - fromCenter.x;
+  const dy = toCenter.y - fromCenter.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const normalX = -dy / length;
+  const normalY = dx / length;
+  const preferredSide = fromCenter.x <= toCenter.x ? -1 : 1;
+  const baseOffset = controlLaneDistance(from, to);
+  const offsets = [preferredSide * baseOffset, -preferredSide * baseOffset, preferredSide * baseOffset * 1.45];
+
+  for (const offset of offsets) {
+    const control1 = {
+      x: Math.round(fromPoint.x + normalX * offset + dx * 0.18),
+      y: Math.round(fromPoint.y + normalY * offset + dy * 0.18)
+    };
+    const control2 = {
+      x: Math.round(toPoint.x + normalX * offset - dx * 0.18),
+      y: Math.round(toPoint.y + normalY * offset - dy * 0.18)
+    };
+
+    if (!curveIntersectsAnyNode(from, to, control1, control2, nodes)) {
+      return `M ${fromPoint.x} ${fromPoint.y} C ${control1.x} ${control1.y} ${control2.x} ${control2.y} ${toPoint.x} ${toPoint.y}`;
+    }
+  }
+
+  const fallbackOffset = offsets[0];
+  const control1 = {
+    x: Math.round(fromPoint.x + normalX * fallbackOffset + dx * 0.18),
+    y: Math.round(fromPoint.y + normalY * fallbackOffset + dy * 0.18)
+  };
+  const control2 = {
+    x: Math.round(toPoint.x + normalX * fallbackOffset - dx * 0.18),
+    y: Math.round(toPoint.y + normalY * fallbackOffset - dy * 0.18)
+  };
+
+  return `M ${fromPoint.x} ${fromPoint.y} C ${control1.x} ${control1.y} ${control2.x} ${control2.y} ${toPoint.x} ${toPoint.y}`;
+}
+
+function controlLaneDistance(from: FlowNode, to: FlowNode) {
+  const verticalDistance = Math.abs(getNodeCenter(from).y - getNodeCenter(to).y);
+  const horizontalDistance = Math.abs(getNodeCenter(from).x - getNodeCenter(to).x);
+  return Math.max(64, Math.min(150, Math.min(verticalDistance, horizontalDistance) * 0.34));
+}
+
+function edgeIntersectsAnyNode(from: FlowNode, to: FlowNode, nodes: FlowNode[]) {
+  const { fromPoint, toPoint } = getClosestBoundaryPoints(from, to);
+
+  return nodes.some((node) => {
+    if (node.id === from.id || node.id === to.id) {
+      return false;
+    }
+
+    return lineIntersectsNode(fromPoint, toPoint, node);
+  });
+}
+
+function curveIntersectsAnyNode(
+  from: FlowNode,
+  to: FlowNode,
+  control1: { x: number; y: number },
+  control2: { x: number; y: number },
+  nodes: FlowNode[]
+) {
+  const { fromPoint, toPoint } = getClosestBoundaryPoints(from, to);
+  let previous = fromPoint;
+
+  for (let step = 1; step <= 12; step += 1) {
+    const t = step / 12;
+    const point = getCubicPoint(fromPoint, control1, control2, toPoint, t);
+    const intersects = nodes.some((node) => {
+      if (node.id === from.id || node.id === to.id) {
+        return false;
+      }
+
+      return lineIntersectsNode(previous, point, node);
+    });
+
+    if (intersects) {
+      return true;
+    }
+
+    previous = point;
+  }
+
+  return false;
+}
+
+function getCubicPoint(
+  start: { x: number; y: number },
+  control1: { x: number; y: number },
+  control2: { x: number; y: number },
+  end: { x: number; y: number },
+  t: number
+) {
+  const inverse = 1 - t;
+
+  return {
+    x: inverse ** 3 * start.x + 3 * inverse ** 2 * t * control1.x + 3 * inverse * t ** 2 * control2.x + t ** 3 * end.x,
+    y: inverse ** 3 * start.y + 3 * inverse ** 2 * t * control1.y + 3 * inverse * t ** 2 * control2.y + t ** 3 * end.y
+  };
+}
+
+function lineIntersectsNode(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  node: FlowNode
+) {
+  const left = node.x - EDGE_NODE_CLEARANCE;
+  const right = node.x + node.width + EDGE_NODE_CLEARANCE;
+  const top = node.y - EDGE_NODE_CLEARANCE;
+  const bottom = node.y + node.height + EDGE_NODE_CLEARANCE;
+
+  if (pointInRect(start, left, right, top, bottom) || pointInRect(end, left, right, top, bottom)) {
+    return true;
+  }
+
   return (
-    <g transform={`translate(${20}, ${56 + index * 18})`}>
-      <rect
-        x="0"
-        y="0"
-        width="186"
-        height="16"
-        rx="8"
-        className="flow-token"
-      />
-      <circle cx="10" cy="8" r="4" className={`status-dot ${statusTokenClass(pin.currentStepStatus)}`} />
-      <text x="20" y="12" className="flow-token-text">
-        {formatWaferLabel(pin.waferCode, pin.dieLabel)}
-      </text>
-      {active ? null : <text x="170" y="12" className="flow-token-status">queued</text>}
-    </g>
+    linesIntersect(start, end, { x: left, y: top }, { x: right, y: top }) ||
+    linesIntersect(start, end, { x: right, y: top }, { x: right, y: bottom }) ||
+    linesIntersect(start, end, { x: right, y: bottom }, { x: left, y: bottom }) ||
+    linesIntersect(start, end, { x: left, y: bottom }, { x: left, y: top })
   );
 }
 
-function makeLinePath(from: DiagramNode, to: DiagramNode, kind: "flow" | "loop" | "return") {
-  const startX = from.x + from.width / 2;
-  const endX = to.x + to.width / 2;
-  const startBottom = from.y + from.height;
-  const startTop = from.y;
-  const endBottom = to.y + to.height;
-  const endTop = to.y;
-
-  if (kind === "flow") {
-    const downDirection = endTop >= startBottom;
-    const startY = downDirection ? startBottom : startTop;
-    const endY = downDirection ? endTop : endBottom;
-    const midY = (startY + endY) / 2;
-
-    if (startX === endX) {
-      return `M ${startX} ${startY} C ${startX} ${midY} ${endX} ${midY} ${endX} ${endY}`;
-    }
-
-    const cornerX = startX + (endX > startX ? 60 : -60);
-    return `M ${startX} ${startY} C ${cornerX} ${startY} ${cornerX} ${endY} ${endX} ${endY}`;
-  }
-
-  if (kind === "loop") {
-    const fromY = startBottom;
-    const toY = endTop;
-    const side = to.x > from.x ? 1 : -1;
-    const sideOffset = 110 * (from.lane + 1);
-    const controlX = startX + sideOffset * side;
-    return `M ${startX} ${fromY} C ${controlX} ${fromY + 55} ${controlX} ${toY - 55} ${endX} ${toY}`;
-  }
-
-  const fromY = startTop;
-  const toY = endTop;
-  const side = to.x > from.x ? -1 : 1;
-  const sideOffset = 130 * (from.lane + 1);
-  const controlX = endX + sideOffset * side;
-  return `M ${startX} ${fromY} C ${controlX} ${fromY - 55} ${controlX} ${toY + 55} ${endX} ${toY}`;
+function pointInRect(point: { x: number; y: number }, left: number, right: number, top: number, bottom: number) {
+  return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
 }
 
-export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
+function linesIntersect(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  c: { x: number; y: number },
+  d: { x: number; y: number }
+) {
+  const direction = (p: { x: number; y: number }, q: { x: number; y: number }, r: { x: number; y: number }) =>
+    (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+
+  const d1 = direction(a, b, c);
+  const d2 = direction(a, b, d);
+  const d3 = direction(c, d, a);
+  const d4 = direction(c, d, b);
+
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+function getSnappedNodePosition(node: FlowNode, proposedX: number, proposedY: number, nodes: FlowNode[]) {
+  let x = proposedX;
+  let y = proposedY;
+  let bestXDelta = SNAP_THRESHOLD + 1;
+  let bestYDelta = SNAP_THRESHOLD + 1;
+  let verticalGuide: SnapGuide | null = null;
+  let horizontalGuide: SnapGuide | null = null;
+
+  const proposedCenterX = proposedX + node.width / 2;
+  const proposedCenterY = proposedY + node.height / 2;
+  const proposedRight = proposedX + node.width;
+  const proposedBottom = proposedY + node.height;
+
+  for (const other of nodes) {
+    if (other.id === node.id) {
+      continue;
+    }
+
+    const otherCenter = getNodeCenter(other);
+    const xCandidates = [
+      { value: otherCenter.x, delta: otherCenter.x - proposedCenterX, alignment: "center" },
+      { value: other.x, delta: other.x - proposedX, alignment: "left" },
+      { value: other.x + other.width, delta: other.x + other.width - proposedRight, alignment: "right" }
+    ];
+    const yCandidates = [
+      { value: otherCenter.y, delta: otherCenter.y - proposedCenterY, alignment: "center" },
+      { value: other.y, delta: other.y - proposedY, alignment: "top" },
+      { value: other.y + other.height, delta: other.y + other.height - proposedBottom, alignment: "bottom" }
+    ];
+
+    for (const candidate of xCandidates) {
+      const distance = Math.abs(candidate.delta);
+      if (distance < bestXDelta) {
+        bestXDelta = distance;
+        x = Math.round(proposedX + candidate.delta);
+        const draggedCenterY = proposedY + node.height / 2;
+        verticalGuide = {
+          id: `v-${other.id}-${candidate.alignment}`,
+          orientation: "vertical",
+          value: Math.round(candidate.value),
+          start: Math.round(Math.min(draggedCenterY, otherCenter.y) - 80),
+          end: Math.round(Math.max(draggedCenterY, otherCenter.y) + 80)
+        };
+      }
+    }
+
+    for (const candidate of yCandidates) {
+      const distance = Math.abs(candidate.delta);
+      if (distance < bestYDelta) {
+        bestYDelta = distance;
+        y = Math.round(proposedY + candidate.delta);
+        const draggedCenterX = proposedX + node.width / 2;
+        horizontalGuide = {
+          id: `h-${other.id}-${candidate.alignment}`,
+          orientation: "horizontal",
+          value: Math.round(candidate.value),
+          start: Math.round(Math.min(draggedCenterX, otherCenter.x) - 100),
+          end: Math.round(Math.max(draggedCenterX, otherCenter.x) + 100)
+        };
+      }
+    }
+  }
+
+  return {
+    x: Math.max(24, x),
+    y: Math.max(24, y),
+    guides: [verticalGuide, horizontalGuide].filter((guide): guide is SnapGuide => Boolean(guide))
+  };
+}
+
+function nodeContainsPoint(node: FlowNode, point: { x: number; y: number }) {
+  return (
+    point.x >= node.x &&
+    point.x <= node.x + node.width &&
+    point.y >= node.y &&
+    point.y <= node.y + node.height
+  );
+}
+
+function orderNodes(nodes: FlowNode[], edges: FlowEdge[]) {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const incoming = new Map(nodes.map((node) => [node.id, 0]));
+  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]));
+
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+      continue;
+    }
+
+    outgoing.get(edge.from)?.push(edge.to);
+    incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
+  }
+
+  const orderedNodes = [...nodes].sort((a, b) => a.order - b.order);
+  const visited = new Set<string>();
+  const sortedIds: string[] = [];
+  const roots = orderedNodes.filter((node) => (incoming.get(node.id) ?? 0) === 0);
+  const starts = roots.length ? roots : orderedNodes.slice(0, 1);
+
+  const visit = (nodeId: string) => {
+    if (visited.has(nodeId)) {
+      return;
+    }
+
+    visited.add(nodeId);
+    sortedIds.push(nodeId);
+
+    for (const nextId of outgoing.get(nodeId) ?? []) {
+      visit(nextId);
+    }
+  };
+
+  starts.forEach((node) => visit(node.id));
+
+  const missing = nodes
+    .filter((node) => !visited.has(node.id))
+    .sort((a, b) => a.order - b.order)
+    .map((node) => node.id);
+
+  return [...sortedIds, ...missing];
+}
+
+function autoLayoutNodes(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  targetCenter: ScenePoint = { x: SCENE_WIDTH / 2, y: SCENE_HEIGHT / 2 }
+) {
+  if (nodes.length === 0) {
+    return nodes;
+  }
+
+  const orderedIds = orderNodes(nodes, edges);
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const components = buildLayoutComponents(nodes, edges, orderedIds);
+  const componentByNodeId = new Map<string, string>();
+  const componentById = new Map(components.map((component) => [component.id, component]));
+  const componentRank = new Map(components.map((component) => [component.id, 0]));
+  const incomingCount = new Map(components.map((component) => [component.id, 0]));
+  const outgoing = new Map(components.map((component) => [component.id, [] as string[]]));
+
+  for (const component of components) {
+    for (const nodeId of component.nodeIds) {
+      componentByNodeId.set(nodeId, component.id);
+    }
+  }
+
+  for (const edge of edges) {
+    const fromComponentId = componentByNodeId.get(edge.from);
+    const toComponentId = componentByNodeId.get(edge.to);
+
+    if (!fromComponentId || !toComponentId || fromComponentId === toComponentId) {
+      continue;
+    }
+
+    const nextComponents = outgoing.get(fromComponentId);
+    if (nextComponents && !nextComponents.includes(toComponentId)) {
+      nextComponents.push(toComponentId);
+      incomingCount.set(toComponentId, (incomingCount.get(toComponentId) ?? 0) + 1);
+    }
+  }
+
+  const explicitStartComponentIds = components
+    .filter((component) => component.nodeIds.some((nodeId) => nodeById.get(nodeId)?.role === "start"))
+    .map((component) => component.id);
+  const rootComponentIds = components
+    .filter((component) => (incomingCount.get(component.id) ?? 0) === 0)
+    .map((component) => component.id);
+  const seedIds = explicitStartComponentIds.length
+    ? explicitStartComponentIds
+    : rootComponentIds.length
+      ? rootComponentIds
+      : components.slice(0, 1).map((component) => component.id);
+  const visited = new Set<string>();
+
+  const assignRanks = (componentId: string, rank: number, activePath: Set<string>) => {
+    const currentRank = componentRank.get(componentId) ?? 0;
+    componentRank.set(componentId, Math.max(currentRank, rank));
+
+    if (activePath.has(componentId)) {
+      return;
+    }
+
+    const nextPath = new Set(activePath);
+    nextPath.add(componentId);
+    visited.add(componentId);
+
+    const nextIds = (outgoing.get(componentId) ?? []).sort(
+      (a, b) => (componentById.get(a)?.order ?? 0) - (componentById.get(b)?.order ?? 0)
+    );
+
+    for (const nextId of nextIds) {
+      if (nextPath.has(nextId)) {
+        continue;
+      }
+
+      assignRanks(nextId, rank + 1, nextPath);
+    }
+  };
+
+  seedIds.forEach((id) => assignRanks(id, 0, new Set()));
+
+  let disconnectedRank = 0;
+  for (const component of components) {
+    if (visited.has(component.id)) {
+      disconnectedRank = Math.max(disconnectedRank, componentRank.get(component.id) ?? 0);
+      continue;
+    }
+
+    assignRanks(component.id, disconnectedRank + 1, new Set());
+    disconnectedRank = Math.max(disconnectedRank, componentRank.get(component.id) ?? 0);
+  }
+
+  normalizeComponentRanks(components, componentRank);
+
+  const lanesByRank = new Map<number, LayoutComponent[]>();
+  for (const component of components) {
+    const rank = componentRank.get(component.id) ?? 0;
+    const current = lanesByRank.get(rank);
+    if (current) {
+      current.push(component);
+    } else {
+      lanesByRank.set(rank, [component]);
+    }
+  }
+
+  const positioned = new Map<string, FlowNode>();
+  let rowY = LAYOUT_TOP_Y;
+
+  for (const rank of [...lanesByRank.keys()].sort((a, b) => a - b)) {
+    const rowComponents = (lanesByRank.get(rank) ?? []).sort(compareLayoutComponents);
+    const rowHeight = Math.max(...rowComponents.map((component) => component.height));
+    const rowWidth = rowComponents.reduce((width, component) => width + component.width, 0) +
+      Math.max(0, rowComponents.length - 1) * LAYOUT_LANE_GAP_X;
+    let componentX = Math.max(96, Math.round(LAYOUT_CENTER_X - rowWidth / 2));
+
+    for (const component of rowComponents) {
+      const componentY = Math.round(rowY + (rowHeight - component.height) / 2);
+      positionComponentNodes(component, nodeById, edges, componentX, componentY, positioned);
+      componentX += component.width + LAYOUT_LANE_GAP_X;
+    }
+
+    rowY += rowHeight + LAYOUT_GAP_Y;
+  }
+
+  centerPositionedNodes(positioned, targetCenter);
+
+  return nodes.map((node) => positioned.get(node.id) ?? node);
+}
+
+function centerPositionedNodes(positioned: Map<string, FlowNode>, targetCenter: ScenePoint) {
+  const positionedNodes = [...positioned.values()];
+  if (positionedNodes.length === 0) {
+    return;
+  }
+
+  const minX = Math.min(...positionedNodes.map((node) => node.x));
+  const maxX = Math.max(...positionedNodes.map((node) => node.x + node.width));
+  const minY = Math.min(...positionedNodes.map((node) => node.y));
+  const maxY = Math.max(...positionedNodes.map((node) => node.y + node.height));
+  const currentCenterX = (minX + maxX) / 2;
+  const currentCenterY = (minY + maxY) / 2;
+  let dx = Math.round(targetCenter.x - currentCenterX);
+  let dy = Math.round(targetCenter.y - currentCenterY);
+
+  if (minX + dx < 24) {
+    dx = 24 - minX;
+  }
+
+  if (minY + dy < 24) {
+    dy = 24 - minY;
+  }
+
+  for (const [id, node] of positioned) {
+    positioned.set(id, {
+      ...node,
+      x: Math.round(node.x + dx),
+      y: Math.round(node.y + dy)
+    });
+  }
+}
+
+type LayoutComponent = {
+  id: string;
+  nodeIds: string[];
+  order: number;
+  width: number;
+  height: number;
+  hasStart: boolean;
+  hasEnd: boolean;
+};
+
+function buildLayoutComponents(nodes: FlowNode[], edges: FlowEdge[], orderedIds: string[]): LayoutComponent[] {
+  const orderIndexById = new Map(orderedIds.map((id, index) => [id, index]));
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const stronglyConnected = getStronglyConnectedComponents(nodes, edges, orderIndexById);
+
+  return stronglyConnected
+    .map((nodeIds, index) => {
+      const sortedNodeIds = [...nodeIds].sort((a, b) =>
+        compareNodeIdsForLayout(a, b, nodeById, orderIndexById)
+      );
+      const hasStart = sortedNodeIds.some((id) => nodeById.get(id)?.role === "start");
+      const hasEnd = sortedNodeIds.some((id) => nodeById.get(id)?.role === "end");
+      const dimensions = getComponentDimensions(sortedNodeIds.length, hasStart || hasEnd);
+
+      return {
+        id: `component-${index}`,
+        nodeIds: sortedNodeIds,
+        order: Math.min(...sortedNodeIds.map((id) => orderIndexById.get(id) ?? 0)),
+        width: dimensions.width,
+        height: dimensions.height,
+        hasStart,
+        hasEnd
+      };
+    })
+    .sort(compareLayoutComponents);
+}
+
+function normalizeComponentRanks(components: LayoutComponent[], componentRank: Map<string, number>) {
+  const startComponents = components.filter((component) => component.hasStart);
+  const endComponents = components.filter((component) => component.hasEnd);
+
+  for (const component of startComponents) {
+    componentRank.set(component.id, 0);
+  }
+
+  const maxNonEndRank = components
+    .filter((component) => !component.hasEnd)
+    .reduce((maxRank, component) => Math.max(maxRank, componentRank.get(component.id) ?? 0), 0);
+
+  for (const component of endComponents) {
+    if (component.hasStart) {
+      continue;
+    }
+
+    componentRank.set(component.id, maxNonEndRank + 1);
+  }
+}
+
+function compareLayoutComponents(a: LayoutComponent, b: LayoutComponent) {
+  const roleDelta = getComponentRoleSortWeight(a) - getComponentRoleSortWeight(b);
+  if (roleDelta !== 0) {
+    return roleDelta;
+  }
+
+  return a.order - b.order;
+}
+
+function getComponentRoleSortWeight(component: LayoutComponent) {
+  if (component.hasStart) return -1;
+  if (component.hasEnd) return 1;
+  return 0;
+}
+
+function compareNodeIdsForLayout(
+  a: string,
+  b: string,
+  nodeById: Map<string, FlowNode>,
+  orderIndexById: Map<string, number>
+) {
+  const roleDelta = getNodeRoleSortWeight(nodeById.get(a)?.role ?? "normal") -
+    getNodeRoleSortWeight(nodeById.get(b)?.role ?? "normal");
+  if (roleDelta !== 0) {
+    return roleDelta;
+  }
+
+  return (orderIndexById.get(a) ?? 0) - (orderIndexById.get(b) ?? 0);
+}
+
+function getNodeRoleSortWeight(role: FlowNodeRole) {
+  if (role === "start") return -1;
+  if (role === "end") return 1;
+  return 0;
+}
+
+function getStronglyConnectedComponents(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  orderIndexById: Map<string, number>
+) {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]));
+
+  for (const edge of edges) {
+    if (nodeIds.has(edge.from) && nodeIds.has(edge.to)) {
+      outgoing.get(edge.from)?.push(edge.to);
+    }
+  }
+
+  for (const nextIds of outgoing.values()) {
+    nextIds.sort((a, b) => (orderIndexById.get(a) ?? 0) - (orderIndexById.get(b) ?? 0));
+  }
+
+  let index = 0;
+  const stack: string[] = [];
+  const stackSet = new Set<string>();
+  const indexById = new Map<string, number>();
+  const lowLinkById = new Map<string, number>();
+  const components: string[][] = [];
+
+  const visit = (nodeId: string) => {
+    indexById.set(nodeId, index);
+    lowLinkById.set(nodeId, index);
+    index += 1;
+    stack.push(nodeId);
+    stackSet.add(nodeId);
+
+    for (const nextId of outgoing.get(nodeId) ?? []) {
+      if (!indexById.has(nextId)) {
+        visit(nextId);
+        lowLinkById.set(nodeId, Math.min(lowLinkById.get(nodeId) ?? 0, lowLinkById.get(nextId) ?? 0));
+      } else if (stackSet.has(nextId)) {
+        lowLinkById.set(nodeId, Math.min(lowLinkById.get(nodeId) ?? 0, indexById.get(nextId) ?? 0));
+      }
+    }
+
+    if (lowLinkById.get(nodeId) !== indexById.get(nodeId)) {
+      return;
+    }
+
+    const component: string[] = [];
+    let currentId: string | undefined;
+    do {
+      currentId = stack.pop();
+      if (currentId) {
+        stackSet.delete(currentId);
+        component.push(currentId);
+      }
+    } while (currentId && currentId !== nodeId);
+
+    components.push(component);
+  };
+
+  for (const node of [...nodes].sort((a, b) => a.order - b.order)) {
+    if (!indexById.has(node.id)) {
+      visit(node.id);
+    }
+  }
+
+  return components;
+}
+
+function getComponentDimensions(nodeCount: number, hasPinnedRole: boolean) {
+  if (nodeCount <= 1) {
+    return { width: NODE_WIDTH, height: NODE_HEIGHT };
+  }
+
+  if (nodeCount === 2 && !hasPinnedRole) {
+    return {
+      width: NODE_WIDTH * 2 + LAYOUT_LOOP_GAP_X,
+      height: NODE_HEIGHT
+    };
+  }
+
+  return {
+    width: LAYOUT_LOOP_RADIUS_X * 2 + NODE_WIDTH,
+    height: LAYOUT_LOOP_RADIUS_Y * 2 + NODE_HEIGHT
+  };
+}
+
+function positionComponentNodes(
+  component: LayoutComponent,
+  nodeById: Map<string, FlowNode>,
+  edges: FlowEdge[],
+  componentX: number,
+  componentY: number,
+  positioned: Map<string, FlowNode>
+) {
+  if (component.nodeIds.length === 1) {
+    const node = nodeById.get(component.nodeIds[0]);
+    if (node) {
+      positioned.set(node.id, { ...node, x: Math.round(componentX), y: Math.round(componentY) });
+    }
+    return;
+  }
+
+  if (component.nodeIds.length === 2 && !component.hasStart && !component.hasEnd) {
+    component.nodeIds.forEach((id, index) => {
+      const node = nodeById.get(id);
+      if (!node) {
+        return;
+      }
+
+      positioned.set(id, {
+        ...node,
+        x: Math.round(componentX + index * (NODE_WIDTH + LAYOUT_LOOP_GAP_X)),
+        y: Math.round(componentY)
+      });
+    });
+    return;
+  }
+
+  const pinnedPositions = getPinnedComponentPositions(component, nodeById);
+  const centerX = componentX + component.width / 2;
+  const centerY = componentY + component.height / 2;
+  const placementNodeIds = getComponentPlacementNodeIds(component, nodeById, edges);
+  const freeNodeIds = placementNodeIds.filter((id) => !pinnedPositions.has(id));
+
+  for (const [id, point] of pinnedPositions) {
+    const node = nodeById.get(id);
+    if (!node) {
+      continue;
+    }
+
+    positioned.set(id, {
+      ...node,
+      x: Math.round(componentX + point.x - NODE_WIDTH / 2),
+      y: Math.round(componentY + point.y - NODE_HEIGHT / 2)
+    });
+  }
+
+  freeNodeIds.forEach((id, index) => {
+    const node = nodeById.get(id);
+    if (!node) {
+      return;
+    }
+
+    if (component.hasStart || component.hasEnd) {
+      const point = getPinnedRoleFreeNodePoint(component, index, freeNodeIds.length);
+      positioned.set(id, {
+        ...node,
+        x: Math.round(componentX + point.x - NODE_WIDTH / 2),
+        y: Math.round(componentY + point.y - NODE_HEIGHT / 2)
+      });
+      return;
+    }
+
+    const angle = getFreeNodeAngle(index, freeNodeIds.length);
+    positioned.set(id, {
+      ...node,
+      x: Math.round(centerX + Math.cos(angle) * LAYOUT_LOOP_RADIUS_X - NODE_WIDTH / 2),
+      y: Math.round(centerY + Math.sin(angle) * LAYOUT_LOOP_RADIUS_Y - NODE_HEIGHT / 2)
+    });
+  });
+}
+
+function getPinnedComponentPositions(component: LayoutComponent, nodeById: Map<string, FlowNode>) {
+  const pinned = new Map<string, { x: number; y: number }>();
+  const centerX = component.width / 2;
+
+  const startId = component.nodeIds.find((id) => nodeById.get(id)?.role === "start");
+  if (startId) {
+    pinned.set(startId, { x: centerX, y: NODE_HEIGHT / 2 });
+  }
+
+  const endId = component.nodeIds.find((id) => nodeById.get(id)?.role === "end");
+  if (endId && endId !== startId) {
+    pinned.set(endId, { x: centerX, y: component.height - NODE_HEIGHT / 2 });
+  }
+
+  return pinned;
+}
+
+function getComponentPlacementNodeIds(component: LayoutComponent, nodeById: Map<string, FlowNode>, edges: FlowEdge[]) {
+  const componentNodeIds = new Set(component.nodeIds);
+  const startId = component.nodeIds.find((id) => nodeById.get(id)?.role === "start") ?? component.nodeIds[0];
+
+  if (!startId || component.nodeIds.length < 2) {
+    return component.nodeIds;
+  }
+
+  const componentOrder = new Map(component.nodeIds.map((id, index) => [id, index]));
+  const outgoing = new Map(component.nodeIds.map((id) => [id, [] as string[]]));
+
+  for (const edge of edges) {
+    if (componentNodeIds.has(edge.from) && componentNodeIds.has(edge.to)) {
+      outgoing.get(edge.from)?.push(edge.to);
+    }
+  }
+
+  for (const nextIds of outgoing.values()) {
+    nextIds.sort((a, b) => (componentOrder.get(a) ?? 0) - (componentOrder.get(b) ?? 0));
+  }
+
+  const ordered = [startId];
+  const visited = new Set(ordered);
+  let currentId = startId;
+
+  while (true) {
+    const nextId = (outgoing.get(currentId) ?? []).find((id) => !visited.has(id));
+    if (!nextId) {
+      break;
+    }
+
+    ordered.push(nextId);
+    visited.add(nextId);
+    currentId = nextId;
+  }
+
+  for (const id of component.nodeIds) {
+    if (!visited.has(id)) {
+      ordered.push(id);
+    }
+  }
+
+  return ordered;
+}
+
+function getPinnedRoleFreeNodePoint(component: LayoutComponent, index: number, count: number) {
+  const side = index % 2 === 0 ? -1 : 1;
+  const sideIndex = Math.floor(index / 2);
+  const sideCount = Math.ceil(count / 2);
+  const hasBothRoles = component.hasStart && component.hasEnd;
+  const topPadding = component.hasStart ? NODE_HEIGHT : NODE_HEIGHT / 2;
+  const bottomPadding = component.hasEnd ? NODE_HEIGHT : NODE_HEIGHT / 2;
+  const usableHeight = Math.max(NODE_HEIGHT, component.height - topPadding - bottomPadding);
+  const yGap = hasBothRoles
+    ? usableHeight / Math.max(1, sideCount + 1)
+    : usableHeight / Math.max(1, sideCount);
+
+  return {
+    x: component.width / 2 + side * LAYOUT_LOOP_RADIUS_X,
+    y: topPadding + yGap * (sideIndex + (hasBothRoles ? 1 : 0.5))
+  };
+}
+
+function getFreeNodeAngle(index: number, count: number) {
+  if (count <= 1) {
+    return Math.PI;
+  }
+
+  return -Math.PI / 2 + (index * Math.PI * 2) / count;
+}
+
+function describeRole(role: FlowNodeRole) {
+  if (role === "start") return "Start";
+  if (role === "end") return "End";
+  return "Step";
+}
+
+export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) {
+  void _steps;
+
   const [scale, setScale] = useState(1);
+  const [nodes, setNodes] = useState<FlowNode[]>([]);
+  const [edges, setEdges] = useState<FlowEdge[]>([]);
+  const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
+  const [nodeDrag, setNodeDrag] = useState<NodeDrag | null>(null);
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
+  const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const scaleRef = useRef(1);
   const pinchBaseScaleRef = useRef(1);
+  const nextNodeNumberRef = useRef(1);
+  const pendingZoomAnchorRef = useRef<ZoomAnchor | null>(null);
   const panStateRef = useRef<{
     startX: number;
     startY: number;
@@ -130,201 +1014,149 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     startScrollTop: number;
   } | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
-  const sortedSteps = useMemo(
-    () => [...steps].sort((a, b) => a.step_order - b.step_order),
-    [steps]
-  );
+  const sceneBounds = useMemo(() => {
+    const maxNodeX = nodes.length ? Math.max(...nodes.map((node) => node.x + node.width)) + 160 : SCENE_WIDTH;
+    const maxNodeY = nodes.length ? Math.max(...nodes.map((node) => node.y + node.height)) + 160 : SCENE_HEIGHT;
+    return {
+      width: Math.max(SCENE_WIDTH, maxNodeX),
+      height: Math.max(SCENE_HEIGHT, maxNodeY)
+    };
+  }, [nodes]);
 
-  const graph = useMemo(() => {
-    const nodeWidth = 232;
-    const nodeHeight = 112;
-    const gapY = 170;
-    const laneSpacing = 290;
-    const nodeY = 72;
-    const startX = 360;
+  const s = clampScale(scale);
+  const scaledWidth = Math.round(sceneBounds.width * s);
+  const scaledHeight = Math.round(sceneBounds.height * s);
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
-    const sanitized = sortedSteps.map((step, index) => ({
-      id: step.id,
-      name: step.name,
-      subLabel: step.process_area,
-      wafers: step.wafers,
-      order: index
-    }));
-
-    const hasSteps = sanitized.length > 0;
-
-    const loopLaneByStepId = new Map<string, number>();
-    let loopLaneCounter = 1;
-
-    sortedSteps.forEach((step, index) => {
-      const nextStep = sortedSteps[index + 1];
-      if (!nextStep) {
-        return;
-      }
-
-      const isInspectionStep = step.name.toLowerCase().includes("inspection");
-      const nextIsClean = nextStep.name.toLowerCase().includes("clean");
-
-      if (isInspectionStep && nextIsClean && !loopLaneByStepId.has(nextStep.id)) {
-        loopLaneByStepId.set(nextStep.id, loopLaneCounter);
-        loopLaneCounter += 1;
-      }
-    });
-
-    const nodes: DiagramNode[] = [
-      {
-        id: "start",
-        label: "Start",
-        subLabel: "Wafer intake",
-        x: startX,
-        y: nodeY,
-        width: nodeWidth,
-        height: nodeHeight,
-        wafers: [],
-        type: "start" as const,
-        lane: 0
-      },
-      ...sanitized.map((step, index) => {
-        const lane = loopLaneByStepId.get(step.id) ?? 0;
-        const x = startX + lane * laneSpacing;
-        const y = nodeY + (index + 1) * gapY;
-
-        return {
-          id: step.id,
-          label: step.name,
-          subLabel: step.subLabel,
-          x,
-          y,
-          width: nodeWidth,
-          height: nodeHeight,
-          wafers: step.wafers,
-          type: "normal" as const,
-          lane
-        };
-      }),
-      {
-        id: "end",
-        label: "Process end",
-        subLabel: "All dies complete",
-        x: startX,
-        y: nodeY + (sanitized.length + 1) * gapY,
-        width: nodeWidth,
-        height: nodeHeight,
-        wafers: [],
-        type: "end" as const,
-        lane: 0
-      }
-    ];
-
-    const normalEdges: DiagramEdge[] = [];
-    for (let i = 0; i < nodes.length - 1; i += 1) {
-      normalEdges.push({
-        from: nodes[i].id,
-        to: nodes[i + 1].id,
-        kind: "flow"
-      });
+  const getPanePoint = useCallback((clientX?: number, clientY?: number): PanePoint | null => {
+    const frame = frameRef.current;
+    if (!frame) {
+      return null;
     }
 
-    const loopPairs = sortedSteps
-      .map((step, index) => ({ step, index }))
-      .filter(
-        ({ step }) => step.name.toLowerCase().includes("inspection")
-      )
-      .map(({ index }) => {
-        const cleanStep = sortedSteps[index + 1];
-        if (!cleanStep || !cleanStep.name.toLowerCase().includes("clean")) {
-          return null;
-        }
-
-        const nextStep = sortedSteps[index + 2];
-        const nextAfterCleanId = nextStep ? nextStep.id : "end";
-
-        return {
-          inspectStepId: sortedSteps[index].id,
-          cleanStepId: cleanStep.id,
-          nextAfterCleanId
-        };
-      })
-      .filter((pair): pair is NonNullable<{
-        inspectStepId: string;
-        cleanStepId: string;
-        nextAfterCleanId: string;
-      }> => pair !== null);
-
-    // See docs/process-loop-summary.md for canonical loop contract:
-    // inspection failure routes through clean, then back to EBL.
-    let edges = normalEdges;
-    if (loopPairs.length > 0) {
-      for (const pair of loopPairs) {
-        edges = edges.filter(
-          (edge) =>
-            !(edge.from === pair.inspectStepId && edge.to === pair.cleanStepId)
-        );
-      }
-
-      edges = [
-        ...edges,
-        ...loopPairs.map((pair) => ({
-          from: pair.inspectStepId,
-          to: pair.cleanStepId,
-          kind: "loop" as const,
-          label: "Fail"
-        })),
-        ...loopPairs.map((pair) => ({
-          from: pair.cleanStepId,
-          to: pair.inspectStepId,
-          kind: "return" as const,
-          label: "Retry"
-        })),
-        ...loopPairs.map((pair) => ({
-          from: pair.inspectStepId,
-          to: pair.nextAfterCleanId,
-          kind: "flow" as const,
-          label: "Pass"
-        }))
-      ];
+    if (clientX === undefined || clientY === undefined) {
+      return {
+        paneX: frame.clientWidth / 2,
+        paneY: frame.clientHeight / 2
+      };
     }
 
-    const allX = nodes.map((node) => node.x + node.width);
-    const maxX = Math.max(...allX);
-    const maxY = Math.max(...nodes.map((node) => node.y + node.height));
+    const frameRect = frame.getBoundingClientRect();
+    return {
+      paneX: clientX - frameRect.left,
+      paneY: clientY - frameRect.top
+    };
+  }, []);
 
-    const width = hasSteps ? maxX + 240 : 800;
-    const height = Math.max(maxY + 140, nodeY + 860);
+  const getScenePointFromClient = useCallback((clientX: number, clientY: number): ScenePoint => {
+    const svg = svgRef.current;
+    if (!svg) {
+      return { x: 0, y: 0 };
+    }
+
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return { x: 0, y: 0 };
+    }
 
     return {
-      nodes,
-      edges,
-      width,
-      height,
-      hasSteps
+      x: ((clientX - rect.left) / rect.width) * sceneBounds.width,
+      y: ((clientY - rect.top) / rect.height) * sceneBounds.height
     };
-  }, [sortedSteps]);
+  }, [sceneBounds.height, sceneBounds.width]);
 
-  const sceneWidth = graph.width;
-  const sceneHeight = graph.height;
-  const s = Math.min(2.6, Math.max(0.6, scale));
-  const scaledWidth = Math.round(sceneWidth * s);
-  const scaledHeight = Math.round(sceneHeight * s);
+  const getScenePoint = useCallback((event: { clientX: number; clientY: number }) => (
+    getScenePointFromClient(event.clientX, event.clientY)
+  ), [getScenePointFromClient]);
 
-  const zoomIn = () => setScale((value) => Math.min(2.6, value + 0.1));
-  const zoomOut = () => setScale((value) => Math.max(0.6, value - 0.1));
-  const zoomReset = () => setScale(1);
+  const applyScaleAtAnchor = useCallback((
+    nextScale: number,
+    anchor: PanePoint | null = getPanePoint()
+  ) => {
+    const frame = frameRef.current;
+    const currentScale = scaleRef.current;
+    const boundedScale = clampScale(nextScale);
+
+    if (!frame || !anchor || boundedScale === currentScale) {
+      setScale(boundedScale);
+      scaleRef.current = boundedScale;
+      return;
+    }
+
+    pendingZoomAnchorRef.current = {
+      paneX: anchor.paneX,
+      paneY: anchor.paneY,
+      sceneX: (frame.scrollLeft + anchor.paneX) / currentScale,
+      sceneY: (frame.scrollTop + anchor.paneY) / currentScale
+    };
+
+    scaleRef.current = boundedScale;
+    setScale(boundedScale);
+  }, [getPanePoint]);
+
+  const zoomIn = () => applyScaleAtAnchor(scaleRef.current + BUTTON_ZOOM_STEP);
+  const zoomOut = () => applyScaleAtAnchor(scaleRef.current - BUTTON_ZOOM_STEP);
+  const zoomReset = () => applyScaleAtAnchor(1);
+  const getVisibleSceneCenter = () => {
+    const frame = frameRef.current;
+    if (!frame) {
+      return { x: sceneBounds.width / 2, y: sceneBounds.height / 2 };
+    }
+
+    return {
+      x: (frame.scrollLeft + frame.clientWidth / 2) / scaleRef.current,
+      y: (frame.scrollTop + frame.clientHeight / 2) / scaleRef.current
+    };
+  };
+  const organizeCanvas = () => {
+    const targetCenter = getVisibleSceneCenter();
+    setNodes((currentNodes) => autoLayoutNodes(currentNodes, edges, targetCenter));
+  };
+  const clearCanvas = () => {
+    setNodes([]);
+    setEdges([]);
+    setConnectionDraft(null);
+    setNodeDrag(null);
+    setSnapGuides([]);
+    setRoleMenu(null);
+    nextNodeNumberRef.current = 1;
+  };
 
   useEffect(() => {
     scaleRef.current = scale;
   }, [scale]);
 
-  const beginPan = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) {
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    const anchor = pendingZoomAnchorRef.current;
+
+    if (!frame || !anchor) {
       return;
     }
+
+    frame.scrollLeft = anchor.sceneX * scale - anchor.paneX;
+    frame.scrollTop = anchor.sceneY * scale - anchor.paneY;
+    pendingZoomAnchorRef.current = null;
+  }, [scale]);
+
+  const beginPan = (event: PointerEvent<HTMLDivElement>) => {
+    const isMiddleMousePan = event.button === 1;
+    const isModifiedLeftPan = event.button === 0 && event.altKey;
+
+    if ((!isMiddleMousePan && !isModifiedLeftPan) || connectionDraft || nodeDrag) {
+      return;
+    }
+
+    setRoleMenu(null);
 
     const frame = frameRef.current;
     if (!frame) {
       return;
     }
+
+    event.preventDefault();
 
     panStateRef.current = {
       startX: event.clientX,
@@ -337,7 +1169,7 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
   };
 
   const updatePan = (event: PointerEvent<HTMLDivElement>) => {
-    if (!isPanning || !panStateRef.current) {
+    if (!isPanning || !panStateRef.current || connectionDraft || nodeDrag) {
       return;
     }
 
@@ -366,19 +1198,226 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     panStateRef.current = null;
   };
 
-  useEffect(() => {
+  const createNode = (event: MouseEvent<SVGSVGElement>) => {
+    if (event.detail !== 2 || event.button !== 0) {
+      return;
+    }
+
+    const point = getScenePoint(event);
+    const nodeNumber = nextNodeNumberRef.current;
+    nextNodeNumberRef.current += 1;
+    setRoleMenu(null);
+
+    setNodes((currentNodes) => [
+      ...currentNodes,
+      {
+        id: `local-step-${Date.now()}-${nodeNumber}`,
+        label: `Step ${nodeNumber}`,
+        subLabel: "Process step",
+        x: Math.max(24, Math.round(point.x - NODE_WIDTH / 2)),
+        y: Math.max(24, Math.round(point.y - NODE_HEIGHT / 2)),
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        role: "normal",
+        order: currentNodes.length
+      }
+    ]);
+  };
+
+  const beginConnection = (event: PointerEvent<SVGGElement>, nodeId: string) => {
+    if (event.button !== 0 || !event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setRoleMenu(null);
+
+    const point = getScenePoint(event);
+    setConnectionDraft({
+      from: nodeId,
+      pointerId: event.pointerId,
+      startX: point.x,
+      startY: point.y,
+      x: point.x,
+      y: point.y,
+      hasMoved: false
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleNodePointerDown = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
+    if (event.shiftKey) {
+      beginConnection(event, node.id);
+      return;
+    }
+
+    beginNodeDrag(event, node);
+  };
+
+  const beginNodeDrag = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
+    if (event.button !== 0 || connectionDraft) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setRoleMenu(null);
+
+    const point = getScenePoint(event);
+    setNodeDrag({
+      nodeId: node.id,
+      pointerId: event.pointerId,
+      offsetX: point.x - node.x,
+      offsetY: point.y - node.y
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const updateNodeDrag = (event: PointerEvent<SVGGElement>) => {
+    if (!nodeDrag || nodeDrag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const point = getScenePoint(event);
+    const draggedNode = nodes.find((node) => node.id === nodeDrag.nodeId);
+    if (!draggedNode) {
+      setSnapGuides([]);
+      return;
+    }
+
+    const snapped = getSnappedNodePosition(
+      draggedNode,
+      Math.round(point.x - nodeDrag.offsetX),
+      Math.round(point.y - nodeDrag.offsetY),
+      nodes
+    );
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === nodeDrag.nodeId
+          ? {
+              ...node,
+              x: snapped.x,
+              y: snapped.y
+            }
+          : node
+      )
+    );
+    setSnapGuides(snapped.guides);
+  };
+
+  const finishNodeDrag = (event: PointerEvent<SVGGElement>) => {
+    if (!nodeDrag || nodeDrag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    setNodeDrag(null);
+    setSnapGuides([]);
+  };
+
+  const updateConnection = (event: PointerEvent<SVGSVGElement>) => {
+    if (!connectionDraft || connectionDraft.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const point = getScenePoint(event);
+    setConnectionDraft((draft) =>
+      draft
+        ? {
+            ...draft,
+            x: point.x,
+            y: point.y,
+            hasMoved:
+              draft.hasMoved ||
+              Math.abs(point.x - draft.startX) > 6 ||
+              Math.abs(point.y - draft.startY) > 6
+          }
+        : draft
+    );
+  };
+
+  const finishConnection = (event: PointerEvent<SVGSVGElement>) => {
+    if (!connectionDraft || connectionDraft.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const point = getScenePoint(event);
+    const target = nodes.find((node) => node.id !== connectionDraft.from && nodeContainsPoint(node, point));
+
+    if (target && connectionDraft.hasMoved) {
+      setEdges((currentEdges) => {
+        const exists = currentEdges.some((edge) => edge.from === connectionDraft.from && edge.to === target.id);
+        if (exists) {
+          return currentEdges;
+        }
+
+        const nextEdges: FlowEdge[] = [
+          ...currentEdges,
+          {
+            id: `${connectionDraft.from}->${target.id}`,
+            from: connectionDraft.from,
+            to: target.id,
+            kind: "flow"
+          }
+        ];
+
+        return nextEdges;
+      });
+    }
+
+    setConnectionDraft(null);
+  };
+
+  const openRoleMenu = (event: MouseEvent<SVGGElement>, nodeId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+
     const frame = frameRef.current;
     if (!frame) {
       return;
     }
 
-    const clampScale = (nextScale: number) =>
-      Math.min(2.6, Math.max(0.6, Number(nextScale.toFixed(2))));
+    const frameRect = frame.getBoundingClientRect();
+    setRoleMenu({
+      nodeId,
+      paneX: event.clientX - frameRect.left + frame.scrollLeft,
+      paneY: event.clientY - frameRect.top + frame.scrollTop
+    });
+  };
 
-    const applyScale = (nextScale: number) => {
-      const bounded = clampScale(nextScale);
-      setScale((current) => (current === bounded ? current : bounded));
-    };
+  const setNodeRole = (nodeId: string, role: FlowNodeRole) => {
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => {
+        if (node.id === nodeId) {
+          return { ...node, role };
+        }
+
+        if (role !== "normal" && node.role === role) {
+          return { ...node, role: "normal" };
+        }
+
+        return node;
+      })
+    );
+    setRoleMenu(null);
+  };
+
+  const deleteNode = (nodeId: string) => {
+    setNodes((currentNodes) => currentNodes.filter((node) => node.id !== nodeId));
+    setEdges((currentEdges) => currentEdges.filter((edge) => edge.from !== nodeId && edge.to !== nodeId));
+    setConnectionDraft((draft) => (draft?.from === nodeId ? null : draft));
+    setNodeDrag((drag) => (drag?.nodeId === nodeId ? null : drag));
+    setSnapGuides([]);
+    setRoleMenu(null);
+  };
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) {
+      return;
+    }
 
     const handleWheelFallback = (event: globalThis.WheelEvent) => {
       event.preventDefault();
@@ -391,8 +1430,8 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
         return;
       }
 
-      const delta = event.deltaY > 0 ? -0.08 : 0.08;
-      applyScale(scaleRef.current + delta);
+      const delta = event.deltaY > 0 ? -WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
+      applyScaleAtAnchor(scaleRef.current + delta, getPanePoint(event.clientX, event.clientY));
     };
 
     const handleGestureStart = (event: Event) => {
@@ -414,7 +1453,14 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
         return;
       }
 
-      applyScale(pinchBaseScaleRef.current * gestureScale);
+      const clientPoint =
+        "clientX" in event && "clientY" in event
+          ? getPanePoint(
+              (event as Event & { clientX: number }).clientX,
+              (event as Event & { clientY: number }).clientY
+            )
+          : getPanePoint();
+      applyScaleAtAnchor(pinchBaseScaleRef.current * gestureScale, clientPoint);
       event.preventDefault();
       event.stopPropagation();
     };
@@ -435,30 +1481,40 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
       frame.removeEventListener("gesturechange", handleGestureChange);
       frame.removeEventListener("gestureend", handleGestureEnd);
     };
-  }, []);
+  }, [applyScaleAtAnchor, getPanePoint]);
+
+  const draftSourceNode = connectionDraft ? nodeById.get(connectionDraft.from) : null;
+  const draftPath = draftSourceNode
+    ? makeDraftPath(draftSourceNode, { x: connectionDraft?.x ?? 0, y: connectionDraft?.y ?? 0 })
+    : null;
+  const roleMenuNode = roleMenu ? nodeById.get(roleMenu.nodeId) : null;
 
   return (
     <section className="flow-map-shell">
       <div className="flow-map-toolbar" aria-label="Flow map controls">
-        <div>
-          <p className="flow-map-help">
-            Use this map to scan the process flow. Ctrl/Cmd + scroll to zoom,
-            drag to pan.
-          </p>
-          <p className="flow-map-help flow-map-reference">
-            Logic reference: docs/process-loop-summary.md
-          </p>
+        <div className="flow-map-summary" aria-live="polite">
+          <strong>Process graph</strong>
+          <span>
+            {nodes.length} step{nodes.length === 1 ? "" : "s"} · {edges.length} path
+            {edges.length === 1 ? "" : "s"}
+          </span>
         </div>
-        <div className="flow-map-actions" role="group" aria-label="Zoom controls">
-          <button className="button button-secondary" type="button" onClick={zoomOut}>
+        <div className="flow-map-actions" role="group" aria-label="Canvas controls">
+          <button className="button button-secondary flow-icon-button" type="button" onClick={zoomOut} aria-label="Zoom out">
             −
           </button>
           <span className="flow-map-zoom">{Math.round(s * 100)}%</span>
-          <button className="button button-secondary" type="button" onClick={zoomIn}>
+          <button className="button button-secondary flow-icon-button" type="button" onClick={zoomIn} aria-label="Zoom in">
             +
           </button>
           <button className="button button-secondary" type="button" onClick={zoomReset}>
             Reset
+          </button>
+          <button className="button button-secondary" type="button" onClick={organizeCanvas} disabled={nodes.length < 2}>
+            Organize
+          </button>
+          <button className="button button-secondary" type="button" onClick={clearCanvas} disabled={nodes.length === 0}>
+            Clear
           </button>
         </div>
       </div>
@@ -472,87 +1528,162 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
         onPointerCancel={endPan}
         onPointerLeave={endPan}
       >
-        {graph.hasSteps ? (
-          <svg
-            className="flow-map-canvas"
-            width={scaledWidth}
-            height={scaledHeight}
-            viewBox={`0 0 ${sceneWidth} ${sceneHeight}`}
-            style={{ width: `${scaledWidth}px`, height: `${scaledHeight}px` }}
-          >
-            <defs>
-              <marker
-                id="flowMapArrow"
-                markerWidth="10"
-                markerHeight="10"
-                refX="9"
-                refY="5"
-                orient="auto"
-                markerUnits="strokeWidth"
+        <svg
+          ref={svgRef}
+          className="flow-map-canvas flow-map-canvas--editable"
+          width={scaledWidth}
+          height={scaledHeight}
+          viewBox={`0 0 ${sceneBounds.width} ${sceneBounds.height}`}
+          style={{ width: `${scaledWidth}px`, height: `${scaledHeight}px` }}
+          onPointerMove={updateConnection}
+          onPointerUp={finishConnection}
+          onPointerCancel={() => setConnectionDraft(null)}
+          onDoubleClick={createNode}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setRoleMenu(null);
+          }}
+        >
+          <defs>
+            <marker
+              id="flowMapArrow"
+              markerWidth="10"
+              markerHeight="10"
+              refX="9"
+              refY="5"
+              orient="auto"
+              markerUnits="strokeWidth"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-blue)" />
+            </marker>
+          </defs>
+
+          <rect className="flow-map-hit-area" x="0" y="0" width={sceneBounds.width} height={sceneBounds.height} />
+
+          {snapGuides.map((guide) =>
+            guide.orientation === "vertical" ? (
+              <line
+                key={guide.id}
+                className="flow-snap-guide"
+                x1={guide.value}
+                y1={guide.start}
+                x2={guide.value}
+                y2={guide.end}
+              />
+            ) : (
+              <line
+                key={guide.id}
+                className="flow-snap-guide"
+                x1={guide.start}
+                y1={guide.value}
+                x2={guide.end}
+                y2={guide.value}
+              />
+            )
+          )}
+
+          {edges.map((edge) => {
+            const from = nodeById.get(edge.from);
+            const to = nodeById.get(edge.to);
+            if (!from || !to) {
+              return null;
+            }
+
+            const isReturn = isReturnEdge(edge, from, to, edges);
+            const path = makeNodePath(edge, from, to, edges, nodes);
+
+            return (
+              <path
+                key={edge.id}
+                d={path}
+                className={`flow-edge ${isReturn ? "flow-edge--return" : ""}`}
+                markerEnd="url(#flowMapArrow)"
+              />
+            );
+          })}
+
+          {draftPath ? (
+            <path
+              d={draftPath}
+              className="flow-edge flow-edge--draft"
+              markerEnd="url(#flowMapArrow)"
+            />
+          ) : null}
+
+          {nodes.length === 0 ? (
+            <g className="flow-empty-state" transform={`translate(${sceneBounds.width / 2} ${sceneBounds.height / 2})`}>
+              <circle cx="0" cy="-8" r="28" />
+              <path d="M -10 -8 H 10 M 0 -18 V 2" />
+              <text x="0" y="46">
+                Blank process canvas
+              </text>
+            </g>
+          ) : null}
+
+          {nodes.map((node) => (
+            <g
+              key={node.id}
+              className={`flow-node flow-node--${node.role} ${connectionDraft?.from === node.id ? "flow-node--connecting" : ""} ${
+                nodeDrag?.nodeId === node.id ? "flow-node--dragging" : ""
+              }`}
+              transform={`translate(${node.x} ${node.y})`}
+              onPointerDown={(event) => handleNodePointerDown(event, node)}
+              onPointerMove={updateNodeDrag}
+              onPointerUp={finishNodeDrag}
+              onPointerCancel={finishNodeDrag}
+              onContextMenu={(event) => openRoleMenu(event, node.id)}
+              onDoubleClick={(event) => event.stopPropagation()}
+            >
+              <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" />
+              <g
+                className="flow-node-port-hit"
               >
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-blue)" />
-              </marker>
-            </defs>
+                <circle cx={node.width - 24} cy="24" r="14" className="flow-node-port-target" />
+                <circle cx={node.width - 24} cy="24" r="8" className="flow-node-port" />
+              </g>
+              <text x="14" y="30" className="flow-node-title">
+                {node.label}
+              </text>
+              <text x="14" y="52" className="flow-node-subtitle">
+                {node.subLabel}
+              </text>
+              <text x="14" y="78" className="flow-node-meta">
+                {describeRole(node.role)}
+              </text>
+            </g>
+          ))}
+        </svg>
 
-            {graph.edges.map((edge) => {
-              const from = graph.nodes.find((node) => node.id === edge.from);
-              const to = graph.nodes.find((node) => node.id === edge.to);
-              if (!from || !to) {
-                return null;
-              }
-
-              const path = makeLinePath(from, to, edge.kind);
-              const labelX = (from.x + to.x) / 2;
-              const labelY = (from.y + to.y) / 2 - 10;
-
-              return (
-                <g key={`${edge.from}-${edge.to}-${edge.label ?? ""}`}>
-                  <path d={path} fill="none" className={`flow-edge flow-edge--${edge.kind}`} markerEnd="url(#flowMapArrow)" />
-                  {edge.label ? (
-                    <text x={labelX} y={labelY} className="flow-edge-label">
-                      {edge.label}
-                    </text>
-                  ) : null}
-                </g>
-              );
-            })}
-
-            {graph.nodes.map((node) => {
-              const pinPreview = node.wafers.slice(0, 4);
-
-              return (
-                <g
-                  key={node.id}
-                  className={`flow-node flow-node--${node.type}`}
-                  transform={`translate(${node.x} ${node.y})`}
-                >
-                  <rect x="0" y="0" width={node.width} height={node.height} rx="12" className="flow-node-card" />
-                  <text x="12" y="28" className="flow-node-title">
-                    {node.label}
-                  </text>
-                  <text x="12" y="46" className="flow-node-subtitle">
-                    {node.subLabel}
-                  </text>
-                  <text x="12" y="66" className="flow-node-meta">
-                    {node.wafers.length} die{node.wafers.length === 1 ? "" : "s"}
-                  </text>
-                  <g>
-                    {pinPreview.map((pin, pinIndex) => (
-                      <ProcessChip key={pin.assignmentId} pin={pin} index={pinIndex} active={pin.currentStepStatus === "running"} />
-                    ))}
-                  </g>
-                </g>
-              );
-            })}
-          </svg>
+        {roleMenu && roleMenuNode ? (
+          <div
+            className="flow-role-menu"
+            style={{
+              left: `${roleMenu.paneX}px`,
+              top: `${roleMenu.paneY}px`
+            }}
+            role="menu"
+            aria-label={`${roleMenuNode.label} role`}
+          >
+            <button type="button" role="menuitem" onClick={() => setNodeRole(roleMenu.nodeId, "start")}>
+              Beginning step
+            </button>
+            <button type="button" role="menuitem" onClick={() => setNodeRole(roleMenu.nodeId, "end")}>
+              End step
+            </button>
+            <button type="button" role="menuitem" onClick={() => setNodeRole(roleMenu.nodeId, "normal")}>
+              Normal step
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flow-role-menu-danger"
+              onClick={() => deleteNode(roleMenu.nodeId)}
+            >
+              Delete step
+            </button>
+          </div>
         ) : null}
       </div>
-
-      {graph.hasSteps ? null : (
-        <p className="muted" style={{ margin: 0 }}>
-          No configured flow steps for this process.
-        </p>
-      )}
     </section>
   );
 }
