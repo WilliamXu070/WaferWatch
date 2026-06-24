@@ -495,7 +495,7 @@ textarea {
 .flow-map-canvas {
   display: block;
   min-width: 100%;
-  min-height: 680px;
+  min-height: 820px;
 }
 
 .flow-map-canvas--editable {
@@ -521,9 +521,14 @@ textarea {
   filter: drop-shadow(0 8px 18px rgb(38 55 70 / 0.08));
 }
 
-.flow-node--start .flow-node-card,
+.flow-node--start .flow-node-card {
+  fill: #fb923c;
+  stroke: #ea580c;
+}
+
 .flow-node--end .flow-node-card {
-  fill: var(--panel-soft);
+  fill: #fdba74;
+  stroke: #fb923c;
 }
 
 .flow-node {

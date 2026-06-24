@@ -76,6 +76,11 @@ type ScenePoint = {
   y: number;
 };
 
+type PanePoint = {
+  paneX: number;
+  paneY: number;
+};
+
 type ZoomAnchor = {
   paneX: number;
   paneY: number;
@@ -83,8 +88,8 @@ type ZoomAnchor = {
   sceneY: number;
 };
 
-const NODE_WIDTH = 232;
-const NODE_HEIGHT = 112;
+const NODE_WIDTH = 276;
+const NODE_HEIGHT = 134;
 const SCENE_WIDTH = 2200;
 const SCENE_HEIGHT = 1600;
 const MIN_SCALE = 0.8;
@@ -94,8 +99,8 @@ const WHEEL_ZOOM_STEP = 0.18;
 const SNAP_THRESHOLD = 16;
 const LAYOUT_CENTER_X = 520;
 const LAYOUT_TOP_Y = 96;
-const LAYOUT_GAP_Y = 220;
-const LAYOUT_LANE_GAP_X = 340;
+const LAYOUT_GAP_Y = 250;
+const LAYOUT_LANE_GAP_X = 380;
 const LAYOUT_LOOP_GAP_X = 180;
 const LAYOUT_LOOP_RADIUS_X = 250;
 const LAYOUT_LOOP_RADIUS_Y = 170;
@@ -594,7 +599,7 @@ function autoLayoutNodes(
 
     for (const component of rowComponents) {
       const componentY = Math.round(rowY + (rowHeight - component.height) / 2);
-      positionComponentNodes(component, nodeById, componentX, componentY, positioned);
+      positionComponentNodes(component, nodeById, edges, componentX, componentY, positioned);
       componentX += component.width + LAYOUT_LANE_GAP_X;
     }
 
@@ -820,6 +825,7 @@ function getComponentDimensions(nodeCount: number, hasPinnedRole: boolean) {
 function positionComponentNodes(
   component: LayoutComponent,
   nodeById: Map<string, FlowNode>,
+  edges: FlowEdge[],
   componentX: number,
   componentY: number,
   positioned: Map<string, FlowNode>
@@ -851,7 +857,8 @@ function positionComponentNodes(
   const pinnedPositions = getPinnedComponentPositions(component, nodeById);
   const centerX = componentX + component.width / 2;
   const centerY = componentY + component.height / 2;
-  const freeNodeIds = component.nodeIds.filter((id) => !pinnedPositions.has(id));
+  const placementNodeIds = getComponentPlacementNodeIds(component, nodeById, edges);
+  const freeNodeIds = placementNodeIds.filter((id) => !pinnedPositions.has(id));
 
   for (const [id, point] of pinnedPositions) {
     const node = nodeById.get(id);
@@ -906,6 +913,51 @@ function getPinnedComponentPositions(component: LayoutComponent, nodeById: Map<s
   }
 
   return pinned;
+}
+
+function getComponentPlacementNodeIds(component: LayoutComponent, nodeById: Map<string, FlowNode>, edges: FlowEdge[]) {
+  const componentNodeIds = new Set(component.nodeIds);
+  const startId = component.nodeIds.find((id) => nodeById.get(id)?.role === "start") ?? component.nodeIds[0];
+
+  if (!startId || component.nodeIds.length < 2) {
+    return component.nodeIds;
+  }
+
+  const componentOrder = new Map(component.nodeIds.map((id, index) => [id, index]));
+  const outgoing = new Map(component.nodeIds.map((id) => [id, [] as string[]]));
+
+  for (const edge of edges) {
+    if (componentNodeIds.has(edge.from) && componentNodeIds.has(edge.to)) {
+      outgoing.get(edge.from)?.push(edge.to);
+    }
+  }
+
+  for (const nextIds of outgoing.values()) {
+    nextIds.sort((a, b) => (componentOrder.get(a) ?? 0) - (componentOrder.get(b) ?? 0));
+  }
+
+  const ordered = [startId];
+  const visited = new Set(ordered);
+  let currentId = startId;
+
+  while (true) {
+    const nextId = (outgoing.get(currentId) ?? []).find((id) => !visited.has(id));
+    if (!nextId) {
+      break;
+    }
+
+    ordered.push(nextId);
+    visited.add(nextId);
+    currentId = nextId;
+  }
+
+  for (const id of component.nodeIds) {
+    if (!visited.has(id)) {
+      ordered.push(id);
+    }
+  }
+
+  return ordered;
 }
 
 function getPinnedRoleFreeNodePoint(component: LayoutComponent, index: number, count: number) {
@@ -978,7 +1030,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
-  const getPaneAnchor = useCallback((clientX?: number, clientY?: number) => {
+  const getPanePoint = useCallback((clientX?: number, clientY?: number): PanePoint | null => {
     const frame = frameRef.current;
     if (!frame) {
       return null;
@@ -998,9 +1050,30 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     };
   }, []);
 
+  const getScenePointFromClient = useCallback((clientX: number, clientY: number): ScenePoint => {
+    const svg = svgRef.current;
+    if (!svg) {
+      return { x: 0, y: 0 };
+    }
+
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return { x: 0, y: 0 };
+    }
+
+    return {
+      x: ((clientX - rect.left) / rect.width) * sceneBounds.width,
+      y: ((clientY - rect.top) / rect.height) * sceneBounds.height
+    };
+  }, [sceneBounds.height, sceneBounds.width]);
+
+  const getScenePoint = useCallback((event: { clientX: number; clientY: number }) => (
+    getScenePointFromClient(event.clientX, event.clientY)
+  ), [getScenePointFromClient]);
+
   const applyScaleAtAnchor = useCallback((
     nextScale: number,
-    anchor: { paneX: number; paneY: number } | null = getPaneAnchor()
+    anchor: PanePoint | null = getPanePoint()
   ) => {
     const frame = frameRef.current;
     const currentScale = scaleRef.current;
@@ -1021,7 +1094,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
 
     scaleRef.current = boundedScale;
     setScale(boundedScale);
-  }, [getPaneAnchor]);
+  }, [getPanePoint]);
 
   const zoomIn = () => applyScaleAtAnchor(scaleRef.current + BUTTON_ZOOM_STEP);
   const zoomOut = () => applyScaleAtAnchor(scaleRef.current - BUTTON_ZOOM_STEP);
@@ -1067,19 +1140,6 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     frame.scrollTop = anchor.sceneY * scale - anchor.paneY;
     pendingZoomAnchorRef.current = null;
   }, [scale]);
-
-  const getScenePoint = (event: { clientX: number; clientY: number }) => {
-    const svg = svgRef.current;
-    if (!svg) {
-      return { x: 0, y: 0 };
-    }
-
-    const rect = svg.getBoundingClientRect();
-    return {
-      x: (event.clientX - rect.left) / scaleRef.current,
-      y: (event.clientY - rect.top) / scaleRef.current
-    };
-  };
 
   const beginPan = (event: PointerEvent<HTMLDivElement>) => {
     const isMiddleMousePan = event.button === 1;
@@ -1371,7 +1431,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
       }
 
       const delta = event.deltaY > 0 ? -WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
-      applyScaleAtAnchor(scaleRef.current + delta, getPaneAnchor(event.clientX, event.clientY));
+      applyScaleAtAnchor(scaleRef.current + delta, getPanePoint(event.clientX, event.clientY));
     };
 
     const handleGestureStart = (event: Event) => {
@@ -1395,11 +1455,11 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
 
       const clientPoint =
         "clientX" in event && "clientY" in event
-          ? getPaneAnchor(
+          ? getPanePoint(
               (event as Event & { clientX: number }).clientX,
               (event as Event & { clientY: number }).clientY
             )
-          : getPaneAnchor();
+          : getPanePoint();
       applyScaleAtAnchor(pinchBaseScaleRef.current * gestureScale, clientPoint);
       event.preventDefault();
       event.stopPropagation();
@@ -1421,7 +1481,7 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
       frame.removeEventListener("gesturechange", handleGestureChange);
       frame.removeEventListener("gestureend", handleGestureEnd);
     };
-  }, [applyScaleAtAnchor, getPaneAnchor]);
+  }, [applyScaleAtAnchor, getPanePoint]);
 
   const draftSourceNode = connectionDraft ? nodeById.get(connectionDraft.from) : null;
   const draftPath = draftSourceNode
