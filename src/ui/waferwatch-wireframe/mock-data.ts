@@ -418,7 +418,8 @@ const betaStatuses: WaferTileStatus[] = [
 function makeWaferTiles(
   family: string,
   statuses: readonly WaferTileStatus[],
-  selectedCode?: string
+  selectedCode?: string,
+  isUndiced = false
 ): WaferStatusTileModel[] {
   return statuses.map((status, index) => {
     const dieNumber = index + 1;
@@ -447,6 +448,7 @@ function makeWaferTiles(
           : status === "inspection"
             ? "Post ELB inspection"
             : "Post poling",
+      isUndiced,
       isSelected: code === selectedCode
     };
   });
@@ -476,7 +478,7 @@ export const waferStatusModel: WaferStatusModel = {
       id: "gamma",
       name: "GAMMA",
       status: "setup",
-      tiles: makeWaferTiles("GAMMA", ["queued", "queued", "queued", "queued"])
+      tiles: makeWaferTiles("GAMMA", ["queued", "queued", "queued", "queued"], undefined, true)
     }
   ]
 };

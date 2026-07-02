@@ -176,6 +176,7 @@ export type WaferStatusTileModel = {
   stepLabel: string;
   status: WaferTileStatus;
   waferStateName: string;
+  isUndiced?: boolean;
   isSelected?: boolean;
 };
 

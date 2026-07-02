@@ -13,6 +13,52 @@ This ensures the code is lint-clean and compile-safe before we move on.
 
 Run this exact sequence for every change, including UI/asset updates.
 
+## Required browser verification after UI changes
+
+After any UI, route, component, CSS, or asset change, also verify the affected surface in a browser with Playwright or the in-app browser after lint and build pass.
+
+Open the changed route, exercise the main interaction that changed, and check for obvious layout breakage, console errors, missing assets, and unusable controls. Capture or report the route, viewport, and what was verified.
+
+For worktree agents, ask the orchestrator to perform or review visual verification when the result needs product judgment, screenshot comparison, or acceptance against a provided reference image.
+
+## Playwright verification against existing worktree dev servers
+
+Use the dev server that belongs to the worktree you are testing. Do not assume `localhost:3000`, and do not start a second server on a port that is already listening.
+
+Known worktree dev servers:
+
+```bash
+cd /Users/williamxu/Desktop/Projects/WaferWatch/.worktrees/process-flow
+npm run dev -- -p 3001
+```
+
+Use `http://localhost:3001` for Process Flow work.
+
+```bash
+cd /Users/williamxu/Desktop/Projects/WaferWatch/.worktrees/poling-parameters
+npm run dev -- -p 3002
+```
+
+Use `http://localhost:3002` for Poling Parameters work.
+
+Before browser testing, confirm the expected server is the one that is running:
+
+```bash
+lsof -nP -iTCP:3001 -sTCP:LISTEN
+curl -s http://localhost:3001/api/health
+```
+
+or:
+
+```bash
+lsof -nP -iTCP:3002 -sTCP:LISTEN
+curl -s http://localhost:3002/api/health
+```
+
+Then point Playwright or the in-app browser at the matching localhost URL and exact route for the worktree. For example, Process Flow verification should open routes under `http://localhost:3001`, while Poling Parameters verification should open routes under `http://localhost:3002`.
+
+If an authenticated route redirects to `/`, report that the Playwright session is unauthenticated instead of treating the redirect as product behavior. Use an existing confirmed account or saved `playwright/.auth/` storage state when authenticated verification is required; never create a new Supabase user during browser testing.
+
 ## Editable text surfaces must be persistent
 
 Any user-editable text surface that represents wafer/process/inspection state must be tied to the database. Do not add local-only textareas for operational notes, comments, descriptions, parameters, or status-like text.
@@ -22,6 +68,21 @@ Default to the shared `text_surfaces` table/actions for generic text keyed to an
 ## Commit expectation
 
 After completing each feature, rework, or bug fix, commit the finished changes with a clear message once lint and build pass.
+
+After every development commit, add a short note in this file describing what changed and the route/state verified (if any), so the next developer handoff has immediate context.
+
+## Orchestrator verification checkpoints
+
+When working in a delegated worktree, ask the orchestrator for verification whenever the work needs product judgment, visual comparison, workflow acceptance, schema/persistence approval, merge-order guidance, or any decision that could affect another workstream.
+
+Do not guess through these checkpoints alone. Pause with a short verification request that includes:
+
+1. What changed or what decision is needed.
+2. The exact files, route, screenshot, command output, or branch state to inspect.
+3. The risk if the choice is wrong.
+4. The options you see, if there is more than one reasonable path.
+
+Routine local validation still belongs to the worker: run lint/build checks before completion, and report the results to the orchestrator.
 
 ## Playwright and auth testing safety
 
@@ -36,3 +97,14 @@ For authenticated UI testing:
 5. If signup behavior must be tested, ask the user first and use only a mailbox they explicitly control or a dedicated local/email-sandbox setup.
 
 Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
+
+## Recent development note (2026-07-02 14:43)
+
+- Updated `/wireframe/wafer-status` so each wafer tile supports an explicit undiced
+  mode (no die labels, full-wafer geometry). Added a per-wafer switch in the selected
+  panel and defaulted Gamma tiles to undiced mode.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3005/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3005/wireframe/wafer-status /tmp/wafer-status-undiced-v1.png`
