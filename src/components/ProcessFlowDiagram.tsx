@@ -25,6 +25,7 @@ type FlowNode = {
   id: string;
   label: string;
   subLabel: string;
+  wafers: WaferPin[];
   x: number;
   y: number;
   width: number;
@@ -106,6 +107,9 @@ const LAYOUT_LOOP_RADIUS_X = 250;
 const LAYOUT_LOOP_RADIUS_Y = 170;
 const EDGE_CURVE_OFFSET = 48;
 const EDGE_NODE_CLEARANCE = 10;
+const SEEDED_START_ID = "flow-seed-start";
+const SEEDED_END_ID = "flow-seed-end";
+const MAX_NODE_CHIPS = 4;
 
 function clampScale(nextScale: number) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(nextScale.toFixed(2))));
@@ -992,8 +996,106 @@ function describeRole(role: FlowNodeRole) {
   return "Step";
 }
 
-export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) {
-  void _steps;
+function getInitialGraph(steps: DiagramStep[]) {
+  const sortedSteps = [...steps].sort((a, b) => a.step_order - b.step_order);
+  const waferByAssignmentId = new Map<string, WaferPin>();
+
+  for (const step of sortedSteps) {
+    for (const wafer of step.wafers) {
+      waferByAssignmentId.set(wafer.assignmentId, wafer);
+    }
+  }
+
+  const allWafers = [...waferByAssignmentId.values()];
+  const nodes: FlowNode[] = [
+    {
+      id: SEEDED_START_ID,
+      label: "Start",
+      subLabel: "Process entry",
+      wafers: allWafers,
+      x: 0,
+      y: 0,
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+      role: "start",
+      order: 0
+    },
+    ...sortedSteps.map((step, index): FlowNode => ({
+      id: step.id,
+      label: step.name,
+      subLabel: step.process_area,
+      wafers: step.wafers,
+      x: 0,
+      y: 0,
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+      role: "normal",
+      order: index + 1
+    })),
+    {
+      id: SEEDED_END_ID,
+      label: "End",
+      subLabel: "Process complete",
+      wafers: [],
+      x: 0,
+      y: 0,
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+      role: "end",
+      order: sortedSteps.length + 1
+    }
+  ];
+
+  const ids = nodes.map((node) => node.id);
+  const edges: FlowEdge[] = ids.slice(0, -1).map((id, index) => ({
+    id: `${id}->${ids[index + 1]}`,
+    from: id,
+    to: ids[index + 1],
+    kind: "flow"
+  }));
+
+  return {
+    nodes: autoLayoutNodes(nodes, edges, { x: LAYOUT_CENTER_X, y: SCENE_HEIGHT / 2 }),
+    edges
+  };
+}
+
+function getStepSignature(steps: DiagramStep[]) {
+  return [...steps]
+    .sort((a, b) => a.step_order - b.step_order)
+    .map((step) => `${step.id}:${step.step_order}:${step.name}:${step.process_area}:${step.wafers.length}`)
+    .join("|");
+}
+
+function truncateLabel(value: string, maxLength: number) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength - 3)}...`;
+}
+
+function getWaferChipLabel(wafer: WaferPin) {
+  return wafer.dieLabel?.trim() || wafer.waferCode;
+}
+
+function getNodeIconPath(role: FlowNodeRole) {
+  if (role === "start") {
+    return "M 18 8 A 10 10 0 1 1 17.9 8 M 15 13 L 22 18 L 15 23 Z";
+  }
+
+  if (role === "end") {
+    return "M 10 11 H 26 V 25 H 10 Z M 14 15 H 22 M 14 19 H 22";
+  }
+
+  return "M 9 24 L 17 10 L 27 24 Z M 14 21 H 22 M 18 16 V 21";
+}
+
+function hasActiveWafer(node: FlowNode) {
+  return node.role === "normal" && node.wafers.some((wafer) => wafer.currentStepStatus === "running");
+}
+
+export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
 
   const [scale, setScale] = useState(1);
   const [nodes, setNodes] = useState<FlowNode[]>([]);
@@ -1015,6 +1117,8 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   } | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const stepSignature = useMemo(() => getStepSignature(steps), [steps]);
+  const seededSignatureRef = useRef<string | null>(null);
 
   const sceneBounds = useMemo(() => {
     const maxNodeX = nodes.length ? Math.max(...nodes.map((node) => node.x + node.width)) + 160 : SCENE_WIDTH;
@@ -1125,6 +1229,22 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
   };
 
   useEffect(() => {
+    if (!steps.length || seededSignatureRef.current === stepSignature) {
+      return;
+    }
+
+    const graph = getInitialGraph(steps);
+    setNodes(graph.nodes);
+    setEdges(graph.edges);
+    setConnectionDraft(null);
+    setNodeDrag(null);
+    setSnapGuides([]);
+    setRoleMenu(null);
+    nextNodeNumberRef.current = steps.length + 1;
+    seededSignatureRef.current = stepSignature;
+  }, [stepSignature, steps]);
+
+  useEffect(() => {
     scaleRef.current = scale;
   }, [scale]);
 
@@ -1219,7 +1339,8 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
         role: "normal",
-        order: currentNodes.length
+        order: currentNodes.length,
+        wafers: []
       }
     ]);
   };
@@ -1493,7 +1614,8 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
     <section className="flow-map-shell">
       <div className="flow-map-toolbar" aria-label="Flow map controls">
         <div className="flow-map-summary" aria-live="polite">
-          <strong>Process graph</strong>
+          <strong>Process flow</strong>
+          <em>Track wafer movement through each fabrication step.</em>
           <span>
             {nodes.length} step{nodes.length === 1 ? "" : "s"} · {edges.length} path
             {edges.length === 1 ? "" : "s"}
@@ -1507,11 +1629,11 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
           <button className="button button-secondary flow-icon-button" type="button" onClick={zoomIn} aria-label="Zoom in">
             +
           </button>
-          <button className="button button-secondary" type="button" onClick={zoomReset}>
-            Reset
+          <button className="button button-secondary flow-fit-button" type="button" onClick={zoomReset}>
+            Fit view
           </button>
-          <button className="button button-secondary" type="button" onClick={organizeCanvas} disabled={nodes.length < 2}>
-            Organize
+          <button className="button button-secondary flow-fit-button" type="button" onClick={organizeCanvas} disabled={nodes.length < 2}>
+            Auto layout
           </button>
           <button className="button button-secondary" type="button" onClick={clearCanvas} disabled={nodes.length === 0}>
             Clear
@@ -1620,10 +1742,15 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
             </g>
           ) : null}
 
-          {nodes.map((node) => (
+          {nodes.map((node) => {
+            const visibleWafers = node.wafers.slice(0, MAX_NODE_CHIPS);
+            const hiddenWaferCount = Math.max(0, node.wafers.length - visibleWafers.length);
+            const active = hasActiveWafer(node);
+
+            return (
             <g
               key={node.id}
-              className={`flow-node flow-node--${node.role} ${connectionDraft?.from === node.id ? "flow-node--connecting" : ""} ${
+              className={`flow-node flow-node--${node.role} ${active ? "flow-node--active" : ""} ${connectionDraft?.from === node.id ? "flow-node--connecting" : ""} ${
                 nodeDrag?.nodeId === node.id ? "flow-node--dragging" : ""
               }`}
               transform={`translate(${node.x} ${node.y})`}
@@ -1634,24 +1761,47 @@ export function ProcessFlowDiagram({ steps: _steps }: { steps: DiagramStep[] }) 
               onContextMenu={(event) => openRoleMenu(event, node.id)}
               onDoubleClick={(event) => event.stopPropagation()}
             >
+              <title>{`${node.label} · ${node.subLabel}`}</title>
               <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" />
+              <path className="flow-node-icon" d={getNodeIconPath(node.role)} />
               <g
                 className="flow-node-port-hit"
               >
                 <circle cx={node.width - 24} cy="24" r="14" className="flow-node-port-target" />
                 <circle cx={node.width - 24} cy="24" r="8" className="flow-node-port" />
               </g>
-              <text x="14" y="30" className="flow-node-title">
-                {node.label}
+              <text x="64" y="34" className="flow-node-title">
+                {truncateLabel(node.label, 20)}
               </text>
-              <text x="14" y="52" className="flow-node-subtitle">
-                {node.subLabel}
+              <text x="64" y="56" className="flow-node-subtitle">
+                {truncateLabel(node.subLabel, 28)}
               </text>
-              <text x="14" y="78" className="flow-node-meta">
+              {active ? (
+                <g className="flow-node-active-pill" transform={`translate(${node.width - 78} 22)`}>
+                  <rect x="0" y="0" width="56" height="22" rx="11" />
+                  <text x="28" y="15">Active</text>
+                </g>
+              ) : null}
+              <text x="64" y="82" className="flow-node-meta">
                 {describeRole(node.role)}
               </text>
+              <g transform="translate(64 96)">
+                {visibleWafers.map((wafer, index) => (
+                  <g key={wafer.assignmentId} className="flow-wafer-chip" transform={`translate(${index * 42} 0)`}>
+                    <rect x="0" y="0" width="36" height="24" rx="6" />
+                    <text x="18" y="16">{truncateLabel(getWaferChipLabel(wafer), 3)}</text>
+                  </g>
+                ))}
+                {hiddenWaferCount > 0 ? (
+                  <g className="flow-wafer-chip flow-wafer-chip--overflow" transform={`translate(${visibleWafers.length * 42} 0)`}>
+                    <rect x="0" y="0" width="40" height="24" rx="6" />
+                    <text x="20" y="16">+{hiddenWaferCount}</text>
+                  </g>
+                ) : null}
+              </g>
             </g>
-          ))}
+          );
+          })}
         </svg>
 
         {roleMenu && roleMenuNode ? (
