@@ -77,6 +77,18 @@ export type FlowStepModel = {
   process_area: string;
   step_order: number;
   status: StepStatus | "active";
+  wafers?: readonly {
+    assignmentId: string;
+    waferCode: string;
+    dieLabel: string;
+    currentStepStatus: StepStatus | null;
+  }[];
+  role?: "normal" | "start" | "end";
+  icon?: "start" | "file" | "droplet" | "scan" | "etch" | "characterization";
+  x?: number;
+  y?: number;
+  nextStepIds?: readonly string[];
+  returnStepIds?: readonly string[];
 };
 
 export type FlowStatModel = {
@@ -150,4 +162,38 @@ export type ProcessSummary = {
   name: string;
   version: string;
   activeDieCount: number;
+};
+
+export type WaferFamilyStatus = "active" | "paused" | "setup";
+
+export type WaferTileStatus = "litho" | "etch" | "inspection" | "bond" | "test" | "dice" | "queued";
+
+export type WaferStatusTileModel = {
+  id: string;
+  code: string;
+  family: string;
+  dieLabel: string;
+  stepLabel: string;
+  status: WaferTileStatus;
+  waferStateName: string;
+  isSelected?: boolean;
+};
+
+export type WaferFamilyModel = {
+  id: string;
+  name: string;
+  status: WaferFamilyStatus;
+  tiles: readonly WaferStatusTileModel[];
+};
+
+export type WaferStatusMetric = {
+  id: string;
+  label: string;
+  value: string;
+  tone: "neutral" | "active" | "running" | "yield";
+};
+
+export type WaferStatusModel = {
+  metrics: readonly WaferStatusMetric[];
+  families: readonly WaferFamilyModel[];
 };

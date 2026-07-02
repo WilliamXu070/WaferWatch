@@ -3,7 +3,10 @@ import type {
   CalendarModel,
   DashboardModel,
   FlowModel,
-  ProcessSummary
+  ProcessSummary,
+  WaferStatusModel,
+  WaferStatusTileModel,
+  WaferTileStatus
 } from "./types";
 
 export const processSummary: ProcessSummary = currentProcess;
@@ -161,35 +164,113 @@ export const flowModel: FlowModel = {
   title: "Process flow",
   subtitle: "Track wafer movement through each fabrication step.",
   steps: [
-    { id: "start", name: "Start", process_area: "Intake", step_order: 0, status: "completed" },
+    {
+      id: "start",
+      name: "Start",
+      process_area: "Process entry",
+      step_order: 0,
+      status: "completed",
+      role: "start",
+      icon: "start",
+      x: 420,
+      y: 18,
+      nextStepIds: ["intake"],
+      wafers: [
+        { assignmentId: "alpha-a1-start", waferCode: "ALPHA-01", dieLabel: "A1", currentStepStatus: "completed" },
+        { assignmentId: "alpha-a2-start", waferCode: "ALPHA-02", dieLabel: "A2", currentStepStatus: "completed" },
+        { assignmentId: "alpha-a3-start", waferCode: "ALPHA-03", dieLabel: "A3", currentStepStatus: "completed" },
+        { assignmentId: "alpha-a4-start", waferCode: "ALPHA-04", dieLabel: "A4", currentStepStatus: "completed" },
+        { assignmentId: "alpha-a5-start", waferCode: "ALPHA-05", dieLabel: "A5", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-01", waferCode: "ALPHA-06", dieLabel: "A6", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-02", waferCode: "ALPHA-07", dieLabel: "A7", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-03", waferCode: "ALPHA-08", dieLabel: "A8", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-04", waferCode: "ALPHA-09", dieLabel: "B1", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-05", waferCode: "ALPHA-10", dieLabel: "B2", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-06", waferCode: "ALPHA-11", dieLabel: "B3", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-07", waferCode: "ALPHA-12", dieLabel: "B4", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-08", waferCode: "ALPHA-13", dieLabel: "C1", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-09", waferCode: "ALPHA-14", dieLabel: "C2", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-10", waferCode: "ALPHA-15", dieLabel: "C3", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-11", waferCode: "ALPHA-16", dieLabel: "D1", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-12", waferCode: "ALPHA-17", dieLabel: "D2", currentStepStatus: "completed" },
+        { assignmentId: "alpha-extra-13", waferCode: "ALPHA-18", dieLabel: "D3", currentStepStatus: "completed" }
+      ]
+    },
     {
       id: "intake",
       name: "Wafer intake and inspection",
       process_area: "Inspection",
       step_order: 1,
-      status: "completed"
+      status: "completed",
+      icon: "file",
+      x: 420,
+      y: 132,
+      nextStepIds: ["litho"],
+      returnStepIds: ["solvent"],
+      wafers: [
+        { assignmentId: "alpha-a1-intake", waferCode: "ALPHA-01", dieLabel: "A1", currentStepStatus: "completed" },
+        { assignmentId: "alpha-a2-intake", waferCode: "ALPHA-02", dieLabel: "A2", currentStepStatus: "completed" }
+      ]
     },
     {
       id: "solvent",
       name: "Solvent clean",
       process_area: "Clean",
       step_order: 2,
-      status: "queued"
+      status: "queued",
+      icon: "droplet",
+      x: 690,
+      y: 226,
+      returnStepIds: ["litho"],
+      wafers: [
+        { assignmentId: "alpha-a3-solvent", waferCode: "ALPHA-03", dieLabel: "A3", currentStepStatus: "queued" }
+      ]
     },
     {
       id: "litho",
       name: "Lithography coat and expose",
       process_area: "Lithography",
       step_order: 3,
-      status: "active"
+      status: "active",
+      icon: "scan",
+      x: 420,
+      y: 292,
+      nextStepIds: ["etch"],
+      wafers: [
+        { assignmentId: "alpha-a4-litho", waferCode: "ALPHA-04", dieLabel: "A4", currentStepStatus: "running" },
+        { assignmentId: "alpha-a5-litho", waferCode: "ALPHA-05", dieLabel: "A5", currentStepStatus: "running" },
+        { assignmentId: "alpha-a6-litho", waferCode: "ALPHA-06", dieLabel: "A6", currentStepStatus: "running" },
+        { assignmentId: "alpha-a7-litho", waferCode: "ALPHA-07", dieLabel: "A7", currentStepStatus: "running" },
+        { assignmentId: "alpha-a8-litho", waferCode: "ALPHA-08", dieLabel: "A8", currentStepStatus: "running" }
+      ]
     },
-    { id: "etch", name: "Etch", process_area: "Etch", step_order: 4, status: "queued" },
+    {
+      id: "etch",
+      name: "Etch",
+      process_area: "Etch",
+      step_order: 4,
+      status: "queued",
+      icon: "etch",
+      x: 420,
+      y: 412,
+      nextStepIds: ["characterization"],
+      wafers: [
+        { assignmentId: "alpha-b1-etch", waferCode: "ALPHA-09", dieLabel: "B1", currentStepStatus: "queued" },
+        { assignmentId: "alpha-b2-etch", waferCode: "ALPHA-10", dieLabel: "B2", currentStepStatus: "queued" }
+      ]
+    },
     {
       id: "characterization",
       name: "Characterization",
       process_area: "Metrology",
       step_order: 5,
-      status: "pending"
+      status: "pending",
+      icon: "characterization",
+      x: 420,
+      y: 512,
+      wafers: [
+        { assignmentId: "alpha-c1-characterization", waferCode: "ALPHA-13", dieLabel: "C1", currentStepStatus: "pending" }
+      ]
     }
   ],
   stats: [
@@ -304,6 +385,98 @@ export const calendarModel: CalendarModel = {
       note: "Inspection complete",
       activityLabel: "2 notes",
       tone: "positive"
+    }
+  ]
+};
+
+/* ------------------------------------------------------------------ */
+/* Wafer / die status                                                  */
+/* ------------------------------------------------------------------ */
+
+const alphaStatuses: WaferTileStatus[] = [
+  "litho",
+  "etch",
+  "inspection",
+  "bond",
+  "test",
+  "dice",
+  "test",
+  "dice"
+];
+
+const betaStatuses: WaferTileStatus[] = [
+  "litho",
+  "etch",
+  "inspection",
+  "bond",
+  "test",
+  "test",
+  "dice",
+  "dice"
+];
+
+function makeWaferTiles(
+  family: string,
+  statuses: readonly WaferTileStatus[],
+  selectedCode?: string
+): WaferStatusTileModel[] {
+  return statuses.map((status, index) => {
+    const dieNumber = index + 1;
+    const prefix = family.slice(0, 1);
+    const code = `${prefix}${dieNumber}`;
+    const stepLabelByStatus: Record<WaferTileStatus, string> = {
+      litho: "Litho",
+      etch: "Etch",
+      inspection: "Insp",
+      bond: "Bond",
+      test: "Test",
+      dice: "Dice",
+      queued: "Queued"
+    };
+
+    return {
+      id: `${family.toLowerCase()}-${dieNumber}`,
+      code,
+      family,
+      dieLabel: code,
+      stepLabel: stepLabelByStatus[status],
+      status,
+      waferStateName:
+        status === "litho" || status === "queued"
+          ? "Pre-dice clean"
+          : status === "inspection"
+            ? "Post ELB inspection"
+            : "Post poling",
+      isSelected: code === selectedCode
+    };
+  });
+}
+
+export const waferStatusModel: WaferStatusModel = {
+  metrics: [
+    { id: "wafers", label: "Wafers", value: "3", tone: "neutral" },
+    { id: "active", label: "Active", value: "26", tone: "active" },
+    { id: "progress", label: "In progress", value: "5", tone: "running" },
+    { id: "yield", label: "Yield", value: "84%", tone: "yield" }
+  ],
+  families: [
+    {
+      id: "alpha",
+      name: "ALPHA",
+      status: "active",
+      tiles: makeWaferTiles("ALPHA", alphaStatuses, "A6")
+    },
+    {
+      id: "beta",
+      name: "BETA",
+      status: "active",
+      tiles: makeWaferTiles("BETA", betaStatuses)
+    },
+    {
+      id: "gamma",
+      name: "GAMMA",
+      status: "setup",
+      tiles: makeWaferTiles("GAMMA", ["queued", "queued", "queued", "queued"])
     }
   ]
 };

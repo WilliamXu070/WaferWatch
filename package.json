@@ -24,6 +24,7 @@
     "@supabase/supabase-js": "^2.108.2",
     "dayjs": "^1.11.21",
     "interactjs": "^1.10.27",
+    "lucide-react": "^1.23.0",
     "next": "^16.2.9",
     "react": "^19.2.7",
     "react-calendar-timeline": "^0.30.0-beta.18",
@@ -45,7 +46,7 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
-    "postcss": "^8.5.10"
+    "postcss": "$postcss"
   },
   "engines": {
     "node": ">=20.9.0"
