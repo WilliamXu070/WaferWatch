@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   color-scheme: light;
   --background: #ffffff;
@@ -3046,5 +3050,302 @@ textarea {
 
   .wafer-poling-grid {
     overflow-x: auto;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* WaferWatch wireframe preview — scoped neutral re-skin.              */
+/* Redefines the loud placeholder theme tokens ONLY within the        */
+/* /wireframe preview shell so the reused ProcessFlowDiagram and       */
+/* ProcessCalendarBoard surfaces match the neutral mockups. Live pages */
+/* are untouched.                                                      */
+/* ------------------------------------------------------------------ */
+.waferwatch-wireframe {
+  --foreground: #141414;
+  --muted: #8a887f;
+  --panel: #ffffff;
+  --panel-soft: #f4f4ef;
+  --border: #d6d6d0;
+  --accent: #141414;
+  --accent-strong: #141414;
+  --ink-blue: #141414;
+  --warning: #e0803a;
+  --danger: #cf4d3f;
+  --success: #4c8a3f;
+  --status-available: #4c8a3f;
+  --status-muted: #cdccc4;
+  --shadow: 0 12px 26px rgba(20, 20, 20, 0.12);
+}
+
+.waferwatch-wireframe .eyebrow {
+  color: #9a988f;
+}
+
+.waferwatch-wireframe .button-danger {
+  background: #fbeae6;
+  border-color: #e3b7ab;
+  color: #b4593f;
+}
+
+/* Contain and neutralize the reused flow canvas within its wrapper. */
+.wireframe-flow-surface .flow-map-shell {
+  gap: 12px;
+}
+
+.wireframe-flow-surface .flow-map-frame {
+  height: clamp(360px, 46vh, 520px);
+  border: none;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(20, 20, 20, 0.07) 1px, transparent 0) 0 0 / 22px 22px,
+    #fbfbf8;
+  box-shadow: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Calendar wireframe week board. Scoped to the preview route only.     */
+/* ------------------------------------------------------------------ */
+.wireframe-calendar-card {
+  overflow: hidden;
+}
+
+.wireframe-calendar-card__header {
+  padding: 24px 24px 28px;
+}
+
+.wireframe-calendar-week {
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.wireframe-calendar-week__inner {
+  min-width: 980px;
+}
+
+.wireframe-calendar-week__header {
+  display: grid;
+  grid-template-columns: 136px repeat(7, minmax(104px, 1fr));
+  min-height: 86px;
+  background: #ffffff;
+}
+
+.wireframe-calendar-week__site-heading,
+.wireframe-calendar-week__day-heading {
+  display: grid;
+  place-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.wireframe-calendar-week__site-heading {
+  border-right: 1px solid var(--border);
+  color: #1f1e1b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.wireframe-calendar-week__day-heading {
+  gap: 5px;
+  border-right: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  color: #151513;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.wireframe-calendar-week__day-heading small {
+  color: #6f6d66;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.wireframe-calendar-week__day-heading--weekend {
+  background: #fbfbf5;
+}
+
+.wireframe-calendar-week__row {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr);
+  min-height: 172px;
+  background: #ffffff;
+}
+
+.wireframe-calendar-week__row + .wireframe-calendar-week__row {
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.wireframe-calendar-week__site-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-right: 1px solid var(--border);
+  padding: 0 20px;
+  color: #171714;
+}
+
+.wireframe-calendar-week__site-cell svg {
+  flex: none;
+  height: 18px;
+  width: 18px;
+  color: #171714;
+}
+
+.wireframe-calendar-week__site-cell span {
+  min-width: 0;
+}
+
+.wireframe-calendar-week__site-cell strong,
+.wireframe-calendar-week__site-cell small {
+  display: block;
+}
+
+.wireframe-calendar-week__site-cell strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.wireframe-calendar-week__site-cell small {
+  margin-top: 8px;
+  color: #6f6d66;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.wireframe-calendar-week__track {
+  position: relative;
+  min-height: 172px;
+}
+
+.wireframe-calendar-week__day-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  pointer-events: none;
+}
+
+.wireframe-calendar-week__day-grid span {
+  position: relative;
+  border-right: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+}
+
+.wireframe-calendar-week__day-grid span::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--border) 65%, transparent) 40%,
+    transparent 0
+  );
+  background-size: 1px 8px;
+  content: "";
+  opacity: 0.7;
+}
+
+.wireframe-calendar-week__day--weekend {
+  background: #fbfbf5;
+}
+
+.wireframe-calendar-event {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  min-width: 148px;
+  min-height: 108px;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: #11110f;
+  box-shadow: 0 10px 24px rgba(20, 20, 20, 0.08);
+}
+
+.wireframe-calendar-event--amber {
+  border-color: #efca76;
+  border-left-color: #e0a300;
+  background: #fff9ec;
+}
+
+.wireframe-calendar-event--blue {
+  min-height: 110px;
+  border-color: #93bee9;
+  border-left-color: #1976d2;
+  background: #e8f3ff;
+  box-shadow: 0 14px 28px rgba(25, 118, 210, 0.12);
+}
+
+.wireframe-calendar-event--green {
+  border-color: #b8d8b2;
+  border-left-color: #43a047;
+  background: #eff8ed;
+}
+
+.wireframe-calendar-event__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wireframe-calendar-event h3 {
+  color: #121210;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.wireframe-calendar-event__header span {
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, #11110f);
+  border-radius: 8px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #3d3b35;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.wireframe-calendar-event__person,
+.wireframe-calendar-event__time,
+.wireframe-calendar-event__description {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.wireframe-calendar-event__person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #24231f;
+  font-weight: 500;
+}
+
+.wireframe-calendar-event__person svg {
+  height: 14px;
+  width: 14px;
+}
+
+.wireframe-calendar-event__time {
+  color: #171714;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.wireframe-calendar-event__description {
+  max-width: 18ch;
+  color: #171714;
+  font-weight: 500;
+}
+
+@media (max-width: 980px) {
+  .wireframe-calendar-card__header {
+    padding: 20px;
   }
 }
