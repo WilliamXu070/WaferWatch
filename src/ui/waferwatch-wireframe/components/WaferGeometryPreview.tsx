@@ -10,7 +10,6 @@ import {
   buildSvgViewport,
   buildWaferPieces,
   overlayRectMmToSvg,
-  toSvgPoints,
   DEFAULT_WAFER_CUT_RECIPE
 } from "@/features/wafers/geometry";
 
@@ -60,6 +59,7 @@ const POST_MODE_KEYWORDS = [
 
 const WAFER_DIAMETER_MM = 100;
 const WAFER_SEGMENTS = 96;
+const SVG_COORD_PRECISION = 6;
 
 const PALETTE = {
   pre: {
@@ -162,6 +162,34 @@ function buildWaferSwatch(seed: string, mode: "pre" | "post") {
     fillActive,
     strokeActive
   } satisfies WaferSwatch;
+}
+
+function formatSvgCoordinate(value: number) {
+  if (!Number.isFinite(value)) {
+    return "0";
+  }
+
+  return value.toFixed(SVG_COORD_PRECISION);
+}
+
+function toSvgPointsRounded(points: WaferPoint[], viewport: WaferViewport) {
+  return points
+    .map(
+      (point) =>
+        `${formatSvgCoordinate(point.x - viewport.centerX + viewport.halfSpan)},${formatSvgCoordinate(
+          viewport.halfSpan - (point.y - viewport.centerY)
+        )}`
+    )
+    .join(" ");
+}
+
+function toSvgLabelCenterRounded(points: WaferPoint[], viewport: WaferViewport) {
+  const centroid = computeCentroid(points);
+
+  return {
+    x: Number(formatSvgCoordinate(centroid.x - viewport.centerX + viewport.halfSpan)),
+    y: Number(formatSvgCoordinate(viewport.halfSpan - (centroid.y - viewport.centerY)))
+  };
 }
 
 type ParsedDieCode = {
@@ -343,15 +371,6 @@ function computeCentroid(points: WaferPoint[]) {
   };
 }
 
-function toSvgLabelCenter(points: WaferPoint[], viewport: WaferViewport) {
-  const centroid = computeCentroid(points);
-
-  return {
-    x: centroid.x - viewport.centerX + viewport.halfSpan,
-    y: viewport.halfSpan - (centroid.y - viewport.centerY)
-  };
-}
-
 function renderChipOverlay(chip: WaferChipPiece, viewport: WaferViewport, focused: boolean) {
   if (!focused) {
     return null;
@@ -369,10 +388,10 @@ function renderChipOverlay(chip: WaferChipPiece, viewport: WaferViewport, focuse
       {rects.map((rect) => (
         <rect
           key={`${chip.id}-${rect.id}`}
-          x={rect.x}
-          y={rect.y}
-          width={rect.width}
-          height={rect.height}
+          x={formatSvgCoordinate(rect.x)}
+          y={formatSvgCoordinate(rect.y)}
+          width={formatSvgCoordinate(rect.width)}
+          height={formatSvgCoordinate(rect.height)}
           fill="#dbe2d8"
           fillOpacity={0.42}
           stroke="#7f8d7c"
@@ -437,14 +456,14 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
     <div className={"grid min-h-[78px] w-full place-items-center " + className}>
       <svg
         className={"h-full w-full max-w-[220px] " + (dimmed ? "opacity-50" : "opacity-100")}
-        viewBox={`0 0 ${viewportForRender.halfSpan * 2} ${viewportForRender.halfSpan * 2}`}
+        viewBox={`0 0 ${formatSvgCoordinate(viewportForRender.halfSpan * 2)} ${formatSvgCoordinate(viewportForRender.halfSpan * 2)}`}
         role="img"
         aria-label="Wafer keyword preview"
       >
         <defs>
           {visibleChips.map((chip) => (
             <clipPath key={`${chip.id}-clip`} id={`wafer-preview-chip-clip-${chip.id}`}>
-              <polygon points={toSvgPoints(chip.points, viewportForRender)} />
+              <polygon points={toSvgPointsRounded(chip.points, viewportForRender)} />
             </clipPath>
           ))}
         </defs>
@@ -463,21 +482,21 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
 
         {visibleChips.map((chip) => {
           const isSelected = chip.label === focusedLabel;
-          const chipCenter = toSvgLabelCenter(chip.points, labelCenterViewport);
+          const chipCenter = toSvgLabelCenterRounded(chip.points, labelCenterViewport);
           const chipLabel = isSelected && selectedDieCode ? parseSelectedDieCode(chip.label, selectedDieCode) : String(chip.label);
           const chipSwatch = buildWaferSwatch(chipSeed || `${activeMode}-wafer`, activeMode);
 
           return (
             <g key={chip.id}>
               <polygon
-                points={toSvgPoints(chip.points, viewportForRender)}
+                points={toSvgPointsRounded(chip.points, viewportForRender)}
                 fill={isSelected ? chipSwatch.fillActive : chipSwatch.fill}
                 stroke={isSelected ? chipSwatch.strokeActive : chipSwatch.stroke}
                 strokeWidth={isSelected ? 1.7 : 1}
               />
               <text
-                x={chipCenter.x}
-                y={chipCenter.y + 0.8}
+                x={formatSvgCoordinate(chipCenter.x)}
+                y={formatSvgCoordinate(chipCenter.y + 0.8)}
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fill={isSelected ? "#3f593b" : "#58645a"}
