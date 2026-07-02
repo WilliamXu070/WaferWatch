@@ -20,6 +20,7 @@ type WaferGeometryPreviewProps = {
   selectedLabel?: number;
   selectedDieCode?: string;
   colorSeed?: string;
+  showDieLabel?: boolean;
   showOnlySelectedDie?: boolean;
   className?: string;
   dimmed?: boolean;
@@ -417,6 +418,7 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
   selectedLabel,
   selectedDieCode,
   colorSeed,
+  showDieLabel = true,
   showOnlySelectedDie = false,
   className = "",
   dimmed = false
@@ -483,7 +485,10 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
         {visibleChips.map((chip) => {
           const isSelected = chip.label === focusedLabel;
           const chipCenter = toSvgLabelCenterRounded(chip.points, labelCenterViewport);
-          const chipLabel = isSelected && selectedDieCode ? parseSelectedDieCode(chip.label, selectedDieCode) : String(chip.label);
+          const chipLabel =
+            showDieLabel && isSelected && selectedDieCode
+              ? parseSelectedDieCode(chip.label, selectedDieCode)
+              : String(chip.label);
           const chipSwatch = buildWaferSwatch(chipSeed || `${activeMode}-wafer`, activeMode);
 
           return (
@@ -494,18 +499,20 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
                 stroke={isSelected ? chipSwatch.strokeActive : chipSwatch.stroke}
                 strokeWidth={isSelected ? 1.7 : 1}
               />
-              <text
-                x={formatSvgCoordinate(chipCenter.x)}
-                y={formatSvgCoordinate(chipCenter.y + 0.8)}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fill={isSelected ? "#3f593b" : "#58645a"}
-                fontSize={isSelected ? 8.8 : 8}
-                fontFamily="Arial, Helvetica, sans-serif"
-                fontWeight={isSelected ? 700 : 600}
-              >
-                {chipLabel}
-              </text>
+              {showDieLabel ? (
+                <text
+                  x={formatSvgCoordinate(chipCenter.x)}
+                  y={formatSvgCoordinate(chipCenter.y + 0.8)}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill={isSelected ? "#3f593b" : "#58645a"}
+                  fontSize={isSelected ? 8.8 : 8}
+                  fontFamily="Arial, Helvetica, sans-serif"
+                  fontWeight={isSelected ? 700 : 600}
+                >
+                  {chipLabel}
+                </text>
+              ) : null}
               {mode === "post-dice" ? renderChipOverlay(chip, viewportForRender, isSelected) : null}
             </g>
           );

@@ -84,6 +84,8 @@ function WaferTile({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const isUndiced = tile.family.toUpperCase() === "GAMMA";
+
   return (
     <button
       type="button"
@@ -107,9 +109,10 @@ function WaferTile({
         <WaferGeometryPreview
           modeKeyword={tile.waferStateName}
           selectedLabel={getSelectedDieLabel(tile)}
-          selectedDieCode={tile.dieLabel || tile.code}
+          selectedDieCode={isUndiced ? undefined : (tile.dieLabel || tile.code)}
           colorSeed={tile.family}
-          showOnlySelectedDie
+          showOnlySelectedDie={!isUndiced}
+          showDieLabel={!isUndiced}
           dimmed={tile.status === "queued"}
           className="max-h-[78px]"
         />
@@ -180,6 +183,8 @@ function SelectedDiePanel({
 }: {
   selectedTile: WaferStatusTileModel;
 }) {
+  const isUndiced = selectedTile.family.toUpperCase() === "GAMMA";
+
   return (
     <aside className="grid gap-4 rounded-2xl border border-[#d5d9cf] bg-[#fbfcf8] p-5 shadow-[0_14px_36px_-28px_rgba(22,29,35,0.42)]">
       <div className="flex items-start justify-between gap-4">
@@ -200,9 +205,10 @@ function SelectedDiePanel({
         <WaferGeometryPreview
           modeKeyword={selectedTile.waferStateName}
           selectedLabel={getSelectedDieLabel(selectedTile)}
-          selectedDieCode={selectedTile.dieLabel || selectedTile.code}
+          selectedDieCode={isUndiced ? undefined : (selectedTile.dieLabel || selectedTile.code)}
           colorSeed={selectedTile.family}
-          showOnlySelectedDie
+          showOnlySelectedDie={!isUndiced}
+          showDieLabel={!isUndiced}
           className="max-h-[320px]"
         />
       </div>
