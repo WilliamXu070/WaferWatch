@@ -465,7 +465,7 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
           const isSelected = chip.label === focusedLabel;
           const chipCenter = toSvgLabelCenter(chip.points, labelCenterViewport);
           const chipLabel = isSelected && selectedDieCode ? parseSelectedDieCode(chip.label, selectedDieCode) : String(chip.label);
-          const chipSwatch = buildWaferSwatch(`${chipSeed}-${chip.label}`, activeMode);
+          const chipSwatch = buildWaferSwatch(chipSeed || `${activeMode}-wafer`, activeMode);
 
           return (
             <g key={chip.id}>
