@@ -20,6 +20,7 @@ type WaferGeometryPreviewProps = {
   modeKeyword?: string;
   selectedLabel?: number;
   selectedDieCode?: string;
+  colorSeed?: string;
   showOnlySelectedDie?: boolean;
   className?: string;
   dimmed?: boolean;
@@ -65,15 +66,103 @@ const PALETTE = {
     chipFill: "#ffffff",
     chipStroke: "#9aa49a",
     chipFillActive: "#e9f0e3",
-    chipStrokeActive: "#5f7b56"
+    chipStrokeActive: "#5f7b56",
+    fillSaturation: 8,
+    strokeSaturation: 20,
+    hueBase: 145
   },
   post: {
     chipFill: "#f4f7f1",
     chipStroke: "#8d9a8c",
     chipFillActive: "#e3ecd9",
-    chipStrokeActive: "#557451"
+    chipStrokeActive: "#557451",
+    fillSaturation: 12,
+    strokeSaturation: 24,
+    hueBase: 205
   }
 };
+
+type WaferSwatch = {
+  fill: string;
+  stroke: string;
+  fillActive: string;
+  strokeActive: string;
+};
+
+function hashSeed(value: string) {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = (hash * 16777619) >>> 0;
+  }
+
+  return hash >>> 0;
+}
+
+function clamp01(value: number) {
+  return Math.min(1, Math.max(0, value));
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number) {
+  const normalizedHue = ((hue % 360) + 360) % 360;
+  const s = clamp01(saturation / 100);
+  const l = clamp01(lightness / 100);
+
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const huePrime = normalizedHue / 60;
+  const x = chroma * (1 - Math.abs((huePrime % 2) - 1));
+  let r1 = 0;
+  let g1 = 0;
+  let b1 = 0;
+
+  if (huePrime >= 0 && huePrime < 1) {
+    r1 = chroma;
+    g1 = x;
+  } else if (huePrime < 2) {
+    r1 = x;
+    g1 = chroma;
+  } else if (huePrime < 3) {
+    g1 = chroma;
+    b1 = x;
+  } else if (huePrime < 4) {
+    g1 = x;
+    b1 = chroma;
+  } else if (huePrime < 5) {
+    r1 = x;
+    b1 = chroma;
+  } else {
+    r1 = chroma;
+    b1 = x;
+  }
+
+  const m = l - chroma / 2;
+  const r = Math.round((r1 + m) * 255);
+  const g = Math.round((g1 + m) * 255);
+  const b = Math.round((b1 + m) * 255);
+
+  const toHex = (value: number) => value.toString(16).padStart(2, "0");
+
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function buildWaferSwatch(seed: string, mode: "pre" | "post") {
+  const modePalette = PALETTE[mode];
+  const hashed = hashSeed(seed);
+  const hueShift = hashed % 90;
+  const hue = modePalette.hueBase + hueShift;
+  const fill = hslToHex(hue, Math.min(26, Math.max(6, modePalette.fillSaturation + (hashed % 11))), 94);
+  const fillActive = hslToHex(hue, Math.min(30, modePalette.fillSaturation + (hashed % 14)), 86);
+  const stroke = hslToHex(hue, Math.min(35, modePalette.strokeSaturation + (hashed % 13)), 74);
+  const strokeActive = hslToHex(hue, Math.min(38, modePalette.strokeSaturation + (hashed % 17)), 58);
+
+  return {
+    fill,
+    stroke,
+    fillActive,
+    strokeActive
+  } satisfies WaferSwatch;
+}
 
 type ParsedDieCode = {
   label?: string;
@@ -308,13 +397,15 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
   modeKeyword,
   selectedLabel,
   selectedDieCode,
+  colorSeed,
   showOnlySelectedDie = false,
   className = "",
   dimmed = false
 }) => {
   const mode = inferModeFromKeyword(modeKeyword);
+  const chipSeed = (colorSeed || selectedDieCode || String(selectedLabel ?? "")).trim();
   const parsedDieCode = parseDieCode(selectedDieCode);
-  const palette = PALETTE[mode === "pre-dice" ? "pre" : "post"];
+  const activeMode = mode === "pre-dice" ? "pre" : "post";
   const waferPoints = useMemo(() => buildSyntheticWaferOutline(), []);
   const viewport = useMemo(() => buildSvgViewport(waferPoints), [waferPoints]);
   const requestedLabel =
@@ -374,13 +465,14 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
           const isSelected = chip.label === focusedLabel;
           const chipCenter = toSvgLabelCenter(chip.points, labelCenterViewport);
           const chipLabel = isSelected && selectedDieCode ? parseSelectedDieCode(chip.label, selectedDieCode) : String(chip.label);
+          const chipSwatch = buildWaferSwatch(`${chipSeed}-${chip.label}`, activeMode);
 
           return (
             <g key={chip.id}>
               <polygon
                 points={toSvgPoints(chip.points, viewportForRender)}
-                fill={isSelected ? palette.chipFillActive : palette.chipFill}
-                stroke={isSelected ? palette.chipStrokeActive : palette.chipStroke}
+                fill={isSelected ? chipSwatch.fillActive : chipSwatch.fill}
+                stroke={isSelected ? chipSwatch.strokeActive : chipSwatch.stroke}
                 strokeWidth={isSelected ? 1.7 : 1}
               />
               <text

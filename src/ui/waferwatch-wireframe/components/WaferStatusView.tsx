@@ -108,6 +108,7 @@ function WaferTile({
           modeKeyword={tile.waferStateName}
           selectedLabel={getSelectedDieLabel(tile)}
           selectedDieCode={tile.dieLabel || tile.code}
+          colorSeed={`${tile.family}-${tile.code}-${tile.id}`}
           showOnlySelectedDie
           dimmed={tile.status === "queued"}
           className="max-h-[78px]"
@@ -200,6 +201,7 @@ function SelectedDiePanel({
           modeKeyword={selectedTile.waferStateName}
           selectedLabel={getSelectedDieLabel(selectedTile)}
           selectedDieCode={selectedTile.dieLabel || selectedTile.code}
+          colorSeed={`${selectedTile.family}-${selectedTile.code}-${selectedTile.id}`}
           showOnlySelectedDie
           className="max-h-[320px]"
         />
