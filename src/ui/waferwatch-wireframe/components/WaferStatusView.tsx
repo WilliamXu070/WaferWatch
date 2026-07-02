@@ -1,26 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { WaferCutVisualizer } from "@/components/WaferCutVisualizer";
-import type { WaferMode } from "@/features/wafers/geometry";
+import { useMemo, useState } from "react";
 import { ActivityIcon, ChevronRightIcon, StackIcon, TargetIcon, WaferLogoIcon } from "../icons";
 import { waferStatusModel } from "../mock-data";
-import type {
-  WaferFamilyModel,
-  WaferStatusMetric,
-  WaferStatusTileModel,
-  WaferTileStatus
-} from "../types";
-import { loadWaferGeometry, WaferGeometryPreview, type WaferGeometry } from "./WaferGeometryPreview";
+import type { WaferFamilyModel, WaferStatusMetric, WaferStatusTileModel, WaferTileStatus } from "../types";
+import { WaferGeometryPreview } from "./WaferGeometryPreview";
 
 const statusDotColor: Record<WaferTileStatus, string> = {
-  litho: "bg-[#29a329]",
-  etch: "bg-[#29a329]",
-  inspection: "bg-[#29a329]",
-  bond: "bg-[#1683d8]",
-  test: "bg-[#6d7378]",
-  dice: "bg-[#6d7378]",
-  queued: "bg-[#b8bdc1]"
+  litho: "bg-[#5f7e56]",
+  etch: "bg-[#5f7e56]",
+  inspection: "bg-[#5f7e56]",
+  bond: "bg-[#647a8f]",
+  test: "bg-[#727a73]",
+  dice: "bg-[#727a73]",
+  queued: "bg-[#b2bab0]"
 };
 
 const metricIcons = {
@@ -30,35 +23,53 @@ const metricIcons = {
   yield: ActivityIcon
 } as const;
 
-function getWaferMode(tile: WaferStatusTileModel): WaferMode {
-  return tile.waferStateName.toLowerCase().includes("pre") ? "pre-dice" : "post-dice";
+function parseDieLabelIndex(value: string): number | undefined {
+  const normalized = value.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+  const codedMatches = normalized.match(/[A-Z]+[0-9]+/g);
+
+  if (codedMatches?.length) {
+    const bestMatch = [...codedMatches].reverse().find((match) => /^[A-Z]{1,3}[0-9]+$/.test(match));
+    if (bestMatch) {
+      const parsed = Number(bestMatch.replace(/^[A-Z]+/, ""));
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  const digitMatch = normalized.match(/\d+/);
+  if (!digitMatch) {
+    return undefined;
+  }
+
+  const parsed = Number(digitMatch[0]);
+  return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 function getSelectedDieLabel(tile: WaferStatusTileModel) {
-  const match = tile.code.match(/\d+$/);
-  return match ? Number(match[0]) : undefined;
+  return parseDieLabelIndex(tile.dieLabel || tile.code);
 }
 
 function MetricTile({ metric }: { metric: WaferStatusMetric }) {
   const Icon = metricIcons[metric.tone];
 
   return (
-    <div className="grid min-h-[108px] grid-cols-[44px_minmax(0,1fr)] items-center gap-4 rounded-lg border border-[#d7d9d6] bg-[#fbfcfa] px-5 shadow-[0_10px_24px_-20px_rgba(24,31,36,0.45)]">
+    <div className="grid min-h-[108px] grid-cols-[44px_minmax(0,1fr)] items-center gap-4 rounded-2xl border border-[#d5d9cf] bg-[#f8f9f5] px-5 shadow-[0_10px_24px_-20px_rgba(24,31,36,0.35)]">
       <span
         className={[
           "grid h-11 w-11 place-items-center rounded-lg border",
           metric.tone === "yield"
-            ? "border-[#b7d8ba] bg-[#e7f4e4] text-[#2d7d35]"
-            : "border-[#d8deda] bg-[#f1f4f1] text-[#4f5a61]"
+            ? "border-[#c1d3ba] bg-[#ecf4e8] text-[#4f6f4b]"
+            : "border-[#d8ddd3] bg-[#f0f3ed] text-[#576156]"
         ].join(" ")}
       >
         <Icon />
       </span>
       <div className="min-w-0">
-        <p className="text-[32px] font-semibold leading-none tracking-normal text-[#161a1d]">
+        <p className="text-[32px] font-semibold leading-none tracking-normal text-[#171a16]">
           {metric.value}
         </p>
-        <p className="mt-1 text-[13px] font-medium text-[#73787d]">{metric.label}</p>
+        <p className="mt-1 text-[13px] font-medium text-[#757d73]">{metric.label}</p>
       </div>
     </div>
   );
@@ -66,46 +77,44 @@ function MetricTile({ metric }: { metric: WaferStatusMetric }) {
 
 function WaferTile({
   tile,
-  geometry,
   selected,
   onSelect
 }: {
   tile: WaferStatusTileModel;
-  geometry: WaferGeometry | null;
   selected: boolean;
   onSelect: () => void;
 }) {
-  const dieLabel = getSelectedDieLabel(tile);
-
   return (
     <button
       type="button"
       aria-pressed={selected}
       onClick={onSelect}
       className={[
-        "relative grid min-h-[132px] grid-cols-[minmax(82px,0.9fr)_minmax(112px,1.1fr)] gap-3 rounded-lg border bg-[#fbfcfa] p-4 text-left transition-colors",
+        "relative grid min-h-[132px] grid-cols-[minmax(82px,0.9fr)_minmax(112px,1.1fr)] gap-3 rounded-xl border bg-[#fbfcfa] p-4 text-left transition-all",
         selected
-          ? "border-[#4269a8] shadow-[0_0_0_1px_rgba(66,105,168,0.42),0_14px_28px_-24px_rgba(26,45,74,0.65)]"
-          : "border-[#dfe1dd] hover:border-[#a8b0b7] hover:bg-[#f7f9f6]"
+          ? "border-[#697f65] shadow-[0_0_0_1px_rgba(105,127,101,0.32),0_14px_28px_-24px_rgba(32,43,29,0.45)]"
+          : "border-[#d9ddd3] hover:-translate-y-px hover:border-[#bbc4b8] hover:bg-[#f6f8f3]"
       ].join(" ")}
     >
       <span className="min-w-0">
-        <span className="block text-[18px] font-semibold leading-none text-[#171b1f]">{tile.code}</span>
-        <span className="mt-4 flex items-center gap-2 text-[13px] font-medium text-[#6f757a]">
+        <span className="block text-[18px] font-semibold leading-none text-[#171a16]">{tile.code}</span>
+        <span className="mt-4 flex items-center gap-2 text-[13px] font-medium text-[#666f64]">
           <span className={["h-2.5 w-2.5 rounded-full", statusDotColor[tile.status]].join(" ")} />
           {tile.stepLabel}
         </span>
       </span>
-      <span className="grid min-h-[86px] place-items-center rounded-md border border-[#d1d6d4] bg-[#f5f7f4] px-2 py-1">
+      <span className="grid min-h-[86px] place-items-center rounded-lg border border-[#d4d9d0] bg-[#f3f6ef] px-2 py-1">
         <WaferGeometryPreview
-          geometry={geometry}
-          mode={getWaferMode(tile)}
-          selectedLabel={dieLabel}
+          modeKeyword={tile.waferStateName}
+          selectedLabel={getSelectedDieLabel(tile)}
+          selectedDieCode={tile.dieLabel || tile.code}
+          showOnlySelectedDie
           dimmed={tile.status === "queued"}
+          className="max-h-[78px]"
         />
       </span>
       {selected ? (
-        <span className="absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-[#101820] text-[12px] font-semibold text-white">
+        <span className="absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-[#1f2b1f] text-[12px] font-semibold text-white">
           ✓
         </span>
       ) : null}
@@ -113,14 +122,8 @@ function WaferTile({
   );
 }
 
-function FamilySection({
-  family,
-  geometry,
-  selectedTile,
-  onSelect
-}: {
+function FamilySection({ family, selectedTile, onSelect }: {
   family: WaferFamilyModel;
-  geometry: WaferGeometry | null;
   selectedTile: WaferStatusTileModel;
   onSelect: (tile: WaferStatusTileModel) => void;
 }) {
@@ -128,7 +131,7 @@ function FamilySection({
   const familyMuted = family.status === "setup";
 
   return (
-    <section className="rounded-lg border border-[#dfe1dd] bg-[#fbfcfa] shadow-[0_12px_32px_-28px_rgba(22,29,35,0.5)]">
+    <section className="rounded-2xl border border-[#d8ddd3] bg-[#fbfcf8] shadow-[0_12px_32px_-28px_rgba(22,29,35,0.35)]">
       <button
         type="button"
         aria-expanded={open}
@@ -138,30 +141,29 @@ function FamilySection({
         <span
           className={[
             "h-3.5 w-3.5 rounded-full",
-            family.status === "active" ? "bg-[#2dac2b]" : "bg-[#bec2c5]"
+            family.status === "active" ? "bg-[#648459]" : "bg-[#b7bdb3]"
           ].join(" ")}
         />
-        <span className={["text-[24px] font-semibold leading-none tracking-normal", familyMuted ? "text-[#7f8589]" : "text-[#15191c]"].join(" ")}>
+        <span className={["text-[24px] font-semibold leading-none tracking-normal", familyMuted ? "text-[#818980]" : "text-[#171a16]"].join(" ")}>
           {family.name}
         </span>
-        <span className="rounded-md bg-[#eef0ed] px-2 py-0.5 text-[12px] font-semibold text-[#687076]">
+        <span className="rounded-md bg-[#e8ede4] px-2 py-0.5 text-[12px] font-semibold text-[#61695f]">
           {family.tiles.length}
         </span>
         <ChevronRightIcon
           className={[
-            "ml-auto text-[#697077] transition-transform",
+            "ml-auto text-[#6a7268] transition-transform",
             open ? "rotate-90" : "rotate-0"
           ].join(" ")}
         />
       </button>
 
       {open ? (
-        <div className="grid grid-cols-1 gap-3 border-t border-[#eceeea] p-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 border-t border-[#e5e9e0] p-4 md:grid-cols-2 xl:grid-cols-4">
           {family.tiles.map((tile) => (
             <WaferTile
               key={tile.id}
               tile={tile}
-              geometry={geometry}
               selected={selectedTile.id === tile.id}
               onSelect={() => onSelect(tile)}
             />
@@ -174,46 +176,43 @@ function FamilySection({
 
 function SelectedDiePanel({
   selectedTile,
-  geometry
 }: {
   selectedTile: WaferStatusTileModel;
-  geometry: WaferGeometry | null;
 }) {
-  const dieLabel = getSelectedDieLabel(selectedTile);
-
   return (
-    <aside className="grid gap-4 rounded-lg border border-[#d7d9d6] bg-[#fbfcfa] p-5 shadow-[0_14px_36px_-28px_rgba(22,29,35,0.55)]">
+    <aside className="grid gap-4 rounded-2xl border border-[#d5d9cf] bg-[#fbfcf8] p-5 shadow-[0_14px_36px_-28px_rgba(22,29,35,0.42)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-[#7a8186]">
+          <p className="text-[11px] font-semibold tracking-[0.08em] text-[#778075]">
             Selected die
           </p>
-          <h2 className="mt-1 text-[24px] font-semibold leading-none text-[#15191c]">
+          <h2 className="mt-1 text-[24px] font-semibold leading-none text-[#171a16]">
             {selectedTile.family} {selectedTile.code}
           </h2>
         </div>
-        <span className="rounded-md border border-[#cdd4dc] bg-[#eef4ff] px-2.5 py-1 text-[12px] font-semibold text-[#315b9d]">
+        <span className="rounded-md border border-[#c4d0bf] bg-[#edf4e9] px-2.5 py-1 text-[12px] font-semibold text-[#4f6f4b]">
           {selectedTile.stepLabel}
         </span>
       </div>
 
-      <div className="grid min-h-[260px] place-items-center rounded-lg border border-[#d6dbd8] bg-[#f5f7f4] p-5">
+      <div className="grid min-h-[260px] place-items-center rounded-xl border border-[#d4d9d0] bg-[#f3f6ef] p-5">
         <WaferGeometryPreview
-          geometry={geometry}
-          mode={getWaferMode(selectedTile)}
-          selectedLabel={dieLabel}
+          modeKeyword={selectedTile.waferStateName}
+          selectedLabel={getSelectedDieLabel(selectedTile)}
+          selectedDieCode={selectedTile.dieLabel || selectedTile.code}
+          showOnlySelectedDie
           className="max-h-[320px]"
         />
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-[13px]">
-        <div className="rounded-md border border-[#e0e3df] bg-[#f7f8f6] p-3">
-          <p className="font-semibold text-[#171b1f]">Cut recipe</p>
-          <p className="mt-1 text-[#747a7f]">4in wafer, 8 die split</p>
+        <div className="rounded-md border border-[#dee2d8] bg-[#f5f7f2] p-3">
+          <p className="font-semibold text-[#171a16]">Cut recipe</p>
+          <p className="mt-1 text-[#747d72]">4in wafer, 8 die split</p>
         </div>
-        <div className="rounded-md border border-[#e0e3df] bg-[#f7f8f6] p-3">
-          <p className="font-semibold text-[#171b1f]">Overlay</p>
-          <p className="mt-1 text-[#747a7f]">3 x 15 array clipped to die</p>
+        <div className="rounded-md border border-[#dee2d8] bg-[#f5f7f2] p-3">
+          <p className="font-semibold text-[#171a16]">Overlay</p>
+          <p className="mt-1 text-[#747d72]">3 x 15 array clipped to die</p>
         </div>
       </div>
     </aside>
@@ -229,34 +228,6 @@ export function WaferStatusView() {
     []
   );
   const [selectedTile, setSelectedTile] = useState<WaferStatusTileModel>(initialSelected);
-  const [geometry, setGeometry] = useState<WaferGeometry | null>(null);
-  const allTiles = useMemo(() => waferStatusModel.families.flatMap((family) => family.tiles), []);
-  const visualizerSamples = useMemo(
-    () =>
-      allTiles.map((tile) => ({
-        id: tile.id,
-        name: `${tile.family}-${tile.code}`,
-        stateName: tile.waferStateName,
-        statusLabel: tile.stepLabel,
-        assignmentLabel: "wireframe preview",
-        nextStepName: tile.status === "dice" ? "Review" : "Next process",
-        currentHandlerName: tile.family === "BETA" ? "Barbara" : "Adam"
-      })),
-    [allTiles]
-  );
-
-  useEffect(() => {
-    let isStale = false;
-    void loadWaferGeometry().then((nextGeometry) => {
-      if (!isStale) {
-        setGeometry(nextGeometry);
-      }
-    });
-
-    return () => {
-      isStale = true;
-    };
-  }, []);
 
   return (
     <div className="grid gap-5 p-6">
@@ -272,31 +243,14 @@ export function WaferStatusView() {
             <FamilySection
               key={family.id}
               family={family}
-              geometry={geometry}
               selectedTile={selectedTile}
               onSelect={setSelectedTile}
             />
           ))}
         </div>
-        <SelectedDiePanel selectedTile={selectedTile} geometry={geometry} />
+        <SelectedDiePanel selectedTile={selectedTile} />
       </section>
 
-      <section className="rounded-lg border border-[#d7d9d6] bg-[#fbfcfa] p-5 shadow-[0_14px_36px_-28px_rgba(22,29,35,0.55)]">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.11em] text-[#7a8186]">
-              Full wafer viewer
-            </p>
-            <h2 className="mt-1 text-[20px] font-semibold leading-none text-[#15191c]">
-              Geometry and array interaction
-            </h2>
-          </div>
-          <span className="text-[13px] font-medium text-[#747a7f]">
-            Mock-safe preview data
-          </span>
-        </div>
-        <WaferCutVisualizer wafers={visualizerSamples} />
-      </section>
     </div>
   );
 }
