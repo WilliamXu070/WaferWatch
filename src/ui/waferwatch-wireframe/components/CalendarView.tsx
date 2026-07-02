@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import {
   createProcessCalendarEvent,
   deleteProcessCalendarEvent,
-  moveProcessCalendarEvent
+  moveProcessCalendarEvent,
+  updateProcessCalendarEvent
 } from "@/features/calendar/actions";
 import type { ProcessCalendarLocation } from "@/features/calendar/queries";
 import type { CalendarEventModel, CalendarPersonModel, CalendarSiteModel } from "../types";
@@ -64,6 +65,7 @@ type DragState =
       type: "move";
       eventId: string;
       originalEvent: CalendarEventModel;
+      personIds: string[];
       pointerOffsetMs: number;
       durationMs: number;
     }
@@ -72,6 +74,7 @@ type DragState =
       eventId: string;
       edge: ResizeEdge;
       originalEvent: CalendarEventModel;
+      personIds: string[];
     }
   | {
       type: "create";
@@ -94,8 +97,10 @@ const WORK_END_HOUR = 18;
 const MIN_EVENT_MS = 30 * 60 * 1000;
 const DEFAULT_EVENT_MS = 60 * 60 * 1000;
 const SNAP_MS = 15 * 60 * 1000;
+const TRAVEL_BUFFER_MS = 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+const EVENT_ID_PREFIX = "local-event";
 const MODE_DAY_COUNT: Record<RangeMode, number> = {
   Day: 1,
   Week: 7,
@@ -171,6 +176,10 @@ function formatHourLabel(date: Date) {
     hour: "numeric",
     timeZone: WIRE_TIME_ZONE
   }).format(date);
+}
+
+function intervalsOverlap(startsAt: number, endsAt: number, otherStartsAt: number, otherEndsAt: number) {
+  return startsAt < otherEndsAt && endsAt > otherStartsAt;
 }
 
 function buildDateColumns(startDate: string, days: number): CalendarColumn[] {
@@ -312,11 +321,86 @@ function isMockDraftEvent(event: CalendarEventModel) {
   return event.process_template_id === processSummary.id && event.id === "evt-intake";
 }
 
-function getEventTone(event: CalendarEventModel, stepsById: Map<string, string>): EventTone {
-  const normalized = getEventTitle(event, stepsById).toLowerCase();
-  if (normalized.includes("lith") || normalized.includes("coat") || normalized.includes("expose")) return "blue";
-  if (normalized.includes("clean") || normalized.includes("pol")) return "green";
+function getToneFromLabel(label: string): EventTone {
+  const normalized = label.toLowerCase();
+  if (
+    normalized.includes("lith") ||
+    normalized.includes("coat") ||
+    normalized.includes("expose") ||
+    normalized.includes("inspect")
+  ) {
+    return "blue";
+  }
+
+  if (normalized.includes("clean") || normalized.includes("pol")) {
+    return "green";
+  }
+
   return "amber";
+}
+
+function getFallbackToneFromSeed(seed: string): EventTone {
+  const seedValue = seed
+    .split("")
+    .reduce((total, char) => total + char.charCodeAt(0), 0);
+
+  if (seedValue % 3 === 1) {
+    return "blue";
+  }
+
+  if (seedValue % 3 === 2) {
+    return "green";
+  }
+
+  return "amber";
+}
+
+function getEventTone(event: CalendarEventModel, stepsById: Map<string, string>): EventTone {
+  const tone = getToneFromLabel(getEventTitle(event, stepsById));
+  return tone === "amber" ? getFallbackToneFromSeed(event.id) : tone;
+}
+
+function getDraftTone(
+  actionMode: ActionMode,
+  selectedStepId: string,
+  manualAction: string,
+  stepsById: Map<string, string>
+): EventTone {
+  const tone = getToneFromLabel(
+    actionMode === "manual"
+      ? manualAction || "Manual action"
+      : stepsById.get(selectedStepId) || "Process step"
+  );
+
+  return tone === "amber"
+    ? getFallbackToneFromSeed(`${actionMode}-${selectedStepId}-${manualAction}`)
+    : tone;
+}
+
+function getSelectionDefaults(
+  event: CalendarEventModel | null,
+  steps: readonly ProcessStepOption[],
+  fallbackPersonId: string = ""
+) {
+  const fallbackStepId = steps[0]?.id ?? "";
+
+  if (!event) {
+    return {
+      actionMode: steps.length ? ("step" as ActionMode) : ("manual" as ActionMode),
+      selectedStepId: fallbackStepId,
+      manualAction: "",
+      selectedPersonIds: [],
+      description: ""
+    };
+  }
+
+  return {
+    actionMode: event.process_step_id ? ("step" as ActionMode) : ("manual" as ActionMode),
+    selectedStepId: event.process_step_id ?? fallbackStepId,
+    manualAction: event.manual_action ?? "",
+    selectedPersonIds: event.people.length ? event.people.map((person) => person.id) : fallbackPersonId ? [fallbackPersonId] : [],
+    description: event.description ?? ""
+  };
 }
 
 function getEventStyle(event: CalendarEventModel, calendarWindow: CalendarWindow, mode: RangeMode): CSSProperties {
@@ -363,16 +447,18 @@ export function CalendarView({
   initialEvents = calendarModel.events,
   initialStartDate = calendarWindow.startDate
 }: CalendarViewProps) {
+  const fallbackPersonId = people[0]?.id ?? "";
+  const initialSelection = getSelectionDefaults(initialEvents[0] ?? null, steps, fallbackPersonId);
   const [mode, setMode] = useState<RangeMode>("Week");
   const [visibleStart, setVisibleStart] = useState(() => dateFromKey(initialStartDate));
   const [events, setEvents] = useState<CalendarEventModel[]>([...initialEvents]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(initialEvents[0]?.id ?? null);
   const [draft, setDraft] = useState<DraftEvent | null>(null);
-  const [actionMode, setActionMode] = useState<ActionMode>(steps.length ? "step" : "manual");
-  const [selectedStepId, setSelectedStepId] = useState(steps[0]?.id ?? "");
-  const [manualAction, setManualAction] = useState("");
-  const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>(people[0] ? [people[0].id] : []);
-  const [description, setDescription] = useState("");
+  const [actionMode, setActionMode] = useState<ActionMode>(initialSelection.actionMode);
+  const [selectedStepId, setSelectedStepId] = useState(initialSelection.selectedStepId);
+  const [manualAction, setManualAction] = useState(initialSelection.manualAction);
+  const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>(initialSelection.selectedPersonIds);
+  const [description, setDescription] = useState(initialSelection.description);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -383,6 +469,7 @@ export function CalendarView({
   const calendarWindow = useMemo(() => buildCalendarWindow(mode, visibleStart), [mode, visibleStart]);
   const columns = calendarWindow.columns;
   const stepsById = useMemo(() => new Map(steps.map((step) => [step.id, step.name])), [steps]);
+  const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
   const selectedEvent = events.find((event) => event.id === selectedEventId) ?? null;
   const visibleEvents = events.filter((event) => {
     const startsAt = new Date(event.starts_at);
@@ -390,7 +477,7 @@ export function CalendarView({
     return startsAt.getTime() < calendarWindow.endsAt && endsAt.getTime() > calendarWindow.startsAt;
   });
   const rangeLabel = formatRangeLabel(mode, calendarWindow);
-  const canWrite = backendEnabled && process.id !== processSummary.id;
+  const canPersist = backendEnabled;
   const canEditEvents = true;
   const columnMinWidth = mode === "Day" ? 84 : mode === "Month" ? 78 : 104;
   const headerGridTemplateColumns = `136px repeat(${columns.length}, minmax(${columnMinWidth}px, 1fr))`;
@@ -410,6 +497,19 @@ export function CalendarView({
     setSelectedPersonIds(people[0] ? [people[0].id] : []);
     setDescription("");
   }, [people, steps]);
+
+  const syncSelectionFormToEvent = useCallback(
+    (event: CalendarEventModel | null) => {
+      const nextSelection = getSelectionDefaults(event, steps, fallbackPersonId);
+
+      setActionMode(nextSelection.actionMode);
+      setSelectedStepId(nextSelection.selectedStepId);
+      setManualAction(nextSelection.manualAction);
+      setSelectedPersonIds(nextSelection.selectedPersonIds);
+      setDescription(nextSelection.description);
+    },
+    [fallbackPersonId, steps]
+  );
 
   const getPointerTarget = useCallback((event: PointerEvent | ReactPointerEvent | WheelEvent) => {
     const board = boardRef.current;
@@ -435,18 +535,82 @@ export function CalendarView({
     };
   }, [calendarWindow]);
 
-  const updateDraftFromSelection = useCallback((anchorTime: number, location: ProcessCalendarLocation, currentTime: number) => {
-    const startsAt = new Date(Math.min(anchorTime, currentTime));
-    const endsAt = new Date(Math.max(currentTime, anchorTime + MIN_EVENT_MS));
+  const hasScheduleConflict = useCallback(
+    (
+      location: ProcessCalendarLocation,
+      startsAt: number,
+      endsAt: number,
+      personIds: readonly string[] = [],
+      ignoreEventId?: string
+    ) => {
+      const candidatePersons = new Set(personIds);
 
-    setDraft({
-      location,
-      startsAt,
-      endsAt: endsAt.getTime() - startsAt.getTime() < MIN_EVENT_MS
-        ? new Date(startsAt.getTime() + MIN_EVENT_MS)
-        : endsAt
+      return eventsRef.current.some((event) => {
+        if (event.id === ignoreEventId) return false;
+
+      const eventStartsAt = new Date(event.starts_at).getTime();
+      const eventEndsAt = new Date(event.ends_at).getTime();
+      const sameLocation = event.location === location;
+
+      if (sameLocation) {
+        return intervalsOverlap(startsAt, endsAt, eventStartsAt, eventEndsAt);
+      }
+
+      const sharesPerson = event.people.some((person) => candidatePersons.has(person.id));
+      if (!sharesPerson || !candidatePersons.size) {
+        return false;
+      }
+
+      const conflictStartsAt = eventStartsAt - TRAVEL_BUFFER_MS;
+      const conflictEndsAt = eventEndsAt + TRAVEL_BUFFER_MS;
+
+      return intervalsOverlap(startsAt, endsAt, conflictStartsAt, conflictEndsAt);
     });
-  }, []);
+  },
+    []
+  );
+
+  const updateDraftFromSelection = useCallback(
+    (anchorTime: number, location: ProcessCalendarLocation, currentTime: number) => {
+      const startsAt = new Date(Math.min(anchorTime, currentTime));
+      const endsAt = new Date(Math.max(currentTime, anchorTime + MIN_EVENT_MS));
+
+      setDraft({
+        location,
+        startsAt,
+        endsAt: endsAt.getTime() - startsAt.getTime() < MIN_EVENT_MS
+          ? new Date(startsAt.getTime() + MIN_EVENT_MS)
+          : endsAt
+      });
+    },
+    []
+  );
+
+  const getDragPersonIds = useCallback(
+    (calendarEvent: CalendarEventModel) => {
+      if (calendarEvent.people.length) {
+        return calendarEvent.people.map((person) => person.id);
+      }
+
+      return selectedPersonIds;
+    },
+    [selectedPersonIds]
+  );
+
+  const generateMockEvent = useCallback(
+    (input: DraftEvent): CalendarEventModel => ({
+      id: `${EVENT_ID_PREFIX}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      process_template_id: process.id,
+      location: input.location,
+      starts_at: input.startsAt.toISOString(),
+      ends_at: input.endsAt.toISOString(),
+      process_step_id: actionMode === "step" ? selectedStepId || null : null,
+      manual_action: actionMode === "manual" ? (manualAction || null) : null,
+      description: description.trim() || null,
+      people: selectedPersonIds.map((personId) => peopleById.get(personId)).filter((person): person is CalendarPersonModel => Boolean(person))
+    }),
+    [actionMode, description, manualAction, peopleById, process.id, selectedPersonIds, selectedStepId]
+  );
 
   const handleEventPointerDown = (
     event: ReactPointerEvent<HTMLElement>,
@@ -464,6 +628,7 @@ export function CalendarView({
 
     event.preventDefault();
     event.stopPropagation();
+    syncSelectionFormToEvent(calendarEvent);
     setSelectedEventId(calendarEvent.id);
     setDraft(null);
 
@@ -472,12 +637,14 @@ export function CalendarView({
           type: "resize",
           eventId: calendarEvent.id,
           edge: resizeEdge,
-          originalEvent: calendarEvent
+          originalEvent: calendarEvent,
+          personIds: getDragPersonIds(calendarEvent)
         }
       : {
           type: "move",
           eventId: calendarEvent.id,
           originalEvent: calendarEvent,
+          personIds: getDragPersonIds(calendarEvent),
           pointerOffsetMs: pointerTarget.time - new Date(calendarEvent.starts_at).getTime(),
           durationMs: new Date(calendarEvent.ends_at).getTime() - new Date(calendarEvent.starts_at).getTime()
         };
@@ -494,7 +661,7 @@ export function CalendarView({
     const pointerTarget = getPointerTarget(event);
     if (!pointerTarget) return;
 
-    if (canWrite && event.shiftKey) {
+    if (event.shiftKey) {
       event.preventDefault();
       const nextDragState: DragState = {
         type: "create",
@@ -512,7 +679,7 @@ export function CalendarView({
   };
 
   const handleTrackDoubleClick = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!canWrite || (event.target instanceof HTMLElement && event.target.closest(".wireframe-calendar-event"))) {
+    if (event.target instanceof HTMLElement && event.target.closest(".wireframe-calendar-event")) {
       return;
     }
 
@@ -535,7 +702,25 @@ export function CalendarView({
       return;
     }
 
-    if (!canWrite) {
+    if (!canPersist) {
+      return;
+    }
+
+    const nextPersonIds = nextEvent.people.length
+      ? nextEvent.people.map((person) => person.id)
+      : selectedPersonIds;
+
+    if (
+      hasScheduleConflict(
+        nextEvent.location,
+        new Date(nextEvent.starts_at).getTime(),
+        new Date(nextEvent.ends_at).getTime(),
+        nextPersonIds,
+        eventId
+      )
+    ) {
+      setError("This move would overlap another event.");
+      setEvents((current) => current.map((event) => (event.id === eventId ? previousEvent : event)));
       return;
     }
 
@@ -556,7 +741,7 @@ export function CalendarView({
 
       setEvents((current) => current.map((event) => (event.id === eventId ? result.data as CalendarEventModel : event)));
     });
-  }, [canWrite]);
+  }, [canPersist, hasScheduleConflict, selectedPersonIds]);
 
   useEffect(() => {
     if (!dragState) return;
@@ -574,22 +759,63 @@ export function CalendarView({
       event.preventDefault();
 
       if (currentDrag.type === "create") {
-        updateDraftFromSelection(currentDrag.anchorTime, pointerTarget.location, pointerTarget.time);
+        const startsAt = new Date(Math.min(currentDrag.anchorTime, pointerTarget.time));
+        const endsAt = new Date(Math.max(pointerTarget.time, currentDrag.anchorTime + MIN_EVENT_MS));
+
+        const safeEnd = new Date(
+          endsAt.getTime() - startsAt.getTime() < MIN_EVENT_MS
+            ? startsAt.getTime() + MIN_EVENT_MS
+            : endsAt.getTime()
+        );
+
+        if (hasScheduleConflict(currentDrag.location, startsAt.getTime(), safeEnd.getTime(), selectedPersonIds)) {
+          setError("This time overlaps an existing event at this site.");
+          return;
+        }
+
+        if (error) {
+          setError(null);
+        }
+
+        setDraft({
+          location: currentDrag.location,
+          startsAt,
+          endsAt: safeEnd
+        });
         return;
       }
 
       const nextEvents = eventsRef.current.map((calendarEvent) => {
         if (calendarEvent.id !== currentDrag.eventId) return calendarEvent;
 
-        if (currentDrag.type === "move") {
+          if (currentDrag.type === "move") {
             const startsAt = new Date(pointerTarget.time - currentDrag.pointerOffsetMs);
             const endsAt = new Date(startsAt.getTime() + currentDrag.durationMs);
+            const snappedStart = new Date(snapTime(startsAt.getTime()));
+            const snappedEnd = new Date(snapTime(endsAt.getTime()));
+
+            if (
+              hasScheduleConflict(
+                pointerTarget.location,
+                snappedStart.getTime(),
+                snappedEnd.getTime(),
+                currentDrag.personIds,
+                currentDrag.eventId
+              )
+            ) {
+              setError("This move would overlap another event.");
+              return calendarEvent;
+            }
+
+            if (error) {
+              setError(null);
+            }
 
             return {
               ...calendarEvent,
               location: pointerTarget.location,
-              starts_at: new Date(snapTime(startsAt.getTime())).toISOString(),
-              ends_at: new Date(snapTime(endsAt.getTime())).toISOString()
+              starts_at: snappedStart.toISOString(),
+              ends_at: snappedEnd.toISOString()
             };
           }
 
@@ -600,12 +826,34 @@ export function CalendarView({
 
           if (resizedEnd - resizedStart < MIN_EVENT_MS) return calendarEvent;
 
+          const snappedResizedStart = snapTime(resizedStart);
+          const snappedResizedEnd = snapTime(resizedEnd);
+          const nextLocation = calendarEvent.location;
+
+          if (
+            hasScheduleConflict(
+              nextLocation,
+              snappedResizedStart,
+              snappedResizedEnd,
+              currentDrag.personIds,
+              currentDrag.eventId
+            )
+          ) {
+            setError("This resize would overlap another event.");
+            return calendarEvent;
+          }
+
+          if (error) {
+            setError(null);
+          }
+
           return {
             ...calendarEvent,
-          starts_at: new Date(resizedStart).toISOString(),
-          ends_at: new Date(resizedEnd).toISOString()
-        };
-      });
+            starts_at: new Date(snappedResizedStart).toISOString(),
+            ends_at: new Date(snappedResizedEnd).toISOString()
+          };
+        }
+      );
 
       eventsRef.current = nextEvents;
       setEvents(nextEvents);
@@ -636,10 +884,28 @@ export function CalendarView({
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerUp);
     };
-  }, [commitMove, dragState, getPointerTarget, updateDraftFromSelection]);
+    }, [commitMove, dragState, error, getPointerTarget, hasScheduleConflict, selectedPersonIds, updateDraftFromSelection]);
 
   const saveDraft = () => {
     if (!draft || !canWrite) return;
+
+    const startsAt = draft.startsAt.getTime();
+    const endsAt = draft.endsAt.getTime();
+
+    if (hasScheduleConflict(draft.location, startsAt, endsAt, selectedPersonIds)) {
+      setError("Cannot create this event because it overlaps another event.");
+      return;
+    }
+
+    if (!canPersist) {
+      const nextEvent = generateMockEvent(draft);
+
+      setEvents((current) => [...current, nextEvent].sort((a, b) => a.starts_at.localeCompare(b.starts_at)));
+      syncSelectionFormToEvent(nextEvent);
+      setSelectedEventId(nextEvent.id);
+      setDraft(null);
+      return;
+    }
 
     setError(null);
     startTransition(async () => {
@@ -660,6 +926,7 @@ export function CalendarView({
       }
 
       const createdEvent = result.data as CalendarEventModel;
+      syncSelectionFormToEvent(createdEvent);
       setEvents((current) => [...current, createdEvent].sort((a, b) => a.starts_at.localeCompare(b.starts_at)));
       setSelectedEventId(createdEvent.id);
       setDraft(null);
@@ -668,20 +935,81 @@ export function CalendarView({
 
   const deleteSelectedEvent = () => {
     if (!selectedEvent || !canWrite) return;
+    if (!canPersist) {
+      setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
+      setSelectedEventId(null);
+      setError(null);
+      return;
+    }
 
     setError(null);
     startTransition(async () => {
       const result = await deleteProcessCalendarEvent({ eventId: selectedEvent.id });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
+      setSelectedEventId(null);
+    });
+  };
+
+  const saveSelectedEvent = () => {
+    if (!selectedEvent || !canWrite) return;
+
+    setError(null);
+
+    if (!selectedPersonIds.length) {
+      setError("Assign at least one person.");
+      return;
+    }
+
+    startTransition(async () => {
+      if (!canPersist) {
+        const nextEvent = {
+          ...selectedEvent,
+          process_step_id: actionMode === "step" ? selectedStepId || null : null,
+          manual_action: actionMode === "manual" ? (manualAction || null) : null,
+          description: description.trim() || null,
+          people: selectedPersonIds
+            .map((personId) => peopleById.get(personId))
+            .filter((person): person is CalendarPersonModel => Boolean(person))
+        };
+
+        setEvents((current) => current.map((event) => (event.id === selectedEvent.id ? nextEvent : event)));
+        return;
+      }
+
+      const nextEvent = {
+        ...selectedEvent,
+        process_step_id: actionMode === "step" ? selectedStepId || null : null,
+        manual_action: actionMode === "manual" ? (manualAction || null) : null,
+        description: description.trim() || null,
+        people: selectedPersonIds
+          .map((personId) => peopleById.get(personId))
+          .filter((person): person is CalendarPersonModel => Boolean(person))
+      };
+
+      const result = await updateProcessCalendarEvent({
+        eventId: selectedEvent.id,
+        processStepId: nextEvent.process_step_id,
+        manualAction: nextEvent.manual_action,
+        description: nextEvent.description,
+        personIds: selectedPersonIds
+      });
 
       if (!result.ok) {
         setError(result.error);
         return;
       }
 
-      setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
-      setSelectedEventId(null);
+      const updatedEvent = result.data as CalendarEventModel;
+      syncSelectionFormToEvent(updatedEvent);
+      setEvents((current) => current.map((event) => (event.id === selectedEvent.id ? updatedEvent : event)));
     });
   };
+
+  const canWrite = canPersist || !backendEnabled;
 
   const getCurrentFocusDate = useCallback(() => {
     if (selectedEvent) {
@@ -844,7 +1172,7 @@ export function CalendarView({
           </div>
         </header>
 
-        <div
+      <div
           className="wireframe-calendar-week"
           aria-label="Weekly process calendar"
           data-calendar-mode={mode.toLowerCase()}
@@ -932,7 +1260,11 @@ export function CalendarView({
                               type="button"
                               aria-label="Resize start"
                               className="wireframe-calendar-event__resize wireframe-calendar-event__resize--left"
-                              onPointerDown={(pointerEvent) => handleEventPointerDown(pointerEvent, event, "left")}
+                              onPointerDown={(pointerEvent) => {
+                                pointerEvent.preventDefault();
+                                pointerEvent.stopPropagation();
+                                handleEventPointerDown(pointerEvent, event, "left");
+                              }}
                             />
                           ) : null}
                           <div className="wireframe-calendar-event__header">
@@ -956,7 +1288,11 @@ export function CalendarView({
                               type="button"
                               aria-label="Resize end"
                               className="wireframe-calendar-event__resize wireframe-calendar-event__resize--right"
-                              onPointerDown={(pointerEvent) => handleEventPointerDown(pointerEvent, event, "right")}
+                              onPointerDown={(pointerEvent) => {
+                                pointerEvent.preventDefault();
+                                pointerEvent.stopPropagation();
+                                handleEventPointerDown(pointerEvent, event, "right");
+                              }}
                             />
                           ) : null}
                         </article>
@@ -965,7 +1301,12 @@ export function CalendarView({
 
                   {draft?.location === site.id ? (
                     <article
-                      className="wireframe-calendar-event wireframe-calendar-event--amber wireframe-calendar-event--draft"
+                      className={`wireframe-calendar-event wireframe-calendar-event--${getDraftTone(
+                        actionMode,
+                        selectedStepId,
+                        manualAction,
+                        stepsById
+                      )} wireframe-calendar-event--draft`}
                       style={getDraftStyle(draft, calendarWindow, mode)}
                     >
                       <div className="wireframe-calendar-event__header">
@@ -988,7 +1329,7 @@ export function CalendarView({
           </div>
         </div>
 
-        {canWrite && (draft || selectedEvent || error) ? (
+        {(draft || selectedEvent || error) ? (
           <div className="wireframe-calendar-editor">
             {draft ? (
               <>
@@ -1069,11 +1410,64 @@ export function CalendarView({
                     {selectedEvent.location} · {formatTimeRange(selectedEvent.starts_at, selectedEvent.ends_at)}
                   </span>
                 </div>
-                <div className="wireframe-calendar-editor__meta">
-                  {selectedEvent.people.map((person) => toDisplayName(person.display_name)).join(", ") ||
-                    "Unassigned"}
-                </div>
+                <label>
+                  <span>Action</span>
+                  <select
+                    value={actionMode === "manual" ? "__manual" : selectedStepId}
+                    onChange={(event) => {
+                      if (event.target.value === "__manual") {
+                        setActionMode("manual");
+                        setSelectedStepId("");
+                      } else {
+                        setActionMode("step");
+                        setSelectedStepId(event.target.value);
+                      }
+                    }}
+                  >
+                    {steps.map((step) => (
+                      <option key={step.id} value={step.id}>
+                        {step.name}
+                      </option>
+                    ))}
+                    <option value="__manual">Manual action</option>
+                  </select>
+                </label>
+                {actionMode === "manual" ? (
+                  <label>
+                    <span>Manual</span>
+                    <input
+                      value={manualAction}
+                      onChange={(event) => setManualAction(event.target.value)}
+                      placeholder="Tool cleaning"
+                    />
+                  </label>
+                ) : null}
+                <label>
+                  <span>Owner</span>
+                  <select
+                    value={selectedPersonIds[0] ?? ""}
+                    onChange={(event) => setSelectedPersonIds(event.target.value ? [event.target.value] : [])}
+                  >
+                    <option value="">Unassigned</option>
+                    {people.map((person) => (
+                      <option key={person.id} value={person.id}>
+                        {toDisplayName(person.display_name)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Note</span>
+                  <input
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    placeholder="Optional note"
+                  />
+                </label>
                 <div className="wireframe-calendar-editor__actions">
+                  <button type="button" onClick={saveSelectedEvent} disabled={isPending || !selectedPersonIds.length}>
+                    Save
+                  </button>
                   <button type="button" onClick={() => setSelectedEventId(null)}>
                     Close
                   </button>
