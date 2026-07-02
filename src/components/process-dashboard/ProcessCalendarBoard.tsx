@@ -1049,6 +1049,11 @@ export function ProcessCalendarBoard({
     });
   }, [clearQueuedItemMove, commitMove]);
 
+  const flushQueuedItemMoveRef = useRef(flushQueuedItemMove);
+  useEffect(() => {
+    flushQueuedItemMoveRef.current = flushQueuedItemMove;
+  }, [flushQueuedItemMove]);
+
   const startItemDragSelectionBlock = useCallback(() => {
     if (isItemDragActiveRef.current) {
       return;
@@ -1115,7 +1120,7 @@ export function ProcessCalendarBoard({
   useEffect(() => {
     const stopMoving = () => {
       stopItemDragSelectionBlock();
-      flushQueuedItemMove();
+      flushQueuedItemMoveRef.current();
     };
 
     window.addEventListener("pointerup", stopMoving);
@@ -1123,12 +1128,11 @@ export function ProcessCalendarBoard({
     window.addEventListener("blur", stopMoving);
 
     return () => {
-      stopMoving();
       window.removeEventListener("pointerup", stopMoving);
       window.removeEventListener("pointercancel", stopMoving);
       window.removeEventListener("blur", stopMoving);
     };
-  }, [stopItemDragSelectionBlock, flushQueuedItemMove]);
+  }, [stopItemDragSelectionBlock]);
 
   const handleItemResize = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onItemResize"]>>(
     (itemId, resizeTime, edge) => {
