@@ -108,3 +108,16 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run build`
   - `curl -s http://localhost:3005/api/health`
   - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3005/wireframe/wafer-status /tmp/wafer-status-undiced-v1.png`
+
+## Recent development note (2026-07-02 18:41)
+
+- Updated wafer preview swatches so Alpha, Beta, and Gamma use explicit family-level
+  color palettes instead of near-neutral hash colors. Alpha is green, Beta is blue,
+  and Gamma is soft red while preserving the existing light wireframe theme.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3005/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3005/wireframe/wafer-status /tmp/wafer-status-family-colors-v2.png`
+- Note: direct Node-based Playwright DOM inspection could not run because `playwright`
+  is not installed as a local project module; the Playwright CLI screenshot path works.

@@ -88,6 +88,65 @@ type WaferSwatch = {
   stroke: string;
   fillActive: string;
   strokeActive: string;
+  text: string;
+  textActive: string;
+};
+
+const FAMILY_SWATCHES: Record<string, Record<"pre" | "post", WaferSwatch>> = {
+  ALPHA: {
+    pre: {
+      fill: "#edf7e9",
+      stroke: "#86aa78",
+      fillActive: "#d5eccd",
+      strokeActive: "#4f7f42",
+      text: "#5f7658",
+      textActive: "#2f5628"
+    },
+    post: {
+      fill: "#e8f4e3",
+      stroke: "#74a063",
+      fillActive: "#cde7c3",
+      strokeActive: "#3f7534",
+      text: "#587250",
+      textActive: "#2d5327"
+    }
+  },
+  BETA: {
+    pre: {
+      fill: "#eaf3fb",
+      stroke: "#78a4ca",
+      fillActive: "#d1e7f8",
+      strokeActive: "#3f759f",
+      text: "#526f88",
+      textActive: "#2f5878"
+    },
+    post: {
+      fill: "#e5f0fa",
+      stroke: "#6898c2",
+      fillActive: "#c7def3",
+      strokeActive: "#326b98",
+      text: "#4d6d88",
+      textActive: "#2b5578"
+    }
+  },
+  GAMMA: {
+    pre: {
+      fill: "#fdecea",
+      stroke: "#d8877d",
+      fillActive: "#f8d5d1",
+      strokeActive: "#ad554b",
+      text: "#8a5e59",
+      textActive: "#753d36"
+    },
+    post: {
+      fill: "#fae7e4",
+      stroke: "#cf796e",
+      fillActive: "#f4cac5",
+      strokeActive: "#9f493f",
+      text: "#855853",
+      textActive: "#703831"
+    }
+  }
 };
 
 function hashSeed(value: string) {
@@ -148,6 +207,11 @@ function hslToHex(hue: number, saturation: number, lightness: number) {
 }
 
 function buildWaferSwatch(seed: string, mode: "pre" | "post") {
+  const familySwatch = FAMILY_SWATCHES[seed.trim().toUpperCase()];
+  if (familySwatch) {
+    return familySwatch[mode];
+  }
+
   const modePalette = PALETTE[mode];
   const hashed = hashSeed(seed);
   const hueShift = hashed % 90;
@@ -161,7 +225,9 @@ function buildWaferSwatch(seed: string, mode: "pre" | "post") {
     fill,
     stroke,
     fillActive,
-    strokeActive
+    strokeActive,
+    text: stroke,
+    textActive: strokeActive
   } satisfies WaferSwatch;
 }
 
@@ -505,7 +571,7 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
                   y={formatSvgCoordinate(chipCenter.y + 0.8)}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  fill={isSelected ? "#3f593b" : "#58645a"}
+                  fill={isSelected ? chipSwatch.textActive : chipSwatch.text}
                   fontSize={isSelected ? 8.8 : 8}
                   fontFamily="Arial, Helvetica, sans-serif"
                   fontWeight={isSelected ? 700 : 600}
