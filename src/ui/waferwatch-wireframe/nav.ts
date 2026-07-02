@@ -25,7 +25,7 @@ export const mainNav: readonly SidebarNavItem[] = [
 
 export const processNav: readonly SidebarNavItem[] = [
   { key: "process-flow", label: "Process Flow", href: "/wireframe/process-flow", icon: "flow" },
-  { key: "wafer-status", label: "Wafer / Die Status", href: "/wireframe/process-flow", icon: "waferStatus" }
+  { key: "wafer-status", label: "Wafer / Die Status", href: "/wireframe/wafer-status", icon: "waferStatus" }
 ];
 
 export const currentProcess: ProcessSummary = {
