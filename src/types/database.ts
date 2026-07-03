@@ -23,6 +23,8 @@ export type ToolStatus = "available" | "maintenance" | "offline" | "reserved";
 export type ReservationStatus = "scheduled" | "cancelled" | "completed";
 export type IssueSeverity = "low" | "medium" | "high" | "critical";
 export type IssueStatus = "open" | "investigating" | "resolved" | "closed";
+export type ProcessStepNodeType = "start" | "procedure" | "end";
+export type ProcessStepTransitionType = "flow" | "return";
 
 type Row<T> = { Row: T; Insert: Partial<T>; Update: Partial<T>; Relationships: [] };
 
@@ -75,12 +77,28 @@ export type ProcessStep = {
   name: string;
   slug: string;
   process_area: string;
+  node_type: ProcessStepNodeType;
+  canvas_x: number | null;
+  canvas_y: number | null;
   expected_duration_minutes: number | null;
   queue_target_minutes: number | null;
   required_tool_type: string | null;
   requires_recipe: boolean;
   instructions: string | null;
   parameters_schema: Json;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProcessStepTransition = {
+  id: string;
+  template_id: string;
+  from_step_id: string;
+  to_step_id: string;
+  edge_type: ProcessStepTransitionType;
+  label: string | null;
+  condition: Json;
+  priority: number;
   created_at: string;
   updated_at: string;
 };
@@ -371,6 +389,7 @@ export interface Database {
       project_members: Row<ProjectMember>;
       process_templates: Row<ProcessTemplate>;
       process_steps: Row<ProcessStep>;
+      process_step_transitions: Row<ProcessStepTransition>;
       fabrication_tools: Row<FabricationTool>;
       recipes: Row<Recipe>;
       wafer_lots: Row<WaferLot>;
@@ -424,6 +443,8 @@ export interface Database {
       reservation_status: ReservationStatus;
       issue_severity: IssueSeverity;
       issue_status: IssueStatus;
+      process_step_node_type: ProcessStepNodeType;
+      process_step_transition_type: ProcessStepTransitionType;
     };
     CompositeTypes: Record<string, never>;
   };

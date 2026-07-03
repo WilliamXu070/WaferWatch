@@ -1,5 +1,12 @@
 import { moveWaferToProcessStep } from "@/features/runs/actions";
 import {
+  createProcessFlowStep,
+  createProcessStepTransition,
+  deleteProcessSteps,
+  updateProcessStepNodeType,
+  updateProcessStepPositions
+} from "@/features/process-flows/actions";
+import {
   getFirstActiveProcessTemplateId,
   getProcessDashboardData,
   type ProcessDashboardData
@@ -7,7 +14,7 @@ import {
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ProcessFlowView } from "@/ui/waferwatch-wireframe";
 import type { FlowStatModel } from "@/ui/waferwatch-wireframe/types";
-import type { StepStatus } from "@/types/database";
+import type { ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +31,24 @@ type DiagramStep = {
   name: string;
   process_area: string;
   step_order: number;
+  node_type: ProcessStepNodeType;
+  canvas_x: number | null;
+  canvas_y: number | null;
   wafers: {
     assignmentId: string;
     waferCode: string;
     dieLabel: string | null;
     currentStepStatus: StepStatus | null;
   }[];
+};
+
+type DiagramTransition = {
+  id: string;
+  from_step_id: string;
+  to_step_id: string;
+  edge_type: ProcessStepTransitionType;
+  label: string | null;
+  priority: number;
 };
 
 function firstSearchValue(value: string | string[] | undefined) {
@@ -44,6 +63,9 @@ function toFlowColumns(data: ProcessDashboardData): DiagramStep[] {
       name: step.name,
       process_area: step.process_area,
       step_order: step.step_order,
+      node_type: step.node_type,
+      canvas_x: step.canvas_x,
+      canvas_y: step.canvas_y,
       wafers: data.activeWaferStates
         .filter((state) => state.currentStepId === step.id)
         .map((state) => ({
@@ -53,6 +75,17 @@ function toFlowColumns(data: ProcessDashboardData): DiagramStep[] {
           currentStepStatus: state.currentStepStatus
         }))
     }));
+}
+
+function toFlowTransitions(data: ProcessDashboardData | null): DiagramTransition[] {
+  return (data?.process.process_step_transitions ?? []).map((transition) => ({
+    id: transition.id,
+    from_step_id: transition.from_step_id,
+    to_step_id: transition.to_step_id,
+    edge_type: transition.edge_type,
+    label: transition.label,
+    priority: transition.priority
+  }));
 }
 
 function countStatuses(columns: DiagramStep[], statuses: readonly StepStatus[]) {
@@ -141,6 +174,7 @@ export default async function ProcessFlowWireframePage({
   const requestedProcessId = firstSearchValue((await searchParams).processId);
   const dashboardData = await loadProcessFlowData(requestedProcessId);
   const flowColumns = dashboardData ? toFlowColumns(dashboardData) : [];
+  const flowTransitions = toFlowTransitions(dashboardData);
   const processLabel = dashboardData
     ? `${dashboardData.process.name}${dashboardData.process.version ? ` · ${dashboardData.process.version}` : ""}`
     : "No active process";
@@ -159,7 +193,14 @@ export default async function ProcessFlowWireframePage({
           : undefined
       }
       steps={flowColumns}
+      transitions={flowTransitions}
       stats={toFlowStats(dashboardData, flowColumns)}
+      processTemplateId={dashboardData?.process.id}
+      onCreateStep={createProcessFlowStep}
+      onUpdateStepPositions={updateProcessStepPositions}
+      onUpdateStepNodeType={updateProcessStepNodeType}
+      onCreateTransition={createProcessStepTransition}
+      onDeleteSteps={deleteProcessSteps}
       onMoveWafer={moveWaferToProcessStep}
     />
   );

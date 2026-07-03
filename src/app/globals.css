@@ -488,7 +488,8 @@ textarea {
   position: relative;
   width: 100%;
   height: clamp(680px, 72vh, 860px);
-  overflow: auto;
+  overflow: hidden;
+  scrollbar-width: none;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--panel-soft);
@@ -497,6 +498,11 @@ textarea {
   cursor: crosshair;
   touch-action: none;
   overscroll-behavior: contain;
+}
+
+.flow-map-frame::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .flow-map-frame--dragging {

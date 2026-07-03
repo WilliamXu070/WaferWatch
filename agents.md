@@ -336,3 +336,25 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Browser route `http://localhost:3000/wireframe/calendar` at `1280x720`:
     confirmed no Range mode control, no Day/Week/Month sequence, range control
     and Today still present, and console error log was empty.
+
+## Recent development note (2026-07-03 process flow persistence)
+
+- Persisted `/wireframe/process-flow` graph authoring through Supabase-backed
+  steps, node positions/types, transitions, organized layouts, multi-select
+  deletion, and forward wafer drops that can complete the source execution.
+- Removed the permanent toolbar `Delete step` and `Clear` controls; kept
+  `Center view` and `Organize`, with hidden canvas scrollbars and fit-to-content
+  centering.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - In-app browser at `http://localhost:3001/wireframe/process-flow`,
+    1280x720: unauthenticated empty backend state, no toolbar Delete/Clear,
+    Center view and Organize visible, no horizontal page overflow, canvas frame
+    scrollbars hidden, double-click create guard did not add local-only nodes,
+    and console error log was empty.
+  - Screenshot:
+    `/tmp/waferwatch-process-flow-persistence-cli.png`
+- Authenticated create/update/delete persistence was not browser-exercised
+  because the available browser session was unauthenticated.

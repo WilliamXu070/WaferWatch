@@ -2,7 +2,7 @@
 
 import { ProcessFlowDiagram } from "@/components/ProcessFlowDiagram";
 import type { ActionResult } from "@/lib/action-result";
-import type { StepStatus } from "@/types/database";
+import type { ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
 import type { FlowStatModel } from "../types";
 import { ProcessFlowStatsBar } from "./ProcessFlowStatsBar";
 
@@ -18,13 +18,26 @@ type ProcessFlowStepModel = {
   name: string;
   process_area: string;
   step_order: number;
+  node_type: ProcessStepNodeType;
+  canvas_x: number | null;
+  canvas_y: number | null;
   wafers: ProcessFlowWaferModel[];
+};
+
+type ProcessFlowTransitionModel = {
+  id: string;
+  from_step_id: string;
+  to_step_id: string;
+  edge_type: ProcessStepTransitionType;
+  label: string | null;
+  priority: number;
 };
 
 type MoveWaferToProcessStepAction = (input: {
   assignmentId: string;
   targetStepId: string;
   note?: string | null;
+  completeSourceStep?: boolean;
 }) => Promise<ActionResult<unknown>>;
 
 type ProcessFlowViewProps = {
@@ -33,7 +46,14 @@ type ProcessFlowViewProps = {
   emptyTitle?: string;
   emptyDescription?: string;
   steps: ProcessFlowStepModel[];
+  transitions: ProcessFlowTransitionModel[];
   stats: readonly FlowStatModel[];
+  processTemplateId?: string;
+  onCreateStep?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateStep"];
+  onUpdateStepPositions?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepPositions"];
+  onUpdateStepNodeType?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepNodeType"];
+  onCreateTransition?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateTransition"];
+  onDeleteSteps?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteSteps"];
   onMoveWafer?: MoveWaferToProcessStepAction;
 };
 
@@ -43,7 +63,14 @@ export function ProcessFlowView({
   emptyTitle,
   emptyDescription,
   steps,
+  transitions,
   stats,
+  processTemplateId,
+  onCreateStep,
+  onUpdateStepPositions,
+  onUpdateStepNodeType,
+  onCreateTransition,
+  onDeleteSteps,
   onMoveWafer
 }: ProcessFlowViewProps) {
   return (
@@ -74,7 +101,17 @@ export function ProcessFlowView({
             </div>
           ) : null}
 
-          <ProcessFlowDiagram steps={steps} onMoveWafer={onMoveWafer} />
+          <ProcessFlowDiagram
+            steps={steps}
+            transitions={transitions}
+            processTemplateId={processTemplateId}
+            onCreateStep={onCreateStep}
+            onUpdateStepPositions={onUpdateStepPositions}
+            onUpdateStepNodeType={onUpdateStepNodeType}
+            onCreateTransition={onCreateTransition}
+            onDeleteSteps={onDeleteSteps}
+            onMoveWafer={onMoveWafer}
+          />
         </div>
       </section>
 

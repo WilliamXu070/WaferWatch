@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { MouseEvent, PointerEvent } from "react";
-import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/action-result";
-import type { StepStatus } from "@/types/database";
+import type { ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
 
 type WaferPin = {
   assignmentId: string;
@@ -19,7 +18,38 @@ type DiagramStep = {
   name: string;
   process_area: string;
   step_order: number;
+  node_type?: ProcessStepNodeType;
+  canvas_x?: number | null;
+  canvas_y?: number | null;
   wafers: WaferPin[];
+};
+
+type DiagramTransition = {
+  id: string;
+  from_step_id: string;
+  to_step_id: string;
+  edge_type: ProcessStepTransitionType;
+  label: string | null;
+  priority: number;
+};
+
+type PersistedStepPayload = {
+  id: string;
+  name: string;
+  process_area: string;
+  step_order: number;
+  node_type: ProcessStepNodeType;
+  canvas_x: number | null;
+  canvas_y: number | null;
+};
+
+type PersistedTransitionPayload = {
+  id: string;
+  from_step_id: string;
+  to_step_id: string;
+  edge_type: ProcessStepTransitionType;
+  label: string | null;
+  priority: number;
 };
 
 type FlowNodeRole = "normal" | "start" | "end";
@@ -59,6 +89,8 @@ type NodeDrag = {
   pointerId: number;
   offsetX: number;
   offsetY: number;
+  startX: number;
+  startY: number;
 };
 
 type WaferDrag = {
@@ -92,14 +124,6 @@ type ScenePoint = {
   y: number;
 };
 
-type DiagramHistoryEntry = {
-  nodes: FlowNode[];
-  edges: FlowEdge[];
-  nextNodeNumber: number;
-  selectedNodeId: string | null;
-  roleMenu: RoleMenu | null;
-};
-
 type PanePoint = {
   paneX: number;
   paneY: number;
@@ -112,11 +136,17 @@ type ZoomAnchor = {
   sceneY: number;
 };
 
+type GraphViewportFit = {
+  centerX: number;
+  centerY: number;
+  scale: number;
+};
+
 const NODE_WIDTH = 276;
 const NODE_HEIGHT = 134;
 const SCENE_WIDTH = 2200;
 const SCENE_HEIGHT = 1600;
-const MIN_SCALE = 0.8;
+const MIN_SCALE = 0.35;
 const MAX_SCALE = 2.6;
 const BUTTON_ZOOM_STEP = 0.25;
 const WHEEL_ZOOM_STEP = 0.18;
@@ -130,18 +160,87 @@ const LAYOUT_LOOP_RADIUS_X = 250;
 const LAYOUT_LOOP_RADIUS_Y = 170;
 const EDGE_CURVE_OFFSET = 48;
 const EDGE_NODE_CLEARANCE = 10;
-const SEEDED_START_ID = "flow-seed-start";
-const SEEDED_END_ID = "flow-seed-end";
 const MAX_NODE_CHIPS = 4;
+const FIT_VIEW_PADDING = 96;
 
 type MoveWaferToProcessStepAction = (input: {
   assignmentId: string;
   targetStepId: string;
   note?: string | null;
+  completeSourceStep?: boolean;
+}) => Promise<ActionResult<unknown>>;
+
+type CreateProcessFlowStepAction = (input: {
+  templateId: string;
+  name: string;
+  processArea: string;
+  nodeType: ProcessStepNodeType;
+  canvasX: number;
+  canvasY: number;
+}) => Promise<ActionResult<PersistedStepPayload>>;
+
+type UpdateProcessStepPositionsAction = (input: {
+  positions: Array<{
+    stepId: string;
+    canvasX: number;
+    canvasY: number;
+  }>;
+}) => Promise<ActionResult<unknown>>;
+
+type UpdateProcessStepNodeTypeAction = (input: {
+  stepId: string;
+  nodeType: ProcessStepNodeType;
+}) => Promise<ActionResult<PersistedStepPayload>>;
+
+type CreateProcessStepTransitionAction = (input: {
+  templateId: string;
+  fromStepId: string;
+  toStepId: string;
+  edgeType: ProcessStepTransitionType;
+  label?: string | null;
+  priority?: number;
+}) => Promise<ActionResult<PersistedTransitionPayload>>;
+
+type DeleteProcessStepsAction = (input: {
+  stepIds: string[];
 }) => Promise<ActionResult<unknown>>;
 
 function clampScale(nextScale: number) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(nextScale.toFixed(2))));
+}
+
+function toFlowNodeRole(nodeType: ProcessStepNodeType | undefined): FlowNodeRole {
+  if (nodeType === "start" || nodeType === "end") {
+    return nodeType;
+  }
+
+  return "normal";
+}
+
+function toProcessStepNodeType(role: FlowNodeRole): ProcessStepNodeType {
+  return role === "normal" ? "procedure" : role;
+}
+
+function getGraphBounds(nodes: FlowNode[]) {
+  if (nodes.length === 0) {
+    return null;
+  }
+
+  const minX = Math.min(...nodes.map((node) => node.x));
+  const maxX = Math.max(...nodes.map((node) => node.x + node.width));
+  const minY = Math.min(...nodes.map((node) => node.y));
+  const maxY = Math.max(...nodes.map((node) => node.y + node.height));
+
+  return {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2
+  };
 }
 
 function makeNodePath(edge: FlowEdge, from: FlowNode, to: FlowNode, edges: FlowEdge[], nodes: FlowNode[]) {
@@ -1025,75 +1124,68 @@ function describeRole(role: FlowNodeRole) {
   return "Step";
 }
 
-function getInitialGraph(steps: DiagramStep[]) {
+function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransition[]) {
   const sortedSteps = [...steps].sort((a, b) => a.step_order - b.step_order);
-  const waferByAssignmentId = new Map<string, WaferPin>();
-
-  for (const step of sortedSteps) {
-    for (const wafer of step.wafers) {
-      waferByAssignmentId.set(wafer.assignmentId, wafer);
-    }
-  }
-
-  const allWafers = [...waferByAssignmentId.values()];
-  const nodes: FlowNode[] = [
-    {
-      id: SEEDED_START_ID,
-      label: "Start",
-      subLabel: "Process entry",
-      wafers: allWafers,
-      x: 0,
-      y: 0,
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
-      role: "start",
-      order: 0
-    },
-    ...sortedSteps.map((step, index): FlowNode => ({
+  const nodes: FlowNode[] = sortedSteps.map((step, index): FlowNode => ({
       id: step.id,
       label: step.name,
       subLabel: step.process_area,
       wafers: step.wafers,
-      x: 0,
-      y: 0,
+      x: step.canvas_x ?? 0,
+      y: step.canvas_y ?? 0,
       width: NODE_WIDTH,
       height: NODE_HEIGHT,
-      role: "normal",
+      role: toFlowNodeRole(step.node_type),
       order: index + 1
-    })),
-    {
-      id: SEEDED_END_ID,
-      label: "End",
-      subLabel: "Process complete",
-      wafers: [],
-      x: 0,
-      y: 0,
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
-      role: "end",
-      order: sortedSteps.length + 1
-    }
-  ];
+    }));
 
-  const ids = nodes.map((node) => node.id);
-  const edges: FlowEdge[] = ids.slice(0, -1).map((id, index) => ({
-    id: `${id}->${ids[index + 1]}`,
-    from: id,
-    to: ids[index + 1],
-    kind: "flow"
-  }));
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const persistedEdges: FlowEdge[] = transitions
+    .filter((transition) => nodeIds.has(transition.from_step_id) && nodeIds.has(transition.to_step_id))
+    .map((transition) => ({
+      id: transition.id,
+      from: transition.from_step_id,
+      to: transition.to_step_id,
+      kind: transition.edge_type
+    }));
+  const fallbackEdges: FlowEdge[] = persistedEdges.length
+    ? []
+    : nodes.slice(0, -1).map((node, index) => ({
+        id: `fallback-${node.id}->${nodes[index + 1].id}`,
+        from: node.id,
+        to: nodes[index + 1].id,
+        kind: "flow"
+      }));
+  const edges = persistedEdges.length ? persistedEdges : fallbackEdges;
+  const hasMissingPositions = sortedSteps.some((step) => step.canvas_x === null || step.canvas_x === undefined || step.canvas_y === null || step.canvas_y === undefined);
 
   return {
-    nodes: autoLayoutNodes(nodes, edges, { x: LAYOUT_CENTER_X, y: SCENE_HEIGHT / 2 }),
+    nodes: hasMissingPositions ? autoLayoutNodes(nodes, edges, { x: SCENE_WIDTH / 2, y: SCENE_HEIGHT / 2 }) : nodes,
     edges
   };
 }
 
-function getStepSignature(steps: DiagramStep[]) {
-  return [...steps]
+function getGraphSignature(steps: DiagramStep[], transitions: DiagramTransition[]) {
+  const stepSignature = [...steps]
     .sort((a, b) => a.step_order - b.step_order)
-    .map((step) => `${step.id}:${step.step_order}:${step.name}:${step.process_area}:${step.wafers.length}`)
+    .map((step) => `${step.id}:${step.step_order}:${step.name}:${step.process_area}:${step.node_type ?? "procedure"}:${step.canvas_x ?? "auto"}:${step.canvas_y ?? "auto"}:${step.wafers.length}`)
     .join("|");
+  const transitionSignature = [...transitions]
+    .sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id))
+    .map((transition) => `${transition.id}:${transition.from_step_id}:${transition.to_step_id}:${transition.edge_type}`)
+    .join("|");
+
+  return `${stepSignature}::${transitionSignature}`;
+}
+
+function getNextNodeNumber(steps: DiagramStep[]) {
+  const usedNumbers = steps
+    .map((step) => /^Step\s+(\d+)$/i.exec(step.name.trim())?.[1])
+    .filter((value): value is string => Boolean(value))
+    .map((value) => Number(value))
+    .filter(Number.isFinite);
+
+  return usedNumbers.length ? Math.max(...usedNumbers) + 1 : steps.length + 1;
 }
 
 function truncateLabel(value: string, maxLength: number) {
@@ -1142,9 +1234,23 @@ function isTextInputTarget(target: EventTarget | null) {
 
 export function ProcessFlowDiagram({
   steps,
+  transitions = [],
+  processTemplateId,
+  onCreateStep,
+  onUpdateStepPositions,
+  onUpdateStepNodeType,
+  onCreateTransition,
+  onDeleteSteps,
   onMoveWafer
 }: {
   steps: DiagramStep[];
+  transitions?: DiagramTransition[];
+  processTemplateId?: string;
+  onCreateStep?: CreateProcessFlowStepAction;
+  onUpdateStepPositions?: UpdateProcessStepPositionsAction;
+  onUpdateStepNodeType?: UpdateProcessStepNodeTypeAction;
+  onCreateTransition?: CreateProcessStepTransitionAction;
+  onDeleteSteps?: DeleteProcessStepsAction;
   onMoveWafer?: MoveWaferToProcessStepAction;
 }) {
 
@@ -1158,14 +1264,15 @@ export function ProcessFlowDiagram({
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
   const [isPanning, setIsPanning] = useState(false);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
   const [moveMessage, setMoveMessage] = useState<string | null>(null);
   const [isMovePending, startMoveTransition] = useTransition();
+  const [isGraphPending, startGraphTransition] = useTransition();
   const scaleRef = useRef(1);
   const pinchBaseScaleRef = useRef(1);
   const nextNodeNumberRef = useRef(1);
-  const historyStackRef = useRef<DiagramHistoryEntry[]>([]);
   const pendingZoomAnchorRef = useRef<ZoomAnchor | null>(null);
+  const pendingGraphFitRef = useRef<GraphViewportFit | null>(null);
   const panStateRef = useRef<{
     startX: number;
     startY: number;
@@ -1174,7 +1281,7 @@ export function ProcessFlowDiagram({
   } | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const stepSignature = useMemo(() => getStepSignature(steps), [steps]);
+  const graphSignature = useMemo(() => getGraphSignature(steps, transitions), [steps, transitions]);
   const seededSignatureRef = useRef<string | null>(null);
 
   const sceneBounds = useMemo(() => {
@@ -1190,6 +1297,7 @@ export function ProcessFlowDiagram({
   const scaledWidth = Math.round(sceneBounds.width * s);
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const selectedNodeCount = selectedNodeIds.size;
 
   const getPanePoint = useCallback((clientX?: number, clientY?: number): PanePoint | null => {
     const frame = frameRef.current;
@@ -1259,36 +1367,6 @@ export function ProcessFlowDiagram({
 
   const zoomIn = () => applyScaleAtAnchor(scaleRef.current + BUTTON_ZOOM_STEP);
   const zoomOut = () => applyScaleAtAnchor(scaleRef.current - BUTTON_ZOOM_STEP);
-  const zoomReset = () => applyScaleAtAnchor(1);
-  const pushUndoSnapshot = useCallback(() => {
-    historyStackRef.current.push({
-      nodes: cloneDiagramHistoryNodes(nodes),
-      edges: edges.map((edge) => ({ ...edge })),
-      nextNodeNumber: nextNodeNumberRef.current,
-      selectedNodeId,
-      roleMenu: roleMenu ? { ...roleMenu } : null
-    });
-    if (historyStackRef.current.length > 40) {
-      historyStackRef.current.shift();
-    }
-  }, [edges, nodes, roleMenu, selectedNodeId]);
-  const restoreFromHistory = useCallback(() => {
-    const snapshot = historyStackRef.current.pop();
-    if (!snapshot) {
-      return;
-    }
-
-    setNodes(cloneDiagramHistoryNodes(snapshot.nodes));
-    setEdges(snapshot.edges.map((edge) => ({ ...edge })));
-    setConnectionDraft(null);
-    setNodeDrag(null);
-    setWaferDrag(null);
-    setSnapGuides([]);
-    setRoleMenu(snapshot.roleMenu ? { ...snapshot.roleMenu } : null);
-    setSelectedNodeId(snapshot.selectedNodeId);
-    setMoveMessage(null);
-    nextNodeNumberRef.current = snapshot.nextNodeNumber;
-  }, []);
   const getVisibleSceneCenter = () => {
     const frame = frameRef.current;
     if (!frame) {
@@ -1300,30 +1378,107 @@ export function ProcessFlowDiagram({
       y: (frame.scrollTop + frame.clientHeight / 2) / scaleRef.current
     };
   };
-  const organizeCanvas = () => {
-    const targetCenter = getVisibleSceneCenter();
-    setNodes((currentNodes) => autoLayoutNodes(currentNodes, edges, targetCenter));
-  };
-  const clearCanvas = () => {
-    setNodes([]);
-    setEdges([]);
-    setConnectionDraft(null);
-    setNodeDrag(null);
-    setWaferDrag(null);
-    setSnapGuides([]);
-    setRoleMenu(null);
-    setSelectedNodeId(null);
-    setMoveMessage(null);
-    nextNodeNumberRef.current = 1;
-    historyStackRef.current = [];
-  };
 
-  useEffect(() => {
-    if (!steps.length || seededSignatureRef.current === stepSignature) {
+  const applyGraphFit = useCallback((fit: GraphViewportFit) => {
+    const frame = frameRef.current;
+    if (!frame) {
       return;
     }
 
-    const graph = getInitialGraph(steps);
+    frame.scrollLeft = Math.max(0, Math.round(fit.centerX * fit.scale - frame.clientWidth / 2));
+    frame.scrollTop = Math.max(0, Math.round(fit.centerY * fit.scale - frame.clientHeight / 2));
+  }, []);
+
+  const centerView = useCallback((targetNodes: FlowNode[] = nodes) => {
+    const frame = frameRef.current;
+    const bounds = getGraphBounds(targetNodes);
+    if (!frame || !bounds) {
+      return;
+    }
+
+    const availableWidth = Math.max(1, frame.clientWidth - FIT_VIEW_PADDING);
+    const availableHeight = Math.max(1, frame.clientHeight - FIT_VIEW_PADDING);
+    const nextScale = clampScale(Math.min(MAX_SCALE, availableWidth / bounds.width, availableHeight / bounds.height));
+    const fit = {
+      centerX: bounds.centerX,
+      centerY: bounds.centerY,
+      scale: nextScale
+    };
+
+    pendingGraphFitRef.current = fit;
+    scaleRef.current = nextScale;
+    setScale(nextScale);
+
+    window.requestAnimationFrame(() => {
+      if (pendingGraphFitRef.current === fit) {
+        applyGraphFit(fit);
+        pendingGraphFitRef.current = null;
+      }
+    });
+  }, [applyGraphFit, nodes]);
+
+  const persistNodePositions = useCallback((
+    nextNodes: FlowNode[],
+    previousNodes: FlowNode[],
+    successMessage: string
+  ) => {
+    if (!onUpdateStepPositions) {
+      setNodes(previousNodes);
+      centerView(previousNodes);
+      setMoveMessage("Graph position persistence is not available for this process view.");
+      return;
+    }
+
+    startGraphTransition(() => {
+      void (async () => {
+        const result = await onUpdateStepPositions({
+          positions: nextNodes.map((node) => ({
+            stepId: node.id,
+            canvasX: node.x,
+            canvasY: node.y
+          }))
+        });
+
+        if (result.ok) {
+          setMoveMessage(successMessage);
+          router.refresh();
+          return;
+        }
+
+        setNodes(previousNodes);
+        centerView(previousNodes);
+        setMoveMessage(result.error);
+      })();
+    });
+  }, [centerView, onUpdateStepPositions, router]);
+
+  const organizeCanvas = () => {
+    if (nodes.length < 2) {
+      return;
+    }
+
+    if (!onUpdateStepPositions) {
+      setMoveMessage("Graph position persistence is not available for this process view.");
+      return;
+    }
+
+    const targetCenter = getVisibleSceneCenter();
+    const previousNodes = cloneDiagramHistoryNodes(nodes);
+    const nextNodes = autoLayoutNodes(nodes, edges, targetCenter);
+    setNodes(nextNodes);
+    setSelectedNodeIds(new Set());
+    setRoleMenu(null);
+    setMoveMessage("Organizing process flow...");
+    centerView(nextNodes);
+    persistNodePositions(nextNodes, previousNodes, "Organized process flow positions.");
+  };
+
+  useEffect(() => {
+    if (seededSignatureRef.current === graphSignature) {
+      return;
+    }
+
+    const graph = getInitialGraph(steps, transitions);
     setNodes(graph.nodes);
     setEdges(graph.edges);
     setConnectionDraft(null);
@@ -1331,12 +1486,12 @@ export function ProcessFlowDiagram({
     setWaferDrag(null);
     setSnapGuides([]);
     setRoleMenu(null);
-    setSelectedNodeId(null);
+    setSelectedNodeIds(new Set());
     setMoveMessage(null);
-    nextNodeNumberRef.current = steps.length + 1;
-    historyStackRef.current = [];
-    seededSignatureRef.current = stepSignature;
-  }, [stepSignature, steps]);
+    nextNodeNumberRef.current = getNextNodeNumber(steps);
+    seededSignatureRef.current = graphSignature;
+    centerView(graph.nodes);
+  }, [centerView, graphSignature, steps, transitions]);
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -1355,6 +1510,16 @@ export function ProcessFlowDiagram({
     pendingZoomAnchorRef.current = null;
   }, [scale]);
 
+  useLayoutEffect(() => {
+    const fit = pendingGraphFitRef.current;
+    if (!fit) {
+      return;
+    }
+
+    applyGraphFit(fit);
+    pendingGraphFitRef.current = null;
+  }, [applyGraphFit, scale, scaledHeight, scaledWidth]);
+
   const beginPan = (event: PointerEvent<HTMLDivElement>) => {
     const isMiddleMousePan = event.button === 1;
     const isModifiedLeftPan = event.button === 0 && event.altKey;
@@ -1364,7 +1529,7 @@ export function ProcessFlowDiagram({
     }
 
     setRoleMenu(null);
-    setSelectedNodeId(null);
+    setSelectedNodeIds(new Set());
 
     const frame = frameRef.current;
     if (!frame) {
@@ -1425,7 +1590,7 @@ export function ProcessFlowDiagram({
     }
 
     setRoleMenu(null);
-    setSelectedNodeId(null);
+    setSelectedNodeIds(new Set());
   };
 
   const createNode = (event: MouseEvent<SVGSVGElement>) => {
@@ -1433,30 +1598,58 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!processTemplateId || !onCreateStep) {
+      setMoveMessage("Load an authenticated process template before editing the graph.");
+      return;
+    }
+
     const point = getScenePoint(event);
     const nodeNumber = nextNodeNumberRef.current;
-    const nodeId = `local-step-${Date.now()}-${nodeNumber}`;
-    nextNodeNumberRef.current += 1;
+    const canvasX = Math.max(24, Math.round(point.x - NODE_WIDTH / 2));
+    const canvasY = Math.max(24, Math.round(point.y - NODE_HEIGHT / 2));
     setRoleMenu(null);
-    setMoveMessage(null);
+    setMoveMessage(`Creating Step ${nodeNumber}...`);
 
-    pushUndoSnapshot();
-    setNodes((currentNodes) => [
-      ...currentNodes,
-      {
-        id: nodeId,
-        label: `Step ${nodeNumber}`,
-        subLabel: "Process step",
-        x: Math.max(24, Math.round(point.x - NODE_WIDTH / 2)),
-        y: Math.max(24, Math.round(point.y - NODE_HEIGHT / 2)),
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
-        role: "normal",
-        order: currentNodes.length,
-        wafers: []
-      }
-    ]);
-    setSelectedNodeId(nodeId);
+    startGraphTransition(() => {
+      void (async () => {
+        const result = await onCreateStep({
+          templateId: processTemplateId,
+          name: `Step ${nodeNumber}`,
+          processArea: "Process step",
+          nodeType: "procedure",
+          canvasX,
+          canvasY
+        });
+
+        if (!result.ok) {
+          setMoveMessage(result.error);
+          return;
+        }
+
+        const step = result.data;
+        const nextNode: FlowNode = {
+          id: step.id,
+          label: step.name,
+          subLabel: step.process_area,
+          x: step.canvas_x ?? canvasX,
+          y: step.canvas_y ?? canvasY,
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
+          role: toFlowNodeRole(step.node_type),
+          order: step.step_order,
+          wafers: []
+        };
+
+        nextNodeNumberRef.current = nodeNumber + 1;
+        setNodes((currentNodes) => [...currentNodes, nextNode]);
+        setSelectedNodeIds(new Set([nextNode.id]));
+        setMoveMessage(`Created ${nextNode.label}.`);
+        router.refresh();
+      })();
+    });
   };
 
   const beginConnection = (event: PointerEvent<SVGGElement>, nodeId: string) => {
@@ -1467,7 +1660,7 @@ export function ProcessFlowDiagram({
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
-    setSelectedNodeId(nodeId);
+    setSelectedNodeIds(new Set([nodeId]));
 
     const point = getScenePoint(event);
     setConnectionDraft({
@@ -1484,12 +1677,27 @@ export function ProcessFlowDiagram({
 
   const handleNodePointerDown = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
     event.stopPropagation();
-    setSelectedNodeId(node.id);
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault();
+      setRoleMenu(null);
+      setSelectedNodeIds((current) => {
+        const next = new Set(current);
+        if (next.has(node.id)) {
+          next.delete(node.id);
+        } else {
+          next.add(node.id);
+        }
+        return next;
+      });
+      return;
+    }
+
     if (event.shiftKey) {
       beginConnection(event, node.id);
       return;
     }
 
+    setSelectedNodeIds(new Set([node.id]));
     beginNodeDrag(event, node);
   };
 
@@ -1501,14 +1709,16 @@ export function ProcessFlowDiagram({
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
-    setSelectedNodeId(node.id);
+    setSelectedNodeIds((current) => current.has(node.id) ? current : new Set([node.id]));
 
     const point = getScenePoint(event);
     setNodeDrag({
       nodeId: node.id,
       pointerId: event.pointerId,
       offsetX: point.x - node.x,
-      offsetY: point.y - node.y
+      offsetY: point.y - node.y,
+      startX: node.x,
+      startY: node.y
     });
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -1552,8 +1762,23 @@ export function ProcessFlowDiagram({
     }
 
     event.currentTarget.releasePointerCapture(event.pointerId);
+    const finishedDrag = nodeDrag;
     setNodeDrag(null);
     setSnapGuides([]);
+
+    const draggedNode = nodes.find((node) => node.id === finishedDrag.nodeId);
+    if (!draggedNode || (draggedNode.x === finishedDrag.startX && draggedNode.y === finishedDrag.startY)) {
+      return;
+    }
+
+    const previousNodes = nodes.map((node) =>
+      node.id === finishedDrag.nodeId
+        ? { ...node, x: finishedDrag.startX, y: finishedDrag.startY }
+        : node
+    );
+
+    setMoveMessage(`Saving ${draggedNode.label} position...`);
+    persistNodePositions(nodes, previousNodes, `Saved ${draggedNode.label} position.`);
   };
 
   const beginWaferDrag = (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => {
@@ -1621,17 +1846,29 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    setMoveMessage(`Moving ${finishedDrag.waferLabel} to ${target.label}...`);
+    const sourceNode = nodeById.get(finishedDrag.sourceStepId);
+    const completeSourceStep = Boolean(sourceNode && target.order > sourceNode.order);
+
+    setMoveMessage(
+      completeSourceStep
+        ? `Completing ${sourceNode?.label ?? "source step"} and moving ${finishedDrag.waferLabel} to ${target.label}...`
+        : `Moving ${finishedDrag.waferLabel} to ${target.label}...`
+    );
     startMoveTransition(() => {
       void (async () => {
         const result = await onMoveWafer({
           assignmentId: finishedDrag.assignmentId,
           targetStepId: target.id,
-          note: `Moved from process flow wireframe to ${target.label}.`
+          note: `Moved from process flow wireframe to ${target.label}.`,
+          completeSourceStep
         });
 
         if (result.ok) {
-          setMoveMessage(`Moved ${finishedDrag.waferLabel} to ${target.label}.`);
+          setMoveMessage(
+            completeSourceStep
+              ? `Completed source step and moved ${finishedDrag.waferLabel} to ${target.label}.`
+              : `Moved ${finishedDrag.waferLabel} to ${target.label}.`
+          );
           router.refresh();
           return;
         }
@@ -1678,37 +1915,69 @@ export function ProcessFlowDiagram({
     }
 
     const point = getScenePoint(event);
-    const target = nodes.find((node) => node.id !== connectionDraft.from && nodeContainsPoint(node, point));
+    const finishedDraft = connectionDraft;
+    const sourceNode = nodeById.get(finishedDraft.from);
+    const target = nodes.find((node) => node.id !== finishedDraft.from && nodeContainsPoint(node, point));
+    setConnectionDraft(null);
 
-    if (target && connectionDraft.hasMoved) {
-      pushUndoSnapshot();
-      setEdges((currentEdges) => {
-        const exists = currentEdges.some((edge) => edge.from === connectionDraft.from && edge.to === target.id);
-        if (exists) {
-          return currentEdges;
-        }
-
-        const nextEdges: FlowEdge[] = [
-          ...currentEdges,
-          {
-            id: `${connectionDraft.from}->${target.id}`,
-            from: connectionDraft.from,
-            to: target.id,
-            kind: "flow"
-          }
-        ];
-
-        return nextEdges;
-      });
+    if (!target || !sourceNode || !finishedDraft.hasMoved) {
+      return;
     }
 
-    setConnectionDraft(null);
+    const exists = edges.some((edge) => edge.from === finishedDraft.from && edge.to === target.id);
+    if (exists) {
+      setMoveMessage("That transition already exists.");
+      return;
+    }
+
+    if (!processTemplateId || !onCreateTransition) {
+      setMoveMessage("Graph transition persistence is not available for this process view.");
+      return;
+    }
+
+    const edgeType: ProcessStepTransitionType = target.order < sourceNode.order ? "return" : "flow";
+    setMoveMessage(`Creating transition to ${target.label}...`);
+    startGraphTransition(() => {
+      void (async () => {
+        const result = await onCreateTransition({
+          templateId: processTemplateId,
+          fromStepId: finishedDraft.from,
+          toStepId: target.id,
+          edgeType,
+          priority: edges.length * 10
+        });
+
+        if (!result.ok) {
+          setMoveMessage(result.error);
+          return;
+        }
+
+        const transition = result.data;
+        setEdges((currentEdges) => {
+          if (currentEdges.some((edge) => edge.from === transition.from_step_id && edge.to === transition.to_step_id)) {
+            return currentEdges;
+          }
+
+          return [
+            ...currentEdges,
+            {
+              id: transition.id,
+              from: transition.from_step_id,
+              to: transition.to_step_id,
+              kind: transition.edge_type
+            }
+          ];
+        });
+        setMoveMessage(`Created transition to ${target.label}.`);
+        router.refresh();
+      });
+    });
   };
 
   const openRoleMenu = (event: MouseEvent<SVGGElement>, nodeId: string) => {
     event.preventDefault();
     event.stopPropagation();
-    setSelectedNodeId(nodeId);
+    setSelectedNodeIds((current) => current.has(nodeId) ? current : new Set([nodeId]));
 
     const frame = frameRef.current;
     if (!frame) {
@@ -1724,43 +1993,89 @@ export function ProcessFlowDiagram({
   };
 
   const setNodeRole = (nodeId: string, role: FlowNodeRole) => {
-    pushUndoSnapshot();
-    setNodes((currentNodes) =>
-      currentNodes.map((node) => {
-        if (node.id === nodeId) {
-          return { ...node, role };
-        }
-
-        if (role !== "normal" && node.role === role) {
-          return { ...node, role: "normal" };
-        }
-
-        return node;
-      })
-    );
     setRoleMenu(null);
-  };
-
-  const deleteNode = useCallback((nodeId: string) => {
-    pushUndoSnapshot();
-    setNodes((currentNodes) => currentNodes.filter((node) => node.id !== nodeId));
-    setEdges((currentEdges) => currentEdges.filter((edge) => edge.from !== nodeId && edge.to !== nodeId));
-    setConnectionDraft((draft) => (draft?.from === nodeId ? null : draft));
-    setNodeDrag((drag) => (drag?.nodeId === nodeId ? null : drag));
-    setWaferDrag((drag) => (drag?.sourceStepId === nodeId ? null : drag));
-    setSelectedNodeId((current) => (current === nodeId ? null : current));
-    setSnapGuides([]);
-    setRoleMenu(null);
-    setMoveMessage(null);
-  }, [pushUndoSnapshot]);
-
-  const deleteSelectedNode = useCallback(() => {
-    if (!selectedNodeId) {
+    if (!onUpdateStepNodeType) {
+      setMoveMessage("Graph node type persistence is not available for this process view.");
       return;
     }
 
-    deleteNode(selectedNodeId);
-  }, [deleteNode, selectedNodeId]);
+    const node = nodeById.get(nodeId);
+    setMoveMessage(`Saving ${node?.label ?? "step"} role...`);
+
+    startGraphTransition(() => {
+      void (async () => {
+        const result = await onUpdateStepNodeType({
+          stepId: nodeId,
+          nodeType: toProcessStepNodeType(role)
+        });
+
+        if (!result.ok) {
+          setMoveMessage(result.error);
+          return;
+        }
+
+        setNodes((currentNodes) =>
+          currentNodes.map((currentNode) => {
+            if (currentNode.id === nodeId) {
+              return { ...currentNode, role };
+            }
+
+            if (role !== "normal" && currentNode.role === role) {
+              return { ...currentNode, role: "normal" };
+            }
+
+            return currentNode;
+          })
+        );
+        setMoveMessage(`Saved ${node?.label ?? "step"} role.`);
+        router.refresh();
+      })();
+    });
+  };
+
+  const deleteNodes = useCallback((nodeIds: string[]) => {
+    const uniqueNodeIds = Array.from(new Set(nodeIds)).filter((nodeId) => nodeById.has(nodeId));
+    if (uniqueNodeIds.length === 0) {
+      return;
+    }
+
+    if (!onDeleteSteps) {
+      setMoveMessage("Graph deletion persistence is not available for this process view.");
+      return;
+    }
+
+    const label = uniqueNodeIds.length === 1
+      ? nodeById.get(uniqueNodeIds[0])?.label ?? "selected step"
+      : `${uniqueNodeIds.length} selected steps`;
+    setMoveMessage(`Deleting ${label}...`);
+
+    startGraphTransition(() => {
+      void (async () => {
+        const result = await onDeleteSteps({ stepIds: uniqueNodeIds });
+
+        if (!result.ok) {
+          setMoveMessage(result.error);
+          return;
+        }
+
+        const deletedIds = new Set(uniqueNodeIds);
+        setNodes((currentNodes) => currentNodes.filter((node) => !deletedIds.has(node.id)));
+        setEdges((currentEdges) => currentEdges.filter((edge) => !deletedIds.has(edge.from) && !deletedIds.has(edge.to)));
+        setConnectionDraft((draft) => (draft && deletedIds.has(draft.from) ? null : draft));
+        setNodeDrag((drag) => (drag && deletedIds.has(drag.nodeId) ? null : drag));
+        setWaferDrag((drag) => (drag && deletedIds.has(drag.sourceStepId) ? null : drag));
+        setSelectedNodeIds(new Set());
+        setSnapGuides([]);
+        setRoleMenu(null);
+        setMoveMessage(`Deleted ${label}.`);
+        router.refresh();
+      })();
+    });
+  }, [nodeById, onDeleteSteps, router]);
+
+  const deleteSelectedNodes = useCallback(() => {
+    deleteNodes([...selectedNodeIds]);
+  }, [deleteNodes, selectedNodeIds]);
 
   useEffect(() => {
     const onGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -1768,17 +2083,9 @@ export function ProcessFlowDiagram({
         return;
       }
 
-      const key = event.key.toLowerCase();
-
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && key === "z") {
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedNodeIds.size > 0) {
         event.preventDefault();
-        restoreFromHistory();
-        return;
-      }
-
-      if ((event.key === "Delete" || event.key === "Backspace") && selectedNodeId) {
-        event.preventDefault();
-        deleteSelectedNode();
+        deleteSelectedNodes();
       }
     };
 
@@ -1787,7 +2094,7 @@ export function ProcessFlowDiagram({
     return () => {
       window.removeEventListener("keydown", onGlobalKeyDown);
     };
-  }, [deleteSelectedNode, restoreFromHistory, selectedNodeId]);
+  }, [deleteSelectedNodes, selectedNodeIds]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -1875,6 +2182,11 @@ export function ProcessFlowDiagram({
             {nodes.length} step{nodes.length === 1 ? "" : "s"} · {edges.length} path
             {edges.length === 1 ? "" : "s"}
           </span>
+          {selectedNodeCount > 0 ? (
+            <span>
+              {selectedNodeCount} selected
+            </span>
+          ) : null}
           {moveMessage ? <span>{moveMessage}</span> : null}
         </div>
         <div className="flow-map-actions" role="group" aria-label="Canvas controls">
@@ -1885,24 +2197,11 @@ export function ProcessFlowDiagram({
           <button className="button button-secondary flow-icon-button" type="button" onClick={zoomIn} aria-label="Zoom in">
             +
           </button>
-          <button className="button button-secondary flow-fit-button" type="button" onClick={zoomReset}>
-            Fit view
+          <button className="button button-secondary flow-fit-button" type="button" onClick={() => centerView()} disabled={nodes.length === 0}>
+            Center view
           </button>
-          <button className="button button-secondary flow-fit-button flow-auto-layout-button" type="button" onClick={organizeCanvas} disabled={nodes.length < 2}>
-            Auto layout
-          </button>
-          <button
-            className="button button-secondary flow-delete-button"
-            type="button"
-            onClick={deleteSelectedNode}
-            disabled={!selectedNodeId}
-            aria-label={selectedNodeId ? "Delete selected step" : "No step selected"}
-          >
-            <Trash2 size={14} />
-            Delete step
-          </button>
-          <button className="button button-secondary flow-clear-button" type="button" onClick={clearCanvas} disabled={nodes.length === 0}>
-            Clear
+          <button className="button button-secondary flow-fit-button flow-auto-layout-button" type="button" onClick={organizeCanvas} disabled={nodes.length < 2 || isGraphPending}>
+            Organize
           </button>
         </div>
       </div>
@@ -1934,7 +2233,7 @@ export function ProcessFlowDiagram({
           onContextMenu={(event) => {
             event.preventDefault();
             setRoleMenu(null);
-            setSelectedNodeId(null);
+            setSelectedNodeIds(new Set());
           }}
         >
           <defs>
@@ -2023,7 +2322,7 @@ export function ProcessFlowDiagram({
               key={node.id}
               className={`flow-node flow-node--${node.role} ${active ? "flow-node--active" : ""} ${connectionDraft?.from === node.id ? "flow-node--connecting" : ""} ${
                 nodeDrag?.nodeId === node.id ? "flow-node--dragging" : ""
-              } ${selectedNodeId === node.id ? "flow-node--selected" : ""}`}
+              } ${selectedNodeIds.has(node.id) ? "flow-node--selected" : ""}`}
               transform={`translate(${node.x} ${node.y})`}
               onPointerDown={(event) => handleNodePointerDown(event, node)}
               onPointerMove={updateNodeDrag}
@@ -2115,9 +2414,9 @@ export function ProcessFlowDiagram({
               type="button"
               role="menuitem"
               className="flow-role-menu-danger"
-              onClick={() => deleteNode(roleMenu.nodeId)}
+              onClick={() => deleteNodes(selectedNodeIds.has(roleMenu.nodeId) ? [...selectedNodeIds] : [roleMenu.nodeId])}
             >
-              Delete step
+              {selectedNodeIds.size > 1 && selectedNodeIds.has(roleMenu.nodeId) ? "Delete selected steps" : "Delete step"}
             </button>
           </div>
         ) : null}

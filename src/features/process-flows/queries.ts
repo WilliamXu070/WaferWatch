@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
   Json,
   ProcessStep,
+  ProcessStepTransition,
   ProcessTemplate,
   StepExecution,
   StepStatus,
@@ -22,6 +23,7 @@ type DashboardStepExecution = Pick<
 
 export type ProcessTemplateWithSteps = ProcessTemplate & {
   process_steps: ProcessStep[];
+  process_step_transitions: ProcessStepTransition[];
 };
 
 export type ProcessDashboardWaferState = {
@@ -86,14 +88,35 @@ function mapProcessStepsByTemplate(steps: ProcessStep[] | null) {
   return grouped;
 }
 
+function mapProcessStepTransitionsByTemplate(transitions: ProcessStepTransition[] | null) {
+  const grouped: Record<string, ProcessStepTransition[]> = {};
+
+  for (const transition of transitions ?? []) {
+    const key = transition.template_id;
+    const existing = grouped[key];
+    if (existing) {
+      existing.push(transition);
+    } else {
+      grouped[key] = [transition];
+    }
+  }
+
+  return grouped;
+}
+
 export async function listProcessTemplates() {
   const supabase = await createServerSupabaseClient();
-  const [templatesResult, stepsResult] = await Promise.all([
+  const [templatesResult, stepsResult, transitionsResult] = await Promise.all([
     supabase
       .from("process_templates")
       .select("*")
       .order("name", { ascending: true }),
-    supabase.from("process_steps").select("*").order("step_order", { ascending: true })
+    supabase.from("process_steps").select("*").order("step_order", { ascending: true }),
+    supabase
+      .from("process_step_transitions")
+      .select("*")
+      .order("priority", { ascending: true })
+      .order("created_at", { ascending: true })
   ]);
 
   if (templatesResult.error) {
@@ -104,17 +127,23 @@ export async function listProcessTemplates() {
     throw stepsResult.error;
   }
 
+  if (transitionsResult.error) {
+    throw transitionsResult.error;
+  }
+
   const stepsByTemplate = mapProcessStepsByTemplate(stepsResult.data);
+  const transitionsByTemplate = mapProcessStepTransitionsByTemplate(transitionsResult.data);
 
   return (templatesResult.data ?? []).map((processTemplate) => ({
     ...processTemplate,
-    process_steps: stepsByTemplate[processTemplate.id] ?? []
+    process_steps: stepsByTemplate[processTemplate.id] ?? [],
+    process_step_transitions: transitionsByTemplate[processTemplate.id] ?? []
   }));
 }
 
 export async function getProcessTemplate(templateId: string) {
   const supabase = await createServerSupabaseClient();
-  const [templateResult, stepsResult] = await Promise.all([
+  const [templateResult, stepsResult, transitionsResult] = await Promise.all([
     supabase
       .from("process_templates")
       .select("*")
@@ -126,7 +155,13 @@ export async function getProcessTemplate(templateId: string) {
       .eq("template_id", templateId)
       .order("step_order", {
         ascending: true
-      })
+      }),
+    supabase
+      .from("process_step_transitions")
+      .select("*")
+      .eq("template_id", templateId)
+      .order("priority", { ascending: true })
+      .order("created_at", { ascending: true })
   ]);
 
   if (templateResult.error) {
@@ -137,9 +172,14 @@ export async function getProcessTemplate(templateId: string) {
     throw stepsResult.error;
   }
 
+  if (transitionsResult.error) {
+    throw transitionsResult.error;
+  }
+
   return {
     ...templateResult.data,
-    process_steps: stepsResult.data ?? []
+    process_steps: stepsResult.data ?? [],
+    process_step_transitions: transitionsResult.data ?? []
   };
 }
 

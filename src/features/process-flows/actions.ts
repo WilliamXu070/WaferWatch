@@ -6,11 +6,120 @@ import { assertProjectAccess, requireAccount, requireProcessManager } from "@/li
 import { toErrorMessage } from "@/lib/errors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
+  processFlowStepCreateSchema,
   processAssignmentSchema,
+  processStepDeleteSchema,
   processStepCreateSchema,
+  processStepNodeTypeUpdateSchema,
+  processStepPositionsUpdateSchema,
+  processStepPositionUpdateSchema,
+  processStepTransitionCreateSchema,
+  processStepTransitionDeleteSchema,
   processTemplateCreateSchema
 } from "@/features/process-flows/schemas";
-import type { Json } from "@/types/database";
+import type { Json, ProcessStep } from "@/types/database";
+
+type ProcessTemplateWriteContext = {
+  id: string;
+  owner_project_id: string | null;
+};
+
+function slugifyStepName(name: string) {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+
+  return slug || "process-step";
+}
+
+async function getTemplateForWrite(templateId: string): Promise<ProcessTemplateWriteContext> {
+  await requireProcessManager();
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("process_templates")
+    .select("id, owner_project_id")
+    .eq("id", templateId)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  if (data.owner_project_id) {
+    await assertProjectAccess(data.owner_project_id, "write");
+  }
+
+  return data;
+}
+
+async function getStepForWrite(stepId: string): Promise<ProcessStep> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("process_steps")
+    .select("*")
+    .eq("id", stepId)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  await getTemplateForWrite(data.template_id);
+  return data;
+}
+
+async function getAvailableStepSlug(templateId: string, name: string) {
+  const baseSlug = slugifyStepName(name).slice(0, 70).replace(/-+$/g, "") || "process-step";
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("process_steps")
+    .select("slug")
+    .eq("template_id", templateId);
+
+  if (error) {
+    throw error;
+  }
+
+  const existing = new Set((data ?? []).map((step) => step.slug));
+  if (!existing.has(baseSlug)) {
+    return baseSlug;
+  }
+
+  for (let suffix = 2; suffix < 1000; suffix += 1) {
+    const candidate = `${baseSlug}-${suffix}`;
+    if (!existing.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return `${baseSlug}-${Date.now()}`;
+}
+
+async function getNextStepOrder(templateId: string) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("process_steps")
+    .select("step_order")
+    .eq("template_id", templateId)
+    .order("step_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data?.step_order ?? 0) + 10;
+}
+
+function revalidateProcessFlow(templateId: string) {
+  revalidatePath("/", "layout");
+  revalidatePath("/wireframe/process-flow");
+  revalidatePath(`/processes/${templateId}`);
+}
 
 export async function createProcessTemplate(input: unknown) {
   try {
@@ -48,8 +157,8 @@ export async function createProcessTemplate(input: unknown) {
 
 export async function addProcessStep(input: unknown) {
   try {
-    await requireProcessManager();
     const parsed = processStepCreateSchema.parse(input);
+    await getTemplateForWrite(parsed.templateId);
 
     const supabase = await createServerSupabaseClient();
     const { data, error } = await supabase
@@ -65,7 +174,10 @@ export async function addProcessStep(input: unknown) {
         required_tool_type: parsed.requiredToolType ?? null,
         requires_recipe: parsed.requiresRecipe,
         instructions: parsed.instructions ?? null,
-        parameters_schema: parsed.parametersSchema as Json
+        parameters_schema: parsed.parametersSchema as Json,
+        node_type: parsed.nodeType,
+        canvas_x: parsed.canvasX ?? null,
+        canvas_y: parsed.canvasY ?? null
       })
       .select("*")
       .single();
@@ -74,8 +186,302 @@ export async function addProcessStep(input: unknown) {
       return fail(error.message);
     }
 
-    revalidatePath("/", "layout");
+    revalidateProcessFlow(parsed.templateId);
     return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function createProcessFlowStep(input: unknown) {
+  try {
+    const parsed = processFlowStepCreateSchema.parse(input);
+    await getTemplateForWrite(parsed.templateId);
+
+    const [stepOrder, slug] = await Promise.all([
+      getNextStepOrder(parsed.templateId),
+      getAvailableStepSlug(parsed.templateId, parsed.name)
+    ]);
+
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from("process_steps")
+      .insert({
+        template_id: parsed.templateId,
+        step_order: stepOrder,
+        name: parsed.name,
+        slug,
+        process_area: parsed.processArea,
+        expected_duration_minutes: null,
+        queue_target_minutes: null,
+        required_tool_type: null,
+        requires_recipe: false,
+        instructions: null,
+        parameters_schema: {},
+        node_type: parsed.nodeType,
+        canvas_x: parsed.canvasX,
+        canvas_y: parsed.canvasY
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(parsed.templateId);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateProcessStepPosition(input: unknown) {
+  try {
+    const parsed = processStepPositionUpdateSchema.parse(input);
+    const step = await getStepForWrite(parsed.stepId);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from("process_steps")
+      .update({
+        canvas_x: parsed.canvasX,
+        canvas_y: parsed.canvasY
+      })
+      .eq("id", parsed.stepId)
+      .select("*")
+      .single();
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(step.template_id);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateProcessStepPositions(input: unknown) {
+  try {
+    const parsed = processStepPositionsUpdateSchema.parse(input);
+    const stepIds = Array.from(new Set(parsed.positions.map((position) => position.stepId)));
+    const supabase = await createServerSupabaseClient();
+    const { data: steps, error: stepsError } = await supabase
+      .from("process_steps")
+      .select("*")
+      .in("id", stepIds);
+
+    if (stepsError) {
+      return fail(stepsError.message);
+    }
+
+    if ((steps ?? []).length !== stepIds.length) {
+      return fail("One or more selected process steps no longer exist.");
+    }
+
+    const templateIds = Array.from(new Set((steps ?? []).map((step) => step.template_id)));
+    await Promise.all(templateIds.map((templateId) => getTemplateForWrite(templateId)));
+
+    for (const position of parsed.positions) {
+      const { error } = await supabase
+        .from("process_steps")
+        .update({
+          canvas_x: position.canvasX,
+          canvas_y: position.canvasY
+        })
+        .eq("id", position.stepId);
+
+      if (error) {
+        return fail(error.message);
+      }
+    }
+
+    for (const templateId of templateIds) {
+      revalidateProcessFlow(templateId);
+    }
+
+    return ok({ updated: parsed.positions.length });
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateProcessStepNodeType(input: unknown) {
+  try {
+    const parsed = processStepNodeTypeUpdateSchema.parse(input);
+    const step = await getStepForWrite(parsed.stepId);
+    const supabase = await createServerSupabaseClient();
+
+    if (parsed.nodeType !== "procedure") {
+      const { error: demoteError } = await supabase
+        .from("process_steps")
+        .update({ node_type: "procedure" })
+        .eq("template_id", step.template_id)
+        .eq("node_type", parsed.nodeType)
+        .neq("id", parsed.stepId);
+
+      if (demoteError) {
+        return fail(demoteError.message);
+      }
+    }
+
+    const { data, error } = await supabase
+      .from("process_steps")
+      .update({ node_type: parsed.nodeType })
+      .eq("id", parsed.stepId)
+      .select("*")
+      .single();
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(step.template_id);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function createProcessStepTransition(input: unknown) {
+  try {
+    const parsed = processStepTransitionCreateSchema.parse(input);
+    await getTemplateForWrite(parsed.templateId);
+
+    if (parsed.fromStepId === parsed.toStepId) {
+      return fail("Choose a different target step for this transition.");
+    }
+
+    const supabase = await createServerSupabaseClient();
+    const { data: steps, error: stepsError } = await supabase
+      .from("process_steps")
+      .select("id, template_id")
+      .in("id", [parsed.fromStepId, parsed.toStepId]);
+
+    if (stepsError) {
+      return fail(stepsError.message);
+    }
+
+    if ((steps ?? []).length !== 2 || steps?.some((step) => step.template_id !== parsed.templateId)) {
+      return fail("Both transition endpoints must belong to this process template.");
+    }
+
+    const { data, error } = await supabase
+      .from("process_step_transitions")
+      .upsert(
+        {
+          template_id: parsed.templateId,
+          from_step_id: parsed.fromStepId,
+          to_step_id: parsed.toStepId,
+          edge_type: parsed.edgeType,
+          label: parsed.label ?? null,
+          condition: parsed.condition as Json,
+          priority: parsed.priority
+        },
+        { onConflict: "template_id,from_step_id,to_step_id,edge_type" }
+      )
+      .select("*")
+      .single();
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(parsed.templateId);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function deleteProcessStepTransitions(input: unknown) {
+  try {
+    const parsed = processStepTransitionDeleteSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data: transitions, error: lookupError } = await supabase
+      .from("process_step_transitions")
+      .select("*")
+      .in("id", parsed.transitionIds);
+
+    if (lookupError) {
+      return fail(lookupError.message);
+    }
+
+    if ((transitions ?? []).length !== parsed.transitionIds.length) {
+      return fail("One or more selected transitions no longer exist.");
+    }
+
+    const templateIds = Array.from(new Set((transitions ?? []).map((transition) => transition.template_id)));
+    await Promise.all(templateIds.map((templateId) => getTemplateForWrite(templateId)));
+
+    const { error } = await supabase
+      .from("process_step_transitions")
+      .delete()
+      .in("id", parsed.transitionIds);
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    for (const templateId of templateIds) {
+      revalidateProcessFlow(templateId);
+    }
+
+    return ok({ deleted: parsed.transitionIds.length });
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function deleteProcessSteps(input: unknown) {
+  try {
+    const parsed = processStepDeleteSchema.parse(input);
+    const stepIds = Array.from(new Set(parsed.stepIds));
+    const supabase = await createServerSupabaseClient();
+    const { data: steps, error: stepsError } = await supabase
+      .from("process_steps")
+      .select("*")
+      .in("id", stepIds);
+
+    if (stepsError) {
+      return fail(stepsError.message);
+    }
+
+    if ((steps ?? []).length !== stepIds.length) {
+      return fail("One or more selected process steps no longer exist.");
+    }
+
+    const { count, error: executionCountError } = await supabase
+      .from("step_executions")
+      .select("id", { count: "exact", head: true })
+      .in("process_step_id", stepIds);
+
+    if (executionCountError) {
+      return fail(executionCountError.message);
+    }
+
+    if ((count ?? 0) > 0) {
+      return fail("Cannot delete process steps that already have wafer execution history.");
+    }
+
+    const templateIds = Array.from(new Set((steps ?? []).map((step) => step.template_id)));
+    await Promise.all(templateIds.map((templateId) => getTemplateForWrite(templateId)));
+
+    const { error } = await supabase
+      .from("process_steps")
+      .delete()
+      .in("id", stepIds);
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    for (const templateId of templateIds) {
+      revalidateProcessFlow(templateId);
+    }
+
+    return ok({ deleted: stepIds.length });
   } catch (error) {
     return fail(toErrorMessage(error));
   }

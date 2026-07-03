@@ -255,10 +255,31 @@ export async function moveWaferToProcessStep(input: unknown) {
     const currentExecution = existingExecutions.find((execution) =>
       CURRENT_STEP_STATUSES.includes(execution.status as (typeof CURRENT_STEP_STATUSES)[number])
     );
+    const currentStepResult = currentExecution
+      ? await supabase
+          .from("process_steps")
+          .select("id, step_order")
+          .eq("id", currentExecution.process_step_id)
+          .maybeSingle()
+      : null;
+
+    if (currentStepResult?.error) {
+      return fail(currentStepResult.error.message);
+    }
+
+    const shouldCompleteSourceStep = Boolean(
+      parsed.completeSourceStep &&
+      currentExecution &&
+      currentExecution.process_step_id !== parsed.targetStepId &&
+      (currentExecution.status === "queued" || currentExecution.status === "running") &&
+      currentStepResult?.data &&
+      targetStep.step_order > currentStepResult.data.step_order
+    );
 
     const activeExecutionIds = existingExecutions
       .filter((execution) =>
         execution.process_step_id !== parsed.targetStepId &&
+        (!shouldCompleteSourceStep || execution.id !== currentExecution?.id) &&
         CURRENT_STEP_STATUSES.includes(execution.status as (typeof CURRENT_STEP_STATUSES)[number])
       )
       .map((execution) => execution.id);
@@ -277,6 +298,23 @@ export async function moveWaferToProcessStep(input: unknown) {
 
       if (resetError) {
         return fail(resetError.message);
+      }
+    }
+
+    if (shouldCompleteSourceStep && currentExecution) {
+      const { error: completeSourceError } = await supabase
+        .from("step_executions")
+        .update({
+          status: "completed",
+          completed_at: now,
+          completed_by: account.userId,
+          run_notes: parsed.note ?? currentExecution.run_notes,
+          metadata: currentExecution.metadata
+        })
+        .eq("id", currentExecution.id);
+
+      if (completeSourceError) {
+        return fail(completeSourceError.message);
       }
     }
 
@@ -350,7 +388,8 @@ export async function moveWaferToProcessStep(input: unknown) {
         from_step_id: currentExecution?.process_step_id ?? null,
         to_step_id: parsed.targetStepId,
         to_step_name: targetStep.name,
-        reset_step_execution_ids: activeExecutionIds
+        reset_step_execution_ids: activeExecutionIds,
+        completed_source_step_execution_id: shouldCompleteSourceStep ? currentExecution?.id ?? null : null
       }
     });
 
