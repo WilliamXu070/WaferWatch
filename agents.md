@@ -122,6 +122,21 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Note: direct Node-based Playwright DOM inspection could not run because `playwright`
   is not installed as a local project module; the Playwright CLI screenshot path works.
 
+## Recent development note (2026-07-02 22:21)
+
+- Fixed Gamma wafer previews in `/wireframe/wafer-status` so undiced Gamma renders as
+  a single flat-bottom pre-dice wafer outline using the imported GDS geometry path,
+  with no die labels, cut pieces, selected die state, or array overlay.
+- Root cause: the preview had regressed to a synthetic circular wafer outline, and
+  `Pre-dice clean` was inferred as `post-dice` because fuzzy matching treated `clean`
+  as matching `post clean`.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser DOM check: first four Gamma cards each had `visiblePolygonCount: 1`,
+    `svgTextCount: 0`, `rectCount: 0`, and `bottomPointCount: 4`.
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3005/wireframe/wafer-status /tmp/wafer-status-gamma-flat-wafer.png`
+
 ## Recent development note (2026-07-03 00:00)
 
 - Updated process flow wireframe to use finite diagram bounds with deterministic

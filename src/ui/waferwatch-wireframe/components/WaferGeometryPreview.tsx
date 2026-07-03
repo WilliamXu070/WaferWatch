@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type FC } from "react";
+import { useEffect, useMemo, useState, type FC } from "react";
 import {
   type WaferChipPiece,
   type WaferMode,
@@ -9,7 +9,10 @@ import {
   buildDieOverlayRectsMm,
   buildSvgViewport,
   buildWaferPieces,
+  deriveWaferGeometry,
+  normalizeToMillimeters,
   overlayRectMmToSvg,
+  parseGdsPolygons,
   DEFAULT_WAFER_CUT_RECIPE
 } from "@/features/wafers/geometry";
 
@@ -58,9 +61,12 @@ const POST_MODE_KEYWORDS = [
   "posnt"
 ];
 
+const GENERIC_MODE_TOKENS = new Set(["clean"]);
 const WAFER_DIAMETER_MM = 100;
 const WAFER_SEGMENTS = 96;
 const SVG_COORD_PRECISION = 6;
+const WAFER_GDS_ASSET_PATH = "/wafer-assets/wafer_4in_100mm_bottom_primary_flat_only.gds";
+const PRIMARY_FLAT_Y_MM = -45;
 
 const PALETTE = {
   pre: {
@@ -308,7 +314,7 @@ function hasCloseMatch(value: string, candidates: readonly string[], threshold: 
         return true;
       }
 
-      if (candidate.includes(token) && candidate.length > 3) {
+      if (!GENERIC_MODE_TOKENS.has(token) && candidate.includes(token) && candidate.length > 3) {
         return true;
       }
 
@@ -351,6 +357,23 @@ function parseDieCode(value?: string): ParsedDieCode {
 
 function inferModeFromKeyword(modeKeyword?: string): WaferModeHint {
   const normalized = normalizeKeyword(modeKeyword);
+  const explicitPreIndex = normalized.indexOf("pre");
+  const explicitPostIndex = normalized.indexOf("post");
+  const hasExplicitPre = explicitPreIndex >= 0;
+  const hasExplicitPost = explicitPostIndex >= 0;
+
+  if (hasExplicitPre && !hasExplicitPost) {
+    return "pre-dice";
+  }
+
+  if (hasExplicitPost && !hasExplicitPre) {
+    return "post-dice";
+  }
+
+  if (hasExplicitPre && hasExplicitPost) {
+    return explicitPostIndex < explicitPreIndex ? "post-dice" : "pre-dice";
+  }
+
   const normalizedPre = PRE_MODE_KEYWORDS.map((keyword) => normalizeKeyword(keyword));
   const normalizedPost = POST_MODE_KEYWORDS.map((keyword) => normalizeKeyword(keyword));
   const hasPre = hasCloseMatch(normalized, normalizedPre, 1) || normalized.includes("pre");
@@ -389,16 +412,50 @@ function parseSelectedDieCode(label: number, dieCode?: string) {
   return String(label);
 }
 
-function buildSyntheticWaferOutline(
+let cachedImportedWaferPoints: WaferPoint[] | null = null;
+let importedWaferPointsPromise: Promise<WaferPoint[] | null> | null = null;
+
+async function loadImportedFlatWaferOutline() {
+  if (cachedImportedWaferPoints) {
+    return cachedImportedWaferPoints;
+  }
+
+  importedWaferPointsPromise ??= fetch(WAFER_GDS_ASSET_PATH)
+    .then(async (response) => {
+      if (!response.ok) {
+        return null;
+      }
+
+      const buffer = await response.arrayBuffer();
+      const normalized = normalizeToMillimeters(parseGdsPolygons(buffer));
+      const outline = deriveWaferGeometry(normalized);
+
+      if (!outline) {
+        return null;
+      }
+
+      cachedImportedWaferPoints = outline.points;
+      return outline.points;
+    })
+    .catch(() => null);
+
+  return importedWaferPointsPromise;
+}
+
+function buildFlatBottomWaferOutline(
   diameterMm = WAFER_DIAMETER_MM,
   segments = WAFER_SEGMENTS
 ): WaferPoint[] {
   const radius = diameterMm / 2;
   const pointCount = Math.max(24, Math.round(segments));
-  const step = (Math.PI * 2) / pointCount;
+  const flatY = Math.max(-radius + 1, Math.min(radius - 1, PRIMARY_FLAT_Y_MM));
+  const flatHalfWidth = Math.sqrt(radius * radius - flatY * flatY);
+  const startAngle = Math.atan2(flatY, flatHalfWidth);
+  const endAngle = Math.atan2(flatY, -flatHalfWidth) + Math.PI * 2;
+  const arcStep = (endAngle - startAngle) / (pointCount - 1);
 
   return Array.from({ length: pointCount }, (_, index) => {
-    const angle = index * step;
+    const angle = startAngle + index * arcStep;
 
     return {
       x: Math.cos(angle) * radius,
@@ -493,7 +550,24 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
   const chipSeed = (colorSeed || selectedDieCode || String(selectedLabel ?? "")).trim();
   const parsedDieCode = parseDieCode(selectedDieCode);
   const activeMode = mode === "pre-dice" ? "pre" : "post";
-  const waferPoints = useMemo(() => buildSyntheticWaferOutline(), []);
+  const fallbackWaferPoints = useMemo(() => buildFlatBottomWaferOutline(), []);
+  const [importedWaferPoints, setImportedWaferPoints] = useState<WaferPoint[] | null>(cachedImportedWaferPoints);
+  const waferPoints = importedWaferPoints ?? fallbackWaferPoints;
+
+  useEffect(() => {
+    let isStale = false;
+
+    void loadImportedFlatWaferOutline().then((points) => {
+      if (!isStale && points) {
+        setImportedWaferPoints(points);
+      }
+    });
+
+    return () => {
+      isStale = true;
+    };
+  }, []);
+
   const viewport = useMemo(() => buildSvgViewport(waferPoints), [waferPoints]);
   const requestedLabel =
     selectedLabel !== undefined && Number.isInteger(selectedLabel) ? selectedLabel : parsedDieCode.index;
@@ -536,18 +610,6 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
           ))}
         </defs>
 
-        {!displayOnlyFocused ? (
-          <ellipse
-            cx={viewport.halfSpan}
-            cy={viewport.halfSpan}
-            rx={WAFER_DIAMETER_MM / 2}
-            ry={WAFER_DIAMETER_MM / 2}
-            fill="#f4f7f3"
-            stroke="#b7c1b5"
-            strokeWidth={2}
-          />
-        ) : null}
-
         {visibleChips.map((chip) => {
           const isSelected = chip.label === focusedLabel;
           const chipCenter = toSvgLabelCenterRounded(chip.points, labelCenterViewport);
@@ -579,7 +641,7 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
                   {chipLabel}
                 </text>
               ) : null}
-              {mode === "post-dice" ? renderChipOverlay(chip, viewportForRender, isSelected) : null}
+              {requestMode === "post-dice" ? renderChipOverlay(chip, viewportForRender, isSelected) : null}
             </g>
           );
         })}
