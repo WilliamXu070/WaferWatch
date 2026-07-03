@@ -409,3 +409,27 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `Selected event` text. The session was unauthenticated, so authenticated
     timeline/editor event interactions were not browser-exercised.
   - Screenshot: `/tmp/waferwatch-calendar-fast-track-bb34.png`
+
+## Recent development note (2026-07-03 calendar component split)
+
+- Refactored `ProcessCalendarBoard` from a single large calendar file into a
+  feature folder under `src/components/process-dashboard/calendar/` with
+  separate modules for types, constants, date/header helpers, event helpers,
+  timeline item rendering, filter UI, event editor UI, and calendar CSS.
+- Kept behavior and persistence unchanged; this was a readability and future
+  agent-editability split only.
+- Moved calendar scheduler/timeline/inspector and `/wireframe/calendar` route
+  styles out of `src/app/globals.css` into
+  `src/components/process-dashboard/calendar/calendar.css`, imported from the
+  root layout after global styles.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3000/api/health`
+  - Playwright route `http://localhost:3000/wireframe/calendar` at `1280x720`:
+    unauthenticated calendar preview loaded, extracted calendar card styles
+    applied, no console errors, and no visible `Delete event` or
+    `Selected event` text.
+  - Screenshot: `/tmp/waferwatch-calendar-refactor-bb34.png`
+- Authenticated scheduler/editor interactions were not browser-exercised because
+  the available Playwright session was unauthenticated.
