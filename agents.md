@@ -305,3 +305,21 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `/tmp/waferwatch-combined-wafer-status.png`, and
     `/tmp/waferwatch-combined-dashboard-v2.png`
   - `npm run wireframe:fixture:clear` returned zero fixture rows.
+
+## Recent development note (2026-07-03 process flow editor restore)
+
+- Restored the process-flow canvas selection/delete controls that were present
+  in prior git history: clicking/creating a node selects it, the toolbar Delete
+  step button enables from selection, Delete/Backspace removes the selected node,
+  and local undo snapshots are restored for canvas edits.
+- Kept `/wireframe/process-flow` backend-backed: unauthenticated sessions still
+  show no Supabase process fallback data, and this change does not add destructive
+  `process_steps` database deletes.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3000/api/health`
+  - Browser route `http://localhost:3000/wireframe/process-flow` at `1280x720`:
+    double-clicked the empty canvas to create a local step, confirmed one
+    `.flow-node--selected`, deleted it from the toolbar, recreated a step, and
+    deleted it with the keyboard Delete key. Console error log was empty.

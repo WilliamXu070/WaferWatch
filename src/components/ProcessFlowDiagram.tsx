@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { MouseEvent, PointerEvent } from "react";
+import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/action-result";
 import type { StepStatus } from "@/types/database";
@@ -89,6 +90,14 @@ type RoleMenu = {
 type ScenePoint = {
   x: number;
   y: number;
+};
+
+type DiagramHistoryEntry = {
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+  nextNodeNumber: number;
+  selectedNodeId: string | null;
+  roleMenu: RoleMenu | null;
 };
 
 type PanePoint = {
@@ -1115,6 +1124,22 @@ function hasActiveWafer(node: FlowNode) {
   return node.role === "normal" && node.wafers.some((wafer) => wafer.currentStepStatus === "running");
 }
 
+function cloneDiagramHistoryNodes(nodes: FlowNode[]) {
+  return nodes.map((node) => ({
+    ...node,
+    wafers: node.wafers.map((wafer) => ({ ...wafer }))
+  }));
+}
+
+function isTextInputTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tag = target.tagName.toLowerCase();
+  return target.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
+}
+
 export function ProcessFlowDiagram({
   steps,
   onMoveWafer
@@ -1133,11 +1158,13 @@ export function ProcessFlowDiagram({
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
   const [isPanning, setIsPanning] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [moveMessage, setMoveMessage] = useState<string | null>(null);
   const [isMovePending, startMoveTransition] = useTransition();
   const scaleRef = useRef(1);
   const pinchBaseScaleRef = useRef(1);
   const nextNodeNumberRef = useRef(1);
+  const historyStackRef = useRef<DiagramHistoryEntry[]>([]);
   const pendingZoomAnchorRef = useRef<ZoomAnchor | null>(null);
   const panStateRef = useRef<{
     startX: number;
@@ -1233,6 +1260,35 @@ export function ProcessFlowDiagram({
   const zoomIn = () => applyScaleAtAnchor(scaleRef.current + BUTTON_ZOOM_STEP);
   const zoomOut = () => applyScaleAtAnchor(scaleRef.current - BUTTON_ZOOM_STEP);
   const zoomReset = () => applyScaleAtAnchor(1);
+  const pushUndoSnapshot = useCallback(() => {
+    historyStackRef.current.push({
+      nodes: cloneDiagramHistoryNodes(nodes),
+      edges: edges.map((edge) => ({ ...edge })),
+      nextNodeNumber: nextNodeNumberRef.current,
+      selectedNodeId,
+      roleMenu: roleMenu ? { ...roleMenu } : null
+    });
+    if (historyStackRef.current.length > 40) {
+      historyStackRef.current.shift();
+    }
+  }, [edges, nodes, roleMenu, selectedNodeId]);
+  const restoreFromHistory = useCallback(() => {
+    const snapshot = historyStackRef.current.pop();
+    if (!snapshot) {
+      return;
+    }
+
+    setNodes(cloneDiagramHistoryNodes(snapshot.nodes));
+    setEdges(snapshot.edges.map((edge) => ({ ...edge })));
+    setConnectionDraft(null);
+    setNodeDrag(null);
+    setWaferDrag(null);
+    setSnapGuides([]);
+    setRoleMenu(snapshot.roleMenu ? { ...snapshot.roleMenu } : null);
+    setSelectedNodeId(snapshot.selectedNodeId);
+    setMoveMessage(null);
+    nextNodeNumberRef.current = snapshot.nextNodeNumber;
+  }, []);
   const getVisibleSceneCenter = () => {
     const frame = frameRef.current;
     if (!frame) {
@@ -1256,8 +1312,10 @@ export function ProcessFlowDiagram({
     setWaferDrag(null);
     setSnapGuides([]);
     setRoleMenu(null);
+    setSelectedNodeId(null);
     setMoveMessage(null);
     nextNodeNumberRef.current = 1;
+    historyStackRef.current = [];
   };
 
   useEffect(() => {
@@ -1273,8 +1331,10 @@ export function ProcessFlowDiagram({
     setWaferDrag(null);
     setSnapGuides([]);
     setRoleMenu(null);
+    setSelectedNodeId(null);
     setMoveMessage(null);
     nextNodeNumberRef.current = steps.length + 1;
+    historyStackRef.current = [];
     seededSignatureRef.current = stepSignature;
   }, [stepSignature, steps]);
 
@@ -1304,6 +1364,7 @@ export function ProcessFlowDiagram({
     }
 
     setRoleMenu(null);
+    setSelectedNodeId(null);
 
     const frame = frameRef.current;
     if (!frame) {
@@ -1352,6 +1413,21 @@ export function ProcessFlowDiagram({
     panStateRef.current = null;
   };
 
+  const clearSelectionIfOffNode = (event: PointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const target = event.target as EventTarget | null;
+    const hasNodeTarget = target instanceof Element && target.closest(".flow-node") !== null;
+    if (hasNodeTarget) {
+      return;
+    }
+
+    setRoleMenu(null);
+    setSelectedNodeId(null);
+  };
+
   const createNode = (event: MouseEvent<SVGSVGElement>) => {
     if (event.detail !== 2 || event.button !== 0) {
       return;
@@ -1359,13 +1435,16 @@ export function ProcessFlowDiagram({
 
     const point = getScenePoint(event);
     const nodeNumber = nextNodeNumberRef.current;
+    const nodeId = `local-step-${Date.now()}-${nodeNumber}`;
     nextNodeNumberRef.current += 1;
     setRoleMenu(null);
+    setMoveMessage(null);
 
+    pushUndoSnapshot();
     setNodes((currentNodes) => [
       ...currentNodes,
       {
-        id: `local-step-${Date.now()}-${nodeNumber}`,
+        id: nodeId,
         label: `Step ${nodeNumber}`,
         subLabel: "Process step",
         x: Math.max(24, Math.round(point.x - NODE_WIDTH / 2)),
@@ -1377,6 +1456,7 @@ export function ProcessFlowDiagram({
         wafers: []
       }
     ]);
+    setSelectedNodeId(nodeId);
   };
 
   const beginConnection = (event: PointerEvent<SVGGElement>, nodeId: string) => {
@@ -1387,6 +1467,7 @@ export function ProcessFlowDiagram({
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
+    setSelectedNodeId(nodeId);
 
     const point = getScenePoint(event);
     setConnectionDraft({
@@ -1402,6 +1483,8 @@ export function ProcessFlowDiagram({
   };
 
   const handleNodePointerDown = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
+    event.stopPropagation();
+    setSelectedNodeId(node.id);
     if (event.shiftKey) {
       beginConnection(event, node.id);
       return;
@@ -1418,6 +1501,7 @@ export function ProcessFlowDiagram({
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
+    setSelectedNodeId(node.id);
 
     const point = getScenePoint(event);
     setNodeDrag({
@@ -1597,6 +1681,7 @@ export function ProcessFlowDiagram({
     const target = nodes.find((node) => node.id !== connectionDraft.from && nodeContainsPoint(node, point));
 
     if (target && connectionDraft.hasMoved) {
+      pushUndoSnapshot();
       setEdges((currentEdges) => {
         const exists = currentEdges.some((edge) => edge.from === connectionDraft.from && edge.to === target.id);
         if (exists) {
@@ -1623,6 +1708,7 @@ export function ProcessFlowDiagram({
   const openRoleMenu = (event: MouseEvent<SVGGElement>, nodeId: string) => {
     event.preventDefault();
     event.stopPropagation();
+    setSelectedNodeId(nodeId);
 
     const frame = frameRef.current;
     if (!frame) {
@@ -1638,6 +1724,7 @@ export function ProcessFlowDiagram({
   };
 
   const setNodeRole = (nodeId: string, role: FlowNodeRole) => {
+    pushUndoSnapshot();
     setNodes((currentNodes) =>
       currentNodes.map((node) => {
         if (node.id === nodeId) {
@@ -1654,14 +1741,53 @@ export function ProcessFlowDiagram({
     setRoleMenu(null);
   };
 
-  const deleteNode = (nodeId: string) => {
+  const deleteNode = useCallback((nodeId: string) => {
+    pushUndoSnapshot();
     setNodes((currentNodes) => currentNodes.filter((node) => node.id !== nodeId));
     setEdges((currentEdges) => currentEdges.filter((edge) => edge.from !== nodeId && edge.to !== nodeId));
     setConnectionDraft((draft) => (draft?.from === nodeId ? null : draft));
     setNodeDrag((drag) => (drag?.nodeId === nodeId ? null : drag));
+    setWaferDrag((drag) => (drag?.sourceStepId === nodeId ? null : drag));
+    setSelectedNodeId((current) => (current === nodeId ? null : current));
     setSnapGuides([]);
     setRoleMenu(null);
-  };
+    setMoveMessage(null);
+  }, [pushUndoSnapshot]);
+
+  const deleteSelectedNode = useCallback(() => {
+    if (!selectedNodeId) {
+      return;
+    }
+
+    deleteNode(selectedNodeId);
+  }, [deleteNode, selectedNodeId]);
+
+  useEffect(() => {
+    const onGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (isTextInputTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && key === "z") {
+        event.preventDefault();
+        restoreFromHistory();
+        return;
+      }
+
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedNodeId) {
+        event.preventDefault();
+        deleteSelectedNode();
+      }
+    };
+
+    window.addEventListener("keydown", onGlobalKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onGlobalKeyDown);
+    };
+  }, [deleteSelectedNode, restoreFromHistory, selectedNodeId]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -1762,10 +1888,20 @@ export function ProcessFlowDiagram({
           <button className="button button-secondary flow-fit-button" type="button" onClick={zoomReset}>
             Fit view
           </button>
-          <button className="button button-secondary flow-fit-button" type="button" onClick={organizeCanvas} disabled={nodes.length < 2}>
+          <button className="button button-secondary flow-fit-button flow-auto-layout-button" type="button" onClick={organizeCanvas} disabled={nodes.length < 2}>
             Auto layout
           </button>
-          <button className="button button-secondary" type="button" onClick={clearCanvas} disabled={nodes.length === 0}>
+          <button
+            className="button button-secondary flow-delete-button"
+            type="button"
+            onClick={deleteSelectedNode}
+            disabled={!selectedNodeId}
+            aria-label={selectedNodeId ? "Delete selected step" : "No step selected"}
+          >
+            <Trash2 size={14} />
+            Delete step
+          </button>
+          <button className="button button-secondary flow-clear-button" type="button" onClick={clearCanvas} disabled={nodes.length === 0}>
             Clear
           </button>
         </div>
@@ -1793,10 +1929,12 @@ export function ProcessFlowDiagram({
             setConnectionDraft(null);
             setWaferDrag(null);
           }}
+          onPointerDown={clearSelectionIfOffNode}
           onDoubleClick={createNode}
           onContextMenu={(event) => {
             event.preventDefault();
             setRoleMenu(null);
+            setSelectedNodeId(null);
           }}
         >
           <defs>
@@ -1885,7 +2023,7 @@ export function ProcessFlowDiagram({
               key={node.id}
               className={`flow-node flow-node--${node.role} ${active ? "flow-node--active" : ""} ${connectionDraft?.from === node.id ? "flow-node--connecting" : ""} ${
                 nodeDrag?.nodeId === node.id ? "flow-node--dragging" : ""
-              }`}
+              } ${selectedNodeId === node.id ? "flow-node--selected" : ""}`}
               transform={`translate(${node.x} ${node.y})`}
               onPointerDown={(event) => handleNodePointerDown(event, node)}
               onPointerMove={updateNodeDrag}
