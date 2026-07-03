@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  CSSProperties,
   HTMLAttributes,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -12,22 +11,17 @@ import {
   useState,
   useTransition
 } from "react";
-import type { Dayjs } from "dayjs";
-import dayjs from "dayjs";
 import Timeline, {
   DateHeader,
   SidebarHeader,
   TimelineHeaders,
   type Id,
   type OnTimeChange,
-  type ReactCalendarTimelineProps,
-  type TimelineGroupBase,
-  type TimelineItemBase
+  type ReactCalendarTimelineProps
 } from "react-calendar-timeline";
 import { flushSync } from "react-dom";
 import {
   createProcessCalendarEvent,
-  deleteProcessCalendarEvent,
   moveProcessCalendarEvent,
   updateProcessCalendarEvent
 } from "@/features/calendar/actions";
@@ -36,549 +30,74 @@ import type {
   ProcessCalendarLocation,
   ProcessCalendarPersonOption
 } from "@/features/calendar/queries";
+import { CalendarEventEditor } from "./calendar/CalendarEventEditor";
+import { CalendarFilterPanel } from "./calendar/CalendarFilterPanel";
+import { renderCalendarTimelineItem } from "./calendar/CalendarTimelineItemRenderer";
+import {
+  DAY_MS,
+  DEFAULT_EVENT_MS,
+  DEFAULT_VISIBLE_RANGE_DAYS,
+  END_MINUTE,
+  LOCATIONS,
+  LOCATION_REGIONS,
+  MANUAL_STAGE_FILTER_ID,
+  MAX_WEEK_ZOOM_MS,
+  MAX_WIREFRAME_ZOOM_MS,
+  MIN_EVENT_MS,
+  MIN_ZOOM_MS,
+  SNAP_MS,
+  START_MINUTE,
+  TIMELINE_KEYS,
+  TRAVEL_BUFFER_MS
+} from "./calendar/constants";
+import {
+  addDays,
+  buildDateAtMinute,
+  clamp,
+  clampVisibleWindow,
+  createCurrentDayHeaderRenderer,
+  createWireframeHeaderRenderer,
+  formatDateTime,
+  formatTimelineItemWindow,
+  formatWindow,
+  getCurrentWeekStart,
+  getDayAndHour,
+  getHeaderScale,
+  getWireframeHeaderScale,
+  isCurrentDay,
+  snapTime
+} from "./calendar/date-helpers";
+import {
+  applyMoveWindow,
+  areMoveWindowsEqual,
+  buildWireframePeopleSummary,
+  draftFromSelection,
+  eventLabel,
+  eventTone,
+  getEventDuration,
+  getWireframeEventBadge,
+  getWireframeEventTitle,
+  intervalsOverlap,
+  isBlankTimelineTarget,
+  locationTone,
+  sortCalendarEvents,
+  toDisplayName,
+  toMoveWindow
+} from "./calendar/event-helpers";
+import type {
+  ActionMode,
+  CalendarTimelineItem,
+  CalendarTimelineRef,
+  DraftDragSelection,
+  DraftEvent,
+  MoveWindow,
+  PendingTimelineMove,
+  ProcessCalendarBoardProps,
+  StageFilterId,
+  TimelineLocationGroup,
+  TimelinePanState
+} from "./calendar/types";
 
-type ProcessStepOption = {
-  id: string;
-  name: string;
-};
-
-type DraftEvent = {
-  location: ProcessCalendarLocation;
-  startsAt: Date;
-  endsAt: Date;
-};
-
-type DraftDragSelection = {
-  pointerId: number;
-  location: ProcessCalendarLocation;
-  anchorTime: number;
-  currentTime: number;
-};
-
-type TimelinePanState = {
-  pointerId: number;
-  startX: number;
-  startStart: number;
-  startEnd: number;
-  moved: boolean;
-};
-
-type PendingTimelineMove = {
-  eventId: string;
-  previous: MoveWindow;
-  next: MoveWindow;
-};
-
-type MoveWindow = {
-  location: ProcessCalendarLocation;
-  startsAt: string;
-  endsAt: string;
-};
-
-type ActionMode = "step" | "manual";
-type StageFilterId = string | "__manual__";
-type CalendarPresentationMode = "default" | "wireframe";
-type CalendarPersistenceMode = "server" | "local";
-
-type TimelineHeaderScale = {
-  id: "minutes" | "hours" | "blocks" | "days";
-  primaryUnit: "day" | "month";
-  primaryLabelFormat: (timeRange: [Dayjs, Dayjs]) => string;
-  secondaryUnit: "minute" | "hour" | "day";
-  secondaryLabelFormat: (timeRange: [Dayjs, Dayjs]) => string;
-  hourStep: 1 | 6;
-};
-
-type WireframeHeaderScale = {
-  id: "days" | "weeks" | "months";
-  unit: "day" | "month";
-  labelFormat: (timeRange: [Dayjs, Dayjs]) => string;
-};
-
-type TimelineLocationGroup = TimelineGroupBase & {
-  id: ProcessCalendarLocation;
-  title: string;
-  stackItems: true;
-};
-
-type CalendarTimelineRef = {
-  getBoundingClientRect(): DOMRect;
-};
-
-type CalendarTimelineItem = TimelineItemBase<number> & {
-  id: string;
-  group: ProcessCalendarLocation;
-  title: string;
-  badgeLabel?: string;
-  descriptionLabel?: string;
-  event?: ProcessCalendarEventView;
-  peopleLabel: string;
-  timeLabel: string;
-  toneClass: string;
-  isDraft?: boolean;
-};
-
-type ProcessCalendarBoardProps = {
-  processTemplateId: string;
-  calendarStartDate: string;
-  days: number;
-  steps: ProcessStepOption[];
-  people: ProcessCalendarPersonOption[];
-  initialEvents: ProcessCalendarEventView[];
-  initialVisibleStartDate?: string;
-  persistenceMode?: CalendarPersistenceMode;
-  presentationMode?: CalendarPresentationMode;
-};
-
-const LOCATIONS: ProcessCalendarLocation[] = ["McMaster", "Waterloo", "Toronto"];
-const LOCATION_REGIONS: Record<ProcessCalendarLocation, string> = {
-  McMaster: "Hamilton",
-  Waterloo: "Waterloo",
-  Toronto: "Toronto"
-};
-const LOCATION_TONE_CLASSES: Record<ProcessCalendarLocation, string> = {
-  McMaster: "ww-timeline-item--amber",
-  Waterloo: "ww-timeline-item--blue",
-  Toronto: "ww-timeline-item--green"
-};
-const START_HOUR = 8;
-const END_HOUR = 18;
-const START_MINUTE = START_HOUR * 60;
-const END_MINUTE = END_HOUR * 60;
-const SNAP_MS = 15 * 60 * 1000;
-const MIN_EVENT_MS = 30 * 60 * 1000;
-const DEFAULT_EVENT_MS = 60 * 60 * 1000;
-const MIN_ZOOM_MS = 2 * 60 * 60 * 1000;
-const TRAVEL_BUFFER_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-const MAX_WEEK_ZOOM_MS = 7 * DAY_MS;
-const MAX_WIREFRAME_ZOOM_MS = 183 * DAY_MS;
-const HOUR_MS = 60 * 60 * 1000;
-const MANUAL_STAGE_FILTER_ID = "__manual__";
-
-const TIMELINE_KEYS = {
-  groupIdKey: "id",
-  groupTitleKey: "title",
-  groupRightTitleKey: "rightTitle",
-  groupLabelKey: "title",
-  itemIdKey: "id",
-  itemTitleKey: "title",
-  itemDivTitleKey: "title",
-  itemGroupKey: "group",
-  itemTimeStartKey: "start_time",
-  itemTimeEndKey: "end_time"
-};
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(date.getDate() + days);
-  return next;
-}
-
-function buildDateAtMinute(date: Date, minute: number) {
-  const next = new Date(date);
-  next.setHours(Math.floor(minute / 60), minute % 60, 0, 0);
-  return next;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function clampVisibleWindow(
-  requestedStart: number,
-  requestedEnd: number,
-  timelineStart: number,
-  timelineEnd: number,
-  maxSpanMs: number
-) {
-  const timelineSpan = timelineEnd - timelineStart;
-  const maxSpan = clamp(maxSpanMs, MIN_ZOOM_MS, Math.max(1, timelineSpan));
-  const minSpan = MIN_ZOOM_MS;
-
-  const requestedSpan = requestedEnd - requestedStart;
-  const span = clamp(requestedSpan, minSpan, maxSpan);
-  const start = clamp(requestedStart, timelineStart, timelineEnd - span);
-  const end = start + span;
-
-  return { start, end };
-}
-
-function snapTime(time: number) {
-  return Math.round(time / SNAP_MS) * SNAP_MS;
-}
-
-function formatMinute(minute: number) {
-  const hour = Math.floor(minute / 60);
-  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-  const suffix = hour >= 12 ? "PM" : "AM";
-  return `${displayHour}:${String(minute % 60).padStart(2, "0")} ${suffix}`;
-}
-
-function formatDateTime(date: Date) {
-  return `${date.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric"
-  })} ${formatMinute(date.getHours() * 60 + date.getMinutes())}`;
-}
-
-function formatWindow(startsAt: Date, endsAt: Date) {
-  return `${formatDateTime(startsAt)} - ${formatMinute(endsAt.getHours() * 60 + endsAt.getMinutes())}`;
-}
-
-function formatCompactDateTime(date: Date) {
-  return `${date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric"
-  })} ${formatMinute(date.getHours() * 60 + date.getMinutes())}`;
-}
-
-function isSameCalendarDay(first: Date, second: Date) {
-  return (
-    first.getFullYear() === second.getFullYear() &&
-    first.getMonth() === second.getMonth() &&
-    first.getDate() === second.getDate()
-  );
-}
-
-function formatTimelineItemWindow(startsAt: Date, endsAt: Date, presentationMode: CalendarPresentationMode) {
-  if (presentationMode !== "wireframe") {
-    return formatWindow(startsAt, endsAt);
-  }
-
-  if (isSameCalendarDay(startsAt, endsAt)) {
-    return `${formatMinute(startsAt.getHours() * 60 + startsAt.getMinutes())} - ${formatMinute(
-      endsAt.getHours() * 60 + endsAt.getMinutes()
-    )}`;
-  }
-
-  return `${formatCompactDateTime(startsAt)} - ${formatCompactDateTime(endsAt)}`;
-}
-
-function toDisplayName(value: string) {
-  return value
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
-}
-
-function eventLabel(event: ProcessCalendarEventView, stepsById: Map<string, string>) {
-  if (event.process_step_id) {
-    return stepsById.get(event.process_step_id) ?? "Process step";
-  }
-
-  return event.manual_action ?? "Manual action";
-}
-
-function eventTone(label: string, presentationMode: CalendarPresentationMode) {
-  const normalized = label.toLowerCase();
-
-  if (presentationMode === "wireframe") {
-    if (normalized.includes("lith") || normalized.includes("expose") || normalized.includes("inspect")) {
-      return "ww-timeline-item--blue";
-    }
-
-    if (normalized.includes("clean") || normalized.includes("pol")) {
-      return "ww-timeline-item--green";
-    }
-
-    return "ww-timeline-item--amber";
-  }
-
-  if (normalized.includes("pol")) return "ww-timeline-item--green";
-  if (normalized.includes("inspect")) return "ww-timeline-item--blue";
-  if (normalized.includes("clean")) return "ww-timeline-item--soft";
-  return "ww-timeline-item--pink";
-}
-
-function locationTone(location: ProcessCalendarLocation) {
-  return LOCATION_TONE_CLASSES[location] ?? "ww-timeline-item--amber";
-}
-
-function getWireframeEventTitle(event: ProcessCalendarEventView, label: string, presentationMode: CalendarPresentationMode) {
-  if (presentationMode === "wireframe" && event.id === "evt-intake") {
-    return "New event";
-  }
-
-  return label;
-}
-
-function getWireframeEventBadge(event: ProcessCalendarEventView, presentationMode: CalendarPresentationMode) {
-  return presentationMode === "wireframe" && event.id === "evt-intake" ? "Draft" : undefined;
-}
-
-function intervalsOverlap(startsAt: Date, endsAt: Date, otherStartsAt: Date, otherEndsAt: Date) {
-  return startsAt < otherEndsAt && endsAt > otherStartsAt;
-}
-
-function sortCalendarEvents(events: ProcessCalendarEventView[]) {
-  return [...events].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
-}
-
-function toggleSelection(current: string[], value: string) {
-  return current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
-}
-
-function toMoveWindow(event: ProcessCalendarEventView): MoveWindow {
-  return {
-    location: event.location as ProcessCalendarLocation,
-    startsAt: event.starts_at,
-    endsAt: event.ends_at
-  };
-}
-
-function applyMoveWindow(event: ProcessCalendarEventView, window: MoveWindow): ProcessCalendarEventView {
-  return {
-    ...event,
-    location: window.location,
-    starts_at: window.startsAt,
-    ends_at: window.endsAt
-  };
-}
-
-function getEventDuration(event: ProcessCalendarEventView) {
-  return new Date(event.ends_at).getTime() - new Date(event.starts_at).getTime();
-}
-
-function draftFromSelection(selection: DraftDragSelection, minTime: number, maxTime: number): DraftEvent {
-  let startsAt = Math.min(selection.anchorTime, selection.currentTime);
-  const selectedEnd = Math.max(selection.anchorTime, selection.currentTime);
-  let endsAt = Math.max(selectedEnd, startsAt + MIN_EVENT_MS);
-
-  if (endsAt > maxTime) {
-    endsAt = maxTime;
-    startsAt = Math.max(minTime, endsAt - MIN_EVENT_MS);
-  }
-
-  return {
-    location: selection.location,
-    startsAt: new Date(startsAt),
-    endsAt: new Date(endsAt)
-  };
-}
-
-function createHeaderLabelFormatter(format: string) {
-  return ([start]: [Dayjs, Dayjs]) => start.format(format);
-}
-
-function formatSixHourBlock([start, end]: [Dayjs, Dayjs]) {
-  const hour = start.hour();
-  const label = hour < 6
-    ? "Night"
-    : hour < 12
-      ? "Morning"
-      : hour < 18
-        ? "Afternoon"
-        : "Evening";
-
-  return `${label} ${start.format("h A")}-${end.format("h A")}`;
-}
-
-const HEADER_SCALES: Record<TimelineHeaderScale["id"], TimelineHeaderScale> = {
-  minutes: {
-    id: "minutes",
-    primaryUnit: "day",
-    primaryLabelFormat: createHeaderLabelFormatter("ddd, MMM D"),
-    secondaryUnit: "minute",
-    secondaryLabelFormat: createHeaderLabelFormatter("h:mm A"),
-    hourStep: 1
-  },
-  hours: {
-    id: "hours",
-    primaryUnit: "day",
-    primaryLabelFormat: createHeaderLabelFormatter("ddd, MMM D"),
-    secondaryUnit: "hour",
-    secondaryLabelFormat: createHeaderLabelFormatter("h A"),
-    hourStep: 1
-  },
-  blocks: {
-    id: "blocks",
-    primaryUnit: "day",
-    primaryLabelFormat: createHeaderLabelFormatter("ddd, MMM D"),
-    secondaryUnit: "hour",
-    secondaryLabelFormat: formatSixHourBlock,
-    hourStep: 6
-  },
-  days: {
-    id: "days",
-    primaryUnit: "month",
-    primaryLabelFormat: createHeaderLabelFormatter("MMM YYYY"),
-    secondaryUnit: "day",
-    secondaryLabelFormat: createHeaderLabelFormatter("ddd D"),
-    hourStep: 6
-  }
-};
-
-const WIREFRAME_HEADER_SCALES: Record<WireframeHeaderScale["id"], WireframeHeaderScale> = {
-  days: {
-    id: "days",
-    unit: "day",
-    labelFormat: createHeaderLabelFormatter("ddd D")
-  },
-  weeks: {
-    id: "weeks",
-    unit: "day",
-    labelFormat: createHeaderLabelFormatter("MMM D")
-  },
-  months: {
-    id: "months",
-    unit: "month",
-    labelFormat: createHeaderLabelFormatter("MMM YYYY")
-  }
-};
-
-function getHeaderScale(visibleSpan: number): TimelineHeaderScale {
-  if (visibleSpan <= 4 * HOUR_MS) {
-    return HEADER_SCALES.minutes;
-  }
-
-  if (visibleSpan <= 18 * HOUR_MS) {
-    return HEADER_SCALES.hours;
-  }
-
-  if (visibleSpan <= 2 * DAY_MS) {
-    return HEADER_SCALES.blocks;
-  }
-
-  return HEADER_SCALES.days;
-}
-
-function getWireframeHeaderScale(visibleSpan: number): WireframeHeaderScale {
-  if (visibleSpan <= 14 * DAY_MS) {
-    return WIREFRAME_HEADER_SCALES.days;
-  }
-
-  if (visibleSpan <= 70 * DAY_MS) {
-    return WIREFRAME_HEADER_SCALES.weeks;
-  }
-
-  return WIREFRAME_HEADER_SCALES.months;
-}
-
-function isCurrentDay(timestamp: number) {
-  return dayjs(timestamp).isSame(dayjs(), "day");
-}
-
-function createCurrentDayHeaderRenderer(highlightDay: boolean) {
-  if (!highlightDay) {
-    return undefined;
-  }
-
-  return function CurrentDayHeaderRenderer({
-    intervalContext,
-    getIntervalProps
-  }: {
-    intervalContext: { intervalText: string; interval: { startTime: Dayjs } };
-    getIntervalProps: (props?: { style?: CSSProperties }) => HTMLAttributes<HTMLElement>;
-  }) {
-    const intervalProps = getIntervalProps() as HTMLAttributes<HTMLElement> & {
-      key?: string | number;
-      className?: string;
-    };
-    const { key: intervalKey, className: intervalClassName, ...safeIntervalProps } = intervalProps;
-
-    return (
-      <div
-        key={intervalKey}
-        {...safeIntervalProps}
-        className={[
-          intervalClassName,
-          "ww-timeline-date-header",
-          isCurrentDay(intervalContext.interval.startTime.valueOf())
-            ? "ww-timeline-date-header--today"
-            : undefined
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      >
-        {intervalContext.intervalText}
-      </div>
-    );
-  };
-}
-
-function createWireframeHeaderRenderer(scaleId: WireframeHeaderScale["id"]) {
-  return function WireframeHeaderRenderer({
-    intervalContext,
-    getIntervalProps
-  }: {
-    intervalContext: { interval: { startTime: Dayjs } };
-    getIntervalProps: (props?: { style?: CSSProperties }) => HTMLAttributes<HTMLElement>;
-  }) {
-    const intervalProps = getIntervalProps() as HTMLAttributes<HTMLElement> & {
-      key?: string | number;
-      className?: string;
-    };
-    const { key: intervalKey, className: intervalClassName, ...safeIntervalProps } = intervalProps;
-    const startTime = intervalContext.interval.startTime;
-    const isWeekAnchor = scaleId !== "weeks" || startTime.day() === 1;
-    const shouldRenderLabel = scaleId !== "weeks" || isWeekAnchor;
-    const primaryLabel =
-      scaleId === "months"
-        ? startTime.format("MMM")
-        : scaleId === "weeks"
-          ? startTime.format("MMM D")
-          : startTime.format("ddd D");
-    const secondaryLabel =
-      scaleId === "months"
-        ? startTime.format("YYYY")
-        : scaleId === "weeks"
-          ? "Week"
-          : startTime.format("MMM D");
-
-    return (
-      <div
-        key={intervalKey}
-        {...safeIntervalProps}
-        className={[
-          intervalClassName,
-          "ww-timeline-wireframe-header",
-          `ww-timeline-wireframe-header--${scaleId}`,
-          "ww-timeline-wireframe-day-header",
-          shouldRenderLabel ? undefined : "ww-timeline-wireframe-header--empty",
-          isCurrentDay(startTime.valueOf()) ? "ww-timeline-date-header--today" : undefined
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      >
-        {shouldRenderLabel ? (
-          <>
-            <strong>{primaryLabel}</strong>
-            <span>{secondaryLabel}</span>
-          </>
-        ) : null}
-      </div>
-    );
-  };
-}
-
-function isBlankTimelineTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  const nonPanSelectors = [
-    ".calendar-timeline-toolbar",
-    ".rct-item",
-    ".rct-item-content",
-    ".rct-header-root",
-    ".rct-resize",
-    ".rct-sidebar",
-    ".rct-sidebar-header"
-  ];
-
-  if (nonPanSelectors.some((selector) => target.closest(selector))) {
-    return false;
-  }
-
-  return true;
-}
-
-function areMoveWindowsEqual(left: MoveWindow, right: MoveWindow) {
-  return left.location === right.location && left.startsAt === right.startsAt && left.endsAt === right.endsAt;
-}
 
 export function ProcessCalendarBoard({
   processTemplateId,
@@ -680,10 +199,17 @@ export function ProcessCalendarBoard({
   const initialVisibleWindow = useMemo(() => {
     const requestedDate = new Date(`${initialVisibleStartDate}T00:00:00`);
     const requestedStart = Number.isNaN(requestedDate.getTime())
-      ? timelineStart
+      ? getCurrentWeekStart(new Date())
       : buildDateAtMinute(requestedDate, START_MINUTE).getTime();
+    const requestedSpanMs = DEFAULT_VISIBLE_RANGE_DAYS * DAY_MS;
 
-    return clampVisibleWindow(requestedStart, requestedStart + maxZoomMs, timelineStart, timelineEnd, maxZoomMs);
+    return clampVisibleWindow(
+      requestedStart,
+      requestedStart + requestedSpanMs,
+      timelineStart,
+      timelineEnd,
+      maxZoomMs
+    );
   }, [initialVisibleStartDate, maxZoomMs, timelineEnd, timelineStart]);
   const [visibleRange, setVisibleRange] = useState(() => ({
     boundsStart: timelineStart,
@@ -729,11 +255,11 @@ export function ProcessCalendarBoard({
   );
   const timelineVerticalLineClassNames = useCallback(
     (lineStart: number) => {
-      const lineTime = dayjs(lineStart);
+      const lineTime = getDayAndHour(lineStart);
       return [
         isCurrentDay(lineStart) ? "ww-timeline-vline-today" : undefined,
-        [0, 6].includes(lineTime.day()) ? "ww-timeline-vline-weekend" : undefined,
-        lineTime.hour() === 12 ? "ww-timeline-vline-midday" : undefined
+        [0, 6].includes(lineTime.day) ? "ww-timeline-vline-weekend" : undefined,
+        lineTime.hour === 12 ? "ww-timeline-vline-midday" : undefined
       ].filter(Boolean) as string[];
     },
     []
@@ -816,6 +342,10 @@ export function ProcessCalendarBoard({
         const peopleLabel = event.people
           .map((person) => presentationMode === "wireframe" ? toDisplayName(person.display_name) : person.display_name)
           .join(", ");
+        const wireframePeopleSummary =
+          presentationMode === "wireframe"
+            ? buildWireframePeopleSummary(event.people.map((person) => toDisplayName(person.display_name)))
+            : peopleLabel;
 
         return {
           id: event.id,
@@ -824,7 +354,7 @@ export function ProcessCalendarBoard({
           badgeLabel: getWireframeEventBadge(event, presentationMode),
           descriptionLabel,
           event,
-          peopleLabel,
+          peopleLabel: wireframePeopleSummary,
           timeLabel: formatTimelineItemWindow(startsAt, endsAt, presentationMode),
           toneClass:
             presentationMode === "wireframe"
@@ -835,7 +365,7 @@ export function ProcessCalendarBoard({
           canMove: true,
           canChangeGroup: true,
           canResize: "both",
-          height: presentationMode === "wireframe" ? 110 : 30
+          height: presentationMode === "wireframe" ? 84 : 30
         };
       });
 
@@ -849,8 +379,8 @@ export function ProcessCalendarBoard({
           group: draftWindow.location,
           title: "New event",
           badgeLabel: "Draft",
-          descriptionLabel: draftDragSelection ? "Release to create" : "Choose action in editor",
-          peopleLabel: draftDragSelection ? "Release to create" : "Unsaved draft",
+          descriptionLabel: draftDragSelection ? "Release to place" : undefined,
+          peopleLabel: draftDragSelection ? "No one" : "Draft",
           timeLabel: formatTimelineItemWindow(draftWindow.startsAt, draftWindow.endsAt, presentationMode),
           toneClass: `ww-timeline-item--draft ${draftDragSelection ? "ww-timeline-item--draft-active" : ""}`,
           start_time: draftWindow.startsAt.getTime(),
@@ -858,7 +388,7 @@ export function ProcessCalendarBoard({
           canMove: !draftDragSelection,
           canChangeGroup: !draftDragSelection,
           canResize: draftDragSelection ? false : "both",
-          height: presentationMode === "wireframe" ? 110 : 30,
+          height: presentationMode === "wireframe" ? 84 : 30,
           isDraft: true
         });
       }
@@ -1695,63 +1225,16 @@ export function ProcessCalendarBoard({
   }, [visibleRange]);
 
   const renderTimelineItem = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["itemRenderer"]>>(
-    ({ item, itemContext, getItemProps, getResizeProps }) => {
-      const isItemSelected = item.isDraft ? Boolean(draft) : item.id === selectedEventId;
-      const resizeProps = getResizeProps();
-      const { key, onPointerDown, onPointerUp, onPointerCancel, ...itemProps } = getItemProps({
-        className: `ww-timeline-item ${item.toneClass} ${isItemSelected ? "ww-timeline-item--selected" : ""}`
-      }) as HTMLAttributes<HTMLDivElement> & {
-        key?: React.Key;
-      };
-
-      const handleItemPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-        suppressedItemSelectionIdRef.current = null;
-        ignoreStaleItemSelectionUntilRef.current = 0;
-        startItemDragSelectionBlock();
-        onPointerDown?.(event);
-      };
-
-      const handleItemPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-        onPointerUp?.(event);
-        stopItemDragSelectionBlock();
-      };
-
-      const handleItemPointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
-        onPointerCancel?.(event);
-        stopItemDragSelectionBlock();
-      };
-
-      return (
-        <div
-          key={key}
-          {...itemProps}
-          onPointerDown={handleItemPointerDown}
-          onPointerUp={handleItemPointerUp}
-          onPointerCancel={handleItemPointerCancel}
-        >
-          {itemContext.useResizeHandle ? <div {...resizeProps.left} className="ww-timeline-resize ww-timeline-resize--left" /> : null}
-          <div className="ww-timeline-item-content">
-            {presentationMode === "wireframe" ? (
-              <>
-                <div className="ww-timeline-item-title-row">
-                  <strong>{item.title}</strong>
-                  {item.badgeLabel ? <span className="ww-timeline-item-badge">{item.badgeLabel}</span> : null}
-                </div>
-                {item.peopleLabel ? <span className="ww-timeline-item-person">{item.peopleLabel}</span> : null}
-                <span className="ww-timeline-item-time">{item.timeLabel}</span>
-                {item.descriptionLabel ? <span className="ww-timeline-item-description">{item.descriptionLabel}</span> : null}
-              </>
-            ) : (
-              <>
-                <strong>{item.title}</strong>
-                <span>{item.peopleLabel || "Unassigned"}</span>
-              </>
-            )}
-          </div>
-          {itemContext.useResizeHandle ? <div {...resizeProps.right} className="ww-timeline-resize ww-timeline-resize--right" /> : null}
-        </div>
-      );
-    },
+    (rendererProps) => renderCalendarTimelineItem({
+      draft,
+      presentationMode,
+      selectedEventId,
+      suppressedItemSelectionIdRef,
+      ignoreStaleItemSelectionUntilRef,
+      startItemDragSelectionBlock,
+      stopItemDragSelectionBlock,
+      rendererProps
+    }),
     [draft, presentationMode, selectedEventId, startItemDragSelectionBlock, stopItemDragSelectionBlock]
   );
 
@@ -1862,31 +1345,6 @@ export function ProcessCalendarBoard({
           current.map((event) => (event.id === updatedEvent.id ? updatedEvent : event))
         )
       );
-    });
-  }
-
-  function deleteSelectedEvent() {
-    if (!selectedEvent) {
-      return;
-    }
-
-    setError(null);
-
-    if (persistenceMode === "local") {
-      setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
-      clearSelectedEvent();
-      return;
-    }
-
-    startTransition(async () => {
-      const result = await deleteProcessCalendarEvent({ eventId: selectedEvent.id });
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-
-      setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
-      clearSelectedEvent();
     });
   }
 
@@ -2181,319 +1639,45 @@ export function ProcessCalendarBoard({
           .join(" ")}
         aria-label="Calendar event details"
       >
-        <div className="calendar-filter-panel">
-          <div className="calendar-filter-panel__header">
-            <div>
-              <p className="eyebrow">Show</p>
-              <h3>Calendar filters</h3>
-            </div>
-            <button
-              aria-expanded={isFilterPanelExpanded}
-              className="calendar-filter-panel__toggle"
-              type="button"
-              onClick={() => setIsFilterPanelExpanded((expanded) => !expanded)}
-            >
-              {isFilterPanelExpanded ? "Compact" : "Expand"}
-            </button>
-          </div>
+        <CalendarFilterPanel
+          people={people}
+          filterPersonIds={filterPersonIds}
+          filterStageIds={filterStageIds}
+          isExpanded={isFilterPanelExpanded}
+          personFilterSummary={personFilterSummary}
+          stageFilterSummary={stageFilterSummary}
+          stageFilterOptions={stageFilterOptions}
+          onExpandedChange={setIsFilterPanelExpanded}
+          onPersonFilterChange={setFilterPersonIds}
+          onStageFilterChange={setFilterStageIds}
+        />
 
-          {isFilterPanelExpanded ? (
-            <>
-              <div className="calendar-filter-group">
-                <div className="calendar-filter-group__label">
-                  <span>People</span>
-                </div>
-                <div className="calendar-filter-chip-list">
-                  <button
-                    aria-pressed={filterPersonIds.length === 0}
-                    className={filterPersonIds.length === 0 ? "is-selected" : ""}
-                    type="button"
-                    onClick={() => setFilterPersonIds([])}
-                  >
-                    Everyone
-                  </button>
-                  {people.map((person) => (
-                    <button
-                      aria-pressed={filterPersonIds.includes(person.id)}
-                      className={filterPersonIds.includes(person.id) ? "is-selected" : ""}
-                      key={person.id}
-                      type="button"
-                      onClick={() => setFilterPersonIds((current) => toggleSelection(current, person.id))}
-                    >
-                      {person.display_name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="calendar-filter-group">
-                <div className="calendar-filter-group__label">
-                  <span>Process stage</span>
-                </div>
-                <div className="calendar-filter-chip-list">
-                  <button
-                    aria-pressed={filterStageIds.length === 0}
-                    className={filterStageIds.length === 0 ? "is-selected" : ""}
-                    type="button"
-                    onClick={() => setFilterStageIds([])}
-                  >
-                    All stages
-                  </button>
-                  {stageFilterOptions.map((stage) => (
-                    <button
-                      aria-pressed={filterStageIds.includes(stage.id)}
-                      className={filterStageIds.includes(stage.id) ? "is-selected" : ""}
-                      key={stage.id}
-                      type="button"
-                      onClick={() => setFilterStageIds((current) => toggleSelection(current, stage.id))}
-                    >
-                      {stage.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="calendar-filter-summary">
-              <button type="button" onClick={() => setIsFilterPanelExpanded(true)}>
-                <span>People</span>
-                <strong>{personFilterSummary}</strong>
-              </button>
-              <button type="button" onClick={() => setIsFilterPanelExpanded(true)}>
-                <span>Process stage</span>
-                <strong>{stageFilterSummary}</strong>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {draft ? (
-          <>
-            <div className="calendar-inspector-header">
-              <p className="eyebrow">New event</p>
-              <h3>{draft.location}</h3>
-              <p className="muted">{formatWindow(draft.startsAt, draft.endsAt)}</p>
-            </div>
-
-            <label className="field">
-              <span>Action</span>
-              <select
-                value={actionMode === "step" ? selectedStepId : "__manual"}
-                onChange={(event) => {
-                  if (event.target.value === "__manual") {
-                    setActionMode("manual");
-                    setSelectedStepId("");
-                  } else {
-                    setActionMode("step");
-                    setSelectedStepId(event.target.value);
-                  }
-                }}
-              >
-                {steps.map((step) => (
-                  <option key={step.id} value={step.id}>
-                    {step.name}
-                  </option>
-                ))}
-                <option value="__manual">Manual action</option>
-              </select>
-            </label>
-
-            {actionMode === "manual" ? (
-              <label className="field">
-                <span>Manual action</span>
-                <input
-                  value={manualAction}
-                  onChange={(event) => setManualAction(event.target.value)}
-                  placeholder="Poling"
-                />
-              </label>
-            ) : null}
-
-            <div className="field">
-              <span>People</span>
-              <div className="person-picker">
-                <div className="person-chips">
-                  {selectedPeople.map((person) => (
-                    <button key={person.id} type="button" onClick={() => removePerson(person.id)}>
-                      {person.display_name}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  value={personQuery}
-                  onChange={(event) => setPersonQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    const firstAvailablePerson = filteredPeople.find((entry) => !entry.conflictReason)?.person;
-
-                    if (event.key === "Enter" && firstAvailablePerson) {
-                      event.preventDefault();
-                      addPerson(firstAvailablePerson);
-                    }
-                  }}
-                  placeholder="Type a name"
-                />
-                {personQuery.trim() ? (
-                  <div className="person-suggestions">
-                    {filteredPeople.map(({ person, conflictReason }) => (
-                      <button
-                        disabled={Boolean(conflictReason)}
-                        key={person.id}
-                        type="button"
-                        title={conflictReason ?? undefined}
-                        onClick={() => addPerson(person)}
-                      >
-                        <span>{person.display_name}</span>
-                        {conflictReason ? <small>{conflictReason}</small> : null}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <label className="field">
-              <span>Description</span>
-              <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={4}
-                placeholder="Notes, sample set, handoff details"
-              />
-            </label>
-
-            {error ? <p className="form-error">{error}</p> : null}
-
-            <div className="calendar-inspector-actions">
-              <button className="button button-primary" disabled={isPending} type="button" onClick={saveDraft}>
-                Save event
-              </button>
-              <button className="button" type="button" onClick={() => setDraft(null)}>
-                Cancel
-              </button>
-            </div>
-          </>
-        ) : selectedEvent ? (
-          <>
-            <div className="calendar-inspector-header">
-              <p className="eyebrow">Selected event</p>
-              <h3>{eventLabel(selectedEvent, stepsById)}</h3>
-              <p className="muted">
-                {selectedEvent.location} · {formatWindow(new Date(selectedEvent.starts_at), new Date(selectedEvent.ends_at))}
-              </p>
-            </div>
-
-            <label className="field">
-              <span>Action</span>
-              <select
-                value={actionMode === "step" ? selectedStepId : "__manual"}
-                onChange={(event) => {
-                  if (event.target.value === "__manual") {
-                    setActionMode("manual");
-                    setSelectedStepId("");
-                  } else {
-                    setActionMode("step");
-                    setSelectedStepId(event.target.value);
-                  }
-                }}
-              >
-                {steps.map((step) => (
-                  <option key={step.id} value={step.id}>
-                    {step.name}
-                  </option>
-                ))}
-                <option value="__manual">Manual action</option>
-              </select>
-            </label>
-
-            {actionMode === "manual" ? (
-              <label className="field">
-                <span>Manual action</span>
-                <input
-                  value={manualAction}
-                  onChange={(event) => setManualAction(event.target.value)}
-                  placeholder="Poling"
-                />
-              </label>
-            ) : null}
-
-            <div className="field">
-              <span>People</span>
-              <div className="person-picker">
-                <div className="person-chips">
-                  {selectedPeople.map((person) => (
-                    <button key={person.id} type="button" onClick={() => removePerson(person.id)}>
-                      {person.display_name}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  value={personQuery}
-                  onChange={(event) => setPersonQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    const firstAvailablePerson = filteredPeople.find((entry) => !entry.conflictReason)?.person;
-
-                    if (event.key === "Enter" && firstAvailablePerson) {
-                      event.preventDefault();
-                      addPerson(firstAvailablePerson);
-                    }
-                  }}
-                  placeholder="Type a name"
-                />
-                {personQuery.trim() ? (
-                  <div className="person-suggestions">
-                    {filteredPeople.map(({ person, conflictReason }) => (
-                      <button
-                        disabled={Boolean(conflictReason)}
-                        key={person.id}
-                        type="button"
-                        title={conflictReason ?? undefined}
-                        onClick={() => addPerson(person)}
-                      >
-                        <span>{person.display_name}</span>
-                        {conflictReason ? <small>{conflictReason}</small> : null}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <label className="field">
-              <span>Description</span>
-              <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={4}
-                placeholder="Notes, sample set, handoff details"
-              />
-            </label>
-
-            {error ? <p className="form-error">{error}</p> : null}
-
-            <div className="calendar-inspector-actions">
-              <button className="button button-primary" disabled={isPending} type="button" onClick={saveSelectedEvent}>
-                Save event
-              </button>
-              <button
-                className="button"
-                type="button"
-                onClick={() => syncSelectionForm(selectedEvent)}
-              >
-                Cancel
-              </button>
-              <button className="button button-danger" disabled={isPending} type="button" onClick={deleteSelectedEvent}>
-                Delete event
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="calendar-inspector-empty">
-            <p className="eyebrow">Calendar</p>
-            <h3>No event selected</h3>
-            <p className="muted">Choose a bar to inspect it.</p>
-            {error ? <p className="form-error">{error}</p> : null}
-          </div>
-        )}
+        <CalendarEventEditor
+          actionMode={actionMode}
+          description={description}
+          draft={draft}
+          error={error}
+          filteredPeople={filteredPeople}
+          isPending={isPending}
+          manualAction={manualAction}
+          personQuery={personQuery}
+          selectedEvent={selectedEvent}
+          selectedPeople={selectedPeople}
+          selectedStepId={selectedStepId}
+          steps={steps}
+          stepsById={stepsById}
+          onActionModeChange={setActionMode}
+          onAddPerson={addPerson}
+          onCancelDraft={() => setDraft(null)}
+          onDescriptionChange={setDescription}
+          onManualActionChange={setManualAction}
+          onPersonQueryChange={setPersonQuery}
+          onRemovePerson={removePerson}
+          onResetSelectedEvent={syncSelectionForm}
+          onSaveDraft={saveDraft}
+          onSaveSelectedEvent={saveSelectedEvent}
+          onSelectedStepIdChange={setSelectedStepId}
+        />
       </aside>
     </div>
   );

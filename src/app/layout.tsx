@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "react-calendar-timeline/style.css";
 import "./globals.css";
+import "@/components/process-dashboard/calendar/calendar.css";
 
 export const metadata: Metadata = {
   title: "WaferWatch",
