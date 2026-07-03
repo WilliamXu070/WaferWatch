@@ -439,3 +439,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run lint`
   - `npm run build`
   - `npx playwright screenshot --device="Desktop Chrome" http://127.0.0.1:3011/wireframe/process-flow /tmp/processflow-split-after-more-split.png`
+
+## Recent development note (2026-07-03 process flow layout tightening)
+
+- Tightened process-flow auto-layout spacing so initialized graphs and Organize output are denser:
+  - `LAYOUT_GAP_Y`: `96 -> 72`
+  - `LAYOUT_LANE_GAP_X`: `380 -> 280`
+  - `LAYOUT_LOOP_GAP_X`: `180 -> 150`
+  - `LAYOUT_LOOP_RADIUS_X`: `250 -> 210`
+  - `LAYOUT_LOOP_RADIUS_Y`: `110 -> 88`
+- Kept behavior logic unchanged; only spacing constants were reduced.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3011/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://127.0.0.1:3011/wireframe/process-flow /tmp/processflow-organize-tighter.png`
