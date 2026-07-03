@@ -121,3 +121,14 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3005/wireframe/wafer-status /tmp/wafer-status-family-colors-v2.png`
 - Note: direct Node-based Playwright DOM inspection could not run because `playwright`
   is not installed as a local project module; the Playwright CLI screenshot path works.
+
+## Recent development note (2026-07-03 00:00)
+
+- Updated process flow wireframe to use finite diagram bounds with deterministic
+  centering on seed layout, so `/wireframe/process-flow` no longer expands infinitely
+  and recenters consistently when steps are seeded.
+- Fixed node placement clamp behavior to avoid forced minimum offsets that desynced
+  pointer hit-testing and edge creation after add operations.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`

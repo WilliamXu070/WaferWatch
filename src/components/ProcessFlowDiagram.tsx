@@ -8,7 +8,8 @@ import {
   Droplet,
   FileText,
   Scan,
-  Sparkles
+  Sparkles,
+  Trash2
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { StepStatus } from "@/types/database";
@@ -28,6 +29,7 @@ type DiagramStep = {
   wafers: WaferPin[];
   role?: FlowNodeRole;
   icon?: FlowNodeIcon;
+  iconUrl?: string;
   x?: number;
   y?: number;
   nextStepIds?: string[];
@@ -43,6 +45,7 @@ type FlowNode = {
   subLabel: string;
   wafers: WaferPin[];
   icon: FlowNodeIcon;
+  iconUrl: string | null;
   x: number;
   y: number;
   width: number;
@@ -94,6 +97,21 @@ type ScenePoint = {
   y: number;
 };
 
+type DiagramHistoryEntry = {
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+  nextNodeNumber: number;
+  selectedNodeId: string | null;
+  roleMenu: RoleMenu | null;
+};
+
+type SceneBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 type PanePoint = {
   paneX: number;
   paneY: number;
@@ -110,6 +128,7 @@ const NODE_WIDTH = 310;
 const NODE_HEIGHT = 88;
 const SCENE_WIDTH = 2200;
 const SCENE_HEIGHT = 1600;
+const SCENE_PADDING = 240;
 const MIN_SCALE = 0.8;
 const MAX_SCALE = 2.6;
 const BUTTON_ZOOM_STEP = 0.25;
@@ -125,6 +144,48 @@ const LAYOUT_LOOP_RADIUS_Y = 170;
 const EDGE_CURVE_OFFSET = 48;
 const EDGE_NODE_CLEARANCE = 10;
 const MAX_NODE_CHIPS = 5;
+const DEFAULT_ICON_API_PATH = "/api/process-flow/resolve-icon";
+const MAX_STEP_NAME_LENGTH = 140;
+
+const BASE_SCENE_BOUNDS: SceneBounds = {
+  x: 0,
+  y: 0,
+  width: SCENE_WIDTH + SCENE_PADDING * 2,
+  height: SCENE_HEIGHT + SCENE_PADDING * 2
+};
+
+function getDefaultSceneBounds(): SceneBounds {
+  return { ...BASE_SCENE_BOUNDS };
+}
+
+function getFiniteSceneBounds(nodes: FlowNode[]): SceneBounds {
+  if (!nodes.length) {
+    return getDefaultSceneBounds();
+  }
+
+  const contentMinX = Math.min(...nodes.map((node) => node.x)) - SCENE_PADDING;
+  const contentMinY = Math.min(...nodes.map((node) => node.y)) - SCENE_PADDING;
+  const contentMaxX = Math.max(...nodes.map((node) => node.x + node.width)) + SCENE_PADDING;
+  const contentMaxY = Math.max(...nodes.map((node) => node.y + node.height)) + SCENE_PADDING;
+  const contentCenterX = (contentMinX + contentMaxX) / 2;
+  const contentCenterY = (contentMinY + contentMaxY) / 2;
+  const width = Math.max(contentMaxX - contentMinX, SCENE_WIDTH);
+  const height = Math.max(contentMaxY - contentMinY, SCENE_HEIGHT);
+
+  return {
+    x: Math.round(contentCenterX - width / 2),
+    y: Math.round(contentCenterY - height / 2),
+    width: Math.round(width),
+    height: Math.round(height)
+  };
+}
+
+function getSceneCenterFromBounds(bounds: SceneBounds) {
+  return {
+    x: bounds.x + bounds.width / 2,
+    y: bounds.y + bounds.height / 2
+  };
+}
 
 const nodeIconByName: Record<FlowNodeIcon, LucideIcon> = {
   start: CirclePlay,
@@ -454,8 +515,8 @@ function getSnappedNodePosition(node: FlowNode, proposedX: number, proposedY: nu
   }
 
   return {
-    x: Math.max(24, x),
-    y: Math.max(24, y),
+    x,
+    y,
     guides: [verticalGuide, horizontalGuide].filter((guide): guide is SnapGuide => Boolean(guide))
   };
 }
@@ -651,16 +712,8 @@ function centerPositionedNodes(positioned: Map<string, FlowNode>, targetCenter: 
   const maxY = Math.max(...positionedNodes.map((node) => node.y + node.height));
   const currentCenterX = (minX + maxX) / 2;
   const currentCenterY = (minY + maxY) / 2;
-  let dx = Math.round(targetCenter.x - currentCenterX);
-  let dy = Math.round(targetCenter.y - currentCenterY);
-
-  if (minX + dx < 24) {
-    dx = 24 - minX;
-  }
-
-  if (minY + dy < 24) {
-    dy = 24 - minY;
-  }
+  const dx = Math.round(targetCenter.x - currentCenterX);
+  const dy = Math.round(targetCenter.y - currentCenterY);
 
   for (const [id, node] of positioned) {
     positioned.set(id, {
@@ -1041,6 +1094,18 @@ function getDefaultIcon(step: DiagramStep): FlowNodeIcon {
   return "file";
 }
 
+function sanitizeStepName(value: string) {
+  return value.trim().replace(/\s+/g, " ").slice(0, MAX_STEP_NAME_LENGTH);
+}
+
+function sanitizeStepArea(value: string) {
+  return value.trim().slice(0, 180);
+}
+
+function getDisplayStepName(value: string) {
+  return value.trim() || "Unnamed step";
+}
+
 function buildInitialGraph(steps: DiagramStep[]) {
   const sortedSteps = [...steps].sort((a, b) => a.step_order - b.step_order);
   const hasExplicitPositions = sortedSteps.every((step) => typeof step.x === "number" && typeof step.y === "number");
@@ -1050,6 +1115,7 @@ function buildInitialGraph(steps: DiagramStep[]) {
     subLabel: step.process_area,
     wafers: step.wafers,
     icon: step.icon ?? getDefaultIcon(step),
+    iconUrl: step.iconUrl ?? null,
     x: step.x ?? 0,
     y: step.y ?? 0,
     width: NODE_WIDTH,
@@ -1107,7 +1173,32 @@ function hasActiveWafer(node: FlowNode) {
   return node.wafers.some((wafer) => wafer.currentStepStatus === "running");
 }
 
-export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
+function cloneDiagramHistoryNodes(nodes: FlowNode[]) {
+  return nodes.map((node) => ({
+    ...node,
+    wafers: [...node.wafers]
+  }));
+}
+
+type ProcessFlowDiagramProps = {
+  steps: DiagramStep[];
+  wireframeMode?: boolean;
+  iconResolverApiPath?: string;
+};
+
+type IconResolveResponse = {
+  ok: boolean;
+  iconUrl: string | null;
+  iconQuery: string | null;
+  source: string;
+  reason?: string;
+};
+
+export function ProcessFlowDiagram({
+  steps,
+  wireframeMode = false,
+  iconResolverApiPath = DEFAULT_ICON_API_PATH
+}: ProcessFlowDiagramProps) {
 
   const [scale, setScale] = useState(1);
   const [nodes, setNodes] = useState<FlowNode[]>([]);
@@ -1117,9 +1208,14 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
   const [isPanning, setIsPanning] = useState(false);
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [editingStepName, setEditingStepName] = useState("");
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const editingInputRef = useRef<HTMLInputElement | null>(null);
   const scaleRef = useRef(1);
   const pinchBaseScaleRef = useRef(1);
   const nextNodeNumberRef = useRef(1);
+  const historyStackRef = useRef<DiagramHistoryEntry[]>([]);
   const pendingZoomAnchorRef = useRef<ZoomAnchor | null>(null);
   const panStateRef = useRef<{
     startX: number;
@@ -1131,15 +1227,7 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const stepSignature = useMemo(() => getStepSignature(steps), [steps]);
   const seededSignatureRef = useRef<string | null>(null);
-
-  const sceneBounds = useMemo(() => {
-    const maxNodeX = nodes.length ? Math.max(...nodes.map((node) => node.x + node.width)) + 160 : SCENE_WIDTH;
-    const maxNodeY = nodes.length ? Math.max(...nodes.map((node) => node.y + node.height)) + 160 : SCENE_HEIGHT;
-    return {
-      width: Math.max(SCENE_WIDTH, maxNodeX),
-      height: Math.max(SCENE_HEIGHT, maxNodeY)
-    };
-  }, [nodes]);
+  const sceneBounds = useMemo(() => getFiniteSceneBounds(nodes), [nodes]);
 
   const s = clampScale(scale);
   const scaledWidth = Math.round(sceneBounds.width * s);
@@ -1172,16 +1260,35 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
       return { x: 0, y: 0 };
     }
 
-    const rect = svg.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) {
+    const frame = frameRef.current;
+    if (!frame) {
+      const rect = svg.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        return { x: 0, y: 0 };
+      }
+
+      return {
+        x: sceneBounds.x + (((clientX - rect.left) / rect.width) * sceneBounds.width),
+        y: sceneBounds.y + (((clientY - rect.top) / rect.height) * sceneBounds.height)
+      };
+    }
+
+    const frameRect = frame.getBoundingClientRect();
+    if (frameRect.width === 0 || frameRect.height === 0) {
       return { x: 0, y: 0 };
     }
 
+    const scaledWidth = sceneBounds.width * scaleRef.current;
+    const scaledHeight = sceneBounds.height * scaleRef.current;
+    if (scaledWidth === 0 || scaledHeight === 0) {
+      return { x: sceneBounds.x, y: sceneBounds.y };
+    }
+
     return {
-      x: ((clientX - rect.left) / rect.width) * sceneBounds.width,
-      y: ((clientY - rect.top) / rect.height) * sceneBounds.height
+      x: sceneBounds.x + (((frame.scrollLeft + (clientX - frameRect.left)) / scaledWidth) * sceneBounds.width),
+      y: sceneBounds.y + (((frame.scrollTop + (clientY - frameRect.top)) / scaledHeight) * sceneBounds.height)
     };
-  }, [sceneBounds.height, sceneBounds.width]);
+  }, [sceneBounds.height, sceneBounds.width, sceneBounds.x, sceneBounds.y]);
 
   const getScenePoint = useCallback((event: { clientX: number; clientY: number }) => (
     getScenePointFromClient(event.clientX, event.clientY)
@@ -1204,40 +1311,81 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     pendingZoomAnchorRef.current = {
       paneX: anchor.paneX,
       paneY: anchor.paneY,
-      sceneX: (frame.scrollLeft + anchor.paneX) / currentScale,
-      sceneY: (frame.scrollTop + anchor.paneY) / currentScale
+      sceneX: sceneBounds.x + (frame.scrollLeft + anchor.paneX) / currentScale,
+      sceneY: sceneBounds.y + (frame.scrollTop + anchor.paneY) / currentScale
     };
 
     scaleRef.current = boundedScale;
     setScale(boundedScale);
-  }, [getPanePoint]);
+  }, [getPanePoint, sceneBounds.x, sceneBounds.y]);
 
   const zoomIn = () => applyScaleAtAnchor(scaleRef.current + BUTTON_ZOOM_STEP);
   const zoomOut = () => applyScaleAtAnchor(scaleRef.current - BUTTON_ZOOM_STEP);
-  const zoomReset = () => applyScaleAtAnchor(1);
+  const getDiagramSceneCenter = useCallback(() => {
+    if (!nodes.length) {
+      return {
+        x: sceneBounds.x + sceneBounds.width / 2,
+        y: sceneBounds.y + sceneBounds.height / 2
+      };
+    }
+
+    const minX = Math.min(...nodes.map((node) => node.x));
+    const maxX = Math.max(...nodes.map((node) => node.x + node.width));
+    const minY = Math.min(...nodes.map((node) => node.y));
+    const maxY = Math.max(...nodes.map((node) => node.y + node.height));
+
+    return {
+      x: Math.round((minX + maxX) / 2),
+      y: Math.round((minY + maxY) / 2)
+    };
+  }, [nodes, sceneBounds.height, sceneBounds.width, sceneBounds.x, sceneBounds.y]);
+
+  const setViewCenter = useCallback((center: ScenePoint, nextScale: number, bounds = sceneBounds) => {
+    const frame = frameRef.current;
+    if (!frame) {
+      return;
+    }
+
+    const boundedScale = clampScale(nextScale);
+    const currentScale = scaleRef.current;
+
+    if (boundedScale === currentScale) {
+      frame.scrollLeft = (center.x - bounds.x) * boundedScale - frame.clientWidth / 2;
+      frame.scrollTop = (center.y - bounds.y) * boundedScale - frame.clientHeight / 2;
+      return;
+    }
+
+    pendingZoomAnchorRef.current = {
+      paneX: frame.clientWidth / 2,
+      paneY: frame.clientHeight / 2,
+      sceneX: center.x,
+      sceneY: center.y
+    };
+    scaleRef.current = boundedScale;
+    setScale(boundedScale);
+  }, [sceneBounds]);
+
+  const zoomReset = () => {
+    setViewCenter(getDiagramSceneCenter(), 1);
+  };
+
   const getVisibleSceneCenter = () => {
     const frame = frameRef.current;
     if (!frame) {
-      return { x: sceneBounds.width / 2, y: sceneBounds.height / 2 };
+      return {
+        x: sceneBounds.x + sceneBounds.width / 2,
+        y: sceneBounds.y + sceneBounds.height / 2
+      };
     }
 
     return {
-      x: (frame.scrollLeft + frame.clientWidth / 2) / scaleRef.current,
-      y: (frame.scrollTop + frame.clientHeight / 2) / scaleRef.current
+      x: sceneBounds.x + (frame.scrollLeft + frame.clientWidth / 2) / scaleRef.current,
+      y: sceneBounds.y + (frame.scrollTop + frame.clientHeight / 2) / scaleRef.current
     };
   };
   const organizeCanvas = () => {
     const targetCenter = getVisibleSceneCenter();
     setNodes((currentNodes) => autoLayoutNodes(currentNodes, edges, targetCenter));
-  };
-  const clearCanvas = () => {
-    setNodes([]);
-    setEdges([]);
-    setConnectionDraft(null);
-    setNodeDrag(null);
-    setSnapGuides([]);
-    setRoleMenu(null);
-    nextNodeNumberRef.current = 1;
   };
 
   useEffect(() => {
@@ -1246,15 +1394,24 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     }
 
     const graph = buildInitialGraph(steps);
+    const nextSceneBounds = getFiniteSceneBounds(graph.nodes);
     setNodes(graph.nodes);
     setEdges(graph.edges);
     setConnectionDraft(null);
     setNodeDrag(null);
+    setEditingNodeId(null);
+    setEditingStepName("");
+    setSelectedNodeId(null);
     setSnapGuides([]);
     setRoleMenu(null);
+    historyStackRef.current = [];
     nextNodeNumberRef.current = steps.length + 1;
+    pendingZoomAnchorRef.current = null;
+    setScale(1);
+    scaleRef.current = 1;
+    setViewCenter(getSceneCenterFromBounds(nextSceneBounds), 1, nextSceneBounds);
     seededSignatureRef.current = stepSignature;
-  }, [stepSignature, steps]);
+  }, [stepSignature, steps, setViewCenter]);
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -1268,10 +1425,170 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
       return;
     }
 
-    frame.scrollLeft = anchor.sceneX * scale - anchor.paneX;
-    frame.scrollTop = anchor.sceneY * scale - anchor.paneY;
+    frame.scrollLeft = (anchor.sceneX - sceneBounds.x) * scale - anchor.paneX;
+    frame.scrollTop = (anchor.sceneY - sceneBounds.y) * scale - anchor.paneY;
     pendingZoomAnchorRef.current = null;
-  }, [scale]);
+  }, [scale, sceneBounds.x, sceneBounds.y]);
+
+  const editingNode = useMemo(() => {
+    if (!editingNodeId) {
+      return null;
+    }
+
+    return nodeById.get(editingNodeId) ?? null;
+  }, [editingNodeId, nodeById]);
+
+  useEffect(() => {
+    if (!editingNodeId) {
+      return;
+    }
+
+    const input = editingInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    input.focus();
+    input.select();
+  }, [editingNodeId, editingNode?.label]);
+
+  const beginNodeNameEdit = useCallback((node: FlowNode) => {
+    setConnectionDraft(null);
+    setNodeDrag(null);
+    setSnapGuides([]);
+    setRoleMenu(null);
+    setEditingNodeId(node.id);
+    setSelectedNodeId(node.id);
+    setEditingStepName(node.label);
+  }, []);
+
+  const resolveAndApplyIcon = useCallback(async (nodeId: string, stepName: string, processArea: string) => {
+    const safeName = sanitizeStepName(stepName);
+    const safeArea = sanitizeStepArea(processArea);
+
+    if (!safeName) {
+      return;
+    }
+
+    try {
+      const response = await fetch(iconResolverApiPath, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          stepName: safeName,
+          processArea: safeArea || "Process step"
+        })
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const data = (await response.json()) as IconResolveResponse;
+      if (!data.ok || typeof data.iconUrl !== "string") {
+        return;
+      }
+
+      setNodes((currentNodes) =>
+        currentNodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                iconUrl: data.iconUrl
+            } : node
+        )
+      );
+    } catch {
+      return;
+    }
+  }, [iconResolverApiPath]);
+
+  const completeNodeNameEdit = useCallback(() => {
+    const nodeId = editingNodeId;
+    const node = editingNode;
+
+    if (!node || nodeId === null) {
+      setEditingNodeId(null);
+      return;
+    }
+
+    const nextLabel = sanitizeStepName(editingStepName);
+    if (!nextLabel) {
+      setEditingStepName(getDisplayStepName(node.label));
+      setEditingNodeId(null);
+      return;
+    }
+
+    const displayName = getDisplayStepName(nextLabel);
+    setNodes((currentNodes) =>
+      currentNodes.map((currentNode) =>
+        currentNode.id === nodeId
+          ? {
+              ...currentNode,
+              label: displayName
+            }
+          : currentNode
+      )
+    );
+
+    if (wireframeMode) {
+      void resolveAndApplyIcon(nodeId, displayName, node.subLabel);
+    }
+
+    setEditingNodeId(null);
+  }, [editingNode, editingNodeId, editingStepName, resolveAndApplyIcon, wireframeMode]);
+
+  const cancelNodeNameEdit = useCallback(() => {
+    setEditingStepName("");
+    setEditingNodeId(null);
+  }, []);
+
+  const pushUndoSnapshot = useCallback(() => {
+    historyStackRef.current.push({
+      nodes: cloneDiagramHistoryNodes(nodes),
+      edges: [...edges],
+      nextNodeNumber: nextNodeNumberRef.current,
+      selectedNodeId,
+      roleMenu: roleMenu ? { ...roleMenu } : null
+    });
+    if (historyStackRef.current.length > 40) {
+      historyStackRef.current.shift();
+    }
+  }, [edges, nodes, roleMenu, selectedNodeId]);
+
+  const clearCanvas = () => {
+    setNodes([]);
+    setEdges([]);
+    setConnectionDraft(null);
+    setNodeDrag(null);
+    setEditingNodeId(null);
+    setEditingStepName("");
+    setSelectedNodeId(null);
+    setSnapGuides([]);
+    setRoleMenu(null);
+    nextNodeNumberRef.current = 1;
+    historyStackRef.current = [];
+  };
+
+  const restoreFromHistory = useCallback(() => {
+    const snapshot = historyStackRef.current.pop();
+    if (!snapshot) {
+      return;
+    }
+
+    setNodes(cloneDiagramHistoryNodes(snapshot.nodes));
+    setEdges(snapshot.edges.map((edge) => ({ ...edge })));
+    setConnectionDraft(null);
+    setNodeDrag(null);
+    setSnapGuides([]);
+    setRoleMenu(snapshot.roleMenu ? { ...snapshot.roleMenu } : null);
+    setEditingNodeId(null);
+    setEditingStepName("");
+    setSelectedNodeId(snapshot.selectedNodeId);
+    nextNodeNumberRef.current = snapshot.nextNodeNumber;
+  }, []);
 
   const beginPan = (event: PointerEvent<HTMLDivElement>) => {
     const isMiddleMousePan = event.button === 1;
@@ -1282,6 +1599,11 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     }
 
     setRoleMenu(null);
+    setSelectedNodeId(null);
+    if (editingNodeId) {
+      setEditingNodeId(null);
+      setEditingStepName("");
+    }
 
     const frame = frameRef.current;
     if (!frame) {
@@ -1298,6 +1620,21 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     };
     setIsPanning(true);
     frame.setPointerCapture(event.pointerId);
+  };
+
+  const clearSelectionIfOffNode = (event: PointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const target = event.target as EventTarget | null;
+    const hasNodeTarget = target instanceof Element && target.closest(".flow-node") !== null;
+    if (hasNodeTarget) {
+      return;
+    }
+
+    setRoleMenu(null);
+    setSelectedNodeId(null);
   };
 
   const updatePan = (event: PointerEvent<HTMLDivElement>) => {
@@ -1337,25 +1674,32 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
 
     const point = getScenePoint(event);
     const nodeNumber = nextNodeNumberRef.current;
+    const nodeId = `local-step-${Date.now()}-${nodeNumber}`;
     nextNodeNumberRef.current += 1;
     setRoleMenu(null);
+    const label = `Step ${nodeNumber}`;
 
     setNodes((currentNodes) => [
       ...currentNodes,
       {
-        id: `local-step-${Date.now()}-${nodeNumber}`,
-        label: `Step ${nodeNumber}`,
+        id: nodeId,
+        label,
         subLabel: "Process step",
         wafers: [],
         icon: "file",
-        x: Math.max(24, Math.round(point.x - NODE_WIDTH / 2)),
-        y: Math.max(24, Math.round(point.y - NODE_HEIGHT / 2)),
+        iconUrl: null,
+        x: Math.round(point.x - NODE_WIDTH / 2),
+        y: Math.round(point.y - NODE_HEIGHT / 2),
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
         role: "normal",
         order: currentNodes.length
       }
     ]);
+
+    setEditingNodeId(nodeId);
+    setEditingStepName(label);
+    setSelectedNodeId(nodeId);
   };
 
   const beginConnection = (event: PointerEvent<SVGGElement>, nodeId: string) => {
@@ -1366,6 +1710,8 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
+    setSelectedNodeId(nodeId);
+    setEditingNodeId(null);
 
     const point = getScenePoint(event);
     setConnectionDraft({
@@ -1381,6 +1727,8 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
   };
 
   const handleNodePointerDown = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
+    event.stopPropagation();
+    setSelectedNodeId(node.id);
     if (event.shiftKey) {
       beginConnection(event, node.id);
       return;
@@ -1397,6 +1745,11 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
+    setSelectedNodeId(node.id);
+    if (editingNodeId) {
+      setEditingNodeId(null);
+      setEditingStepName("");
+    }
 
     const point = getScenePoint(event);
     setNodeDrag({
@@ -1507,6 +1860,9 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
   const openRoleMenu = (event: MouseEvent<SVGGElement>, nodeId: string) => {
     event.preventDefault();
     event.stopPropagation();
+    setEditingNodeId(null);
+    setEditingStepName("");
+    setSelectedNodeId(nodeId);
 
     const frame = frameRef.current;
     if (!frame) {
@@ -1538,14 +1894,74 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     setRoleMenu(null);
   };
 
-  const deleteNode = (nodeId: string) => {
+  const deleteNode = useCallback((nodeId: string) => {
+    pushUndoSnapshot();
     setNodes((currentNodes) => currentNodes.filter((node) => node.id !== nodeId));
     setEdges((currentEdges) => currentEdges.filter((edge) => edge.from !== nodeId && edge.to !== nodeId));
     setConnectionDraft((draft) => (draft?.from === nodeId ? null : draft));
     setNodeDrag((drag) => (drag?.nodeId === nodeId ? null : drag));
+    if (selectedNodeId === nodeId) {
+      setSelectedNodeId(null);
+    }
+    if (editingNodeId === nodeId) {
+      setEditingNodeId(null);
+      setEditingStepName("");
+    }
     setSnapGuides([]);
     setRoleMenu(null);
+  }, [editingNodeId, pushUndoSnapshot, selectedNodeId]);
+
+  const deleteSelectedNode = useCallback(() => {
+    if (!selectedNodeId) {
+      return;
+    }
+
+    deleteNode(selectedNodeId);
+  }, [deleteNode, selectedNodeId]);
+
+  const handleUndoShortcut = useCallback(() => {
+    restoreFromHistory();
+  }, [restoreFromHistory]);
+
+  const handleCanvasDeleteShortcut = useCallback(() => {
+    deleteSelectedNode();
+  }, [deleteSelectedNode]);
+
+  const isTextInputTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    const tag = target.tagName.toLowerCase();
+    return target.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
   };
+
+  useEffect(() => {
+    const onGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (isTextInputTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && key === "z") {
+        event.preventDefault();
+        handleUndoShortcut();
+        return;
+      }
+
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedNodeId) {
+        event.preventDefault();
+        handleCanvasDeleteShortcut();
+      }
+    };
+
+    window.addEventListener("keydown", onGlobalKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onGlobalKeyDown);
+    };
+  }, [handleCanvasDeleteShortcut, handleUndoShortcut, selectedNodeId]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -1648,6 +2064,16 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
           <button className="button button-secondary" type="button" onClick={organizeCanvas} disabled={nodes.length < 2}>
             Organize
           </button>
+          <button
+            className="button button-secondary"
+            type="button"
+            onClick={deleteSelectedNode}
+            disabled={!selectedNodeId}
+            aria-label={selectedNodeId ? "Delete selected step" : "No step selected"}
+          >
+            <Trash2 size={14} />
+            Delete step
+          </button>
           <button className="button button-secondary" type="button" onClick={clearCanvas} disabled={nodes.length === 0}>
             Clear
           </button>
@@ -1669,15 +2095,17 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
           className="flow-map-canvas flow-map-canvas--editable"
           width={scaledWidth}
           height={scaledHeight}
-          viewBox={`0 0 ${sceneBounds.width} ${sceneBounds.height}`}
+          viewBox={`${sceneBounds.x} ${sceneBounds.y} ${sceneBounds.width} ${sceneBounds.height}`}
           style={{ width: `${scaledWidth}px`, height: `${scaledHeight}px` }}
           onPointerMove={updateConnection}
           onPointerUp={finishConnection}
           onPointerCancel={() => setConnectionDraft(null)}
+          onPointerDown={clearSelectionIfOffNode}
           onDoubleClick={createNode}
           onContextMenu={(event) => {
             event.preventDefault();
             setRoleMenu(null);
+            setSelectedNodeId(null);
           }}
         >
           <defs>
@@ -1694,7 +2122,7 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
             </marker>
           </defs>
 
-          <rect className="flow-map-hit-area" x="0" y="0" width={sceneBounds.width} height={sceneBounds.height} />
+          <rect className="flow-map-hit-area" x={sceneBounds.x} y={sceneBounds.y} width={sceneBounds.width} height={sceneBounds.height} />
 
           {snapGuides.map((guide) =>
             guide.orientation === "vertical" ? (
@@ -1747,7 +2175,10 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
           ) : null}
 
           {nodes.length === 0 ? (
-            <g className="flow-empty-state" transform={`translate(${sceneBounds.width / 2} ${sceneBounds.height / 2})`}>
+            <g
+              className="flow-empty-state"
+              transform={`translate(${sceneBounds.x + sceneBounds.width / 2} ${sceneBounds.y + sceneBounds.height / 2})`}
+            >
               <circle cx="0" cy="-8" r="28" />
               <path d="M -10 -8 H 10 M 0 -18 V 2" />
               <text x="0" y="46">
@@ -1758,6 +2189,7 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
 
           {nodes.map((node) => {
             const Icon = nodeIconByName[node.icon];
+            const showTitleEditor = wireframeMode && editingNodeId === node.id;
             const visibleWafers = node.wafers.slice(0, MAX_NODE_CHIPS);
             const hiddenWaferCount = Math.max(0, node.wafers.length - visibleWafers.length);
             const isActive = hasActiveWafer(node);
@@ -1767,25 +2199,59 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
                 key={node.id}
                 className={`flow-node flow-node--${node.role} ${isActive ? "flow-node--active" : ""} ${connectionDraft?.from === node.id ? "flow-node--connecting" : ""} ${
                   nodeDrag?.nodeId === node.id ? "flow-node--dragging" : ""
-                }`}
+                } ${selectedNodeId === node.id ? "flow-node--selected" : ""}`}
                 transform={`translate(${node.x} ${node.y})`}
                 onPointerDown={(event) => handleNodePointerDown(event, node)}
                 onPointerMove={updateNodeDrag}
                 onPointerUp={finishNodeDrag}
                 onPointerCancel={finishNodeDrag}
                 onContextMenu={(event) => openRoleMenu(event, node.id)}
-                onDoubleClick={(event) => event.stopPropagation()}
+                onDoubleClick={(event) => {
+                  event.stopPropagation();
+                  if (wireframeMode) {
+                    beginNodeNameEdit(node);
+                  }
+                }}
               >
                 <title>{`${node.label} · ${node.subLabel}`}</title>
                 <rect x="0" y="0" width={node.width} height={node.height} rx="8" className="flow-node-card" />
-                <Icon x="20" y="23" width="24" height="24" className="flow-node-icon" aria-hidden />
+                {node.iconUrl ? (
+                  <image href={node.iconUrl} x="20" y="23" width="24" height="24" />
+                ) : (
+                  <Icon x="20" y="23" width="24" height="24" className="flow-node-icon" aria-hidden />
+                )}
                 <g className="flow-node-port-hit">
                   <circle cx={node.width - 24} cy="31" r="14" className="flow-node-port-target" />
                   <circle cx={node.width - 24} cy="31" r="8" className="flow-node-port" />
                 </g>
-                <text x="64" y="31" className="flow-node-title">
-                  {truncateLabel(node.label, 24)}
-                </text>
+                {showTitleEditor ? (
+                  <foreignObject x="64" y="14" width={node.width - 74} height="36">
+                    <div style={{ width: "100%", height: "100%" }}>
+                      <input
+                        ref={editingInputRef}
+                        className="flow-node-title-input"
+                        value={editingStepName}
+                        onChange={(event) => setEditingStepName(event.currentTarget.value)}
+                        onBlur={completeNodeNameEdit}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            completeNodeNameEdit();
+                          }
+
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            cancelNodeNameEdit();
+                          }
+                        }}
+                      />
+                    </div>
+                  </foreignObject>
+                ) : (
+                  <text x="64" y="31" className="flow-node-title">
+                    {wireframeMode ? node.label : truncateLabel(node.label, 24)}
+                  </text>
+                )}
                 {isActive ? (
                   <g className="flow-node-active-pill" transform={`translate(${node.width - 78} 15)`}>
                     <rect x="0" y="0" width="56" height="22" rx="11" />
