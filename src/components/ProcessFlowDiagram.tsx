@@ -65,6 +65,7 @@ type FlowNode = {
   height: number;
   role: FlowNodeRole;
   order: number;
+  isOptimistic?: boolean;
 };
 
 type FlowEdge = {
@@ -144,12 +145,17 @@ type GraphViewportFit = {
 
 const NODE_WIDTH = 276;
 const NODE_HEIGHT = 134;
-const SCENE_WIDTH = 2200;
-const SCENE_HEIGHT = 1600;
+const SCENE_WIDTH = 4400;
+const SCENE_HEIGHT = 3200;
 const MIN_SCALE = 0.35;
 const MAX_SCALE = 2.6;
-const BUTTON_ZOOM_STEP = 0.25;
-const WHEEL_ZOOM_STEP = 0.18;
+const BUTTON_ZOOM_STEP = 0.12;
+const WHEEL_ZOOM_STEP = 0.08;
+const PERSISTENCE_DEBOUNCE_MS = 420;
+const POSITION_DEBOUNCE_MS = 250;
+const NAME_DEBOUNCE_MS = 680;
+const NODE_ID_PREFIX = "temp-step-";
+const EDGE_ID_PREFIX = "temp-edge-";
 const SNAP_THRESHOLD = 16;
 const LAYOUT_CENTER_X = 520;
 const LAYOUT_TOP_Y = 96;
@@ -186,6 +192,11 @@ type UpdateProcessStepPositionsAction = (input: {
     canvasY: number;
   }>;
 }) => Promise<ActionResult<unknown>>;
+
+type UpdateProcessStepNameAction = (input: {
+  stepId: string;
+  name: string;
+}) => Promise<ActionResult<PersistedStepPayload>>;
 
 type UpdateProcessStepNodeTypeAction = (input: {
   stepId: string;
@@ -1178,16 +1189,6 @@ function getGraphSignature(steps: DiagramStep[], transitions: DiagramTransition[
   return `${stepSignature}::${transitionSignature}`;
 }
 
-function getNextNodeNumber(steps: DiagramStep[]) {
-  const usedNumbers = steps
-    .map((step) => /^Step\s+(\d+)$/i.exec(step.name.trim())?.[1])
-    .filter((value): value is string => Boolean(value))
-    .map((value) => Number(value))
-    .filter(Number.isFinite);
-
-  return usedNumbers.length ? Math.max(...usedNumbers) + 1 : steps.length + 1;
-}
-
 function truncateLabel(value: string, maxLength: number) {
   if (value.length <= maxLength) {
     return value;
@@ -1216,13 +1217,6 @@ function hasActiveWafer(node: FlowNode) {
   return node.role === "normal" && node.wafers.some((wafer) => wafer.currentStepStatus === "running");
 }
 
-function cloneDiagramHistoryNodes(nodes: FlowNode[]) {
-  return nodes.map((node) => ({
-    ...node,
-    wafers: node.wafers.map((wafer) => ({ ...wafer }))
-  }));
-}
-
 function isTextInputTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -1232,12 +1226,29 @@ function isTextInputTarget(target: EventTarget | null) {
   return target.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
 }
 
+type QueuedTransition = {
+  id: string;
+  fromStepId: string;
+  toStepId: string;
+  edgeType: ProcessStepTransitionType;
+  priority: number;
+};
+
+type QueuedStepCreate = {
+  canvasX: number;
+  canvasY: number;
+  fallbackNode: FlowNode;
+  stepArea: string;
+  nodeType: ProcessStepNodeType;
+};
+
 export function ProcessFlowDiagram({
   steps,
   transitions = [],
   processTemplateId,
   onCreateStep,
   onUpdateStepPositions,
+  onUpdateStepName,
   onUpdateStepNodeType,
   onCreateTransition,
   onDeleteSteps,
@@ -1248,6 +1259,7 @@ export function ProcessFlowDiagram({
   processTemplateId?: string;
   onCreateStep?: CreateProcessFlowStepAction;
   onUpdateStepPositions?: UpdateProcessStepPositionsAction;
+  onUpdateStepName?: UpdateProcessStepNameAction;
   onUpdateStepNodeType?: UpdateProcessStepNodeTypeAction;
   onCreateTransition?: CreateProcessStepTransitionAction;
   onDeleteSteps?: DeleteProcessStepsAction;
@@ -1266,13 +1278,24 @@ export function ProcessFlowDiagram({
   const [isPanning, setIsPanning] = useState(false);
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
   const [moveMessage, setMoveMessage] = useState<string | null>(null);
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [editingNodeLabel, setEditingNodeLabel] = useState("");
+  const editingInputRef = useRef<HTMLInputElement | null>(null);
   const [isMovePending, startMoveTransition] = useTransition();
   const [isGraphPending, startGraphTransition] = useTransition();
   const scaleRef = useRef(1);
   const pinchBaseScaleRef = useRef(1);
-  const nextNodeNumberRef = useRef(1);
   const pendingZoomAnchorRef = useRef<ZoomAnchor | null>(null);
   const pendingGraphFitRef = useRef<GraphViewportFit | null>(null);
+  const pendingStepCreateRef = useRef<Map<string, QueuedStepCreate>>(new Map());
+  const pendingTransitionCreateRef = useRef<Map<string, QueuedTransition>>(new Map());
+  const pendingPositionUpdateRef = useRef<Map<string, { canvasX: number; canvasY: number }>>(new Map());
+  const pendingNameUpdateRef = useRef<Map<string, string>>(new Map());
+  type TimerHandle = NodeJS.Timeout | number | null;
+  const pendingStepCreateTimerRef = useRef<TimerHandle>(null);
+  const pendingTransitionCreateTimerRef = useRef<TimerHandle>(null);
+  const pendingPositionTimerRef = useRef<TimerHandle>(null);
+  const pendingNameTimerRef = useRef<TimerHandle>(null);
   const panStateRef = useRef<{
     startX: number;
     startY: number;
@@ -1298,6 +1321,463 @@ export function ProcessFlowDiagram({
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const selectedNodeCount = selectedNodeIds.size;
+
+  const isOptimisticStep = useCallback(
+    (stepId: string) => stepId.startsWith(NODE_ID_PREFIX),
+    []
+  );
+
+  const clearTimers = useCallback(() => {
+    if (pendingStepCreateTimerRef.current) {
+      window.clearTimeout(pendingStepCreateTimerRef.current);
+    }
+
+    if (pendingTransitionCreateTimerRef.current) {
+      window.clearTimeout(pendingTransitionCreateTimerRef.current);
+    }
+
+    if (pendingPositionTimerRef.current) {
+      window.clearTimeout(pendingPositionTimerRef.current);
+    }
+
+    if (pendingNameTimerRef.current) {
+      window.clearTimeout(pendingNameTimerRef.current);
+    }
+  }, []);
+
+  const setEditingNode = (nodeId: string | null) => {
+    setEditingNodeId(nodeId);
+    if (!nodeId) {
+      setEditingNodeLabel("");
+    }
+  };
+
+  const moveQueuedValues = <T,>(fromStepId: string, toStepId: string, map: Map<string, T>) => {
+    if (!map.has(fromStepId)) {
+      return;
+    }
+
+    const value = map.get(fromStepId);
+    if (value === undefined) {
+      return;
+    }
+
+    map.delete(fromStepId);
+    if (!map.has(toStepId)) {
+      map.set(toStepId, value);
+    }
+  };
+
+  const remapQueuedTransitions = (fromStepId: string, toStepId: string) => {
+    for (const transition of pendingTransitionCreateRef.current.values()) {
+      if (transition.fromStepId === fromStepId) {
+        transition.fromStepId = toStepId;
+      }
+
+      if (transition.toStepId === fromStepId) {
+        transition.toStepId = toStepId;
+      }
+    }
+  };
+
+  const replaceOptimisticStepId = useCallback((temporaryStepId: string, persistedStep: PersistedStepPayload) => {
+    const localLabel = nodeById.get(temporaryStepId)?.label.trim();
+    const finalLabel = localLabel && localLabel.length >= 2 ? localLabel : persistedStep.name;
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === temporaryStepId
+          ? {
+              ...node,
+              id: persistedStep.id,
+              label: finalLabel,
+              subLabel: persistedStep.process_area,
+              order: persistedStep.step_order,
+              isOptimistic: false
+            }
+          : node
+      )
+    );
+
+    setEdges((currentEdges) =>
+      currentEdges.map((edge) => ({
+        ...edge,
+        from: edge.from === temporaryStepId ? persistedStep.id : edge.from,
+        to: edge.to === temporaryStepId ? persistedStep.id : edge.to
+      }))
+    );
+
+    setSelectedNodeIds((current) => {
+      if (!current.has(temporaryStepId)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.delete(temporaryStepId);
+      next.add(persistedStep.id);
+      return next;
+    });
+
+    if (editingNodeId === temporaryStepId) {
+      setEditingNodeId(persistedStep.id);
+    }
+
+    setConnectionDraft((draft) =>
+      draft && draft.from === temporaryStepId ? { ...draft, from: persistedStep.id } : draft
+    );
+
+    setNodeDrag((drag) =>
+      drag && drag.nodeId === temporaryStepId ? { ...drag, nodeId: persistedStep.id } : drag
+    );
+
+    setWaferDrag((drag) =>
+      drag && drag.sourceStepId === temporaryStepId
+        ? { ...drag, sourceStepId: persistedStep.id }
+        : drag
+    );
+
+    remapQueuedTransitions(temporaryStepId, persistedStep.id);
+    moveQueuedValues(temporaryStepId, persistedStep.id, pendingPositionUpdateRef.current);
+    moveQueuedValues(temporaryStepId, persistedStep.id, pendingNameUpdateRef.current);
+
+    if (finalLabel !== persistedStep.name) {
+      pendingNameUpdateRef.current.set(persistedStep.id, finalLabel);
+    }
+  }, [editingNodeId, nodeById]);
+
+  const clearQueuedStep = (stepId: string) => {
+    pendingStepCreateRef.current.delete(stepId);
+    pendingTransitionCreateRef.current.forEach((transition, localId) => {
+      if (transition.fromStepId === stepId || transition.toStepId === stepId) {
+        pendingTransitionCreateRef.current.delete(localId);
+      }
+    });
+    pendingPositionUpdateRef.current.delete(stepId);
+    pendingNameUpdateRef.current.delete(stepId);
+  };
+
+  const clearQueuedStepMaps = useCallback(() => {
+    pendingStepCreateRef.current.clear();
+    pendingTransitionCreateRef.current.clear();
+    pendingPositionUpdateRef.current.clear();
+    pendingNameUpdateRef.current.clear();
+  }, []);
+
+  const schedulePending = useCallback(
+    (ref: { current: TimerHandle }, callback: () => Promise<void>, delay: number) => {
+      if (ref.current) {
+        window.clearTimeout(ref.current);
+      }
+
+      ref.current = window.setTimeout(() => {
+        ref.current = null;
+        void callback();
+      }, delay);
+    },
+    []
+  );
+
+  const flushPendingNameUpdates = useCallback(async () => {
+    if (!onUpdateStepName) {
+      pendingNameUpdateRef.current.clear();
+      return;
+    }
+
+    const entries = [...pendingNameUpdateRef.current.entries()].filter(([stepId]) => !isOptimisticStep(stepId));
+    if (entries.length === 0) {
+      return;
+    }
+
+    for (const [stepId] of entries) {
+      pendingNameUpdateRef.current.delete(stepId);
+    }
+
+    for (const [stepId, name] of entries) {
+      const trimmed = name.trim();
+      if (trimmed.length < 2) {
+        continue;
+      }
+
+      const result = await onUpdateStepName({
+        stepId,
+        name: trimmed
+      });
+
+      if (result.ok) {
+        setNodes((current) =>
+          current.map((node) =>
+            node.id === stepId
+              ? {
+                  ...node,
+                  label: result.data.name
+                }
+              : node
+          )
+        );
+      } else {
+        setMoveMessage(result.error);
+      }
+    }
+  }, [isOptimisticStep, onUpdateStepName]);
+
+  const flushPendingPositionUpdates = useCallback(async () => {
+    if (!onUpdateStepPositions) {
+      pendingPositionUpdateRef.current.clear();
+      return;
+    }
+
+    const entries = [...pendingPositionUpdateRef.current.entries()].filter(([stepId]) => !isOptimisticStep(stepId));
+    if (entries.length === 0) {
+      return;
+    }
+
+    for (const [stepId] of entries) {
+      pendingPositionUpdateRef.current.delete(stepId);
+    }
+
+    const result = await onUpdateStepPositions({
+      positions: entries.map(([stepId, position]) => ({
+        stepId,
+        canvasX: position.canvasX,
+        canvasY: position.canvasY
+      }))
+    });
+
+    if (!result.ok) {
+      setMoveMessage(result.error);
+    }
+  }, [isOptimisticStep, onUpdateStepPositions]);
+
+  const flushPendingTransitionCreates = useCallback(async () => {
+    if (!onCreateTransition || !processTemplateId) {
+      return;
+    }
+
+    const queue = new Map(pendingTransitionCreateRef.current);
+    pendingTransitionCreateRef.current.clear();
+
+    for (const [localId, transition] of queue) {
+      const draftEdgeExists = edges.some((edge) => edge.id === localId);
+
+      if (!draftEdgeExists) {
+        continue;
+      }
+
+      if (isOptimisticStep(transition.fromStepId) || isOptimisticStep(transition.toStepId)) {
+        pendingTransitionCreateRef.current.set(localId, transition);
+        continue;
+      }
+
+      const result = await onCreateTransition({
+        templateId: processTemplateId,
+        fromStepId: transition.fromStepId,
+        toStepId: transition.toStepId,
+        edgeType: transition.edgeType,
+        priority: transition.priority
+      });
+
+      if (!result.ok) {
+        setMoveMessage(result.error);
+        setEdges((current) => current.filter((edge) => edge.id !== localId));
+        continue;
+      }
+
+      const persisted = result.data;
+      setEdges((currentEdges) =>
+        currentEdges.map((edge) =>
+          edge.id === localId
+            ? {
+                ...edge,
+                id: persisted.id,
+                from: persisted.from_step_id,
+                to: persisted.to_step_id
+              }
+            : edge
+        )
+      );
+    }
+  }, [edges, isOptimisticStep, onCreateTransition, processTemplateId]);
+
+  const flushPendingStepCreates = useCallback(async () => {
+    if (!onCreateStep || !processTemplateId) {
+      return;
+    }
+
+    const queue = new Map(pendingStepCreateRef.current);
+    pendingStepCreateRef.current.clear();
+
+    for (const [temporaryStepId, payload] of queue) {
+      const queuedPosition = pendingPositionUpdateRef.current.get(temporaryStepId);
+      const canvasX = queuedPosition?.canvasX ?? payload.canvasX;
+      const canvasY = queuedPosition?.canvasY ?? payload.canvasY;
+
+      const result = await onCreateStep({
+        templateId: processTemplateId,
+        name: nodeById.get(temporaryStepId)?.label ?? payload.fallbackNode.label,
+        processArea: payload.stepArea,
+        nodeType: payload.nodeType,
+        canvasX,
+        canvasY
+      });
+
+      if (!result.ok) {
+        setMoveMessage(result.error);
+        setNodes((currentNodes) => currentNodes.filter((node) => node.id !== temporaryStepId));
+        setEdges((currentEdges) => currentEdges.filter((edge) => edge.from !== temporaryStepId && edge.to !== temporaryStepId));
+        clearQueuedStep(temporaryStepId);
+        if (editingNodeId === temporaryStepId) {
+          setEditingNode(null);
+        }
+        continue;
+      }
+
+      replaceOptimisticStepId(temporaryStepId, result.data);
+    }
+
+    if (pendingTransitionCreateRef.current.size > 0) {
+      schedulePending(pendingTransitionCreateTimerRef, flushPendingTransitionCreates, 0);
+    }
+
+    if (pendingPositionUpdateRef.current.size > 0) {
+      schedulePending(pendingPositionTimerRef, flushPendingPositionUpdates, 0);
+    }
+
+    if (pendingNameUpdateRef.current.size > 0) {
+      schedulePending(pendingNameTimerRef, flushPendingNameUpdates, 0);
+    }
+  }, [
+    editingNodeId,
+    flushPendingNameUpdates,
+    flushPendingPositionUpdates,
+    flushPendingTransitionCreates,
+    nodeById,
+    onCreateStep,
+    processTemplateId,
+    replaceOptimisticStepId,
+    schedulePending
+  ]);
+
+  const queueNodeNamePersist = useCallback((stepId: string, name: string) => {
+    const trimmed = name.trim();
+    if (trimmed.length < 2) {
+      return;
+    }
+
+    if (isOptimisticStep(stepId)) {
+      return;
+    }
+
+    pendingNameUpdateRef.current.set(stepId, trimmed);
+    schedulePending(pendingNameTimerRef, flushPendingNameUpdates, NAME_DEBOUNCE_MS);
+  }, [flushPendingNameUpdates, isOptimisticStep, schedulePending]);
+
+  const queueNodePositionPersist = useCallback((stepId: string, canvasX: number, canvasY: number) => {
+    pendingPositionUpdateRef.current.set(stepId, { canvasX, canvasY });
+    if (isOptimisticStep(stepId)) {
+      return;
+    }
+
+    schedulePending(pendingPositionTimerRef, flushPendingPositionUpdates, POSITION_DEBOUNCE_MS);
+  }, [flushPendingPositionUpdates, isOptimisticStep, schedulePending]);
+
+  const queueTransitionPersist = useCallback((transitionId: string, payload: QueuedTransition) => {
+    pendingTransitionCreateRef.current.set(transitionId, payload);
+    schedulePending(pendingTransitionCreateTimerRef, flushPendingTransitionCreates, PERSISTENCE_DEBOUNCE_MS);
+  }, [flushPendingTransitionCreates, schedulePending]);
+
+  const queueStepPersist = useCallback((stepId: string, payload: QueuedStepCreate) => {
+    pendingStepCreateRef.current.set(stepId, payload);
+    schedulePending(pendingStepCreateTimerRef, flushPendingStepCreates, PERSISTENCE_DEBOUNCE_MS);
+  }, [flushPendingStepCreates, schedulePending]);
+
+  useEffect(() => {
+    if (!editingNodeId) {
+      return;
+    }
+
+    const input = editingInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    input.focus();
+    input.select();
+  }, [editingNodeId]);
+
+  const clearEditingNode = useCallback(() => {
+    setEditingNode(null);
+    setEditingNodeLabel("");
+  }, []);
+
+  const beginNodeLabelEdit = useCallback((nodeId: string) => {
+    const node = nodeById.get(nodeId);
+    if (!node) {
+      return;
+    }
+
+    setEditingNode(nodeId);
+    setEditingNodeLabel(node.label);
+  }, [nodeById]);
+
+  const commitNodeLabel = useCallback((nodeId: string, raw: string) => {
+    const nextLabel = raw.trim();
+    const node = nodeById.get(nodeId);
+
+    if (!node) {
+      clearEditingNode();
+      return;
+    }
+
+    if (nextLabel.length < 2) {
+      setEditingNodeLabel(node.label);
+      setMoveMessage("Node names must be at least 2 characters.");
+      clearEditingNode();
+      return;
+    }
+
+    if (nextLabel !== node.label) {
+      setNodes((currentNodes) =>
+        currentNodes.map((item) =>
+          item.id === nodeId
+            ? {
+                ...item,
+                label: nextLabel
+              }
+            : item
+        )
+      );
+      queueNodeNamePersist(nodeId, nextLabel);
+      setMoveMessage(`Saved ${nextLabel} name.`);
+    }
+
+    clearEditingNode();
+  }, [clearEditingNode, nodeById, queueNodeNamePersist]);
+
+  const cancelNodeLabelEdit = (nodeId: string) => {
+    const currentNode = nodeById.get(nodeId);
+    if (currentNode) {
+      setNodes((currentNodes) =>
+        currentNodes.map((item) =>
+          item.id === nodeId
+            ? {
+                ...item,
+                label: currentNode.label
+              }
+            : item
+        )
+      );
+      setEditingNodeLabel(currentNode.label);
+    }
+
+    pendingNameUpdateRef.current.delete(nodeId);
+    clearEditingNode();
+  };
+
+  useEffect(() => {
+    return () => {
+      clearTimers();
+    };
+  }, [clearTimers]);
 
   const getPanePoint = useCallback((clientX?: number, clientY?: number): PanePoint | null => {
     const frame = frameRef.current;
@@ -1417,41 +1897,6 @@ export function ProcessFlowDiagram({
     });
   }, [applyGraphFit, nodes]);
 
-  const persistNodePositions = useCallback((
-    nextNodes: FlowNode[],
-    previousNodes: FlowNode[],
-    successMessage: string
-  ) => {
-    if (!onUpdateStepPositions) {
-      setNodes(previousNodes);
-      centerView(previousNodes);
-      setMoveMessage("Graph position persistence is not available for this process view.");
-      return;
-    }
-
-    startGraphTransition(() => {
-      void (async () => {
-        const result = await onUpdateStepPositions({
-          positions: nextNodes.map((node) => ({
-            stepId: node.id,
-            canvasX: node.x,
-            canvasY: node.y
-          }))
-        });
-
-        if (result.ok) {
-          setMoveMessage(successMessage);
-          router.refresh();
-          return;
-        }
-
-        setNodes(previousNodes);
-        centerView(previousNodes);
-        setMoveMessage(result.error);
-      })();
-    });
-  }, [centerView, onUpdateStepPositions, router]);
-
   const organizeCanvas = () => {
     if (nodes.length < 2) {
       return;
@@ -1463,14 +1908,15 @@ export function ProcessFlowDiagram({
     }
 
     const targetCenter = getVisibleSceneCenter();
-    const previousNodes = cloneDiagramHistoryNodes(nodes);
     const nextNodes = autoLayoutNodes(nodes, edges, targetCenter);
     setNodes(nextNodes);
     setSelectedNodeIds(new Set());
     setRoleMenu(null);
-    setMoveMessage("Organizing process flow...");
+    setMoveMessage("Organized process flow.");
     centerView(nextNodes);
-    persistNodePositions(nextNodes, previousNodes, "Organized process flow positions.");
+    nextNodes.forEach((node) => {
+      queueNodePositionPersist(node.id, node.x, node.y);
+    });
   };
 
   useEffect(() => {
@@ -1488,10 +1934,12 @@ export function ProcessFlowDiagram({
     setRoleMenu(null);
     setSelectedNodeIds(new Set());
     setMoveMessage(null);
-    nextNodeNumberRef.current = getNextNodeNumber(steps);
+    setEditingNode(null);
+    clearQueuedStepMaps();
+    clearTimers();
     seededSignatureRef.current = graphSignature;
     centerView(graph.nodes);
-  }, [centerView, graphSignature, steps, transitions]);
+  }, [clearQueuedStepMaps, centerView, clearTimers, graphSignature, steps, transitions]);
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -1607,48 +2055,33 @@ export function ProcessFlowDiagram({
     }
 
     const point = getScenePoint(event);
-    const nodeNumber = nextNodeNumberRef.current;
     const canvasX = Math.max(24, Math.round(point.x - NODE_WIDTH / 2));
     const canvasY = Math.max(24, Math.round(point.y - NODE_HEIGHT / 2));
+    const temporaryStepId = `${NODE_ID_PREFIX}${Math.random().toString(36).slice(2, 10)}`;
+    const fallbackNode: FlowNode = {
+      id: temporaryStepId,
+      label: "Untitled",
+      subLabel: "Process step",
+      wafers: [],
+      x: canvasX,
+      y: canvasY,
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+      role: "normal",
+      order: nodes.length + 1,
+      isOptimistic: true
+    };
+
     setRoleMenu(null);
-    setMoveMessage(`Creating Step ${nodeNumber}...`);
-
-    startGraphTransition(() => {
-      void (async () => {
-        const result = await onCreateStep({
-          templateId: processTemplateId,
-          name: `Step ${nodeNumber}`,
-          processArea: "Process step",
-          nodeType: "procedure",
-          canvasX,
-          canvasY
-        });
-
-        if (!result.ok) {
-          setMoveMessage(result.error);
-          return;
-        }
-
-        const step = result.data;
-        const nextNode: FlowNode = {
-          id: step.id,
-          label: step.name,
-          subLabel: step.process_area,
-          x: step.canvas_x ?? canvasX,
-          y: step.canvas_y ?? canvasY,
-          width: NODE_WIDTH,
-          height: NODE_HEIGHT,
-          role: toFlowNodeRole(step.node_type),
-          order: step.step_order,
-          wafers: []
-        };
-
-        nextNodeNumberRef.current = nodeNumber + 1;
-        setNodes((currentNodes) => [...currentNodes, nextNode]);
-        setSelectedNodeIds(new Set([nextNode.id]));
-        setMoveMessage(`Created ${nextNode.label}.`);
-        router.refresh();
-      })();
+    setNodes((currentNodes) => [...currentNodes, fallbackNode]);
+    setSelectedNodeIds(new Set([temporaryStepId]));
+    setMoveMessage("Added step locally.");
+    queueStepPersist(temporaryStepId, {
+      canvasX,
+      canvasY,
+      fallbackNode,
+      stepArea: "Process step",
+      nodeType: "procedure"
     });
   };
 
@@ -1771,14 +2204,7 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    const previousNodes = nodes.map((node) =>
-      node.id === finishedDrag.nodeId
-        ? { ...node, x: finishedDrag.startX, y: finishedDrag.startY }
-        : node
-    );
-
-    setMoveMessage(`Saving ${draggedNode.label} position...`);
-    persistNodePositions(nodes, previousNodes, `Saved ${draggedNode.label} position.`);
+    queueNodePositionPersist(draggedNode.id, draggedNode.x, draggedNode.y);
   };
 
   const beginWaferDrag = (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => {
@@ -1936,41 +2362,30 @@ export function ProcessFlowDiagram({
     }
 
     const edgeType: ProcessStepTransitionType = target.order < sourceNode.order ? "return" : "flow";
-    setMoveMessage(`Creating transition to ${target.label}...`);
-    startGraphTransition(() => {
-      void (async () => {
-        const result = await onCreateTransition({
-          templateId: processTemplateId,
-          fromStepId: finishedDraft.from,
-          toStepId: target.id,
-          edgeType,
-          priority: edges.length * 10
-        });
+    const temporaryTransitionId = `${EDGE_ID_PREFIX}${Math.random().toString(36).slice(2, 10)}`;
+    const transitionExists = edges.some((edge) => edge.from === finishedDraft.from && edge.to === target.id);
+    if (transitionExists) {
+      setMoveMessage("That transition already exists.");
+      return;
+    }
 
-        if (!result.ok) {
-          setMoveMessage(result.error);
-          return;
-        }
+    setEdges((currentEdges) => [
+      ...currentEdges,
+      {
+        id: temporaryTransitionId,
+        from: finishedDraft.from,
+        to: target.id,
+        kind: edgeType
+      }
+    ]);
+    setMoveMessage("Transition queued for save.");
 
-        const transition = result.data;
-        setEdges((currentEdges) => {
-          if (currentEdges.some((edge) => edge.from === transition.from_step_id && edge.to === transition.to_step_id)) {
-            return currentEdges;
-          }
-
-          return [
-            ...currentEdges,
-            {
-              id: transition.id,
-              from: transition.from_step_id,
-              to: transition.to_step_id,
-              kind: transition.edge_type
-            }
-          ];
-        });
-        setMoveMessage(`Created transition to ${target.label}.`);
-        router.refresh();
-      });
+    queueTransitionPersist(temporaryTransitionId, {
+      id: temporaryTransitionId,
+      fromStepId: finishedDraft.from,
+      toStepId: target.id,
+      edgeType,
+      priority: edges.length * 10
     });
   };
 
@@ -2329,7 +2744,10 @@ export function ProcessFlowDiagram({
               onPointerUp={finishNodeDrag}
               onPointerCancel={finishNodeDrag}
               onContextMenu={(event) => openRoleMenu(event, node.id)}
-              onDoubleClick={(event) => event.stopPropagation()}
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+                beginNodeLabelEdit(node.id);
+              }}
             >
               <title>{`${node.label} · ${node.subLabel}`}</title>
               <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" />
@@ -2340,9 +2758,38 @@ export function ProcessFlowDiagram({
                 <circle cx={node.width - 24} cy="24" r="14" className="flow-node-port-target" />
                 <circle cx={node.width - 24} cy="24" r="8" className="flow-node-port" />
               </g>
-              <text x="64" y="34" className="flow-node-title">
-                {truncateLabel(node.label, 20)}
-              </text>
+              {editingNodeId === node.id ? (
+                <foreignObject x="58" y="20" width="190" height="34">
+                  <div style={{ width: "190px", height: "34px" }}>
+                    <input
+                      ref={editingInputRef}
+                      type="text"
+                      className="flow-node-title-input"
+                      value={editingNodeLabel}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onChange={(event) => {
+                        setEditingNodeLabel(event.currentTarget.value);
+                      }}
+                      onBlur={(event) => commitNodeLabel(node.id, event.currentTarget.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          commitNodeLabel(node.id, event.currentTarget.value);
+                        }
+
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          cancelNodeLabelEdit(node.id);
+                        }
+                      }}
+                    />
+                  </div>
+                </foreignObject>
+              ) : (
+                <text x="64" y="34" className="flow-node-title">
+                  {truncateLabel(node.label, 20)}
+                </text>
+              )}
               <text x="64" y="56" className="flow-node-subtitle">
                 {truncateLabel(node.subLabel, 28)}
               </text>

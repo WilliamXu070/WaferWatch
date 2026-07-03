@@ -15,7 +15,8 @@ import {
   processStepPositionUpdateSchema,
   processStepTransitionCreateSchema,
   processStepTransitionDeleteSchema,
-  processTemplateCreateSchema
+  processTemplateCreateSchema,
+  processStepNameUpdateSchema
 } from "@/features/process-flows/schemas";
 import type { Json, ProcessStep } from "@/types/database";
 
@@ -329,6 +330,34 @@ export async function updateProcessStepNodeType(input: unknown) {
     const { data, error } = await supabase
       .from("process_steps")
       .update({ node_type: parsed.nodeType })
+      .eq("id", parsed.stepId)
+      .select("*")
+      .single();
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(step.template_id);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateProcessStepName(input: unknown) {
+  try {
+    const parsed = processStepNameUpdateSchema.parse(input);
+    const step = await getStepForWrite(parsed.stepId);
+    const slug = await getAvailableStepSlug(step.template_id, parsed.name);
+    const supabase = await createServerSupabaseClient();
+
+    const { data, error } = await supabase
+      .from("process_steps")
+      .update({
+        name: parsed.name,
+        slug
+      })
       .eq("id", parsed.stepId)
       .select("*")
       .single();

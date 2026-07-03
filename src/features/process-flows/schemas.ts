@@ -33,11 +33,16 @@ export const processStepCreateSchema = z.object({
 
 export const processFlowStepCreateSchema = z.object({
   templateId: uuidSchema,
-  name: z.string().trim().min(2).max(180).default("New step"),
+  name: z.string().trim().min(2).max(180).default("Untitled"),
   processArea: z.string().trim().min(2).max(120).default("Process step"),
   nodeType: processStepNodeTypeSchema.default("procedure"),
   canvasX: canvasCoordinateSchema,
   canvasY: canvasCoordinateSchema
+});
+
+export const processStepNameUpdateSchema = z.object({
+  stepId: uuidSchema,
+  name: z.string().trim().min(2).max(180)
 });
 
 export const processStepPositionUpdateSchema = z.object({

@@ -3,6 +3,7 @@ import {
   createProcessFlowStep,
   createProcessStepTransition,
   deleteProcessSteps,
+  updateProcessStepName,
   updateProcessStepNodeType,
   updateProcessStepPositions
 } from "@/features/process-flows/actions";
@@ -198,6 +199,7 @@ export default async function ProcessFlowWireframePage({
       processTemplateId={dashboardData?.process.id}
       onCreateStep={createProcessFlowStep}
       onUpdateStepPositions={updateProcessStepPositions}
+      onUpdateStepName={updateProcessStepName}
       onUpdateStepNodeType={updateProcessStepNodeType}
       onCreateTransition={createProcessStepTransition}
       onDeleteSteps={deleteProcessSteps}

@@ -51,6 +51,7 @@ type ProcessFlowViewProps = {
   processTemplateId?: string;
   onCreateStep?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateStep"];
   onUpdateStepPositions?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepPositions"];
+  onUpdateStepName?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepName"];
   onUpdateStepNodeType?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepNodeType"];
   onCreateTransition?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateTransition"];
   onDeleteSteps?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteSteps"];
@@ -68,6 +69,7 @@ export function ProcessFlowView({
   processTemplateId,
   onCreateStep,
   onUpdateStepPositions,
+  onUpdateStepName,
   onUpdateStepNodeType,
   onCreateTransition,
   onDeleteSteps,
@@ -107,6 +109,7 @@ export function ProcessFlowView({
             processTemplateId={processTemplateId}
             onCreateStep={onCreateStep}
             onUpdateStepPositions={onUpdateStepPositions}
+            onUpdateStepName={onUpdateStepName}
             onUpdateStepNodeType={onUpdateStepNodeType}
             onCreateTransition={onCreateTransition}
             onDeleteSteps={onDeleteSteps}

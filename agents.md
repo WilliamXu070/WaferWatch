@@ -358,3 +358,30 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `/tmp/waferwatch-process-flow-persistence-cli.png`
 - Authenticated create/update/delete persistence was not browser-exercised
   because the available browser session was unauthenticated.
+
+## Recent development note (2026-07-03 process flow editor buffering)
+
+- Refactored `/wireframe/process-flow` for non-blocking editing: new nodes appear
+  immediately as `"Untitled"` with no "Creating Step..." toast behavior, inline
+  title edits are available by double-clicking nodes, zoom changes were tuned down,
+  and canvas dimensions were increased for a much larger scene.
+- Added buffered persistence for step creation, transition creation, node position
+  updates, and inline name edits so UI updates are local-first, then synchronized
+  in debounced/background batches.
+- Added `updateProcessStepName` action/schema wiring for name persistence once edits
+  settle.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `lsof -nP -iTCP:3001 -sTCP:LISTEN`
+  - `curl -s http://localhost:3001/api/health`
+  - Playwright on `http://localhost:3001/wireframe/process-flow` at `1280x1000`:
+    - initial graph summary `0 steps · 0 paths`
+    - double-click create attempt is blocked without auth with
+      "Load an authenticated process template before editing the graph"
+    - no console errors
+    - screenshot `/tmp/waferwatch-process-flow-verification.png`
+    - zoom still works (`100% => 124%` after two clicks)
+- Blocker: no usable authenticated session was available, so real DB-backed save
+  path validation (create/transition/name persistence) could not be fully
+  exercised.
