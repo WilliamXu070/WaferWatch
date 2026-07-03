@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { MouseEvent, PointerEvent } from "react";
+import { useRouter } from "next/navigation";
+import type { ActionResult } from "@/lib/action-result";
 import type { StepStatus } from "@/types/database";
 
 type WaferPin = {
@@ -58,6 +60,18 @@ type NodeDrag = {
   offsetY: number;
 };
 
+type WaferDrag = {
+  assignmentId: string;
+  sourceStepId: string;
+  waferLabel: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  hasMoved: boolean;
+};
+
 type SnapGuide = {
   id: string;
   orientation: "horizontal" | "vertical";
@@ -110,6 +124,12 @@ const EDGE_NODE_CLEARANCE = 10;
 const SEEDED_START_ID = "flow-seed-start";
 const SEEDED_END_ID = "flow-seed-end";
 const MAX_NODE_CHIPS = 4;
+
+type MoveWaferToProcessStepAction = (input: {
+  assignmentId: string;
+  targetStepId: string;
+  note?: string | null;
+}) => Promise<ActionResult<unknown>>;
 
 function clampScale(nextScale: number) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(nextScale.toFixed(2))));
@@ -1095,16 +1115,26 @@ function hasActiveWafer(node: FlowNode) {
   return node.role === "normal" && node.wafers.some((wafer) => wafer.currentStepStatus === "running");
 }
 
-export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
+export function ProcessFlowDiagram({
+  steps,
+  onMoveWafer
+}: {
+  steps: DiagramStep[];
+  onMoveWafer?: MoveWaferToProcessStepAction;
+}) {
 
+  const router = useRouter();
   const [scale, setScale] = useState(1);
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
   const [nodeDrag, setNodeDrag] = useState<NodeDrag | null>(null);
+  const [waferDrag, setWaferDrag] = useState<WaferDrag | null>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
   const [isPanning, setIsPanning] = useState(false);
+  const [moveMessage, setMoveMessage] = useState<string | null>(null);
+  const [isMovePending, startMoveTransition] = useTransition();
   const scaleRef = useRef(1);
   const pinchBaseScaleRef = useRef(1);
   const nextNodeNumberRef = useRef(1);
@@ -1223,8 +1253,10 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     setEdges([]);
     setConnectionDraft(null);
     setNodeDrag(null);
+    setWaferDrag(null);
     setSnapGuides([]);
     setRoleMenu(null);
+    setMoveMessage(null);
     nextNodeNumberRef.current = 1;
   };
 
@@ -1238,8 +1270,10 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     setEdges(graph.edges);
     setConnectionDraft(null);
     setNodeDrag(null);
+    setWaferDrag(null);
     setSnapGuides([]);
     setRoleMenu(null);
+    setMoveMessage(null);
     nextNodeNumberRef.current = steps.length + 1;
     seededSignatureRef.current = stepSignature;
   }, [stepSignature, steps]);
@@ -1265,7 +1299,7 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     const isMiddleMousePan = event.button === 1;
     const isModifiedLeftPan = event.button === 0 && event.altKey;
 
-    if ((!isMiddleMousePan && !isModifiedLeftPan) || connectionDraft || nodeDrag) {
+    if ((!isMiddleMousePan && !isModifiedLeftPan) || connectionDraft || nodeDrag || waferDrag) {
       return;
     }
 
@@ -1289,7 +1323,7 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
   };
 
   const updatePan = (event: PointerEvent<HTMLDivElement>) => {
-    if (!isPanning || !panStateRef.current || connectionDraft || nodeDrag) {
+    if (!isPanning || !panStateRef.current || connectionDraft || nodeDrag || waferDrag) {
       return;
     }
 
@@ -1438,7 +1472,97 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
     setSnapGuides([]);
   };
 
+  const beginWaferDrag = (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => {
+    if (!onMoveWafer || event.button !== 0 || isMovePending) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setRoleMenu(null);
+    setMoveMessage(null);
+
+    const point = getScenePoint(event);
+    setWaferDrag({
+      assignmentId: wafer.assignmentId,
+      sourceStepId: node.id,
+      waferLabel: getWaferChipLabel(wafer),
+      pointerId: event.pointerId,
+      startX: point.x,
+      startY: point.y,
+      x: point.x,
+      y: point.y,
+      hasMoved: false
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const updateWaferDrag = (event: PointerEvent<SVGSVGElement>) => {
+    if (!waferDrag || waferDrag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const point = getScenePoint(event);
+    setWaferDrag((drag) =>
+      drag
+        ? {
+            ...drag,
+            x: point.x,
+            y: point.y,
+            hasMoved:
+              drag.hasMoved ||
+              Math.abs(point.x - drag.startX) > 6 ||
+              Math.abs(point.y - drag.startY) > 6
+          }
+        : drag
+    );
+  };
+
+  const finishWaferDrag = (event: PointerEvent<SVGSVGElement>) => {
+    if (!waferDrag || waferDrag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const finishedDrag = waferDrag;
+    setWaferDrag(null);
+
+    const point = getScenePoint(event);
+    const target = nodes.find((node) => (
+      node.role === "normal" &&
+      node.id !== finishedDrag.sourceStepId &&
+      nodeContainsPoint(node, point)
+    ));
+
+    if (!target || !onMoveWafer || !finishedDrag.hasMoved) {
+      return;
+    }
+
+    setMoveMessage(`Moving ${finishedDrag.waferLabel} to ${target.label}...`);
+    startMoveTransition(() => {
+      void (async () => {
+        const result = await onMoveWafer({
+          assignmentId: finishedDrag.assignmentId,
+          targetStepId: target.id,
+          note: `Moved from process flow wireframe to ${target.label}.`
+        });
+
+        if (result.ok) {
+          setMoveMessage(`Moved ${finishedDrag.waferLabel} to ${target.label}.`);
+          router.refresh();
+          return;
+        }
+
+        setMoveMessage(result.error);
+      })();
+    });
+  };
+
   const updateConnection = (event: PointerEvent<SVGSVGElement>) => {
+    if (waferDrag) {
+      updateWaferDrag(event);
+      return;
+    }
+
     if (!connectionDraft || connectionDraft.pointerId !== event.pointerId) {
       return;
     }
@@ -1460,6 +1584,11 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
   };
 
   const finishConnection = (event: PointerEvent<SVGSVGElement>) => {
+    if (waferDrag) {
+      finishWaferDrag(event);
+      return;
+    }
+
     if (!connectionDraft || connectionDraft.pointerId !== event.pointerId) {
       return;
     }
@@ -1620,6 +1749,7 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
             {nodes.length} step{nodes.length === 1 ? "" : "s"} · {edges.length} path
             {edges.length === 1 ? "" : "s"}
           </span>
+          {moveMessage ? <span>{moveMessage}</span> : null}
         </div>
         <div className="flow-map-actions" role="group" aria-label="Canvas controls">
           <button className="button button-secondary flow-icon-button" type="button" onClick={zoomOut} aria-label="Zoom out">
@@ -1659,7 +1789,10 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
           style={{ width: `${scaledWidth}px`, height: `${scaledHeight}px` }}
           onPointerMove={updateConnection}
           onPointerUp={finishConnection}
-          onPointerCancel={() => setConnectionDraft(null)}
+          onPointerCancel={() => {
+            setConnectionDraft(null);
+            setWaferDrag(null);
+          }}
           onDoubleClick={createNode}
           onContextMenu={(event) => {
             event.preventDefault();
@@ -1787,7 +1920,12 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
               </text>
               <g transform="translate(64 96)">
                 {visibleWafers.map((wafer, index) => (
-                  <g key={wafer.assignmentId} className="flow-wafer-chip" transform={`translate(${index * 42} 0)`}>
+                  <g
+                    key={wafer.assignmentId}
+                    className="flow-wafer-chip"
+                    transform={`translate(${index * 42} 0)`}
+                    onPointerDown={(event) => beginWaferDrag(event, node, wafer)}
+                  >
                     <rect x="0" y="0" width="36" height="24" rx="6" />
                     <text x="18" y="16">{truncateLabel(getWaferChipLabel(wafer), 3)}</text>
                   </g>
@@ -1802,6 +1940,18 @@ export function ProcessFlowDiagram({ steps }: { steps: DiagramStep[] }) {
             </g>
           );
           })}
+
+          {waferDrag ? (
+            <g
+              className="flow-wafer-chip"
+              pointerEvents="none"
+              transform={`translate(${waferDrag.x + 12} ${waferDrag.y + 12})`}
+              opacity="0.86"
+            >
+              <rect x="0" y="0" width="42" height="26" rx="6" />
+              <text x="21" y="17">{truncateLabel(waferDrag.waferLabel, 4)}</text>
+            </g>
+          ) : null}
         </svg>
 
         {roleMenu && roleMenuNode ? (

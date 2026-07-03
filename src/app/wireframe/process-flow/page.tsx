@@ -1,111 +1,106 @@
 import { ProcessFlowDiagram } from "@/components/ProcessFlowDiagram";
+import { moveWaferToProcessStep } from "@/features/runs/actions";
+import {
+  getFirstActiveProcessTemplateId,
+  getProcessDashboardData,
+  type ProcessDashboardData
+} from "@/features/process-flows/queries";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { StepStatus } from "@/types/database";
+
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Process flow wireframe"
 };
 
-const demoSteps = [
-  {
-    id: "wireframe-intake",
-    name: "Wafer intake and inspection",
-    process_area: "Inspection",
-    step_order: 1,
-    wafers: [
-      {
-        assignmentId: "demo-a1",
-        waferCode: "A1",
-        dieLabel: "A1",
-        currentStepStatus: "completed" as const
-      },
-      {
-        assignmentId: "demo-a2",
-        waferCode: "A2",
-        dieLabel: "A2",
-        currentStepStatus: "completed" as const
-      }
-    ]
-  },
-  {
-    id: "wireframe-solvent",
-    name: "Solvent clean",
-    process_area: "Cleaning",
-    step_order: 2,
-    wafers: [
-      {
-        assignmentId: "demo-a3",
-        waferCode: "A3",
-        dieLabel: "A3",
-        currentStepStatus: "queued" as const
-      }
-    ]
-  },
-  {
-    id: "wireframe-lithography",
-    name: "Lithography coat and expose",
-    process_area: "Lithography",
-    step_order: 3,
-    wafers: [
-      {
-        assignmentId: "demo-a4",
-        waferCode: "A4",
-        dieLabel: "A4",
-        currentStepStatus: "running" as const
-      },
-      {
-        assignmentId: "demo-a5",
-        waferCode: "A5",
-        dieLabel: "A5",
-        currentStepStatus: "running" as const
-      },
-      {
-        assignmentId: "demo-a6",
-        waferCode: "A6",
-        dieLabel: "A6",
-        currentStepStatus: "running" as const
-      }
-    ]
-  },
-  {
-    id: "wireframe-etch",
-    name: "Etch",
-    process_area: "Etch",
-    step_order: 4,
-    wafers: [
-      {
-        assignmentId: "demo-b1",
-        waferCode: "B1",
-        dieLabel: "B1",
-        currentStepStatus: "pending" as const
-      },
-      {
-        assignmentId: "demo-b2",
-        waferCode: "B2",
-        dieLabel: "B2",
-        currentStepStatus: "pending" as const
-      }
-    ]
-  },
-  {
-    id: "wireframe-characterization",
-    name: "Characterization",
-    process_area: "Metrology",
-    step_order: 5,
-    wafers: [
-      {
-        assignmentId: "demo-c1",
-        waferCode: "C1",
-        dieLabel: "C1",
-        currentStepStatus: "pending" as const
-      }
-    ]
-  }
-];
+type ProcessFlowSearchParams = {
+  processId?: string | string[];
+};
 
-export default function ProcessFlowWireframePage() {
+type DiagramStep = {
+  id: string;
+  name: string;
+  process_area: string;
+  step_order: number;
+  wafers: {
+    assignmentId: string;
+    waferCode: string;
+    dieLabel: string | null;
+    currentStepStatus: StepStatus | null;
+  }[];
+};
+
+function firstSearchValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function toFlowColumns(data: ProcessDashboardData): DiagramStep[] {
+  return [...data.process.process_steps]
+    .sort((a, b) => a.step_order - b.step_order)
+    .map((step) => ({
+      id: step.id,
+      name: step.name,
+      process_area: step.process_area,
+      step_order: step.step_order,
+      wafers: data.activeWaferStates
+        .filter((state) => state.currentStepId === step.id)
+        .map((state) => ({
+          assignmentId: state.assignmentId,
+          waferCode: state.waferCode,
+          dieLabel: state.dieLabel,
+          currentStepStatus: state.currentStepStatus
+        }))
+    }));
+}
+
+async function loadProcessFlowData(requestedProcessId: string | undefined) {
+  const supabase = await createServerSupabaseClient();
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+
+  if (claimsError || !claimsData?.claims?.sub) {
+    return null;
+  }
+
+  const processId = requestedProcessId ?? await getFirstActiveProcessTemplateId();
+  if (!processId) {
+    return null;
+  }
+
+  return getProcessDashboardData(processId, 14, false).catch(() => null);
+}
+
+export default async function ProcessFlowWireframePage({
+  searchParams
+}: {
+  searchParams: Promise<ProcessFlowSearchParams>;
+}) {
+  const requestedProcessId = firstSearchValue((await searchParams).processId);
+  const dashboardData = await loadProcessFlowData(requestedProcessId);
+  const flowColumns = dashboardData ? toFlowColumns(dashboardData) : [];
+
   return (
     <main className="page-shell">
+      <section className="page-heading" style={{ width: "100%", alignItems: "center" }}>
+        <div>
+          <p className="eyebrow">WaferWatch</p>
+          <h1>Process flow</h1>
+          <p className="muted">
+            {dashboardData
+              ? `${dashboardData.process.name} · ${dashboardData.activeWaferStates.length} active wafer${dashboardData.activeWaferStates.length === 1 ? "" : "s"}`
+              : "No authenticated process template or wafer assignment data is available."}
+          </p>
+        </div>
+      </section>
+
       <section className="panel dashboard-panel">
-        <ProcessFlowDiagram steps={demoSteps} />
+        {flowColumns.length === 0 ? (
+          <div className="section-heading">
+            <h2>No process flow data</h2>
+            <p className="muted">Sign in with access to an active process template, or assign wafers to a process.</p>
+          </div>
+        ) : null}
+        <ProcessFlowDiagram steps={flowColumns} onMoveWafer={moveWaferToProcessStep} />
       </section>
     </main>
   );
