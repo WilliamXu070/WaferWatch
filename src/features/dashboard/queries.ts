@@ -77,6 +77,8 @@ type WireframeProfile = {
   email: string;
 };
 
+type WireframeDashboardQueryClient = Pick<ReturnType<typeof createSupabaseAdminClient>, "from">;
+
 export async function getDashboardSnapshot() {
   const supabase = createSupabaseAdminClient();
 
@@ -596,8 +598,13 @@ function makeEmptyDashboardModel(): DashboardModel {
   };
 }
 
-export async function getWireframeDashboardModel(): Promise<DashboardModel> {
-  const supabase = createSupabaseAdminClient();
+export function getEmptyWireframeDashboardModel(): DashboardModel {
+  return makeEmptyDashboardModel();
+}
+
+export async function getWireframeDashboardModel(
+  supabase: WireframeDashboardQueryClient = createSupabaseAdminClient()
+): Promise<DashboardModel> {
 
   const [
     templatesResult,

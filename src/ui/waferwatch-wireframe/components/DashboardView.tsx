@@ -33,8 +33,39 @@ function StatTile({ stat }: { stat: DashboardStat }) {
   );
 }
 
-export function DashboardView({ dashboard }: { dashboard: DashboardModel }) {
+function DashboardEmptyState({
+  title,
+  description
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <section className="rounded-2xl border border-dashed border-[#cbd2c7] bg-[#fbfcf8] p-10 text-center">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#778075]">
+        Backend dashboard
+      </p>
+      <h2 className="mt-2 text-[24px] font-semibold leading-tight text-[#171a16]">
+        {title}
+      </h2>
+      <p className="mx-auto mt-3 max-w-[560px] text-[14px] leading-6 text-[#687166]">
+        {description}
+      </p>
+    </section>
+  );
+}
+
+export function DashboardView({
+  dashboard,
+  emptyTitle = "No wafer assignments",
+  emptyDescription = "Authenticated Supabase data loaded, but no wafer assignments are visible to the current session."
+}: {
+  dashboard: DashboardModel;
+  emptyTitle?: string;
+  emptyDescription?: string;
+}) {
   const { columns } = dashboard;
+  const hasCards = columns.some((column) => column.cards.length > 0);
 
   return (
     <div className="flex flex-col gap-5 p-6">
@@ -65,6 +96,13 @@ export function DashboardView({ dashboard }: { dashboard: DashboardModel }) {
           </div>
         ))}
       </section>
+
+      {!hasCards ? (
+        <DashboardEmptyState
+          title={emptyTitle}
+          description={emptyDescription}
+        />
+      ) : null}
     </div>
   );
 }

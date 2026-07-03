@@ -256,3 +256,26 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     appeared before cleanup and disappeared after cleanup with no console errors.
   - Screenshots: `/tmp/waferwatch-seeded-dashboard.png`,
     `/tmp/waferwatch-cleared-dashboard.png`
+
+## Recent development note (2026-07-03 wireframe auth alignment)
+
+- Aligned `/wireframe/dashboard` and `/wireframe/wafer-status` around the
+  authenticated Supabase boundary. Unauthenticated sessions now render explicit
+  empty backend states and do not load seeded wafer/template data through admin
+  query paths or redirects.
+- Fixed the shared wireframe topbar search input hydration mismatch by making
+  the read-only caret style explicit in the component render.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run wireframe:fixture:seed`
+  - `curl -s http://localhost:3008/api/health`
+  - Unauthenticated route checks confirmed `ALPHA-VERIFY-01` and
+    `BETA-VERIFY-02` were not visible on `/wireframe/dashboard` or
+    `/wireframe/wafer-status`.
+  - Playwright screenshots:
+    `/tmp/waferwatch-auth-alignment-dashboard-v2.png` and
+    `/tmp/waferwatch-auth-alignment-wafer-status-v2.png`
+  - `npm run wireframe:fixture:clear` returned zero fixture rows across the
+    deterministic project/template/wafer/assignment/execution/calendar/text
+    surface namespace.

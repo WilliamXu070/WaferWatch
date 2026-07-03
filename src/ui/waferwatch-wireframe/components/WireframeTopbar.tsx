@@ -18,6 +18,7 @@ export function WireframeTopbar() {
           readOnly
           placeholder="Search wafers, steps, die notes..."
           aria-label="Search"
+          style={{ caretColor: "transparent" }}
           className="h-11 w-full rounded-xl border border-ww-border bg-[#fafaf7] pl-11 pr-16 text-sm text-ww-ink placeholder:text-[#9a9a92] focus:outline-none focus:ring-2 focus:ring-[#c9c9c1]"
         />
         <kbd className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-ww-border bg-white px-1.5 py-0.5 text-[11px] font-medium text-[#7a7a72]">

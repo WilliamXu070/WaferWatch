@@ -314,7 +314,7 @@ function mapWafersToStatusModel({
   const selectedTileId = firstActiveTile?.id ?? families[0]?.tiles[0]?.id ?? null;
 
   return {
-      metrics: buildMetrics(wafers),
+    metrics: buildMetrics(wafers),
     families: families.map((family) => ({
       ...family,
       tiles: family.tiles.map((tile) => ({
@@ -322,6 +322,13 @@ function mapWafersToStatusModel({
         isSelected: tile.id === selectedTileId
       }))
     }))
+  };
+}
+
+export function getEmptyWaferStatusModel(): WaferStatusModel {
+  return {
+    metrics: buildMetrics([]),
+    families: []
   };
 }
 
@@ -338,10 +345,7 @@ export async function getWaferStatusModel(): Promise<WaferStatusModel> {
 
   const wafers = (wafersResult.data ?? []) as WaferStatusWaferRow[];
   if (wafers.length === 0) {
-    return {
-      metrics: buildMetrics([]),
-      families: []
-    };
+    return getEmptyWaferStatusModel();
   }
 
   const waferIds = wafers.map((wafer) => wafer.id);

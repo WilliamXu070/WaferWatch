@@ -232,23 +232,37 @@ function SelectedDiePanel({
   );
 }
 
-function EmptyWaferStatusState() {
+function EmptyWaferStatusState({
+  title,
+  description
+}: {
+  title: string;
+  description: string;
+}) {
   return (
     <section className="rounded-2xl border border-dashed border-[#cbd2c7] bg-[#fbfcf8] p-10 text-center">
       <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#778075]">
         Backend wafer viewer
       </p>
       <h2 className="mt-2 text-[24px] font-semibold leading-tight text-[#171a16]">
-        No wafers available
+        {title}
       </h2>
       <p className="mx-auto mt-3 max-w-[520px] text-[14px] leading-6 text-[#687166]">
-        Authenticated Supabase data loaded, but this project state has no wafers visible to the current session.
+        {description}
       </p>
     </section>
   );
 }
 
-export function WaferStatusView({ model }: { model: WaferStatusModel }) {
+export function WaferStatusView({
+  model,
+  emptyTitle = "No wafers available",
+  emptyDescription = "Authenticated Supabase data loaded, but this project state has no wafers visible to the current session."
+}: {
+  model: WaferStatusModel;
+  emptyTitle?: string;
+  emptyDescription?: string;
+}) {
   const initialSelected = useMemo(
     () =>
       model.families
@@ -288,7 +302,10 @@ export function WaferStatusView({ model }: { model: WaferStatusModel }) {
           ) : null}
         </section>
       ) : (
-        <EmptyWaferStatusState />
+        <EmptyWaferStatusState
+          title={emptyTitle}
+          description={emptyDescription}
+        />
       )}
 
     </div>
