@@ -4,7 +4,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import type { MouseEvent, PointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
-import { FlowNodeCard, WaferDragPreview } from "./process-flow/FlowNodeCard";
+import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
+import { ProcessFlowToolbar } from "./process-flow/ProcessFlowToolbar";
 import {
   BUTTON_ZOOM_STEP,
   EDGE_ID_PREFIX,
@@ -22,16 +23,15 @@ import {
   TRANSITION_RETRY_LIMIT,
   WHEEL_ZOOM_STEP
 } from "./process-flow/constants";
-import { isReturnEdge, makeDraftPath, makeNodePath } from "./process-flow/edges";
 import { getGraphBounds, getSnappedNodePosition, nodeContainsPoint } from "./process-flow/geometry";
 import {
   clampScale,
   getWaferChipLabel,
   isTextInputTarget,
-  toFlowNodeRole,
   toProcessStepNodeType
 } from "./process-flow/labels";
 import { autoLayoutNodes } from "./process-flow/layout";
+import { getGraphSignature, getInitialGraph } from "./process-flow/graphSeed";
 import type {
   ConnectionDraft,
   CreateProcessFlowStepAction,
@@ -57,60 +57,6 @@ import type {
   WaferPin,
   ZoomAnchor
 } from "./process-flow/types";
-
-function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransition[]) {
-  const sortedSteps = [...steps].sort((a, b) => a.step_order - b.step_order);
-  const nodes: FlowNode[] = sortedSteps.map((step, index): FlowNode => ({
-      id: step.id,
-      label: step.name,
-      subLabel: step.process_area,
-      wafers: step.wafers,
-      x: step.canvas_x ?? 0,
-      y: step.canvas_y ?? 0,
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
-      role: toFlowNodeRole(step.node_type),
-      order: index + 1
-    }));
-
-  const nodeIds = new Set(nodes.map((node) => node.id));
-  const persistedEdges: FlowEdge[] = transitions
-    .filter((transition) => nodeIds.has(transition.from_step_id) && nodeIds.has(transition.to_step_id))
-    .map((transition) => ({
-      id: transition.id,
-      from: transition.from_step_id,
-      to: transition.to_step_id,
-      kind: transition.edge_type
-    }));
-  const fallbackEdges: FlowEdge[] = persistedEdges.length
-    ? []
-    : nodes.slice(0, -1).map((node, index) => ({
-        id: `fallback-${node.id}->${nodes[index + 1].id}`,
-        from: node.id,
-        to: nodes[index + 1].id,
-        kind: "flow"
-      }));
-  const edges = persistedEdges.length ? persistedEdges : fallbackEdges;
-  const hasMissingPositions = sortedSteps.some((step) => step.canvas_x === null || step.canvas_x === undefined || step.canvas_y === null || step.canvas_y === undefined);
-
-  return {
-    nodes: hasMissingPositions ? autoLayoutNodes(nodes, edges, { x: SCENE_WIDTH / 2, y: SCENE_HEIGHT / 2 }) : nodes,
-    edges
-  };
-}
-
-function getGraphSignature(steps: DiagramStep[], transitions: DiagramTransition[]) {
-  const stepSignature = [...steps]
-    .sort((a, b) => a.step_order - b.step_order)
-    .map((step) => `${step.id}:${step.step_order}:${step.name}:${step.process_area}:${step.node_type ?? "procedure"}:${step.canvas_x ?? "auto"}:${step.canvas_y ?? "auto"}:${step.wafers.length}`)
-    .join("|");
-  const transitionSignature = [...transitions]
-    .sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id))
-    .map((transition) => `${transition.id}:${transition.from_step_id}:${transition.to_step_id}:${transition.edge_type}`)
-    .join("|");
-
-  return `${stepSignature}::${transitionSignature}`;
-}
 
 type QueuedTransition = {
   id: string;
@@ -1514,208 +1460,73 @@ export function ProcessFlowDiagram({
     };
   }, [applyScaleAtAnchor, getPanePoint]);
 
-  const draftSourceNode = connectionDraft ? nodeById.get(connectionDraft.from) : null;
-  const draftPath = draftSourceNode
-    ? makeDraftPath(draftSourceNode, { x: connectionDraft?.x ?? 0, y: connectionDraft?.y ?? 0 })
-    : null;
-  const roleMenuNode = roleMenu ? nodeById.get(roleMenu.nodeId) : null;
-
   return (
     <section className="flow-map-shell">
-      <div className="flow-map-toolbar" aria-label="Flow map controls">
-        <div className="flow-map-summary" aria-live="polite">
-          <strong>Process flow</strong>
-          <em>Track wafer movement through each fabrication step.</em>
-          <span>
-            {nodes.length} step{nodes.length === 1 ? "" : "s"} · {edges.length} path
-            {edges.length === 1 ? "" : "s"}
-          </span>
-          {selectedNodeCount > 0 ? (
-            <span>
-              {selectedNodeCount} selected
-            </span>
-          ) : null}
-          {moveMessage ? <span>{moveMessage}</span> : null}
-        </div>
-        <div className="flow-map-actions" role="group" aria-label="Canvas controls">
-          <button className="button button-secondary flow-icon-button" type="button" onClick={zoomOut} aria-label="Zoom out">
-            −
-          </button>
-          <span className="flow-map-zoom">{Math.round(s * 100)}%</span>
-          <button className="button button-secondary flow-icon-button" type="button" onClick={zoomIn} aria-label="Zoom in">
-            +
-          </button>
-          <button className="button button-secondary flow-fit-button" type="button" onClick={() => centerView()} disabled={nodes.length === 0}>
-            Center view
-          </button>
-          <button className="button button-secondary flow-fit-button flow-auto-layout-button" type="button" onClick={organizeCanvas} disabled={nodes.length < 2 || isGraphPending}>
-            Organize
-          </button>
-        </div>
-      </div>
-
-      <div
-        ref={frameRef}
-        className={`flow-map-frame ${isPanning ? "flow-map-frame--dragging" : ""}`}
-        onPointerDown={beginPan}
-        onPointerMove={updatePan}
-        onPointerUp={endPan}
-        onPointerCancel={endPan}
-        onPointerLeave={endPan}
-      >
-        <svg
-          ref={svgRef}
-          className="flow-map-canvas flow-map-canvas--editable"
-          width={scaledWidth}
-          height={scaledHeight}
-          viewBox={`0 0 ${sceneBounds.width} ${sceneBounds.height}`}
-          style={{ width: `${scaledWidth}px`, height: `${scaledHeight}px` }}
-          onPointerMove={updateConnection}
-          onPointerUp={finishConnection}
-          onPointerCancel={() => {
-            setConnectionDraft(null);
-            setWaferDrag(null);
-          }}
-          onPointerDown={clearSelectionIfOffNode}
-          onDoubleClick={createNode}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            setRoleMenu(null);
-            setSelectedNodeIds(new Set());
-          }}
-        >
-          <defs>
-            <marker
-              id="flowMapArrow"
-              markerWidth="10"
-              markerHeight="10"
-              refX="9"
-              refY="5"
-              orient="auto"
-              markerUnits="strokeWidth"
-            >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-blue)" />
-            </marker>
-          </defs>
-
-          <rect className="flow-map-hit-area" x="0" y="0" width={sceneBounds.width} height={sceneBounds.height} />
-
-          {snapGuides.map((guide) =>
-            guide.orientation === "vertical" ? (
-              <line
-                key={guide.id}
-                className="flow-snap-guide"
-                x1={guide.value}
-                y1={guide.start}
-                x2={guide.value}
-                y2={guide.end}
-              />
-            ) : (
-              <line
-                key={guide.id}
-                className="flow-snap-guide"
-                x1={guide.start}
-                y1={guide.value}
-                x2={guide.end}
-                y2={guide.value}
-              />
-            )
-          )}
-
-          {edges.map((edge) => {
-            const from = nodeById.get(edge.from);
-            const to = nodeById.get(edge.to);
-            if (!from || !to) {
-              return null;
-            }
-
-            const isReturn = isReturnEdge(edge, from, to, edges);
-            const path = makeNodePath(edge, from, to, edges, nodes);
-
-            return (
-              <path
-                key={edge.id}
-                d={path}
-                className={`flow-edge ${isReturn ? "flow-edge--return" : ""}`}
-                markerEnd="url(#flowMapArrow)"
-              />
-            );
-          })}
-
-          {draftPath ? (
-            <path
-              d={draftPath}
-              className="flow-edge flow-edge--draft"
-              markerEnd="url(#flowMapArrow)"
-            />
-          ) : null}
-
-          {nodes.length === 0 ? (
-            <g className="flow-empty-state" transform={`translate(${sceneBounds.width / 2} ${sceneBounds.height / 2})`}>
-              <circle cx="0" cy="-8" r="28" />
-              <path d="M -10 -8 H 10 M 0 -18 V 2" />
-              <text x="0" y="46">
-                Blank process canvas
-              </text>
-            </g>
-          ) : null}
-
-          {nodes.map((node) => (
-            <FlowNodeCard
-              key={node.id}
-              node={node}
-              isConnecting={connectionDraft?.from === node.id}
-              isDragging={nodeDrag?.nodeId === node.id}
-              isSelected={selectedNodeIds.has(node.id)}
-              isEditing={editingNodeId === node.id}
-              editingNodeLabel={editingNodeLabel}
-              editingInputRef={editingInputRef}
-              onNodePointerDown={handleNodePointerDown}
-              onNodePointerMove={updateNodeDrag}
-              onNodePointerUp={finishNodeDrag}
-              onNodePointerCancel={finishNodeDrag}
-              onNodeContextMenu={openRoleMenu}
-              onBeginLabelEdit={beginNodeLabelEdit}
-              onEditingLabelChange={(event) => setEditingNodeLabel(event.currentTarget.value)}
-              onCommitLabel={commitNodeLabel}
-              onCancelLabelEdit={cancelNodeLabelEdit}
-              onBeginWaferDrag={beginWaferDrag}
-            />
-          ))}
-
-          {waferDrag ? <WaferDragPreview waferDrag={waferDrag} /> : null}
-        </svg>
-
-        {roleMenu && roleMenuNode ? (
-          <div
-            className="flow-role-menu"
-            style={{
-              left: `${roleMenu.paneX}px`,
-              top: `${roleMenu.paneY}px`
-            }}
-            role="menu"
-            aria-label={`${roleMenuNode.label} role`}
-          >
-            <button type="button" role="menuitem" onClick={() => setNodeRole(roleMenu.nodeId, "start")}>
-              Beginning step
-            </button>
-            <button type="button" role="menuitem" onClick={() => setNodeRole(roleMenu.nodeId, "end")}>
-              End step
-            </button>
-            <button type="button" role="menuitem" onClick={() => setNodeRole(roleMenu.nodeId, "normal")}>
-              Normal step
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="flow-role-menu-danger"
-              onClick={() => deleteNodes(selectedNodeIds.has(roleMenu.nodeId) ? [...selectedNodeIds] : [roleMenu.nodeId])}
-            >
-              {selectedNodeIds.size > 1 && selectedNodeIds.has(roleMenu.nodeId) ? "Delete selected steps" : "Delete step"}
-            </button>
-          </div>
-        ) : null}
-      </div>
+      <ProcessFlowToolbar
+        nodesCount={nodes.length}
+        edgesCount={edges.length}
+        selectedNodeCount={selectedNodeCount}
+        moveMessage={moveMessage}
+        zoomPercent={Math.round(s * 100)}
+        isGraphPending={isGraphPending}
+        onZoomOut={zoomOut}
+        onZoomIn={zoomIn}
+        onCenterView={() => centerView()}
+        onOrganize={organizeCanvas}
+      />
+      <ProcessFlowCanvas
+        frameRef={frameRef}
+        svgRef={svgRef}
+        isPanning={isPanning}
+        scaledWidth={scaledWidth}
+        scaledHeight={scaledHeight}
+        sceneWidth={sceneBounds.width}
+        sceneHeight={sceneBounds.height}
+        snapGuides={snapGuides}
+        nodes={nodes}
+        nodeById={nodeById}
+        connectionDraft={connectionDraft}
+        connectionNodeId={connectionDraft?.from ?? null}
+        waferDrag={waferDrag}
+        edges={edges}
+        selectedNodeIds={selectedNodeIds}
+        nodeDrag={nodeDrag}
+        editingNodeId={editingNodeId}
+        editingNodeLabel={editingNodeLabel}
+        editingInputRef={editingInputRef}
+        roleMenu={roleMenu}
+        roleMenuNode={roleMenu ? (nodeById.get(roleMenu.nodeId) ?? null) : null}
+        onFramePointerDown={beginPan}
+        onFramePointerMove={updatePan}
+        onFramePointerUp={endPan}
+        onFramePointerCancel={endPan}
+        onFramePointerLeave={endPan}
+        onCanvasPointerMove={updateConnection}
+        onCanvasPointerUp={finishConnection}
+        onCanvasPointerCancel={() => {
+          setConnectionDraft(null);
+          setWaferDrag(null);
+        }}
+        onCanvasPointerDown={clearSelectionIfOffNode}
+        onCanvasDoubleClick={createNode}
+        onCanvasContextMenu={(event) => {
+          event.preventDefault();
+          setRoleMenu(null);
+          setSelectedNodeIds(new Set());
+        }}
+        onNodePointerDown={handleNodePointerDown}
+        onNodePointerMove={updateNodeDrag}
+        onNodePointerUp={finishNodeDrag}
+        onNodePointerCancel={finishNodeDrag}
+        onNodeContextMenu={openRoleMenu}
+        onBeginLabelEdit={beginNodeLabelEdit}
+        onEditingLabelChange={(event) => setEditingNodeLabel(event.currentTarget.value)}
+        onCommitLabel={commitNodeLabel}
+        onCancelLabelEdit={cancelNodeLabelEdit}
+        onBeginWaferDrag={beginWaferDrag}
+        onSetNodeRole={setNodeRole}
+        onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}
+      />
     </section>
   );
 }

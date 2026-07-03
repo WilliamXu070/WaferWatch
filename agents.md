@@ -424,3 +424,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Authenticated node-card visual verification was not exercised because this
   worktree had no saved authenticated Playwright state, and no signup flow was
   run.
+
+## Recent development note (2026-07-03 process flow render split expansion)
+
+- Further split `ProcessFlowDiagram` presentation concerns into dedicated components:
+  `src/components/process-flow/ProcessFlowCanvas.tsx` and
+  `src/components/process-flow/ProcessFlowToolbar.tsx`.
+- Moved graph bootstrap/signature helpers into
+  `src/components/process-flow/graphSeed.ts` to keep `ProcessFlowDiagram` as a
+  state/interaction shell.
+- Kept behavior and DOM shape stable (`ProcessFlowDiagram` remains the exported
+  module entry and route markup stays functionally unchanged).
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npx playwright screenshot --device="Desktop Chrome" http://127.0.0.1:3011/wireframe/process-flow /tmp/processflow-split-after-more-split.png`
