@@ -111,7 +111,7 @@ function makeReturnEdgePath(from: FlowNode, to: FlowNode, nodes: FlowNode[]) {
 function controlLaneDistance(from: FlowNode, to: FlowNode) {
   const verticalDistance = Math.abs(getNodeCenter(from).y - getNodeCenter(to).y);
   const horizontalDistance = Math.abs(getNodeCenter(from).x - getNodeCenter(to).x);
-  return Math.max(32, Math.min(80, Math.min(verticalDistance, horizontalDistance) * 0.34));
+  return Math.max(14, Math.min(48, Math.min(verticalDistance, horizontalDistance) * 0.28));
 }
 
 function edgeIntersectsAnyNode(from: FlowNode, to: FlowNode, nodes: FlowNode[]) {
