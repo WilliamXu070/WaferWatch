@@ -72,19 +72,19 @@ async function getStepForWrite(stepId: string): Promise<ProcessStep> {
   return data;
 }
 
-async function getAvailableStepSlug(templateId: string, name: string) {
+async function getAvailableStepSlug(templateId: string, name: string, excludeStepId?: string) {
   const baseSlug = slugifyStepName(name).slice(0, 70).replace(/-+$/g, "") || "process-step";
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("process_steps")
-    .select("slug")
+    .select("id, slug")
     .eq("template_id", templateId);
 
   if (error) {
     throw error;
   }
 
-  const existing = new Set((data ?? []).map((step) => step.slug));
+  const existing = new Set((data ?? []).filter((step) => step.id !== excludeStepId).map((step) => step.slug));
   if (!existing.has(baseSlug)) {
     return baseSlug;
   }
@@ -349,7 +349,7 @@ export async function updateProcessStepName(input: unknown) {
   try {
     const parsed = processStepNameUpdateSchema.parse(input);
     const step = await getStepForWrite(parsed.stepId);
-    const slug = await getAvailableStepSlug(step.template_id, parsed.name);
+    const slug = await getAvailableStepSlug(step.template_id, parsed.name, parsed.stepId);
     const supabase = await createServerSupabaseClient();
 
     const { data, error } = await supabase

@@ -374,14 +374,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run lint`
   - `npm run build`
   - `lsof -nP -iTCP:3001 -sTCP:LISTEN`
-  - `curl -s http://localhost:3001/api/health`
-  - Playwright on `http://localhost:3001/wireframe/process-flow` at `1280x1000`:
-    - initial graph summary `0 steps · 0 paths`
-    - double-click create attempt is blocked without auth with
-      "Load an authenticated process template before editing the graph"
-    - no console errors
-    - screenshot `/tmp/waferwatch-process-flow-verification.png`
-    - zoom still works (`100% => 124%` after two clicks)
-- Blocker: no usable authenticated session was available, so real DB-backed save
-  path validation (create/transition/name persistence) could not be fully
-  exercised.
+  - `curl -s http://127.0.0.1:3001/api/health`
+  - `npm run wireframe:fixture:seed`
+  - Authenticated Playwright on
+    `http://127.0.0.1:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    at `1440x1000`: created two local-first steps, confirmed they appear
+    immediately as `Untitled`/renamed inline text with no `Step N` labels,
+    shift-dragged a transition between them, waited for background persistence,
+    reloaded, and confirmed the two new DB-backed steps plus one DB-backed
+    transition rendered again.
+  - Direct Supabase check after the Playwright run showed `6` fixture steps
+    including `Linked buffer A` and `Untitled`, both with canvas coordinates,
+    and `1` `process_step_transitions` row.
+  - Screenshot: `/tmp/process-flow-buffering-create-link.png`
+  - `npm run wireframe:fixture:seed` again to restore the deterministic fixture
+    baseline after the test.

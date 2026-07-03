@@ -154,6 +154,8 @@ const WHEEL_ZOOM_STEP = 0.08;
 const PERSISTENCE_DEBOUNCE_MS = 420;
 const POSITION_DEBOUNCE_MS = 250;
 const NAME_DEBOUNCE_MS = 680;
+const TRANSITION_RETRY_DELAY_MS = 520;
+const TRANSITION_RETRY_LIMIT = 12;
 const NODE_ID_PREFIX = "temp-step-";
 const EDGE_ID_PREFIX = "temp-edge-";
 const SNAP_THRESHOLD = 16;
@@ -1232,6 +1234,7 @@ type QueuedTransition = {
   toStepId: string;
   edgeType: ProcessStepTransitionType;
   priority: number;
+  attempts?: number;
 };
 
 type QueuedStepCreate = {
@@ -1296,6 +1299,7 @@ export function ProcessFlowDiagram({
   const pendingTransitionCreateTimerRef = useRef<TimerHandle>(null);
   const pendingPositionTimerRef = useRef<TimerHandle>(null);
   const pendingNameTimerRef = useRef<TimerHandle>(null);
+  const flushPendingTransitionCreatesRef = useRef<(() => Promise<void>) | null>(null);
   const panStateRef = useRef<{
     startX: number;
     startY: number;
@@ -1321,6 +1325,20 @@ export function ProcessFlowDiagram({
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const selectedNodeCount = selectedNodeIds.size;
+  const nodesRef = useRef<FlowNode[]>([]);
+  const edgesRef = useRef<FlowEdge[]>([]);
+
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
+
+  const getLatestNode = useCallback((nodeId: string) => (
+    nodesRef.current.find((node) => node.id === nodeId) ?? null
+  ), []);
 
   const isOptimisticStep = useCallback(
     (stepId: string) => stepId.startsWith(NODE_ID_PREFIX),
@@ -1381,7 +1399,7 @@ export function ProcessFlowDiagram({
   };
 
   const replaceOptimisticStepId = useCallback((temporaryStepId: string, persistedStep: PersistedStepPayload) => {
-    const localLabel = nodeById.get(temporaryStepId)?.label.trim();
+    const localLabel = getLatestNode(temporaryStepId)?.label.trim();
     const finalLabel = localLabel && localLabel.length >= 2 ? localLabel : persistedStep.name;
 
     setNodes((currentNodes) =>
@@ -1443,7 +1461,7 @@ export function ProcessFlowDiagram({
     if (finalLabel !== persistedStep.name) {
       pendingNameUpdateRef.current.set(persistedStep.id, finalLabel);
     }
-  }, [editingNodeId, nodeById]);
+  }, [editingNodeId, getLatestNode]);
 
   const clearQueuedStep = (stepId: string) => {
     pendingStepCreateRef.current.delete(stepId);
@@ -1476,6 +1494,16 @@ export function ProcessFlowDiagram({
     },
     []
   );
+
+  const scheduleTransitionFlush = useCallback((delay: number) => {
+    schedulePending(
+      pendingTransitionCreateTimerRef,
+      async () => {
+        await flushPendingTransitionCreatesRef.current?.();
+      },
+      delay
+    );
+  }, [schedulePending]);
 
   const flushPendingNameUpdates = useCallback(async () => {
     if (!onUpdateStepName) {
@@ -1557,14 +1585,20 @@ export function ProcessFlowDiagram({
     pendingTransitionCreateRef.current.clear();
 
     for (const [localId, transition] of queue) {
-      const draftEdgeExists = edges.some((edge) => edge.id === localId);
+      const draftEdgeExists = edgesRef.current.some((edge) => edge.id === localId);
 
       if (!draftEdgeExists) {
         continue;
       }
 
       if (isOptimisticStep(transition.fromStepId) || isOptimisticStep(transition.toStepId)) {
-        pendingTransitionCreateRef.current.set(localId, transition);
+        const attempts = (transition.attempts ?? 0) + 1;
+        if (attempts <= TRANSITION_RETRY_LIMIT) {
+          pendingTransitionCreateRef.current.set(localId, { ...transition, attempts });
+        } else {
+          setMoveMessage("Transition save timed out before both steps were persisted.");
+          setEdges((current) => current.filter((edge) => edge.id !== localId));
+        }
         continue;
       }
 
@@ -1577,6 +1611,13 @@ export function ProcessFlowDiagram({
       });
 
       if (!result.ok) {
+        const attempts = (transition.attempts ?? 0) + 1;
+        if (attempts <= TRANSITION_RETRY_LIMIT) {
+          pendingTransitionCreateRef.current.set(localId, { ...transition, attempts });
+          setMoveMessage("Retrying transition save...");
+          continue;
+        }
+
         setMoveMessage(result.error);
         setEdges((current) => current.filter((edge) => edge.id !== localId));
         continue;
@@ -1596,7 +1637,15 @@ export function ProcessFlowDiagram({
         )
       );
     }
-  }, [edges, isOptimisticStep, onCreateTransition, processTemplateId]);
+
+    if (pendingTransitionCreateRef.current.size > 0) {
+      scheduleTransitionFlush(TRANSITION_RETRY_DELAY_MS);
+    }
+  }, [isOptimisticStep, onCreateTransition, processTemplateId, scheduleTransitionFlush]);
+
+  useEffect(() => {
+    flushPendingTransitionCreatesRef.current = flushPendingTransitionCreates;
+  }, [flushPendingTransitionCreates]);
 
   const flushPendingStepCreates = useCallback(async () => {
     if (!onCreateStep || !processTemplateId) {
@@ -1613,7 +1662,7 @@ export function ProcessFlowDiagram({
 
       const result = await onCreateStep({
         templateId: processTemplateId,
-        name: nodeById.get(temporaryStepId)?.label ?? payload.fallbackNode.label,
+        name: getLatestNode(temporaryStepId)?.label ?? payload.fallbackNode.label,
         processArea: payload.stepArea,
         nodeType: payload.nodeType,
         canvasX,
@@ -1635,7 +1684,7 @@ export function ProcessFlowDiagram({
     }
 
     if (pendingTransitionCreateRef.current.size > 0) {
-      schedulePending(pendingTransitionCreateTimerRef, flushPendingTransitionCreates, 0);
+      scheduleTransitionFlush(0);
     }
 
     if (pendingPositionUpdateRef.current.size > 0) {
@@ -1649,12 +1698,12 @@ export function ProcessFlowDiagram({
     editingNodeId,
     flushPendingNameUpdates,
     flushPendingPositionUpdates,
-    flushPendingTransitionCreates,
-    nodeById,
+    getLatestNode,
     onCreateStep,
     processTemplateId,
     replaceOptimisticStepId,
-    schedulePending
+    schedulePending,
+    scheduleTransitionFlush
   ]);
 
   const queueNodeNamePersist = useCallback((stepId: string, name: string) => {
@@ -1682,8 +1731,8 @@ export function ProcessFlowDiagram({
 
   const queueTransitionPersist = useCallback((transitionId: string, payload: QueuedTransition) => {
     pendingTransitionCreateRef.current.set(transitionId, payload);
-    schedulePending(pendingTransitionCreateTimerRef, flushPendingTransitionCreates, PERSISTENCE_DEBOUNCE_MS);
-  }, [flushPendingTransitionCreates, schedulePending]);
+    scheduleTransitionFlush(PERSISTENCE_DEBOUNCE_MS);
+  }, [scheduleTransitionFlush]);
 
   const queueStepPersist = useCallback((stepId: string, payload: QueuedStepCreate) => {
     pendingStepCreateRef.current.set(stepId, payload);
