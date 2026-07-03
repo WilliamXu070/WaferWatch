@@ -405,3 +405,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Authenticated node-card visual verification was not exercised because this
   worktree had no saved authenticated Playwright state, and no signup flow was
   run.
+
+## Recent development note (2026-07-03 process flow module split)
+
+- Split `src/components/ProcessFlowDiagram.tsx` into process-flow modules under
+  `src/components/process-flow/` for agent-friendly ownership:
+  constants, shared types, labels/icons, geometry, edge routing, auto-layout,
+  and SVG node/chip rendering.
+- Kept the public `ProcessFlowDiagram` import path stable while reducing the
+  original file to canvas orchestration, editor state, and persistence wiring.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3011/api/health`
+  - In-app browser at `http://127.0.0.1:3011/wireframe/process-flow`,
+    1280x720: unauthenticated empty backend state rendered with no console
+    errors and no horizontal overflow.
+- Authenticated node-card visual verification was not exercised because this
+  worktree had no saved authenticated Playwright state, and no signup flow was
+  run.
