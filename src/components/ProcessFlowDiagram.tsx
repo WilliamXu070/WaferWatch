@@ -160,15 +160,18 @@ const NODE_ID_PREFIX = "temp-step-";
 const EDGE_ID_PREFIX = "temp-edge-";
 const SNAP_THRESHOLD = 16;
 const LAYOUT_CENTER_X = 520;
-const LAYOUT_TOP_Y = 96;
-const LAYOUT_GAP_Y = 250;
+const LAYOUT_TOP_Y = 72;
+const LAYOUT_GAP_Y = 96;
 const LAYOUT_LANE_GAP_X = 380;
 const LAYOUT_LOOP_GAP_X = 180;
 const LAYOUT_LOOP_RADIUS_X = 250;
-const LAYOUT_LOOP_RADIUS_Y = 170;
+const LAYOUT_LOOP_RADIUS_Y = 110;
 const EDGE_CURVE_OFFSET = 48;
 const EDGE_NODE_CLEARANCE = 10;
 const MAX_NODE_CHIPS = 4;
+const WAFER_CHIP_WIDTH = 46;
+const WAFER_CHIP_HEIGHT = 26;
+const WAFER_CHIP_GAP = 52;
 const FIT_VIEW_PADDING = 96;
 
 type MoveWaferToProcessStepAction = (input: {
@@ -2856,17 +2859,17 @@ export function ProcessFlowDiagram({
                   <g
                     key={wafer.assignmentId}
                     className="flow-wafer-chip"
-                    transform={`translate(${index * 42} 0)`}
+                    transform={`translate(${index * WAFER_CHIP_GAP} 0)`}
                     onPointerDown={(event) => beginWaferDrag(event, node, wafer)}
                   >
-                    <rect x="0" y="0" width="36" height="24" rx="6" />
-                    <text x="18" y="16">{truncateLabel(getWaferChipLabel(wafer), 3)}</text>
+                    <rect x="0" y="0" width={WAFER_CHIP_WIDTH} height={WAFER_CHIP_HEIGHT} rx="7" />
+                    <text x={WAFER_CHIP_WIDTH / 2} y={WAFER_CHIP_HEIGHT / 2}>{truncateLabel(getWaferChipLabel(wafer), 4)}</text>
                   </g>
                 ))}
                 {hiddenWaferCount > 0 ? (
-                  <g className="flow-wafer-chip flow-wafer-chip--overflow" transform={`translate(${visibleWafers.length * 42} 0)`}>
-                    <rect x="0" y="0" width="40" height="24" rx="6" />
-                    <text x="20" y="16">+{hiddenWaferCount}</text>
+                  <g className="flow-wafer-chip flow-wafer-chip--overflow" transform={`translate(${visibleWafers.length * WAFER_CHIP_GAP} 0)`}>
+                    <rect x="0" y="0" width={WAFER_CHIP_WIDTH} height={WAFER_CHIP_HEIGHT} rx="7" />
+                    <text x={WAFER_CHIP_WIDTH / 2} y={WAFER_CHIP_HEIGHT / 2}>+{hiddenWaferCount}</text>
                   </g>
                 ) : null}
               </g>
@@ -2881,8 +2884,8 @@ export function ProcessFlowDiagram({
               transform={`translate(${waferDrag.x + 12} ${waferDrag.y + 12})`}
               opacity="0.86"
             >
-              <rect x="0" y="0" width="42" height="26" rx="6" />
-              <text x="21" y="17">{truncateLabel(waferDrag.waferLabel, 4)}</text>
+              <rect x="0" y="0" width={WAFER_CHIP_WIDTH} height={WAFER_CHIP_HEIGHT} rx="7" />
+              <text x={WAFER_CHIP_WIDTH / 2} y={WAFER_CHIP_HEIGHT / 2}>{truncateLabel(waferDrag.waferLabel, 4)}</text>
             </g>
           ) : null}
         </svg>

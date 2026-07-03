@@ -389,3 +389,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Screenshot: `/tmp/process-flow-buffering-create-link.png`
   - `npm run wireframe:fixture:seed` again to restore the deterministic fixture
     baseline after the test.
+
+## Recent development note (2026-07-03 process flow fast edit)
+
+- Increased `/wireframe/process-flow` node text readability, restored visible
+  step subtitles, enlarged/centered wafer die chips, and tightened auto-layout
+  vertical spacing for seeded process-flow nodes.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3011/api/health`
+  - In-app browser at `http://127.0.0.1:3011/wireframe/process-flow`,
+    1280x720: unauthenticated empty backend state rendered with no console
+    errors and no horizontal overflow.
+- Authenticated node-card visual verification was not exercised because this
+  worktree had no saved authenticated Playwright state, and no signup flow was
+  run.
