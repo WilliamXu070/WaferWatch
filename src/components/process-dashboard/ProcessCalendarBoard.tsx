@@ -27,7 +27,6 @@ import Timeline, {
 import { flushSync } from "react-dom";
 import {
   createProcessCalendarEvent,
-  deleteProcessCalendarEvent,
   moveProcessCalendarEvent,
   updateProcessCalendarEvent
 } from "@/features/calendar/actions";
@@ -153,6 +152,7 @@ const TRAVEL_BUFFER_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_WEEK_ZOOM_MS = 7 * DAY_MS;
 const MAX_WIREFRAME_ZOOM_MS = 183 * DAY_MS;
+const DEFAULT_VISIBLE_RANGE_DAYS = 7;
 const HOUR_MS = 60 * 60 * 1000;
 const MANUAL_STAGE_FILTER_ID = "__manual__";
 
@@ -240,6 +240,19 @@ function isSameCalendarDay(first: Date, second: Date) {
     first.getMonth() === second.getMonth() &&
     first.getDate() === second.getDate()
   );
+}
+
+function getCurrentWeekStart(date: Date) {
+  const input = dayjs(date);
+  const weekday = input.day();
+  const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+  return input
+    .add(mondayOffset, "day")
+    .hour(START_HOUR)
+    .minute(0)
+    .second(0)
+    .millisecond(0)
+    .valueOf();
 }
 
 function formatTimelineItemWindow(startsAt: Date, endsAt: Date, presentationMode: CalendarPresentationMode) {
@@ -576,6 +589,23 @@ function isBlankTimelineTarget(target: EventTarget | null) {
   return true;
 }
 
+function buildWireframePeopleSummary(persons: string[]) {
+  if (persons.length === 0) {
+    return "No one";
+  }
+
+  if (persons.length === 1) {
+    return persons[0];
+  }
+
+  const [first, second] = persons;
+  if (persons.length === 2) {
+    return `${first}, ${second}`;
+  }
+
+  return `${first}, ${second} +${persons.length - 2}`;
+}
+
 function areMoveWindowsEqual(left: MoveWindow, right: MoveWindow) {
   return left.location === right.location && left.startsAt === right.startsAt && left.endsAt === right.endsAt;
 }
@@ -680,10 +710,17 @@ export function ProcessCalendarBoard({
   const initialVisibleWindow = useMemo(() => {
     const requestedDate = new Date(`${initialVisibleStartDate}T00:00:00`);
     const requestedStart = Number.isNaN(requestedDate.getTime())
-      ? timelineStart
+      ? getCurrentWeekStart(new Date())
       : buildDateAtMinute(requestedDate, START_MINUTE).getTime();
+    const requestedSpanMs = DEFAULT_VISIBLE_RANGE_DAYS * DAY_MS;
 
-    return clampVisibleWindow(requestedStart, requestedStart + maxZoomMs, timelineStart, timelineEnd, maxZoomMs);
+    return clampVisibleWindow(
+      requestedStart,
+      requestedStart + requestedSpanMs,
+      timelineStart,
+      timelineEnd,
+      maxZoomMs
+    );
   }, [initialVisibleStartDate, maxZoomMs, timelineEnd, timelineStart]);
   const [visibleRange, setVisibleRange] = useState(() => ({
     boundsStart: timelineStart,
@@ -816,6 +853,10 @@ export function ProcessCalendarBoard({
         const peopleLabel = event.people
           .map((person) => presentationMode === "wireframe" ? toDisplayName(person.display_name) : person.display_name)
           .join(", ");
+        const wireframePeopleSummary =
+          presentationMode === "wireframe"
+            ? buildWireframePeopleSummary(event.people.map((person) => toDisplayName(person.display_name)))
+            : peopleLabel;
 
         return {
           id: event.id,
@@ -824,7 +865,7 @@ export function ProcessCalendarBoard({
           badgeLabel: getWireframeEventBadge(event, presentationMode),
           descriptionLabel,
           event,
-          peopleLabel,
+          peopleLabel: wireframePeopleSummary,
           timeLabel: formatTimelineItemWindow(startsAt, endsAt, presentationMode),
           toneClass:
             presentationMode === "wireframe"
@@ -835,7 +876,7 @@ export function ProcessCalendarBoard({
           canMove: true,
           canChangeGroup: true,
           canResize: "both",
-          height: presentationMode === "wireframe" ? 110 : 30
+          height: presentationMode === "wireframe" ? 84 : 30
         };
       });
 
@@ -849,8 +890,8 @@ export function ProcessCalendarBoard({
           group: draftWindow.location,
           title: "New event",
           badgeLabel: "Draft",
-          descriptionLabel: draftDragSelection ? "Release to create" : "Choose action in editor",
-          peopleLabel: draftDragSelection ? "Release to create" : "Unsaved draft",
+          descriptionLabel: draftDragSelection ? "Release to place" : undefined,
+          peopleLabel: draftDragSelection ? "No one" : "Draft",
           timeLabel: formatTimelineItemWindow(draftWindow.startsAt, draftWindow.endsAt, presentationMode),
           toneClass: `ww-timeline-item--draft ${draftDragSelection ? "ww-timeline-item--draft-active" : ""}`,
           start_time: draftWindow.startsAt.getTime(),
@@ -858,7 +899,7 @@ export function ProcessCalendarBoard({
           canMove: !draftDragSelection,
           canChangeGroup: !draftDragSelection,
           canResize: draftDragSelection ? false : "both",
-          height: presentationMode === "wireframe" ? 110 : 30,
+          height: presentationMode === "wireframe" ? 84 : 30,
           isDraft: true
         });
       }
@@ -1734,12 +1775,13 @@ export function ProcessCalendarBoard({
             {presentationMode === "wireframe" ? (
               <>
                 <div className="ww-timeline-item-title-row">
-                  <strong>{item.title}</strong>
+                  <strong title={item.title}>{item.title}</strong>
                   {item.badgeLabel ? <span className="ww-timeline-item-badge">{item.badgeLabel}</span> : null}
                 </div>
-                {item.peopleLabel ? <span className="ww-timeline-item-person">{item.peopleLabel}</span> : null}
+                <span className="ww-timeline-item-person">
+                  {item.peopleLabel ? item.peopleLabel : "No one"}
+                </span>
                 <span className="ww-timeline-item-time">{item.timeLabel}</span>
-                {item.descriptionLabel ? <span className="ww-timeline-item-description">{item.descriptionLabel}</span> : null}
               </>
             ) : (
               <>
@@ -1862,31 +1904,6 @@ export function ProcessCalendarBoard({
           current.map((event) => (event.id === updatedEvent.id ? updatedEvent : event))
         )
       );
-    });
-  }
-
-  function deleteSelectedEvent() {
-    if (!selectedEvent) {
-      return;
-    }
-
-    setError(null);
-
-    if (persistenceMode === "local") {
-      setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
-      clearSelectedEvent();
-      return;
-    }
-
-    startTransition(async () => {
-      const result = await deleteProcessCalendarEvent({ eventId: selectedEvent.id });
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-
-      setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
-      clearSelectedEvent();
     });
   }
 
@@ -2276,7 +2293,7 @@ export function ProcessCalendarBoard({
             </div>
 
             <label className="field">
-              <span>Action</span>
+              <span>Step / action</span>
               <select
                 value={actionMode === "step" ? selectedStepId : "__manual"}
                 onChange={(event) => {
@@ -2294,13 +2311,13 @@ export function ProcessCalendarBoard({
                     {step.name}
                   </option>
                 ))}
-                <option value="__manual">Manual action</option>
+                <option value="__manual">New action</option>
               </select>
             </label>
 
             {actionMode === "manual" ? (
               <label className="field">
-                <span>Manual action</span>
+                <span>New action</span>
                 <input
                   value={manualAction}
                   onChange={(event) => setManualAction(event.target.value)}
@@ -2352,7 +2369,7 @@ export function ProcessCalendarBoard({
             </div>
 
             <label className="field">
-              <span>Description</span>
+              <span>Additional information</span>
               <textarea
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
@@ -2375,15 +2392,15 @@ export function ProcessCalendarBoard({
         ) : selectedEvent ? (
           <>
             <div className="calendar-inspector-header">
-              <p className="eyebrow">Selected event</p>
               <h3>{eventLabel(selectedEvent, stepsById)}</h3>
               <p className="muted">
-                {selectedEvent.location} · {formatWindow(new Date(selectedEvent.starts_at), new Date(selectedEvent.ends_at))}
+                {selectedEvent.location} · {formatCompactDateTime(new Date(selectedEvent.starts_at))} -{" "}
+                {formatCompactDateTime(new Date(selectedEvent.ends_at))}
               </p>
             </div>
 
             <label className="field">
-              <span>Action</span>
+              <span>Step / action</span>
               <select
                 value={actionMode === "step" ? selectedStepId : "__manual"}
                 onChange={(event) => {
@@ -2401,13 +2418,13 @@ export function ProcessCalendarBoard({
                     {step.name}
                   </option>
                 ))}
-                <option value="__manual">Manual action</option>
+                <option value="__manual">New action</option>
               </select>
             </label>
 
             {actionMode === "manual" ? (
               <label className="field">
-                <span>Manual action</span>
+                <span>New action</span>
                 <input
                   value={manualAction}
                   onChange={(event) => setManualAction(event.target.value)}
@@ -2459,7 +2476,7 @@ export function ProcessCalendarBoard({
             </div>
 
             <label className="field">
-              <span>Description</span>
+              <span>Additional information</span>
               <textarea
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
@@ -2480,9 +2497,6 @@ export function ProcessCalendarBoard({
                 onClick={() => syncSelectionForm(selectedEvent)}
               >
                 Cancel
-              </button>
-              <button className="button button-danger" disabled={isPending} type="button" onClick={deleteSelectedEvent}>
-                Delete event
               </button>
             </div>
           </>

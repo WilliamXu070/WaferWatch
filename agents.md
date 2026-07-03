@@ -389,3 +389,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Screenshot: `/tmp/process-flow-buffering-create-link.png`
   - `npm run wireframe:fixture:seed` again to restore the deterministic fixture
     baseline after the test.
+
+## Recent development note (2026-07-03 calendar fast edit)
+
+- Fast-tracked `/wireframe/calendar` UI-only calendar editor cleanup:
+  default visible range now opens as a one-week window, wireframe event cards are
+  shorter and omit description text, selected-event header copy is condensed,
+  editor labels now read `Step / action`, `New action`, and `Additional
+  information`, and the selected-event delete button was removed from the UI.
+- No calendar persistence schema/action changes were made; wafer/die control and
+  true process-step creation from the calendar still need separate data-model
+  planning.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3000/api/health`
+  - Playwright route `http://localhost:3000/wireframe/calendar` at `1280x720`:
+    route loaded with no console errors and no visible `Delete event` or
+    `Selected event` text. The session was unauthenticated, so authenticated
+    timeline/editor event interactions were not browser-exercised.
+  - Screenshot: `/tmp/waferwatch-calendar-fast-track-bb34.png`
