@@ -3,8 +3,6 @@
 import { useMemo } from "react";
 import { ProcessCalendarBoard } from "@/components/process-dashboard/ProcessCalendarBoard";
 import { ChevronLeftIcon, ChevronRightIcon } from "../icons";
-import { calendarModel, calendarWindow, flowModel, processSummary } from "../mock-data";
-import { UpcomingHandoffs } from "./UpcomingHandoffs";
 import type {
   CalendarEventModel,
   CalendarPersonModel
@@ -14,6 +12,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_WINDOW_DAYS = 365;
 const LOOKBACK_DAYS = 180;
 const LOOKAHEAD_DAYS = 180;
+const CALENDAR_TITLE = "Calendar";
+const CALENDAR_RANGE_LABEL = "Backend schedule";
 
 type ProcessStepOption = {
   id: string;
@@ -27,12 +27,20 @@ type CalendarProcess = {
 };
 
 type CalendarViewProps = {
-  backendEnabled?: boolean;
-  process?: CalendarProcess;
-  steps?: readonly ProcessStepOption[];
-  people?: readonly CalendarPersonModel[];
-  initialEvents?: readonly CalendarEventModel[];
-  initialStartDate?: string;
+  result:
+    | {
+        status: "ready";
+        data: {
+          process: CalendarProcess;
+          steps: readonly ProcessStepOption[];
+          people: readonly CalendarPersonModel[];
+          initialEvents: readonly CalendarEventModel[];
+          initialStartDate: string;
+        };
+      }
+    | { status: "unauthenticated" }
+    | { status: "no-process" }
+    | { status: "unavailable"; message: string };
 };
 
 function parseIsoDate(input: string) {
@@ -108,58 +116,70 @@ function getCalendarWindow(
   );
 }
 
-export function CalendarView({
-  backendEnabled = false,
-  process = processSummary,
-  steps,
-  people,
-  initialEvents,
-  initialStartDate = calendarWindow.startDate
-}: CalendarViewProps) {
-  const resolvedProcess = process;
-  const resolvedSteps = useMemo(
-    () =>
-      steps && steps.length
-        ? [...steps]
-        : flowModel.steps.map((step) => ({
-            id: step.id,
-            name: step.name
-          })),
-    [steps]
-  );
-  const resolvedPeople = useMemo(
-    () => (people && people.length ? [...people] : [...calendarModel.people]),
-    [people]
-  );
-  const resolvedEvents = useMemo(
-    () => (initialEvents && initialEvents.length ? [...initialEvents] : [...calendarModel.events]),
-    [initialEvents]
-  );
+function getDisabledStateCopy(status: Exclude<CalendarViewProps["result"], { status: "ready" }>) {
+  if (status.status === "unauthenticated") {
+    return {
+      title: "Calendar preview disabled",
+      description: "Sign in with an existing account to load canonical Supabase calendar data."
+    };
+  }
+
+  if (status.status === "no-process") {
+    return {
+      title: "No process template available",
+      description: "Create or seed a process template before scheduling calendar events."
+    };
+  }
+
+  return {
+    title: "Calendar backend unavailable",
+    description: status.message
+  };
+}
+
+export function CalendarView({ result }: CalendarViewProps) {
+  const isBackendReady = result.status === "ready";
+  const calendarData = isBackendReady ? result.data : null;
+  const resolvedSteps = useMemo(() => (calendarData ? [...calendarData.steps] : []), [calendarData]);
+  const resolvedPeople = useMemo(() => (calendarData ? [...calendarData.people] : []), [calendarData]);
+  const resolvedEvents = useMemo(() => (calendarData ? [...calendarData.initialEvents] : []), [calendarData]);
 
   const calendarWindowRange = useMemo(
-    () => getCalendarWindow(initialStartDate, resolvedEvents),
-    [initialStartDate, resolvedEvents]
+    () =>
+      calendarData
+        ? getCalendarWindow(calendarData.initialStartDate, resolvedEvents)
+        : null,
+    [calendarData, resolvedEvents]
   );
+  const disabledState = isBackendReady ? null : getDisabledStateCopy(result);
 
   return (
     <div className="flex flex-col gap-5 p-6">
       <section className="wireframe-calendar-card rounded-3xl border border-[#e5e5db] bg-white">
         <header className="wireframe-calendar-card__header">
           <div>
-            <h1 className="text-xl font-semibold text-[#151512]">{calendarModel.title}</h1>
+            <h1 className="text-xl font-semibold text-[#151512]">{CALENDAR_TITLE}</h1>
             <p className="mt-1 text-sm text-[#8a887b]">
-              {backendEnabled
-                ? `${resolvedProcess.name} ${resolvedProcess.version ? `(${resolvedProcess.version})` : ""}`
-                : calendarModel.subtitle}
+              {calendarData
+                ? `${calendarData.process.name} ${calendarData.process.version ? `(${calendarData.process.version})` : ""}`
+                : "Canonical backend data only. Demo persistence is disabled."}
             </p>
           </div>
 
           <div className="wireframe-calendar-card__controls" aria-label="Calendar display controls">
+            <div className="wireframe-calendar-card__segments" aria-label="Range mode">
+              {["Day", "Week", "Month"].map((mode) => (
+                <button key={mode} type="button" aria-pressed={mode === "Week"}>
+                  {mode}
+                </button>
+              ))}
+            </div>
+
             <div className="wireframe-calendar-card__range" aria-label="Current range">
               <button type="button" aria-label="Previous range">
                 <ChevronLeftIcon />
               </button>
-              <span>{calendarModel.rangeLabel}</span>
+              <span>{CALENDAR_RANGE_LABEL}</span>
               <button type="button" aria-label="Next range">
                 <ChevronRightIcon />
               </button>
@@ -172,21 +192,36 @@ export function CalendarView({
         </header>
 
         <div className="wireframe-calendar-surface">
-          <ProcessCalendarBoard
-            processTemplateId={resolvedProcess.id}
-            calendarStartDate={calendarWindowRange.startDate}
-            days={calendarWindowRange.days}
-            steps={resolvedSteps}
-            people={resolvedPeople}
-            initialEvents={resolvedEvents}
-            initialVisibleStartDate={initialStartDate}
-            persistenceMode={backendEnabled ? "server" : "local"}
-            presentationMode="wireframe"
-          />
+          {calendarData && calendarWindowRange ? (
+            <>
+              {resolvedEvents.length === 0 ? (
+                <div className="mb-4 rounded-2xl border border-dashed border-[#d8d6ca] bg-[#fbfbf7] p-4">
+                  <p className="text-sm font-semibold text-[#151512]">No calendar events yet</p>
+                  <p className="mt-1 text-sm text-[#7b796f]">
+                    This process has no Supabase calendar rows in the loaded range. Double-click the scheduler to create the first event.
+                  </p>
+                </div>
+              ) : null}
+
+              <ProcessCalendarBoard
+                processTemplateId={calendarData.process.id}
+                calendarStartDate={calendarWindowRange.startDate}
+                days={calendarWindowRange.days}
+                steps={resolvedSteps}
+                people={resolvedPeople}
+                initialEvents={resolvedEvents}
+                initialVisibleStartDate={calendarData.initialStartDate}
+                presentationMode="wireframe"
+              />
+            </>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-[#d8d6ca] bg-[#fbfbf7] p-6">
+              <p className="text-sm font-semibold text-[#151512]">{disabledState?.title}</p>
+              <p className="mt-2 max-w-2xl text-sm text-[#7b796f]">{disabledState?.description}</p>
+            </div>
+          )}
         </div>
       </section>
-
-      <UpcomingHandoffs handoffs={calendarModel.handoffs} />
     </div>
   );
 }

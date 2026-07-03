@@ -143,6 +143,24 @@ export async function getProcessTemplate(templateId: string) {
   };
 }
 
+export async function getFirstActiveProcessTemplateId() {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("process_templates")
+    .select("id")
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
+    .order("name", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.id ?? null;
+}
+
 function extractDieLabel(metadata: Json): string | null {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
     return null;

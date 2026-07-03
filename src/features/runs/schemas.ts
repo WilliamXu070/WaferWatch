@@ -20,6 +20,12 @@ export const blockStepSchema = z.object({
   reason: z.string().trim().min(1).max(4000)
 });
 
+export const moveWaferToProcessStepSchema = z.object({
+  assignmentId: uuidSchema,
+  targetStepId: uuidSchema,
+  note: z.string().trim().max(4000).nullable().optional()
+});
+
 export const reservationSchema = z.object({
   projectId: uuidSchema,
   toolId: uuidSchema,

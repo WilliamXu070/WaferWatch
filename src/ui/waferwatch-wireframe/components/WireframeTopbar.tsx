@@ -18,7 +18,7 @@ export function WireframeTopbar() {
           readOnly
           placeholder="Search wafers, steps, die notes..."
           aria-label="Search"
-          className="h-12 w-full rounded-2xl border border-[#e0dfd2] bg-white pl-11 pr-16 text-[15px] text-[#151512] placeholder:text-[#9c9a8c] focus:outline-none focus:ring-2 focus:ring-[#c9c8b9]"
+          className="h-12 w-full rounded-2xl border border-[#e0dfd2] bg-white pl-11 pr-16 text-[15px] text-[#151512] caret-transparent placeholder:text-[#9c9a8c] focus:outline-none focus:ring-2 focus:ring-[#c9c8b9]"
         />
         <kbd className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-[#e4e3d8] bg-[#faf9f3] px-1.5 py-0.5 text-[11px] font-medium text-[#8a887b]">
           ⌘ K

@@ -6,5 +6,4 @@ export { WaferStatusView } from "./components/WaferStatusView";
 export { WireframeSidebar } from "./components/WireframeSidebar";
 export { WireframeTopbar } from "./components/WireframeTopbar";
 
-export { dashboardModel, flowModel, calendarModel, processSummary, waferStatusModel } from "./mock-data";
 export * from "./types";

@@ -1,11 +1,24 @@
 import type { StepStatus } from "@/types/database";
 import type { ProcessCalendarLocation } from "@/features/calendar/queries";
+export type {
+  WireframeCalendarDto,
+  WireframeDashboardCardDto,
+  WireframeDashboardDto,
+  WireframeDashboardStageId,
+  WireframeEmptyStateDto,
+  WireframeProcessFlowDto,
+  WireframeProcessFlowNodeDto,
+  WireframeProcessFlowWaferDto,
+  WireframeWaferViewerDto,
+  WireframeWaferViewerFamilyDto,
+  WireframeWaferViewerItemDto
+} from "@/features/wireframe/types";
 
 /**
  * View-model types for the WaferWatch wireframe preview.
  *
  * These intentionally re-use the real backend enums/shapes (`StepStatus`,
- * `ProcessCalendarLocation`) so the static mock data stays faithful to what the
+ * `ProcessCalendarLocation`) so the wireframe models stay faithful to what the
  * live Supabase queries return. The wireframe re-skins chrome only; the flow and
  * calendar 2D surfaces are the real `ProcessFlowDiagram` / `ProcessCalendarBoard`.
  */
@@ -168,6 +181,8 @@ export type WaferFamilyStatus = "active" | "paused" | "setup";
 
 export type WaferTileStatus = "litho" | "etch" | "inspection" | "bond" | "test" | "dice" | "queued";
 
+export type WaferDisplayMode = "diced" | "undiced";
+
 export type WaferStatusTileModel = {
   id: string;
   code: string;
@@ -176,6 +191,7 @@ export type WaferStatusTileModel = {
   stepLabel: string;
   status: WaferTileStatus;
   waferStateName: string;
+  mode?: WaferDisplayMode;
   isUndiced?: boolean;
   isSelected?: boolean;
 };

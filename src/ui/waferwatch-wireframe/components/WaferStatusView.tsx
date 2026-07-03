@@ -2,8 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { ActivityIcon, ChevronRightIcon, StackIcon, TargetIcon, WaferLogoIcon } from "../icons";
-import { waferStatusModel } from "../mock-data";
-import type { WaferFamilyModel, WaferStatusMetric, WaferStatusTileModel, WaferTileStatus } from "../types";
+import type {
+  WaferFamilyModel,
+  WaferStatusMetric,
+  WaferStatusModel,
+  WaferStatusTileModel,
+  WaferTileStatus
+} from "../types";
 import { WaferGeometryPreview } from "./WaferGeometryPreview";
 
 const statusDotColor: Record<WaferTileStatus, string> = {
@@ -55,7 +60,7 @@ function getWaferDisplayLabel(tile: WaferStatusTileModel, isUndiced: boolean) {
 }
 
 function isUndicedMode(tile: WaferStatusTileModel) {
-  return Boolean(tile.isUndiced);
+  return tile.mode ? tile.mode === "undiced" : Boolean(tile.isUndiced);
 }
 
 function MetricTile({ metric }: { metric: WaferStatusMetric }) {
@@ -142,7 +147,7 @@ function FamilySection({
   onSelect
 }: {
   family: WaferFamilyModel;
-  selectedTile: WaferStatusTileModel;
+  selectedTile: WaferStatusTileModel | null;
   onSelect: (tile: WaferStatusTileModel) => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -183,7 +188,7 @@ function FamilySection({
               key={tile.id}
               tile={tile}
               isUndiced={isUndicedMode(tile)}
-              selected={selectedTile.id === tile.id}
+              selected={selectedTile?.id === tile.id}
               onSelect={() => onSelect(tile)}
             />
           ))}
@@ -233,42 +238,81 @@ function SelectedDiePanel({
   );
 }
 
-export function WaferStatusView() {
+function EmptyWaferStatusState({
+  title,
+  description
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <section className="rounded-2xl border border-dashed border-[#d8d6ca] bg-[#fbfbf7] p-10 text-center">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#98968a]">
+        Backend wafer viewer
+      </p>
+      <h2 className="mt-2 text-[24px] font-semibold leading-tight text-[#151512]">
+        {title}
+      </h2>
+      <p className="mx-auto mt-3 max-w-[520px] text-[14px] leading-6 text-[#6b6a5f]">
+        {description}
+      </p>
+    </section>
+  );
+}
+
+export function WaferStatusView({
+  model,
+  emptyTitle = "No wafers available",
+  emptyDescription = "Authenticated Supabase data loaded, but this project state has no wafers visible to the current session."
+}: {
+  model: WaferStatusModel;
+  emptyTitle?: string;
+  emptyDescription?: string;
+}) {
   const initialSelected = useMemo(
     () =>
-      waferStatusModel.families
+      model.families
         .flatMap((family) => family.tiles)
-        .find((tile) => tile.isSelected) ?? waferStatusModel.families[0].tiles[0],
-    []
+        .find((tile) => tile.isSelected) ?? model.families[0]?.tiles[0] ?? null,
+    [model]
   );
-  const [selectedTile, setSelectedTile] = useState<WaferStatusTileModel>(initialSelected);
-  const selectedUndiced = isUndicedMode(selectedTile);
+  const [selectedTile, setSelectedTile] = useState<WaferStatusTileModel | null>(initialSelected);
+  const selectedUndiced = selectedTile ? isUndicedMode(selectedTile) : false;
+  const hasWafers = model.families.some((family) => family.tiles.length > 0);
 
   return (
     <div className="grid gap-5 p-6">
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-        {waferStatusModel.metrics.map((metric) => (
+        {model.metrics.map((metric) => (
           <MetricTile key={metric.id} metric={metric} />
         ))}
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="grid min-w-0 gap-4">
-          {waferStatusModel.families.map((family) => (
-            <FamilySection
-              key={family.id}
-              family={family}
+      {hasWafers ? (
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid min-w-0 gap-4">
+            {model.families.map((family) => (
+              <FamilySection
+                key={family.id}
+                family={family}
+                selectedTile={selectedTile}
+                onSelect={setSelectedTile}
+              />
+            ))}
+          </div>
+          {selectedTile ? (
+            <SelectedDiePanel
               selectedTile={selectedTile}
-              onSelect={setSelectedTile}
+              isUndiced={selectedUndiced}
             />
-          ))}
-        </div>
-        <SelectedDiePanel
-          selectedTile={selectedTile}
-          isUndiced={selectedUndiced}
+          ) : null}
+        </section>
+      ) : (
+        <EmptyWaferStatusState
+          title={emptyTitle}
+          description={emptyDescription}
         />
-      </section>
-
+      )}
     </div>
   );
 }

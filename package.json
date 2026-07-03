@@ -16,6 +16,11 @@
     "migration:list": "supabase migration list",
     "migration:repair": "supabase migration repair",
     "supabase:types": "supabase gen types typescript --linked > src/types/database.generated.ts",
+    "wireframe:fixture": "node --env-file=.env.local scripts/wireframe-fixture.mjs",
+    "wireframe:fixture:snapshot": "node --env-file=.env.local scripts/wireframe-fixture.mjs snapshot",
+    "wireframe:fixture:clear": "node --env-file=.env.local scripts/wireframe-fixture.mjs clear",
+    "wireframe:fixture:seed": "node --env-file=.env.local scripts/wireframe-fixture.mjs seed",
+    "wireframe:fixture:verify": "node --env-file=.env.local scripts/wireframe-fixture.mjs verify",
     "deploy:preview": "npx --yes vercel",
     "deploy:prod": "npx --yes vercel --prod"
   },

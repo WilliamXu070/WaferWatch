@@ -21,13 +21,6 @@ export type ProcessCalendarEventView = Pick<
   people: ProcessCalendarPersonOption[];
 };
 
-const SEEDED_PROCESS_PEOPLE: ProcessCalendarPersonOption[] = [
-  { id: "00000000-0000-4000-8000-000000000001", display_name: "adam" },
-  { id: "00000000-0000-4000-8000-000000000002", display_name: "barbara" },
-  { id: "00000000-0000-4000-8000-000000000003", display_name: "calvin" },
-  { id: "00000000-0000-4000-8000-000000000004", display_name: "derik" }
-];
-
 function isMissingCalendarTableError(error: unknown) {
   return (
     typeof error === "object" &&
@@ -47,7 +40,7 @@ export async function listProcessPeople(): Promise<ProcessCalendarPersonOption[]
 
   if (error) {
     if (isMissingCalendarTableError(error)) {
-      return SEEDED_PROCESS_PEOPLE;
+      return [];
     }
 
     throw error;

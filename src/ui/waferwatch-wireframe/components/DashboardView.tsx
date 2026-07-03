@@ -1,6 +1,5 @@
 import { ActivityIcon, ArrowRightIcon, WarningIcon } from "../icons";
-import { dashboardModel } from "../mock-data";
-import type { DashboardStat } from "../types";
+import type { DashboardModel, DashboardStat } from "../types";
 import { KanbanCard } from "./KanbanCard";
 import { ProcessActivityChart } from "./ProcessActivityChart";
 import { StepProgressGauge } from "./StepProgressGauge";
@@ -34,16 +33,47 @@ function StatTile({ stat }: { stat: DashboardStat }) {
   );
 }
 
-export function DashboardView() {
-  const { columns } = dashboardModel;
+function DashboardEmptyState({
+  title,
+  description
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <section className="rounded-2xl border border-dashed border-[#d8d6ca] bg-[#fbfbf7] p-10 text-center">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#98968a]">
+        Backend dashboard
+      </p>
+      <h2 className="mt-2 text-[24px] font-semibold leading-tight text-[#151512]">
+        {title}
+      </h2>
+      <p className="mx-auto mt-3 max-w-[560px] text-[14px] leading-6 text-[#6b6a5f]">
+        {description}
+      </p>
+    </section>
+  );
+}
+
+export function DashboardView({
+  dashboard,
+  emptyTitle = "No wafer assignments",
+  emptyDescription = "Authenticated Supabase data loaded, but no wafer assignments are visible to the current session."
+}: {
+  dashboard: DashboardModel;
+  emptyTitle?: string;
+  emptyDescription?: string;
+}) {
+  const { columns } = dashboard;
+  const hasCards = columns.some((column) => column.cards.length > 0);
 
   return (
     <div className="flex flex-col">
       <section className="bg-[#f2f2e8] px-8 pb-8 pt-4">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_repeat(2,minmax(0,0.6fr))]">
-          <ProcessActivityChart activity={dashboardModel.activity} />
-          <StepProgressGauge progress={dashboardModel.progress} />
-          {dashboardModel.stats.map((stat) => (
+          <ProcessActivityChart activity={dashboard.activity} />
+          <StepProgressGauge progress={dashboard.progress} />
+          {dashboard.stats.map((stat) => (
             <StatTile key={stat.id} stat={stat} />
           ))}
         </div>
@@ -69,6 +99,13 @@ export function DashboardView() {
           </div>
         ))}
       </section>
+
+      {!hasCards ? (
+        <DashboardEmptyState
+          title={emptyTitle}
+          description={emptyDescription}
+        />
+      ) : null}
     </div>
   );
 }

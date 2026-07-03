@@ -162,3 +162,146 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Verified with:
   - `npm run lint`
   - `npm run build`
+
+## Recent development note (2026-07-02 23:15)
+
+- Added shared wireframe backend DTOs, pure mapping adapters, and server query
+  helpers for dashboard, process-flow, calendar, and wafer-viewer data under
+  `src/features/wireframe`.
+- Added the missing calendar event update action/schema needed for the existing
+  wireframe calendar import to compile.
+- No UI route or visual component wiring changed in this backend-contract slice.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+
+## Recent development note (2026-07-03 calendar wireframe backend parity)
+
+- Updated `/wireframe/calendar` so backend-ready mode uses canonical Supabase
+  schedule data and server actions without falling back to mock events or mock
+  people. Empty backend schedules now show an empty-calendar state.
+- Unauthenticated sessions now show an explicit disabled backend state instead
+  of rendering mock persisted data.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3006/api/health`
+  - Playwright at `http://localhost:3006/wireframe/calendar` with a 1440x1100
+    viewport. The saved auth state was not accepted, so authenticated mutations
+    were not exercised; unauthenticated mode showed the disabled state with no
+    mock events, no mock handoffs, and no console errors.
+  - Screenshot: `/tmp/waferwatch-calendar-backend-parity.png`
+
+## Recent development note (2026-07-03 dashboard wireframe backend)
+
+- Backend-integrated `/wireframe/dashboard` so the server page passes a database-
+  derived dashboard model instead of static mock cards. Empty backend state now
+  renders zero stats and empty workflow columns.
+- Added the missing calendar event update action/schema required for the app-wide
+  production build to compile; no calendar UI internals were changed.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3008/api/health`
+  - In-app browser at `http://localhost:3008/wireframe/dashboard`, 1280x720:
+    zero stats, four empty columns, no console errors, no horizontal overflow.
+  - Screenshot: `/tmp/waferwatch-wireframe-dashboard-backend.png`
+
+## Recent development note (2026-07-03 integrated wireframe backend)
+
+- Integrated the wireframe backend branches and removed the remaining static
+  WaferWatch wireframe mock-data exports so active wireframe routes read from
+  Supabase-backed loaders or render explicit empty/auth states.
+- Restored `/wireframe/process-flow` to the wireframe shell/component styling
+  after the backend merge briefly exposed legacy `page-shell` UI in the route.
+- Added authenticated-session gating to wireframe shell process/team chrome so
+  unauthenticated verification does not show seeded-looking backend labels.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3009/api/health`
+  - Playwright at `http://localhost:3009/wireframe/dashboard`,
+    `/wireframe/calendar`, `/wireframe/process-flow`, and
+    `/wireframe/wafer-status` with a 1440x1000 viewport.
+  - Empty/unauthenticated routes rendered zero-state wireframe UI with no
+    console errors; `/wireframe/process-flow` had zero legacy `.page-shell`,
+    `.page-heading`, or `.panel.dashboard-panel` nodes.
+  - Saved auth state `playwright/.auth/user.json` was not accepted, so
+    authenticated wafer-status/drag persistence was not exercised.
+  - Screenshot: `/tmp/waferwatch-process-flow-wireframe-auth-gated.png`
+
+## Recent development note (2026-07-03 wireframe fixture verification)
+
+- Added `scripts/wireframe-fixture.mjs` plus npm aliases for deterministic
+  wireframe backend verification:
+  `wireframe:fixture:snapshot`, `wireframe:fixture:clear`,
+  `wireframe:fixture:seed`, and `wireframe:fixture:verify`.
+- The fixture is scoped to the fixed `codex-wireframe-fixture` project/template
+  namespace and cleanup deletes only those deterministic IDs.
+- Verified clear/no-fixture state, seeded two wafers (`ALPHA-VERIFY-01`,
+  `BETA-VERIFY-02`), two assignments, eight executions, one calendar event, and
+  one persisted text surface, then cleared the fixture rows again.
+- The existing saved Playwright auth state was decoded only for metadata and was
+  expired; its refresh token was invalid, so authenticated calendar/process-flow/
+  wafer-status browser verification still needs a fresh existing login.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run wireframe:fixture:snapshot`
+  - `npm run wireframe:fixture:clear`
+  - `npm run wireframe:fixture:seed`
+  - `npm run wireframe:fixture:verify`
+  - `curl -s http://127.0.0.1:3010/api/health`
+  - Playwright at `http://127.0.0.1:3010/wireframe/dashboard`: seeded cards
+    appeared before cleanup and disappeared after cleanup with no console errors.
+  - Screenshots: `/tmp/waferwatch-seeded-dashboard.png`,
+    `/tmp/waferwatch-cleared-dashboard.png`
+
+## Recent development note (2026-07-03 wireframe auth alignment)
+
+- Aligned `/wireframe/dashboard` and `/wireframe/wafer-status` around the
+  authenticated Supabase boundary. Unauthenticated sessions now render explicit
+  empty backend states and do not load seeded wafer/template data through admin
+  query paths or redirects.
+- Fixed the shared wireframe topbar search input hydration mismatch by making
+  the read-only caret style explicit in the component render.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run wireframe:fixture:seed`
+  - `curl -s http://localhost:3008/api/health`
+  - Unauthenticated route checks confirmed `ALPHA-VERIFY-01` and
+    `BETA-VERIFY-02` were not visible on `/wireframe/dashboard` or
+    `/wireframe/wafer-status`.
+  - Playwright screenshots:
+    `/tmp/waferwatch-auth-alignment-dashboard-v2.png` and
+    `/tmp/waferwatch-auth-alignment-wafer-status-v2.png`
+  - `npm run wireframe:fixture:clear` returned zero fixture rows across the
+    deterministic project/template/wafer/assignment/execution/calendar/text
+    surface namespace.
+
+## Recent development note (2026-07-03 wireframe UI/backend recovery)
+
+- Preserved the dirty root warm-ivory wireframe UI and calendar fixes on
+  `codex/wireframe-ui-calendar-preserve`, then merged `origin/main` backend/auth
+  work into that branch instead of rebuilding from the backend worktree.
+- Kept the backend-only `/wireframe/*` data boundary, shell model, fixture
+  verification script, and removed the merge-created duplicate
+  `updateProcessCalendarEvent` export.
+- Replaced the topbar inline caret style with a CSS utility to avoid the
+  hydration mismatch seen during browser verification.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run wireframe:fixture:seed`
+  - `curl -s http://localhost:3008/api/health`
+  - Unauthenticated checks confirmed `ALPHA-VERIFY-01` and
+    `BETA-VERIFY-02` were not visible on `/wireframe/dashboard` or
+    `/wireframe/wafer-status`.
+  - Playwright screenshots:
+    `/tmp/waferwatch-combined-dashboard.png`,
+    `/tmp/waferwatch-combined-calendar.png`,
+    `/tmp/waferwatch-combined-process-flow.png`,
+    `/tmp/waferwatch-combined-wafer-status.png`, and
+    `/tmp/waferwatch-combined-dashboard-v2.png`
+  - `npm run wireframe:fixture:clear` returned zero fixture rows.
