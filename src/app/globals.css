@@ -414,8 +414,22 @@ textarea {
 }
 
 .flow-map-shell {
+  --flow-paper: #fbfbf8;
+  --flow-panel: #f7f7f3;
+  --flow-ink: #20211e;
+  --flow-muted: #73746d;
+  --flow-border: #deded8;
+  --flow-border-strong: #c9c9c0;
+  --flow-active: #181917;
+  --flow-green: #8ac79a;
+  --flow-blue: #7aa3df;
+  --flow-purple: #a98bd8;
+  --flow-amber: #e0ad5f;
+  --flow-cyan: #80c6c3;
+  --flow-shadow: 0 16px 32px rgba(42, 43, 38, 0.08);
   display: grid;
-  gap: 10px;
+  gap: 14px;
+  color: var(--flow-ink);
 }
 
 .flow-map-toolbar {
@@ -423,25 +437,32 @@ textarea {
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
+  padding: 18px 20px 8px;
 }
 
 .flow-map-summary {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  color: var(--foreground);
-  font-size: 13px;
+  display: grid;
+  gap: 4px;
+  color: var(--flow-ink);
 }
 
 .flow-map-summary strong {
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1.2;
 }
 
 .flow-map-summary span {
-  color: var(--muted);
-  font-weight: 700;
+  color: var(--flow-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.flow-map-summary em {
+  color: var(--flow-muted);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 500;
 }
 
 .flow-map-summary em {
@@ -467,21 +488,49 @@ textarea {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+
+.flow-map-shell .button {
+  min-height: 42px;
+  border-color: var(--flow-border);
+  border-radius: 9px;
+  background: #fbfbf8;
+  color: var(--flow-ink);
+  box-shadow: none;
+}
+
+.flow-map-shell .button:hover,
+.flow-map-shell .button:focus-visible {
+  border-color: var(--flow-border-strong);
+  background: #f0f0eb;
+  color: var(--flow-ink);
+}
+
+.flow-map-shell .button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .flow-icon-button {
-  width: 38px;
+  width: 44px;
   padding-right: 0;
   padding-left: 0;
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .flow-map-zoom {
-  min-width: 52px;
+  min-width: 58px;
   text-align: center;
   font-size: 13px;
   font-weight: 700;
-  color: var(--foreground);
+  color: var(--flow-ink);
+}
+
+.flow-fit-button {
+  padding-right: 16px;
+  padding-left: 16px;
 }
 
 .flow-map-frame {
@@ -489,11 +538,14 @@ textarea {
   width: 100%;
   height: clamp(680px, 72vh, 860px);
   overflow: auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--flow-border);
   border-radius: 12px;
-  background: var(--panel-soft);
+  background:
+    radial-gradient(circle, rgba(33, 34, 31, 0.13) 1px, transparent 1.2px),
+    linear-gradient(var(--flow-paper), var(--flow-paper));
+  background-size: 20px 20px, auto;
   padding: 12px;
-  box-shadow: var(--shadow);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
   cursor: crosshair;
   touch-action: none;
   overscroll-behavior: contain;
@@ -518,7 +570,7 @@ textarea {
 }
 
 .flow-snap-guide {
-  stroke: var(--accent);
+  stroke: var(--flow-blue);
   stroke-width: 1.5;
   stroke-dasharray: 6 6;
   opacity: 0.72;
@@ -526,20 +578,26 @@ textarea {
 }
 
 .flow-node-card {
-  fill: var(--panel);
-  stroke: var(--border);
+  fill: #fbfbf8;
+  stroke: var(--flow-border-strong);
   stroke-width: 1;
-  filter: drop-shadow(0 8px 18px rgb(38 55 70 / 0.08));
+  filter: drop-shadow(0 9px 14px rgba(35, 36, 31, 0.08));
 }
 
 .flow-node--start .flow-node-card {
-  fill: #fb923c;
-  stroke: #ea580c;
+  fill: #f3f5ef;
+  stroke: #cfd5c8;
 }
 
 .flow-node--end .flow-node-card {
-  fill: #fdba74;
-  stroke: #fb923c;
+  fill: #f5f5f0;
+  stroke: #d2d2ca;
+}
+
+.flow-node--active .flow-node-card {
+  fill: var(--flow-active);
+  stroke: #2b2c29;
+  filter: drop-shadow(0 12px 18px rgba(24, 25, 23, 0.22));
 }
 
 .flow-node {
@@ -551,7 +609,7 @@ textarea {
 }
 
 .flow-node--dragging .flow-node-card {
-  stroke: var(--accent);
+  stroke: var(--flow-blue);
   stroke-width: 2;
 }
 
@@ -560,14 +618,19 @@ textarea {
 }
 
 .flow-node--connecting .flow-node-card {
-  stroke: var(--accent);
+  stroke: var(--flow-purple);
   stroke-width: 2;
 }
 
 .flow-node-port {
-  fill: var(--accent);
-  stroke: var(--panel);
+  fill: #f7f7f3;
+  stroke: var(--flow-ink);
   stroke-width: 2;
+}
+
+.flow-node--active .flow-node-port {
+  fill: #232421;
+  stroke: #f0f0eb;
 }
 
 .flow-node-port-hit {
@@ -581,7 +644,7 @@ textarea {
 .flow-node-title {
   font-size: 16px;
   font-weight: 700;
-  fill: var(--foreground);
+  fill: var(--flow-ink);
 }
 
 .flow-node-subtitle,
@@ -589,109 +652,113 @@ textarea {
 .flow-edge-label,
 .flow-token-text,
 .flow-token-status {
-  fill: var(--muted);
+  fill: var(--flow-muted);
   font-size: 12px;
 }
 
 .flow-node-subtitle {
-  fill: var(--foreground);
+  fill: var(--flow-muted);
 }
 
 .flow-node-meta {
-  fill: var(--muted);
+  fill: var(--flow-muted);
   font-size: 11px;
 }
 
 .flow-node-icon {
-  color: var(--foreground);
+  fill: none;
+  stroke: var(--flow-ink);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .flow-node--active .flow-node-title,
 .flow-node--active .flow-node-subtitle,
 .flow-node--active .flow-node-meta {
-  fill: #f5f7f1;
+  fill: #f3f6ee;
 }
 
 .flow-node--active .flow-node-icon {
-  color: #f5f7f1;
+  stroke: #f3f6ee;
 }
 
 .flow-node-active-pill rect {
-  fill: #ecf8ed;
-  stroke: #b7dbb9;
+  fill: #eaf5e8;
+  stroke: #a8d2a5;
   stroke-width: 1;
 }
 
 .flow-node-active-pill text {
-  fill: #315b39;
+  fill: #31543c;
   font-size: 11px;
   font-weight: 750;
   text-anchor: middle;
 }
 
 .flow-wafer-chip rect {
-  fill: #eef5ff;
-  stroke: #7aa3df;
-  stroke-width: 1.4;
+  fill: color-mix(in srgb, var(--flow-blue) 22%, #fbfbf8);
+  stroke: var(--flow-blue);
+  stroke-width: 1.5;
 }
 
 .flow-wafer-chip text {
-  fill: #315982;
+  fill: #2f4f78;
   font-size: 11px;
   font-weight: 750;
   text-anchor: middle;
 }
 
 .flow-wafer-chip:nth-child(2n) rect {
-  fill: #eef8ef;
-  stroke: #8ac79a;
+  fill: color-mix(in srgb, var(--flow-green) 24%, #fbfbf8);
+  stroke: var(--flow-green);
 }
 
 .flow-wafer-chip:nth-child(2n) text {
-  fill: #356443;
+  fill: #3a6548;
 }
 
 .flow-wafer-chip:nth-child(3n) rect {
-  fill: #f3effb;
-  stroke: #a98bd8;
+  fill: color-mix(in srgb, var(--flow-purple) 22%, #fbfbf8);
+  stroke: var(--flow-purple);
 }
 
 .flow-wafer-chip:nth-child(3n) text {
-  fill: #5e4b82;
+  fill: #604d84;
 }
 
 .flow-wafer-chip:nth-child(4n) rect {
-  fill: #fff5e7;
-  stroke: #e0ad5f;
+  fill: color-mix(in srgb, var(--flow-amber) 24%, #fbfbf8);
+  stroke: var(--flow-amber);
 }
 
 .flow-wafer-chip:nth-child(4n) text {
-  fill: #745522;
+  fill: #715222;
 }
 
 .flow-wafer-chip--overflow rect {
-  fill: #f2f2ee;
-  stroke: #cdccc4;
+  fill: #f0f0eb;
+  stroke: var(--flow-border-strong);
 }
 
 .flow-wafer-chip--overflow text {
-  fill: #5f5f58;
+  fill: var(--flow-muted);
 }
 
 .flow-node--active .flow-wafer-chip rect {
-  fill: #173a31;
-  stroke: #4ea883;
+  fill: #1f3a33;
+  stroke: #55aa87;
 }
 
 .flow-node--active .flow-wafer-chip text {
-  fill: #75d5ad;
+  fill: #77d7ae;
 }
 
 .flow-edge {
-  stroke: var(--foreground);
+  stroke: rgba(31, 32, 29, 0.7);
   stroke-width: 2;
   fill: none;
-  opacity: 0.8;
+  opacity: 0.9;
 }
 
 .flow-edge--loop,
@@ -700,7 +767,7 @@ textarea {
 }
 
 .flow-edge--draft {
-  stroke: var(--accent);
+  stroke: var(--flow-purple);
   stroke-dasharray: 6 5;
   opacity: 0.95;
 }
@@ -711,17 +778,17 @@ textarea {
   display: grid;
   min-width: 164px;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--flow-border);
   border-radius: 8px;
-  background: var(--panel);
-  box-shadow: var(--shadow);
+  background: #fbfbf8;
+  box-shadow: var(--flow-shadow);
 }
 
 .flow-role-menu button {
   border: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--flow-border);
   background: transparent;
-  color: var(--foreground);
+  color: var(--flow-ink);
   padding: 10px 12px;
   text-align: left;
   font: inherit;
@@ -736,28 +803,28 @@ textarea {
 
 .flow-role-menu button:hover,
 .flow-role-menu button:focus-visible {
-  background: var(--panel-soft);
+  background: #f0f0eb;
   outline: none;
 }
 
 .flow-role-menu-danger {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--flow-border);
 }
 
 .flow-empty-state circle {
-  fill: var(--panel);
-  stroke: var(--border);
+  fill: #fbfbf8;
+  stroke: var(--flow-border);
   stroke-width: 1;
 }
 
 .flow-empty-state path {
-  stroke: var(--muted);
+  stroke: var(--flow-muted);
   stroke-width: 2;
   stroke-linecap: round;
 }
 
 .flow-empty-state text {
-  fill: var(--muted);
+  fill: var(--flow-muted);
   font-size: 13px;
   font-weight: 700;
   text-anchor: middle;
