@@ -1,6 +1,5 @@
 import { ActivityIcon, ArrowRightIcon, WarningIcon } from "../icons";
-import { dashboardModel } from "../mock-data";
-import type { DashboardStat } from "../types";
+import type { DashboardModel, DashboardStat } from "../types";
 import { KanbanCard } from "./KanbanCard";
 import { ProcessActivityChart } from "./ProcessActivityChart";
 import { StepProgressGauge } from "./StepProgressGauge";
@@ -34,16 +33,16 @@ function StatTile({ stat }: { stat: DashboardStat }) {
   );
 }
 
-export function DashboardView() {
-  const { columns } = dashboardModel;
+export function DashboardView({ dashboard }: { dashboard: DashboardModel }) {
+  const { columns } = dashboard;
 
   return (
     <div className="flex flex-col gap-5 p-6">
       <section className="rounded-2xl border border-ww-border bg-[#f5f5ef] p-6">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_repeat(2,minmax(0,0.6fr))]">
-          <ProcessActivityChart activity={dashboardModel.activity} />
-          <StepProgressGauge progress={dashboardModel.progress} />
-          {dashboardModel.stats.map((stat) => (
+          <ProcessActivityChart activity={dashboard.activity} />
+          <StepProgressGauge progress={dashboard.progress} />
+          {dashboard.stats.map((stat) => (
             <StatTile key={stat.id} stat={stat} />
           ))}
         </div>
