@@ -323,3 +323,16 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     double-clicked the empty canvas to create a local step, confirmed one
     `.flow-node--selected`, deleted it from the toolbar, recreated a step, and
     deleted it with the keyboard Delete key. Console error log was empty.
+
+## Recent development note (2026-07-03 calendar mode control removal)
+
+- Removed the nonfunctional Day/Week/Month segmented control from
+  `/wireframe/calendar` while keeping the current range arrows and Today control.
+- Removed the dead `.wireframe-calendar-card__segments` CSS.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3000/api/health`
+  - Browser route `http://localhost:3000/wireframe/calendar` at `1280x720`:
+    confirmed no Range mode control, no Day/Week/Month sequence, range control
+    and Today still present, and console error log was empty.

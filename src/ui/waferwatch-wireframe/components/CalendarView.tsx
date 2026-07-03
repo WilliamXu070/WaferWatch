@@ -167,14 +167,6 @@ export function CalendarView({ result }: CalendarViewProps) {
           </div>
 
           <div className="wireframe-calendar-card__controls" aria-label="Calendar display controls">
-            <div className="wireframe-calendar-card__segments" aria-label="Range mode">
-              {["Day", "Week", "Month"].map((mode) => (
-                <button key={mode} type="button" aria-pressed={mode === "Week"}>
-                  {mode}
-                </button>
-              ))}
-            </div>
-
             <div className="wireframe-calendar-card__range" aria-label="Current range">
               <button type="button" aria-label="Previous range">
                 <ChevronLeftIcon />
