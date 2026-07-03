@@ -111,7 +111,7 @@ function makeReturnEdgePath(from: FlowNode, to: FlowNode, nodes: FlowNode[]) {
 function controlLaneDistance(from: FlowNode, to: FlowNode) {
   const verticalDistance = Math.abs(getNodeCenter(from).y - getNodeCenter(to).y);
   const horizontalDistance = Math.abs(getNodeCenter(from).x - getNodeCenter(to).x);
-  return Math.max(64, Math.min(150, Math.min(verticalDistance, horizontalDistance) * 0.34));
+  return Math.max(32, Math.min(80, Math.min(verticalDistance, horizontalDistance) * 0.34));
 }
 
 function edgeIntersectsAnyNode(from: FlowNode, to: FlowNode, nodes: FlowNode[]) {
@@ -165,4 +165,3 @@ function getCubicPoint(start: ScenePoint, control1: ScenePoint, control2: SceneP
     y: inverse ** 3 * start.y + 3 * inverse ** 2 * t * control1.y + 3 * inverse * t ** 2 * control2.y + t ** 3 * end.y
   };
 }
-
