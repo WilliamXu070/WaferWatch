@@ -162,3 +162,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Verified with:
   - `npm run lint`
   - `npm run build`
+
+## Recent development note (2026-07-02 23:15)
+
+- Backend-integrated `/wireframe/dashboard` so the server page passes a database-
+  derived dashboard model instead of static mock cards. Empty backend state now
+  renders zero stats and empty workflow columns.
+- Added the missing calendar event update action/schema required for the app-wide
+  production build to compile; no calendar UI internals were changed.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3008/api/health`
+  - In-app browser at `http://localhost:3008/wireframe/dashboard`, 1280x720:
+    zero stats, four empty columns, no console errors, no horizontal overflow.
+  - Screenshot: `/tmp/waferwatch-wireframe-dashboard-backend.png`

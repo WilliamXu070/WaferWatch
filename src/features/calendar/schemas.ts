@@ -46,6 +46,17 @@ export const processCalendarEventDeleteSchema = z.object({
   eventId: uuidSchema
 });
 
+export const processCalendarEventUpdateSchema = processCalendarEventCreateSchema
+  .omit({
+    processTemplateId: true,
+    location: true,
+    startsAt: true,
+    endsAt: true
+  })
+  .extend({
+    eventId: uuidSchema
+  });
+
 export const processCalendarEventMoveSchema = z
   .object({
     eventId: uuidSchema,
