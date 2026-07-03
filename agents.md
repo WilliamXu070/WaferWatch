@@ -162,3 +162,15 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Verified with:
   - `npm run lint`
   - `npm run build`
+
+## Recent development note (2026-07-02 23:15)
+
+- Added shared wireframe backend DTOs, pure mapping adapters, and server query
+  helpers for dashboard, process-flow, calendar, and wafer-viewer data under
+  `src/features/wireframe`.
+- Added the missing calendar event update action/schema needed for the existing
+  wireframe calendar import to compile.
+- No UI route or visual component wiring changed in this backend-contract slice.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`

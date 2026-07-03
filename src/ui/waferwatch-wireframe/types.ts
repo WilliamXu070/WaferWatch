@@ -1,5 +1,18 @@
 import type { StepStatus } from "@/types/database";
 import type { ProcessCalendarLocation } from "@/features/calendar/queries";
+export type {
+  WireframeCalendarDto,
+  WireframeDashboardCardDto,
+  WireframeDashboardDto,
+  WireframeDashboardStageId,
+  WireframeEmptyStateDto,
+  WireframeProcessFlowDto,
+  WireframeProcessFlowNodeDto,
+  WireframeProcessFlowWaferDto,
+  WireframeWaferViewerDto,
+  WireframeWaferViewerFamilyDto,
+  WireframeWaferViewerItemDto
+} from "@/features/wireframe/types";
 
 /**
  * View-model types for the WaferWatch wireframe preview.
