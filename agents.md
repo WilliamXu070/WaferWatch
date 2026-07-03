@@ -174,3 +174,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Verified with:
   - `npm run lint`
   - `npm run build`
+
+## Recent development note (2026-07-03 calendar wireframe backend parity)
+
+- Updated `/wireframe/calendar` so backend-ready mode uses canonical Supabase
+  schedule data and server actions without falling back to mock events or mock
+  people. Empty backend schedules now show an empty-calendar state.
+- Unauthenticated sessions now show an explicit disabled backend state instead
+  of rendering mock persisted data.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3006/api/health`
+  - Playwright at `http://localhost:3006/wireframe/calendar` with a 1440x1100
+    viewport. The saved auth state was not accepted, so authenticated mutations
+    were not exercised; unauthenticated mode showed the disabled state with no
+    mock events, no mock handoffs, and no console errors.
+  - Screenshot: `/tmp/waferwatch-calendar-backend-parity.png`

@@ -16,6 +16,7 @@ import type { ProcessCalendarEvent, ProcessPerson, ProcessStep, ProcessTemplate 
 const TRAVEL_BUFFER_MS = 60 * 60 * 1000;
 const MISSING_CALENDAR_TABLES_MESSAGE =
   "Calendar storage is not migrated yet. Apply the latest Supabase migration and seed data, then try again.";
+const WIREFRAME_CALENDAR_PATH = "/wireframe/calendar";
 
 type ProcessTemplateAccessContext = Pick<
   ProcessTemplate,
@@ -280,6 +281,7 @@ export async function createProcessCalendarEvent(input: unknown) {
     }
 
     revalidatePath(`/processes/${parsed.processTemplateId}`);
+    revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({
       ...event,
       people
@@ -319,6 +321,7 @@ export async function deleteProcessCalendarEvent(input: unknown) {
     }
 
     revalidatePath(`/processes/${event.process_template_id}`);
+    revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({ id: parsed.eventId });
   } catch (error) {
     if (isMissingCalendarTableError(error)) {
@@ -390,6 +393,90 @@ export async function moveProcessCalendarEvent(input: unknown) {
     }
 
     revalidatePath(`/processes/${event.process_template_id}`);
+    revalidatePath(WIREFRAME_CALENDAR_PATH);
+    return ok({
+      ...updatedEvent,
+      people
+    });
+  } catch (error) {
+    if (isMissingCalendarTableError(error)) {
+      return fail(MISSING_CALENDAR_TABLES_MESSAGE);
+    }
+
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateProcessCalendarEvent(input: unknown) {
+  try {
+    const parsed = processCalendarEventUpdateSchema.parse(input);
+
+    const personIds = Array.from(new Set(parsed.personIds));
+    const supabase = await createServerSupabaseClient();
+
+    const { data: existingEvent, error: existingEventError } = await supabase
+      .from("process_calendar_events")
+      .select("id, process_template_id, location, starts_at, ends_at, process_step_id, manual_action, description")
+      .eq("id", parsed.eventId)
+      .single();
+
+    if (existingEventError) {
+      return fail(existingEventError.message);
+    }
+
+    await assertProcessCalendarAccess(existingEvent.process_template_id, "write");
+
+    const [people, processStepId] = await Promise.all([
+      validatePeopleAreActive(personIds),
+      validateProcessStep(existingEvent.process_template_id, parsed.processStepId)
+    ]);
+
+    const startsAt = new Date(existingEvent.starts_at);
+    const endsAt = new Date(existingEvent.ends_at);
+    await assertNoScheduleConflicts({
+      processTemplateId: existingEvent.process_template_id,
+      location: existingEvent.location,
+      startsAt,
+      endsAt,
+      people,
+      excludeEventId: parsed.eventId
+    });
+
+    const { data: updatedEvent, error: updateError } = await supabase
+      .from("process_calendar_events")
+      .update({
+        process_step_id: processStepId,
+        manual_action: parsed.manualAction?.trim() || null,
+        description: parsed.description?.trim() || null
+      })
+      .eq("id", parsed.eventId)
+      .select(
+        "id, process_template_id, location, starts_at, ends_at, process_step_id, manual_action, description"
+      )
+      .single();
+
+    if (updateError) {
+      return fail(updateError.message);
+    }
+
+    if (personIds.length) {
+      await supabase.from("process_calendar_event_people").delete().eq("event_id", parsed.eventId);
+      const { error: linkError } = await supabase.from("process_calendar_event_people").insert(
+        personIds.map((personId) => ({
+          event_id: parsed.eventId,
+          person_id: personId
+        }))
+      );
+
+      if (linkError) {
+        return fail(linkError.message);
+      }
+    } else {
+      await supabase.from("process_calendar_event_people").delete().eq("event_id", parsed.eventId);
+    }
+
+    revalidatePath(`/processes/${existingEvent.process_template_id}`);
+    revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({
       ...updatedEvent,
       people

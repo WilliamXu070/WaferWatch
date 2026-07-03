@@ -3791,3 +3791,405 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Wireframe calendar engine skin. Scoped to /wireframe only.          */
+/* ------------------------------------------------------------------ */
+.waferwatch-wireframe .wireframe-calendar-card {
+  border-color: #e4e4da;
+  border-radius: 18px;
+  box-shadow: none;
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__header {
+  display: flex;
+  min-height: 106px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid #e8e7dc;
+  background: #ffffff;
+  padding: 24px 24px 28px;
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__header h1 {
+  margin: 0;
+  color: #151512;
+  font-size: 22px;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__segments,
+.waferwatch-wireframe .wireframe-calendar-card__range {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  border: 1px solid #e0dfd2;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__segments {
+  gap: 4px;
+  padding: 4px;
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__segments button,
+.waferwatch-wireframe .wireframe-calendar-card__range button,
+.waferwatch-wireframe .wireframe-calendar-card__today {
+  border: 0;
+  background: transparent;
+  color: #151512;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: default;
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__segments button {
+  height: 38px;
+  min-width: 58px;
+  border-radius: 8px;
+  padding: 0 14px;
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__segments button[aria-pressed="true"] {
+  background: #151512;
+  color: #ffffff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 5px 12px rgba(21, 21, 18, 0.18);
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__range {
+  gap: 8px;
+  padding: 0 10px;
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__range button {
+  display: grid;
+  height: 34px;
+  width: 34px;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__range span {
+  min-width: 220px;
+  color: #151512;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.waferwatch-wireframe .wireframe-calendar-card__today {
+  min-height: 48px;
+  border: 1px solid #e0dfd2;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 0 18px;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-toolbar {
+  display: none;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-panel {
+  border: 0;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+  overflow: hidden;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
+  touch-action: none;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-panel * {
+  touch-action: none;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-process-timeline {
+  border: 0;
+  background: #ffffff;
+  font-family: inherit;
+  overscroll-behavior: none;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-header-root {
+  border-bottom: 1px solid #e8e7dc;
+  background: #ffffff;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-header,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-sidebar-header {
+  width: 136px !important;
+  background: #ffffff;
+  border-color: #e8e7dc;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-header,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-sidebar-header {
+  display: grid;
+  min-height: 86px;
+  place-items: center;
+  color: #151512;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-row {
+  display: grid;
+  align-content: center;
+  min-height: 172px;
+  padding: 0 18px;
+  border-color: #e8e7dc;
+  color: #151512;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.65 !important;
+  white-space: pre-line;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-row::first-line {
+  color: #151512;
+  font-weight: 700;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-calendar-header [data-testid="dateHeader"] {
+  height: 86px !important;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-dateHeader {
+  display: grid;
+  min-height: 86px;
+  place-items: center;
+  border-color: #e8e7dc;
+  background: #ffffff;
+  color: #151512;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-wireframe-day-header {
+  display: grid;
+  height: 100%;
+  min-height: 86px;
+  place-items: center;
+  gap: 5px;
+  color: #151512;
+  line-height: 1.1;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-wireframe-day-header strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-wireframe-day-header span {
+  color: #98968a;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-horizontal-lines .rct-hl-even,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-horizontal-lines .rct-hl-odd {
+  border-color: #e8e7dc;
+  background: #ffffff;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-vertical-lines .rct-vl {
+  border-left-color: #e8e7dc;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-vertical-lines .ww-timeline-vline-weekend {
+  background: rgba(245, 246, 239, 0.82);
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-vertical-lines .ww-timeline-vline-midday {
+  border-left-color: transparent;
+  background-image: linear-gradient(to bottom, #dfdfd5 45%, transparent 0);
+  background-size: 1px 8px;
+  background-repeat: repeat-y;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-vertical-lines .ww-timeline-vline-today {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgba(21, 21, 18, 0.08);
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-wireframe-day-header.ww-timeline-date-header--today {
+  background: transparent;
+  box-shadow: inset 0 -2px 0 rgba(21, 21, 18, 0.18);
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .rct-scroll {
+  min-height: 516px;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item {
+  min-width: 148px;
+  border: 1px solid #ddcea6;
+  border-left: 4px solid #a8863f;
+  border-radius: 8px;
+  background: #faf6ea !important;
+  color: #151512;
+  box-shadow: 0 10px 24px rgba(30, 29, 22, 0.08);
+  overflow: hidden;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item--blue {
+  border-color: #b9c9da;
+  border-left-color: #2e86de;
+  background: #eaf3ff !important;
+  box-shadow: 0 14px 28px rgba(25, 118, 210, 0.12);
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item--green {
+  border-color: #c6d9c1;
+  border-left-color: #43a047;
+  background: #eff8ed !important;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item--amber,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item--draft {
+  border-color: #efca76;
+  border-left-color: #e0a300;
+  background: #fff9ec !important;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item--selected {
+  z-index: 80;
+  box-shadow:
+    0 0 0 2px rgba(21, 21, 18, 0.16),
+    0 16px 32px rgba(30, 29, 22, 0.14);
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content {
+  display: grid;
+  height: 100%;
+  min-width: 0;
+  align-content: start;
+  gap: 8px;
+  padding: 14px 16px;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-title-row strong {
+  min-width: 0;
+  color: #151512;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-badge {
+  flex: none;
+  border: 1px solid rgba(21, 21, 18, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #55534a;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 2px 6px;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-person,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-time,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-description {
+  overflow: hidden;
+  color: #3d3c34;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-description {
+  white-space: normal;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-resize {
+  width: 16px;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-resize::after {
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  background: rgba(21, 21, 18, 0.42);
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe.calendar-inspector--empty {
+  display: none;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe.calendar-inspector--active {
+  position: static;
+  display: grid;
+  grid-template-columns: minmax(180px, 1.15fr) repeat(3, minmax(128px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  border: 0;
+  border-top: 1px solid #e4e4da;
+  border-radius: 0;
+  background: #f7f7ee;
+  padding: 16px 20px;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe .calendar-filter-panel {
+  display: none;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe .calendar-inspector-header {
+  display: grid;
+  gap: 4px;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe .calendar-inspector-header h3 {
+  margin: 0;
+  color: #151512;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe .calendar-inspector-header p {
+  margin: 0;
+}
+
+@media (max-width: 1100px) {
+  .waferwatch-wireframe .wireframe-calendar-card__header,
+  .waferwatch-wireframe .wireframe-calendar-card__controls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe.calendar-inspector--active {
+    grid-template-columns: 1fr;
+  }
+}
