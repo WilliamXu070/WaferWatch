@@ -668,9 +668,10 @@ textarea {
 
 .flow-wafer-chip text {
   fill: #315982;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   text-anchor: middle;
+  dominant-baseline: middle;
 }
 
 .flow-wafer-chip:nth-child(2n) rect {
@@ -3347,17 +3348,18 @@ textarea {
 }
 
 .wireframe-flow-surface .flow-node-title {
-  font-size: 15px;
+  font-size: 18px;
   fill: #151512;
 }
 
 .wireframe-flow-surface .flow-node-subtitle,
 .wireframe-flow-surface .flow-node-meta {
+  font-size: 12px;
   fill: #8a887b;
 }
 
 .wireframe-flow-surface .flow-node-subtitle {
-  display: none;
+  display: inline;
 }
 
 .wireframe-flow-surface .flow-node--active .flow-node-title,
