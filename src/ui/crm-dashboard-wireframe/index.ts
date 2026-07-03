@@ -18,6 +18,8 @@ export {
   crmDashboardStyles,
   crmDashboardWorkflowColumnClassName
 } from "./styles";
+export { CrmDashboardWireframe } from "./components/CrmDashboardWireframe";
+export type { CrmDashboardWireframeProps } from "./components/CrmDashboardWireframe.props";
 export type {
   CrmDashboardWireframeModel,
   DashboardMetric,

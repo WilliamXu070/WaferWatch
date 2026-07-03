@@ -106,6 +106,10 @@ export const DEFAULT_DIE_OVERLAY_TEMPLATE: DieOverlayTemplate = {
   rowDirection: "top-to-bottom"
 };
 
+const EDGE_ALIGNMENT_EPSILON_MM = 0.001;
+const RECTANGULAR_EDGE_RATIO = 0.88;
+const ASYMMETRIC_EDGE_DELTA_RATIO = 0.2;
+
 export function parseGdsPolygons(buffer: ArrayBuffer): ParsedWaferPolygon[] {
   const view = new DataView(buffer);
   const len = view.byteLength;
@@ -344,7 +348,7 @@ export function buildDieOverlayRectsMm(
   const clampSpanFraction = clampNumber(template.clusterSpanFraction ?? 1, 0.05, 1);
   const clampHeightFraction = clampNumber(template.clusterHeightFraction ?? clampSpanFraction, 0.05, 1);
   const verticalOffsetFraction = clampNumber(template.verticalOffsetFraction ?? 0.5, 0, 1);
-  const horizontalOffsetFraction = clampNumber(template.horizontalOffsetFraction ?? 0.5, 0, 1);
+  const horizontalOffsetFraction = deriveDieOverlayHorizontalOffset(points, template.horizontalOffsetFraction);
 
   if (columns === 0 || rows === 0 || rawRectWidth === 0 || rawRectHeight === 0) {
     return [];
@@ -384,6 +388,45 @@ export function buildDieOverlayRectsMm(
   }
 
   return structures;
+}
+
+function deriveDieOverlayHorizontalOffset(points: WaferPoint[], fallbackOffsetFraction = 0.5) {
+  const bounds = polygonBounds(points);
+  const leftVerticalSpan = boundaryVerticalSpan(points, bounds.minX);
+  const rightVerticalSpan = boundaryVerticalSpan(points, bounds.maxX);
+  const rectangularEdgeSpan = bounds.height * RECTANGULAR_EDGE_RATIO;
+  const asymmetricThreshold = bounds.height * ASYMMETRIC_EDGE_DELTA_RATIO;
+
+  if (leftVerticalSpan >= rectangularEdgeSpan && rightVerticalSpan >= rectangularEdgeSpan) {
+    return 0.5;
+  }
+
+  if (rightVerticalSpan - leftVerticalSpan > asymmetricThreshold) {
+    return 1;
+  }
+
+  if (leftVerticalSpan - rightVerticalSpan > asymmetricThreshold) {
+    return 0;
+  }
+
+  return clampNumber(fallbackOffsetFraction, 0, 1);
+}
+
+function boundaryVerticalSpan(points: WaferPoint[], boundaryX: number) {
+  let span = 0;
+
+  for (let index = 0; index < points.length; index += 1) {
+    const start = points[index];
+    const end = points[(index + 1) % points.length];
+    const startOnBoundary = Math.abs(start.x - boundaryX) <= EDGE_ALIGNMENT_EPSILON_MM;
+    const endOnBoundary = Math.abs(end.x - boundaryX) <= EDGE_ALIGNMENT_EPSILON_MM;
+
+    if (startOnBoundary && endOnBoundary) {
+      span += Math.abs(end.y - start.y);
+    }
+  }
+
+  return span;
 }
 
 export function overlayRectMmToSvg(rect: DieOverlayRectMm, viewport: WaferViewport): DieOverlayRectSvg {

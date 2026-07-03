@@ -21,9 +21,9 @@ export function ProcessFlowView() {
 
   return (
     <div className="flex flex-col gap-5 p-6">
-      <section className="rounded-2xl border border-ww-border bg-white p-3">
-        <div className="wireframe-flow-surface overflow-hidden rounded-xl bg-white">
-          <ProcessFlowDiagram steps={diagramSteps} />
+      <section className="rounded-3xl border border-[#e5e5db] bg-[#fafaf4] p-3">
+        <div className="wireframe-flow-surface overflow-hidden rounded-2xl bg-white">
+          <ProcessFlowDiagram steps={diagramSteps} wireframeMode />
         </div>
       </section>
 

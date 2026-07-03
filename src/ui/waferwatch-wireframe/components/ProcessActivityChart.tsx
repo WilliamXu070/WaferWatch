@@ -7,10 +7,10 @@ export function ProcessActivityChart({ activity }: { activity: DashboardModel["a
 
   return (
     <section aria-label={title} className="flex flex-col">
-      <h2 className="text-[15px] font-semibold text-ww-ink">{title}</h2>
+      <h2 className="text-[15px] font-semibold text-[#151512]">{title}</h2>
 
       <div className="mt-5 flex gap-3">
-        <div className="flex flex-col justify-between py-1 text-[11px] text-[#9a988f]">
+        <div className="flex flex-col justify-between py-1 text-[11px] text-[#9c9a8c]">
           {yTicks.map((tick) => (
             <span key={tick}>{tick}</span>
           ))}
@@ -19,7 +19,7 @@ export function ProcessActivityChart({ activity }: { activity: DashboardModel["a
         <div className="relative flex-1">
           <div className="absolute inset-0 flex flex-col justify-between">
             {yTicks.map((tick) => (
-              <span key={tick} className="h-px w-full bg-[#ecebe4]" />
+              <span key={tick} className="h-px w-full bg-[#e6e5d8]" />
             ))}
           </div>
 
@@ -28,17 +28,17 @@ export function ProcessActivityChart({ activity }: { activity: DashboardModel["a
               <div key={bar.label} className="flex flex-1 flex-col items-center gap-2">
                 <div className="flex h-[188px] w-full items-end justify-center gap-1.5">
                   <div
-                    className="w-[26%] rounded-t-[3px] bg-ww-ink"
+                    className="w-[26%] rounded-t-[3px] bg-[#141412]"
                     style={{ height: `${(bar.value / max) * 100}%` }}
                     aria-label={`${bar.label} ${bar.value}`}
                   />
                   <div
-                    className="w-[26%] rounded-t-[3px] border border-[#dcdbd3] bg-[#f0efe9]"
+                    className="w-[26%] rounded-t-[3px] border border-[#deddd0] bg-white"
                     style={{ height: `${(bar.compareValue / max) * 100}%` }}
                     aria-hidden
                   />
                 </div>
-                <span className="text-xs font-semibold text-[#6f6d66]">{bar.label}</span>
+                <span className="text-xs font-semibold text-[#6b6a5f]">{bar.label}</span>
               </div>
             ))}
           </div>

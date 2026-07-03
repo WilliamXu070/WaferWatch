@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { AuthForms } from "@/components/AuthForms";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { authPageStyles, cn } from "@/styles/tw";
 
 export const dynamic = "force-dynamic";
 
@@ -18,18 +19,28 @@ export default async function HomePage({
   }
 
   return (
-    <main className="auth-shell">
-      <section className="auth-card">
-        <div className="auth-hero">
-          <p className="eyebrow">WaferWatch</p>
-          <h1>LOGIN</h1>
-        </div>
+    <main className={authPageStyles.shell}>
+      <div className={authPageStyles.shellInner}>
+        <section className={authPageStyles.card}>
+          <div className={authPageStyles.hero}>
+            <p className={authPageStyles.eyebrow}>WaferWatch</p>
+            <h1 className={authPageStyles.title}>Login</h1>
+          </div>
 
-        {params.error ? <p className="form-error auth-notice">{params.error}</p> : null}
-        {params.message ? <p className="form-message auth-notice">{params.message}</p> : null}
+          {params.error ? (
+            <p className={cn(authPageStyles.notice, authPageStyles.noticeError)}>
+              {params.error}
+            </p>
+          ) : null}
+          {params.message ? (
+            <p className={cn(authPageStyles.notice, authPageStyles.noticeMessage)}>
+              {params.message}
+            </p>
+          ) : null}
 
-        <AuthForms />
-      </section>
+          <AuthForms />
+        </section>
+      </div>
     </main>
   );
 }

@@ -1,16 +1,5 @@
-import type { StepStatus } from "@/types/database";
 import { CalendarPinIcon, DotsIcon } from "../icons";
 import type { WaferCardModel } from "../types";
-
-const statusDot: Record<StepStatus, string> = {
-  pending: "bg-[#c7c6bd]",
-  queued: "bg-[#c7c6bd]",
-  running: "bg-[#3f7fd8]",
-  blocked: "bg-[#e0803a]",
-  completed: "bg-[#4c8a3f]",
-  skipped: "bg-[#c7c6bd]",
-  failed: "bg-[#cf4d3f]"
-};
 
 export function KanbanCard({ card }: { card: WaferCardModel }) {
   const isDark = card.status === "blocked";
@@ -19,34 +8,33 @@ export function KanbanCard({ card }: { card: WaferCardModel }) {
   return (
     <article
       className={[
-        "group rounded-2xl border p-4 transition-shadow",
+        "group rounded-2xl border p-4 transition-all duration-200",
         isDark
-          ? "border-[#181816] bg-[#141414] text-[#f0f0ec] shadow-[0_16px_34px_-24px_rgba(20,20,20,0.6)]"
-          : "border-ww-border bg-white text-ww-ink",
-        isSelected ? "ring-2 ring-[#3f7fd8] ring-offset-1 ring-offset-ww-bg" : ""
+          ? "border-[#131311] bg-[#131311] text-[#f0efe8] shadow-[0_20px_34px_-22px_rgba(18,18,15,0.55)]"
+          : "border-[#e7e7df] bg-white text-[#151512] hover:-translate-y-px hover:border-[#d4d3c5] hover:shadow-[0_18px_30px_-26px_rgba(30,29,22,0.35)]",
+        isSelected ? "ring-2 ring-[#151512] ring-offset-1 ring-offset-white" : ""
       ].join(" ")}
       aria-current={isSelected ? "true" : undefined}
     >
       <header className="flex items-start justify-between gap-2">
-        <h3 className="flex items-center gap-2 text-[15px] font-semibold">
-          <span className={`h-2 w-2 rounded-full ${statusDot[card.status]}`} aria-hidden />
+        <h3 className="text-[15px] font-semibold">
           {card.waferCode} · Die {card.dieLabel}
         </h3>
         <button
           type="button"
           aria-label="Card options"
-          className={isDark ? "text-[#9d9d97] hover:text-white" : "text-[#a3a199] hover:text-ww-ink"}
+          className={isDark ? "text-[#8f8e83] hover:text-white" : "text-[#a3a194] hover:text-[#151512]"}
         >
           <DotsIcon />
         </button>
       </header>
 
-      <p className={`mt-2.5 text-[13px] leading-relaxed ${isDark ? "text-[#c7c7c1]" : "text-[#6c6a63]"}`}>
+      <p className={`mt-2.5 text-[13px] leading-relaxed ${isDark ? "text-[#c9c8bd]" : "text-[#6b6a5f]"}`}>
         {card.description}
       </p>
 
       {card.handler ? (
-        <p className={`mt-3 text-[13px] ${isDark ? "text-[#c7c7c1]" : "text-[#6c6a63]"}`}>
+        <p className={`mt-3 text-[13px] ${isDark ? "text-[#c9c8bd]" : "text-[#6b6a5f]"}`}>
           Handler {card.handler}
         </p>
       ) : null}
@@ -56,14 +44,14 @@ export function KanbanCard({ card }: { card: WaferCardModel }) {
           className={[
             "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium",
             isDark
-              ? "border-[#33332f] bg-[#1f1f1d] text-[#d6d6d0]"
-              : "border-ww-border bg-[#f6f6f1] text-[#5f5d57]"
+              ? "border-[#2b2b26] bg-[#1e1e1a] text-[#d8d7cc]"
+              : "border-[#e7e7df] bg-[#f4f4ea] text-[#55534a]"
           ].join(" ")}
         >
           <CalendarPinIcon />
           {card.dueLabel}
         </span>
-        <span className={`text-xs ${isDark ? "text-[#9d9d97]" : "text-[#8a887f]"}`}>
+        <span className={`text-xs ${isDark ? "text-[#8f8e83]" : "text-[#8a887b]"}`}>
           {card.activityLabel}
         </span>
       </footer>

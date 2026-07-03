@@ -6,6 +6,7 @@ import {
   signUpFormAction,
   type AuthFormState
 } from "@/features/accounts/actions";
+import { authFormStyles, cn } from "@/styles/tw";
 
 const initialState: AuthFormState = {
   message: null,
@@ -15,7 +16,11 @@ const initialState: AuthFormState = {
 type AuthMode = "signin" | "signup";
 
 function SubmitButton({ label }: { label: string }) {
-  return <button className="button button-primary" type="submit">{label}</button>;
+  return (
+    <button className={authFormStyles.submit} type="submit">
+      {label}
+    </button>
+  );
 }
 
 export function AuthForms() {
@@ -26,18 +31,24 @@ export function AuthForms() {
   const state = isSignIn ? signInState : signUpState;
 
   return (
-    <div className="form-panel">
-      <div className="auth-mode-switch">
+    <div className={authFormStyles.panel}>
+      <div className={authFormStyles.modeSwitch}>
         <button
           type="button"
-          className={`auth-mode-btn ${isSignIn ? "active" : ""}`}
+          className={cn(
+            authFormStyles.modeButtonBase,
+            isSignIn ? authFormStyles.modeButtonActive : authFormStyles.modeButtonInactive
+          )}
           onClick={() => setMode("signin")}
         >
           Sign in
         </button>
         <button
           type="button"
-          className={`auth-mode-btn ${isSignIn ? "" : "active"}`}
+          className={cn(
+            authFormStyles.modeButtonBase,
+            isSignIn ? authFormStyles.modeButtonInactive : authFormStyles.modeButtonActive
+          )}
           onClick={() => setMode("signup")}
         >
           Sign up
@@ -45,35 +56,49 @@ export function AuthForms() {
       </div>
 
       {isSignIn ? (
-        <form action={signInAction} className="auth-form">
-          <label>
-            Email
-            <input name="email" type="email" autoComplete="email" required />
+        <form action={signInAction} className={authFormStyles.form}>
+          <label className={authFormStyles.field}>
+            <span className={authFormStyles.label}>Email</span>
+            <input className={authFormStyles.input} name="email" type="email" autoComplete="email" required />
           </label>
-          <label>
-            Password
-            <input name="password" type="password" autoComplete="current-password" minLength={8} required />
+          <label className={authFormStyles.field}>
+            <span className={authFormStyles.label}>Password</span>
+            <input
+              className={authFormStyles.input}
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              minLength={8}
+              required
+            />
           </label>
-          {state.error ? <p className="form-error">{state.error}</p> : null}
-          {state.message ? <p className="form-message">{state.message}</p> : null}
+          {state.error ? <p className={authFormStyles.formError}>{state.error}</p> : null}
+          {state.message ? <p className={authFormStyles.formMessage}>{state.message}</p> : null}
           <SubmitButton label="Sign in" />
         </form>
       ) : (
-        <form action={signUpAction} className="auth-form">
-          <label>
-            Name
-            <input name="displayName" type="text" autoComplete="name" required />
+        <form action={signUpAction} className={authFormStyles.form}>
+          <label className={authFormStyles.field}>
+            <span className={authFormStyles.label}>Name</span>
+            <input className={authFormStyles.input} name="displayName" type="text" autoComplete="name" required />
           </label>
-          <label>
-            Email
-            <input name="email" type="email" autoComplete="email" required />
+          <label className={authFormStyles.field}>
+            <span className={authFormStyles.label}>Email</span>
+            <input className={authFormStyles.input} name="email" type="email" autoComplete="email" required />
           </label>
-          <label>
-            Password
-            <input name="password" type="password" autoComplete="new-password" minLength={8} required />
+          <label className={authFormStyles.field}>
+            <span className={authFormStyles.label}>Password</span>
+            <input
+              className={authFormStyles.input}
+              name="password"
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+            />
           </label>
-          {state.error ? <p className="form-error">{state.error}</p> : null}
-          {state.message ? <p className="form-message">{state.message}</p> : null}
+          {state.error ? <p className={authFormStyles.formError}>{state.error}</p> : null}
+          {state.message ? <p className={authFormStyles.formMessage}>{state.message}</p> : null}
           <SubmitButton label="Create account" />
         </form>
       )}

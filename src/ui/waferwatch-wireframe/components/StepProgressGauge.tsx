@@ -16,7 +16,7 @@ export function StepProgressGauge({ progress }: { progress: DashboardModel["prog
 
   return (
     <section aria-label={progress.title} className="flex flex-col items-center">
-      <h2 className="self-start text-[15px] font-semibold text-ww-ink">{progress.title}</h2>
+      <h2 className="self-start text-[15px] font-semibold text-[#151512]">{progress.title}</h2>
 
       <div className="relative mt-2">
         <svg width="260" height="140" viewBox="0 0 260 140" role="img" aria-label={`${progress.percent}% ${progress.caption}`}>
@@ -32,7 +32,7 @@ export function StepProgressGauge({ progress }: { progress: DashboardModel["prog
                 y1={p1.y}
                 x2={p2.x}
                 y2={p2.y}
-                stroke={isFilled ? "#141414" : "#d8d7cf"}
+                stroke={isFilled ? "#141412" : "#d9d8ca"}
                 strokeWidth={isFilled ? 2.4 : 2}
                 strokeLinecap="round"
               />
@@ -41,14 +41,14 @@ export function StepProgressGauge({ progress }: { progress: DashboardModel["prog
         </svg>
 
         <div className="absolute inset-x-0 bottom-2 flex flex-col items-center">
-          <span className="text-[40px] font-semibold leading-none tracking-tight text-ww-ink">
+          <span className="text-[40px] font-semibold leading-none tracking-tight text-[#151512]">
             {progress.percent}%
           </span>
-          <span className="mt-1.5 text-[13px] font-semibold text-[#4c8a3f]">{progress.caption}</span>
+          <span className="mt-1.5 text-[13px] font-semibold text-[#151512]">{progress.caption}</span>
         </div>
       </div>
 
-      <p className="mt-1 text-[13px] text-[#8a887f]">{progress.footer}</p>
+      <p className="mt-1 text-[13px] text-[#8a887b]">{progress.footer}</p>
     </section>
   );
 }

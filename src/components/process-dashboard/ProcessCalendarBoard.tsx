@@ -3,6 +3,7 @@
 import {
   CSSProperties,
   HTMLAttributes,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -23,10 +24,12 @@ import Timeline, {
   type TimelineGroupBase,
   type TimelineItemBase
 } from "react-calendar-timeline";
+import { flushSync } from "react-dom";
 import {
   createProcessCalendarEvent,
   deleteProcessCalendarEvent,
-  moveProcessCalendarEvent
+  moveProcessCalendarEvent,
+  updateProcessCalendarEvent
 } from "@/features/calendar/actions";
 import type {
   ProcessCalendarEventView,
@@ -60,6 +63,12 @@ type TimelinePanState = {
   moved: boolean;
 };
 
+type PendingTimelineMove = {
+  eventId: string;
+  previous: MoveWindow;
+  next: MoveWindow;
+};
+
 type MoveWindow = {
   location: ProcessCalendarLocation;
   startsAt: string;
@@ -68,6 +77,8 @@ type MoveWindow = {
 
 type ActionMode = "step" | "manual";
 type StageFilterId = string | "__manual__";
+type CalendarPresentationMode = "default" | "wireframe";
+type CalendarPersistenceMode = "server" | "local";
 
 type TimelineHeaderScale = {
   id: "minutes" | "hours" | "blocks" | "days";
@@ -76,6 +87,12 @@ type TimelineHeaderScale = {
   secondaryUnit: "minute" | "hour" | "day";
   secondaryLabelFormat: (timeRange: [Dayjs, Dayjs]) => string;
   hourStep: 1 | 6;
+};
+
+type WireframeHeaderScale = {
+  id: "days" | "weeks" | "months";
+  unit: "day" | "month";
+  labelFormat: (timeRange: [Dayjs, Dayjs]) => string;
 };
 
 type TimelineLocationGroup = TimelineGroupBase & {
@@ -92,13 +109,38 @@ type CalendarTimelineItem = TimelineItemBase<number> & {
   id: string;
   group: ProcessCalendarLocation;
   title: string;
+  badgeLabel?: string;
+  descriptionLabel?: string;
   event?: ProcessCalendarEventView;
   peopleLabel: string;
+  timeLabel: string;
   toneClass: string;
   isDraft?: boolean;
 };
 
+type ProcessCalendarBoardProps = {
+  processTemplateId: string;
+  calendarStartDate: string;
+  days: number;
+  steps: ProcessStepOption[];
+  people: ProcessCalendarPersonOption[];
+  initialEvents: ProcessCalendarEventView[];
+  initialVisibleStartDate?: string;
+  persistenceMode?: CalendarPersistenceMode;
+  presentationMode?: CalendarPresentationMode;
+};
+
 const LOCATIONS: ProcessCalendarLocation[] = ["McMaster", "Waterloo", "Toronto"];
+const LOCATION_REGIONS: Record<ProcessCalendarLocation, string> = {
+  McMaster: "Hamilton",
+  Waterloo: "Waterloo",
+  Toronto: "Toronto"
+};
+const LOCATION_TONE_CLASSES: Record<ProcessCalendarLocation, string> = {
+  McMaster: "ww-timeline-item--amber",
+  Waterloo: "ww-timeline-item--blue",
+  Toronto: "ww-timeline-item--green"
+};
 const START_HOUR = 8;
 const END_HOUR = 18;
 const START_MINUTE = START_HOUR * 60;
@@ -106,9 +148,11 @@ const END_MINUTE = END_HOUR * 60;
 const SNAP_MS = 15 * 60 * 1000;
 const MIN_EVENT_MS = 30 * 60 * 1000;
 const DEFAULT_EVENT_MS = 60 * 60 * 1000;
+const MIN_ZOOM_MS = 2 * 60 * 60 * 1000;
 const TRAVEL_BUFFER_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_WEEK_ZOOM_MS = 7 * DAY_MS;
+const MAX_WIREFRAME_ZOOM_MS = 183 * DAY_MS;
 const HOUR_MS = 60 * 60 * 1000;
 const MANUAL_STAGE_FILTER_ID = "__manual__";
 
@@ -141,6 +185,25 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function clampVisibleWindow(
+  requestedStart: number,
+  requestedEnd: number,
+  timelineStart: number,
+  timelineEnd: number,
+  maxSpanMs: number
+) {
+  const timelineSpan = timelineEnd - timelineStart;
+  const maxSpan = clamp(maxSpanMs, MIN_ZOOM_MS, Math.max(1, timelineSpan));
+  const minSpan = MIN_ZOOM_MS;
+
+  const requestedSpan = requestedEnd - requestedStart;
+  const span = clamp(requestedSpan, minSpan, maxSpan);
+  const start = clamp(requestedStart, timelineStart, timelineEnd - span);
+  const end = start + span;
+
+  return { start, end };
+}
+
 function snapTime(time: number) {
   return Math.round(time / SNAP_MS) * SNAP_MS;
 }
@@ -164,6 +227,43 @@ function formatWindow(startsAt: Date, endsAt: Date) {
   return `${formatDateTime(startsAt)} - ${formatMinute(endsAt.getHours() * 60 + endsAt.getMinutes())}`;
 }
 
+function formatCompactDateTime(date: Date) {
+  return `${date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric"
+  })} ${formatMinute(date.getHours() * 60 + date.getMinutes())}`;
+}
+
+function isSameCalendarDay(first: Date, second: Date) {
+  return (
+    first.getFullYear() === second.getFullYear() &&
+    first.getMonth() === second.getMonth() &&
+    first.getDate() === second.getDate()
+  );
+}
+
+function formatTimelineItemWindow(startsAt: Date, endsAt: Date, presentationMode: CalendarPresentationMode) {
+  if (presentationMode !== "wireframe") {
+    return formatWindow(startsAt, endsAt);
+  }
+
+  if (isSameCalendarDay(startsAt, endsAt)) {
+    return `${formatMinute(startsAt.getHours() * 60 + startsAt.getMinutes())} - ${formatMinute(
+      endsAt.getHours() * 60 + endsAt.getMinutes()
+    )}`;
+  }
+
+  return `${formatCompactDateTime(startsAt)} - ${formatCompactDateTime(endsAt)}`;
+}
+
+function toDisplayName(value: string) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
 function eventLabel(event: ProcessCalendarEventView, stepsById: Map<string, string>) {
   if (event.process_step_id) {
     return stepsById.get(event.process_step_id) ?? "Process step";
@@ -172,12 +272,41 @@ function eventLabel(event: ProcessCalendarEventView, stepsById: Map<string, stri
   return event.manual_action ?? "Manual action";
 }
 
-function eventTone(label: string) {
+function eventTone(label: string, presentationMode: CalendarPresentationMode) {
   const normalized = label.toLowerCase();
+
+  if (presentationMode === "wireframe") {
+    if (normalized.includes("lith") || normalized.includes("expose") || normalized.includes("inspect")) {
+      return "ww-timeline-item--blue";
+    }
+
+    if (normalized.includes("clean") || normalized.includes("pol")) {
+      return "ww-timeline-item--green";
+    }
+
+    return "ww-timeline-item--amber";
+  }
+
   if (normalized.includes("pol")) return "ww-timeline-item--green";
   if (normalized.includes("inspect")) return "ww-timeline-item--blue";
   if (normalized.includes("clean")) return "ww-timeline-item--soft";
   return "ww-timeline-item--pink";
+}
+
+function locationTone(location: ProcessCalendarLocation) {
+  return LOCATION_TONE_CLASSES[location] ?? "ww-timeline-item--amber";
+}
+
+function getWireframeEventTitle(event: ProcessCalendarEventView, label: string, presentationMode: CalendarPresentationMode) {
+  if (presentationMode === "wireframe" && event.id === "evt-intake") {
+    return "New event";
+  }
+
+  return label;
+}
+
+function getWireframeEventBadge(event: ProcessCalendarEventView, presentationMode: CalendarPresentationMode) {
+  return presentationMode === "wireframe" && event.id === "evt-intake" ? "Draft" : undefined;
 }
 
 function intervalsOverlap(startsAt: Date, endsAt: Date, otherStartsAt: Date, otherEndsAt: Date) {
@@ -282,6 +411,24 @@ const HEADER_SCALES: Record<TimelineHeaderScale["id"], TimelineHeaderScale> = {
   }
 };
 
+const WIREFRAME_HEADER_SCALES: Record<WireframeHeaderScale["id"], WireframeHeaderScale> = {
+  days: {
+    id: "days",
+    unit: "day",
+    labelFormat: createHeaderLabelFormatter("ddd D")
+  },
+  weeks: {
+    id: "weeks",
+    unit: "day",
+    labelFormat: createHeaderLabelFormatter("MMM D")
+  },
+  months: {
+    id: "months",
+    unit: "month",
+    labelFormat: createHeaderLabelFormatter("MMM YYYY")
+  }
+};
+
 function getHeaderScale(visibleSpan: number): TimelineHeaderScale {
   if (visibleSpan <= 4 * HOUR_MS) {
     return HEADER_SCALES.minutes;
@@ -296,6 +443,18 @@ function getHeaderScale(visibleSpan: number): TimelineHeaderScale {
   }
 
   return HEADER_SCALES.days;
+}
+
+function getWireframeHeaderScale(visibleSpan: number): WireframeHeaderScale {
+  if (visibleSpan <= 14 * DAY_MS) {
+    return WIREFRAME_HEADER_SCALES.days;
+  }
+
+  if (visibleSpan <= 70 * DAY_MS) {
+    return WIREFRAME_HEADER_SCALES.weeks;
+  }
+
+  return WIREFRAME_HEADER_SCALES.months;
 }
 
 function isCurrentDay(timestamp: number) {
@@ -340,17 +499,85 @@ function createCurrentDayHeaderRenderer(highlightDay: boolean) {
   };
 }
 
+function createWireframeHeaderRenderer(scaleId: WireframeHeaderScale["id"]) {
+  return function WireframeHeaderRenderer({
+    intervalContext,
+    getIntervalProps
+  }: {
+    intervalContext: { interval: { startTime: Dayjs } };
+    getIntervalProps: (props?: { style?: CSSProperties }) => HTMLAttributes<HTMLElement>;
+  }) {
+    const intervalProps = getIntervalProps() as HTMLAttributes<HTMLElement> & {
+      key?: string | number;
+      className?: string;
+    };
+    const { key: intervalKey, className: intervalClassName, ...safeIntervalProps } = intervalProps;
+    const startTime = intervalContext.interval.startTime;
+    const isWeekAnchor = scaleId !== "weeks" || startTime.day() === 1;
+    const shouldRenderLabel = scaleId !== "weeks" || isWeekAnchor;
+    const primaryLabel =
+      scaleId === "months"
+        ? startTime.format("MMM")
+        : scaleId === "weeks"
+          ? startTime.format("MMM D")
+          : startTime.format("ddd D");
+    const secondaryLabel =
+      scaleId === "months"
+        ? startTime.format("YYYY")
+        : scaleId === "weeks"
+          ? "Week"
+          : startTime.format("MMM D");
+
+    return (
+      <div
+        key={intervalKey}
+        {...safeIntervalProps}
+        className={[
+          intervalClassName,
+          "ww-timeline-wireframe-header",
+          `ww-timeline-wireframe-header--${scaleId}`,
+          "ww-timeline-wireframe-day-header",
+          shouldRenderLabel ? undefined : "ww-timeline-wireframe-header--empty",
+          isCurrentDay(startTime.valueOf()) ? "ww-timeline-date-header--today" : undefined
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {shouldRenderLabel ? (
+          <>
+            <strong>{primaryLabel}</strong>
+            <span>{secondaryLabel}</span>
+          </>
+        ) : null}
+      </div>
+    );
+  };
+}
+
 function isBlankTimelineTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false;
   }
 
-  return (
-    !target.closest(".rct-item") &&
-    !target.closest(".rct-header-root") &&
-    !target.closest(".rct-sidebar") &&
-    Boolean(target.closest(".rct-scroll"))
-  );
+  const nonPanSelectors = [
+    ".calendar-timeline-toolbar",
+    ".rct-item",
+    ".rct-item-content",
+    ".rct-header-root",
+    ".rct-resize",
+    ".rct-sidebar",
+    ".rct-sidebar-header"
+  ];
+
+  if (nonPanSelectors.some((selector) => target.closest(selector))) {
+    return false;
+  }
+
+  return true;
+}
+
+function areMoveWindowsEqual(left: MoveWindow, right: MoveWindow) {
+  return left.location === right.location && left.startsAt === right.startsAt && left.endsAt === right.endsAt;
 }
 
 export function ProcessCalendarBoard({
@@ -359,23 +586,30 @@ export function ProcessCalendarBoard({
   days,
   steps,
   people,
-  initialEvents
-}: {
-  processTemplateId: string;
-  calendarStartDate: string;
-  days: number;
-  steps: ProcessStepOption[];
-  people: ProcessCalendarPersonOption[];
-  initialEvents: ProcessCalendarEventView[];
-}) {
+  initialEvents,
+  initialVisibleStartDate = calendarStartDate,
+  persistenceMode = "server",
+  presentationMode = "default"
+}: ProcessCalendarBoardProps) {
   const [events, setEvents] = useState(initialEvents);
+  const initialSelection = presentationMode === "wireframe" ? null : initialEvents[0] ?? null;
   const [draft, setDraft] = useState<DraftEvent | null>(null);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(initialEvents[0]?.id ?? null);
-  const [actionMode, setActionMode] = useState<ActionMode>(steps.length ? "step" : "manual");
-  const [selectedStepId, setSelectedStepId] = useState(steps[0]?.id ?? "");
-  const [manualAction, setManualAction] = useState("");
-  const [description, setDescription] = useState("");
-  const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(initialSelection?.id ?? null);
+  const [actionMode, setActionMode] = useState<ActionMode>(
+    initialSelection
+      ? initialSelection.process_step_id
+        ? "step"
+        : "manual"
+      : steps.length
+        ? "step"
+        : "manual"
+  );
+  const [selectedStepId, setSelectedStepId] = useState(initialSelection?.process_step_id ?? steps[0]?.id ?? "");
+  const [manualAction, setManualAction] = useState(initialSelection?.manual_action ?? "");
+  const [description, setDescription] = useState(initialSelection?.description ?? "");
+  const [selectedPersonIds, setSelectedPersonIds] = useState(
+    initialSelection?.people.map((person) => person.id) ?? []
+  );
   const [personQuery, setPersonQuery] = useState("");
   const [draftDragSelection, setDraftDragSelection] = useState<DraftDragSelection | null>(null);
   const [filterPersonIds, setFilterPersonIds] = useState<string[]>([]);
@@ -396,6 +630,13 @@ export function ProcessCalendarBoard({
     updateScrollCanvas: (start: number, end: number) => void;
   } | null>(null);
   const isItemDragActiveRef = useRef(false);
+  const isShiftPressedRef = useRef(false);
+  const selectedEventIdRef = useRef<string | null>(initialSelection?.id ?? null);
+  const suppressedItemSelectionIdRef = useRef<string | null>(null);
+  const ignoreStaleItemSelectionUntilRef = useRef(0);
+  const ignoreBlankCalendarClickUntilRef = useRef(0);
+  const itemMoveRef = useRef<PendingTimelineMove | null>(null);
+  const itemMoveFrameRef = useRef<number | null>(null);
   const [timelinePanPointerId, setTimelinePanPointerId] = useState<number | null>(null);
   const [isTimelinePanning, setIsTimelinePanning] = useState(false);
 
@@ -405,37 +646,109 @@ export function ProcessCalendarBoard({
     () => buildDateAtMinute(addDays(startDate, Math.max(0, days - 1)), END_MINUTE).getTime(),
     [days, startDate]
   );
+  const maxAllowedZoomMs = presentationMode === "wireframe" ? MAX_WIREFRAME_ZOOM_MS : MAX_WEEK_ZOOM_MS;
   const maxZoomMs = useMemo(
-    () => Math.min(MAX_WEEK_ZOOM_MS, Math.max(1, timelineEnd - timelineStart)),
-    [timelineEnd, timelineStart]
+    () => Math.min(maxAllowedZoomMs, Math.max(1, timelineEnd - timelineStart)),
+    [maxAllowedZoomMs, timelineEnd, timelineStart]
   );
-  const initialVisibleWindowEnd = useMemo(() => timelineStart + maxZoomMs, [maxZoomMs, timelineStart]);
+
+  useEffect(() => {
+    selectedEventIdRef.current = selectedEventId;
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Shift") {
+        isShiftPressedRef.current = true;
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Shift") {
+        isShiftPressedRef.current = false;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+  const initialVisibleWindow = useMemo(() => {
+    const requestedDate = new Date(`${initialVisibleStartDate}T00:00:00`);
+    const requestedStart = Number.isNaN(requestedDate.getTime())
+      ? timelineStart
+      : buildDateAtMinute(requestedDate, START_MINUTE).getTime();
+
+    return clampVisibleWindow(requestedStart, requestedStart + maxZoomMs, timelineStart, timelineEnd, maxZoomMs);
+  }, [initialVisibleStartDate, maxZoomMs, timelineEnd, timelineStart]);
   const [visibleRange, setVisibleRange] = useState(() => ({
     boundsStart: timelineStart,
     boundsEnd: timelineEnd,
-    start: timelineStart,
-    end: initialVisibleWindowEnd
+    start: initialVisibleWindow.start,
+    end: initialVisibleWindow.end
   }));
+
   const effectiveVisibleRange =
     visibleRange.boundsStart === timelineStart && visibleRange.boundsEnd === timelineEnd
       ? visibleRange
       : {
           boundsStart: timelineStart,
           boundsEnd: timelineEnd,
-          start: timelineStart,
-          end: timelineEnd
+          start: initialVisibleWindow.start,
+          end: initialVisibleWindow.end
         };
+  const syncVisibleRange = useCallback(
+    (nextStart: number, nextEnd: number, updateScrollCanvas?: (start: number, end: number) => void) => {
+      const normalized = clampVisibleWindow(nextStart, nextEnd, timelineStart, timelineEnd, maxZoomMs);
+      const nextRange = {
+        boundsStart: timelineStart,
+        boundsEnd: timelineEnd,
+        ...normalized
+      };
+
+      timelineScrollSyncRef.current = {
+        start: normalized.start,
+        end: normalized.end,
+        updateScrollCanvas: updateScrollCanvas ?? (() => {})
+      };
+      setVisibleRange(nextRange);
+    },
+    [maxZoomMs, timelineEnd, timelineStart]
+  );
   const headerScale = useMemo(
     () => getHeaderScale(effectiveVisibleRange.end - effectiveVisibleRange.start),
     [effectiveVisibleRange.end, effectiveVisibleRange.start]
   );
-  const todayVerticalLines = useCallback(
-    (lineStart: number) => (isCurrentDay(lineStart) ? ["ww-timeline-vline-today"] : []),
+  const wireframeHeaderScale = useMemo(
+    () => getWireframeHeaderScale(effectiveVisibleRange.end - effectiveVisibleRange.start),
+    [effectiveVisibleRange.end, effectiveVisibleRange.start]
+  );
+  const timelineVerticalLineClassNames = useCallback(
+    (lineStart: number) => {
+      const lineTime = dayjs(lineStart);
+      return [
+        isCurrentDay(lineStart) ? "ww-timeline-vline-today" : undefined,
+        [0, 6].includes(lineTime.day()) ? "ww-timeline-vline-weekend" : undefined,
+        lineTime.hour() === 12 ? "ww-timeline-vline-midday" : undefined
+      ].filter(Boolean) as string[];
+    },
     []
   );
 
   const stepsById = useMemo(() => new Map(steps.map((step) => [step.id, step.name])), [steps]);
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
+  const eventById = useMemo(() => new Map(events.map((event) => [event.id, event])), [events]);
+  const selectedPeopleForSave = useCallback(
+    () =>
+      selectedPersonIds
+        .map((personId) => peopleById.get(personId))
+        .filter((person): person is ProcessCalendarPersonOption => Boolean(person)),
+    [peopleById, selectedPersonIds]
+  );
   const stageFilterOptions = useMemo(
     () => [
       ...steps.map((step) => ({ id: step.id as StageFilterId, name: step.name })),
@@ -471,7 +784,11 @@ export function ProcessCalendarBoard({
       }),
     [events, filterPersonIds, filterStageIds]
   );
-  const selectedEvent = visibleEvents.find((event) => event.id === selectedEventId) ?? null;
+  const visibleEventById = useMemo(
+    () => new Map(visibleEvents.map((event) => [event.id, event])),
+    [visibleEvents]
+  );
+  const selectedEvent = selectedEventId ? visibleEventById.get(selectedEventId) ?? null : null;
   const selectedPeople = selectedPersonIds
     .map((personId) => peopleById.get(personId))
     .filter((person): person is ProcessCalendarPersonOption => Boolean(person));
@@ -480,32 +797,45 @@ export function ProcessCalendarBoard({
     () =>
       LOCATIONS.map((location) => ({
         id: location,
-        title: location,
+        title: presentationMode === "wireframe" ? `${location}\n${LOCATION_REGIONS[location]}` : location,
         rightTitle: `${visibleEvents.filter((event) => event.location === location).length}`,
         stackItems: true
       })),
-    [visibleEvents]
+    [presentationMode, visibleEvents]
   );
 
   const timelineItems = useMemo<CalendarTimelineItem[]>(
     () => {
       const items: CalendarTimelineItem[] = visibleEvents.map((event) => {
         const label = eventLabel(event, stepsById);
-        const peopleLabel = event.people.map((person) => person.display_name).join(", ");
+        const displayTitle = getWireframeEventTitle(event, label, presentationMode);
+        const descriptionLabel =
+          event.description && event.description !== displayTitle ? event.description : undefined;
+        const startsAt = new Date(event.starts_at);
+        const endsAt = new Date(event.ends_at);
+        const peopleLabel = event.people
+          .map((person) => presentationMode === "wireframe" ? toDisplayName(person.display_name) : person.display_name)
+          .join(", ");
 
         return {
           id: event.id,
           group: event.location as ProcessCalendarLocation,
-          title: label,
+          title: displayTitle,
+          badgeLabel: getWireframeEventBadge(event, presentationMode),
+          descriptionLabel,
           event,
           peopleLabel,
-          toneClass: eventTone(label),
-          start_time: new Date(event.starts_at).getTime(),
-          end_time: new Date(event.ends_at).getTime(),
+          timeLabel: formatTimelineItemWindow(startsAt, endsAt, presentationMode),
+          toneClass:
+            presentationMode === "wireframe"
+              ? locationTone(event.location as ProcessCalendarLocation)
+              : eventTone(label, presentationMode),
+          start_time: startsAt.getTime(),
+          end_time: endsAt.getTime(),
           canMove: true,
           canChangeGroup: true,
           canResize: "both",
-          height: 30
+          height: presentationMode === "wireframe" ? 110 : 30
         };
       });
 
@@ -518,21 +848,24 @@ export function ProcessCalendarBoard({
           id: "__draft-create__",
           group: draftWindow.location,
           title: "New event",
+          badgeLabel: "Draft",
+          descriptionLabel: draftDragSelection ? "Release to create" : "Choose action in editor",
           peopleLabel: draftDragSelection ? "Release to create" : "Unsaved draft",
+          timeLabel: formatTimelineItemWindow(draftWindow.startsAt, draftWindow.endsAt, presentationMode),
           toneClass: `ww-timeline-item--draft ${draftDragSelection ? "ww-timeline-item--draft-active" : ""}`,
           start_time: draftWindow.startsAt.getTime(),
           end_time: draftWindow.endsAt.getTime(),
           canMove: !draftDragSelection,
           canChangeGroup: !draftDragSelection,
           canResize: draftDragSelection ? false : "both",
-          height: 30,
+          height: presentationMode === "wireframe" ? 110 : 30,
           isDraft: true
         });
       }
 
       return items;
     },
-    [draft, draftDragSelection, stepsById, timelineEnd, timelineStart, visibleEvents]
+    [draft, draftDragSelection, presentationMode, stepsById, timelineEnd, timelineStart, visibleEvents]
   );
 
   const personConflictById = useMemo(() => {
@@ -589,11 +922,11 @@ export function ProcessCalendarBoard({
   }, [steps]);
 
   const openDraft = useCallback((nextDraft: DraftEvent) => {
-    setDraft(nextDraft);
     resetDraftForm();
+    setDraft(nextDraft);
   }, [resetDraftForm]);
 
-  const getTimelinePointerTarget = useCallback((event: PointerEvent | ReactPointerEvent) => {
+  const getTimelinePointerTarget = useCallback((event: PointerEvent | ReactPointerEvent | ReactMouseEvent) => {
     const timeline = timelineRef.current;
     const panel = timelinePanelRef.current;
     if (!timeline || !panel) {
@@ -652,6 +985,7 @@ export function ProcessCalendarBoard({
     }
 
     event?.preventDefault();
+    ignoreBlankCalendarClickUntilRef.current = Date.now() + 500;
     setActiveDraftDrag(null);
     openDraft(draftFromSelection(currentSelection, timelineStart, timelineEnd));
   }, [openDraft, setActiveDraftDrag, timelineEnd, timelineStart]);
@@ -662,7 +996,7 @@ export function ProcessCalendarBoard({
     next: MoveWindow;
     recordUndo: boolean;
   }) => {
-    const eventToMove = events.find((event) => event.id === input.eventId);
+    const eventToMove = eventById.get(input.eventId);
     if (!eventToMove) {
       setError("Move target no longer exists.");
       return;
@@ -684,6 +1018,10 @@ export function ProcessCalendarBoard({
         previous: input.previous,
         next: input.next
       });
+    }
+
+    if (persistenceMode === "local") {
+      return;
     }
 
     const persistMove = async () => {
@@ -739,7 +1077,88 @@ export function ProcessCalendarBoard({
           setError(moveError instanceof Error ? moveError.message : "Move failed. Try again.");
         }
     });
-  }, [events]);
+  }, [eventById, persistenceMode]);
+
+  const clearQueuedItemMove = useCallback(() => {
+    if (itemMoveFrameRef.current !== null) {
+      window.cancelAnimationFrame(itemMoveFrameRef.current);
+      itemMoveFrameRef.current = null;
+    }
+    itemMoveRef.current = null;
+  }, []);
+
+  const stageItemMove = useCallback((eventId: string, next: MoveWindow) => {
+    const queued = itemMoveRef.current;
+    if (!queued || queued.eventId !== eventId) {
+      const eventToMove = eventById.get(eventId);
+      if (!eventToMove) {
+        return;
+      }
+
+      itemMoveRef.current = {
+        eventId,
+        previous: toMoveWindow(eventToMove),
+        next
+      };
+    } else {
+      queued.next = next;
+    }
+
+    if (itemMoveFrameRef.current !== null) {
+      return;
+    }
+
+    itemMoveFrameRef.current = window.requestAnimationFrame(() => {
+      itemMoveFrameRef.current = null;
+
+      setEvents((current) => {
+        const pending = itemMoveRef.current;
+        if (!pending) {
+          return current;
+        }
+
+        let didChange = false;
+        const nextEvents = current.map((event) => {
+          if (event.id !== pending.eventId) {
+            return event;
+          }
+
+          didChange = true;
+          return applyMoveWindow(event, pending.next);
+        });
+
+        if (!didChange) {
+          return current;
+        }
+
+        return sortCalendarEvents(nextEvents);
+      });
+    });
+  }, [eventById]);
+
+  const flushQueuedItemMove = useCallback(() => {
+    const queued = itemMoveRef.current;
+    if (!queued) {
+      return;
+    }
+
+    clearQueuedItemMove();
+    if (areMoveWindowsEqual(queued.previous, queued.next)) {
+      return;
+    }
+
+    commitMove({
+      eventId: queued.eventId,
+      previous: queued.previous,
+      next: queued.next,
+      recordUndo: true
+    });
+  }, [clearQueuedItemMove, commitMove]);
+
+  const flushQueuedItemMoveRef = useRef(flushQueuedItemMove);
+  useEffect(() => {
+    flushQueuedItemMoveRef.current = flushQueuedItemMove;
+  }, [flushQueuedItemMove]);
 
   const startItemDragSelectionBlock = useCallback(() => {
     if (isItemDragActiveRef.current) {
@@ -783,7 +1202,7 @@ export function ProcessCalendarBoard({
         return;
       }
 
-      const event = events.find((candidate) => candidate.id === eventId);
+      const event = eventById.get(eventId);
       if (!event) {
         return;
       }
@@ -792,23 +1211,22 @@ export function ProcessCalendarBoard({
       const startsAt = new Date(dragTime);
       const endsAt = new Date(dragTime + duration);
 
-      commitMove({
+      stageItemMove(
         eventId,
-        previous: toMoveWindow(event),
-        next: {
+        {
           location: group.id,
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString()
-        },
-        recordUndo: true
-      });
+        }
+      );
     },
-    [commitMove, draft, events, groups, startItemDragSelectionBlock]
+    [draft, eventById, groups, startItemDragSelectionBlock, stageItemMove]
   );
 
   useEffect(() => {
     const stopMoving = () => {
       stopItemDragSelectionBlock();
+      flushQueuedItemMoveRef.current();
     };
 
     window.addEventListener("pointerup", stopMoving);
@@ -816,7 +1234,6 @@ export function ProcessCalendarBoard({
     window.addEventListener("blur", stopMoving);
 
     return () => {
-      stopMoving();
       window.removeEventListener("pointerup", stopMoving);
       window.removeEventListener("pointercancel", stopMoving);
       window.removeEventListener("blur", stopMoving);
@@ -854,7 +1271,7 @@ export function ProcessCalendarBoard({
         return;
       }
 
-      const event = events.find((candidate) => candidate.id === eventId);
+      const event = eventById.get(eventId);
       if (!event) {
         return;
       }
@@ -868,18 +1285,16 @@ export function ProcessCalendarBoard({
         return;
       }
 
-      commitMove({
+      stageItemMove(
         eventId,
-        previous: toMoveWindow(event),
-        next: {
+        {
           location: event.location as ProcessCalendarLocation,
           startsAt: new Date(startsAt).toISOString(),
           endsAt: new Date(endsAt).toISOString()
-        },
-        recordUndo: true
-      });
+        }
+      );
   },
-    [commitMove, draft, events, startItemDragSelectionBlock]
+    [draft, eventById, stageItemMove, startItemDragSelectionBlock]
   );
 
   const handleCanvasDoubleClick = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onCanvasDoubleClick"]>>(
@@ -896,38 +1311,140 @@ export function ProcessCalendarBoard({
     [openDraft]
   );
 
-  const handleCanvasClick = useCallback(() => {
-    setSelectedEventId(null);
-  }, []);
-
-  const handleItemSelect = useCallback((itemId: Id) => {
-    if (String(itemId) === "__draft-create__") {
+  const handleTimelineDoubleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!isBlankTimelineTarget(event.target)) {
       return;
     }
 
-    setSelectedEventId(String(itemId));
+    const pointerTarget = getTimelinePointerTarget(event);
+    if (!pointerTarget) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const startsAt = new Date(pointerTarget.time);
+    const endsAt = new Date(Math.min(pointerTarget.time + DEFAULT_EVENT_MS, timelineEnd));
+    openDraft({ location: pointerTarget.location, startsAt, endsAt });
+  }, [getTimelinePointerTarget, openDraft, timelineEnd]);
+
+  const syncSelectionForm = useCallback((event: ProcessCalendarEventView | null) => {
+    if (!event) {
+      selectedEventIdRef.current = null;
+      setSelectedEventId(null);
+      setActionMode(steps.length ? "step" : "manual");
+      setSelectedStepId(steps[0]?.id ?? "");
+      setManualAction("");
+      setDescription("");
+      setSelectedPersonIds([]);
+      setError(null);
+      setDraft(null);
+      return;
+    }
+
+    setActionMode(event.process_step_id ? "step" : "manual");
+    setSelectedStepId(event.process_step_id ?? steps[0]?.id ?? "");
+    setManualAction(event.manual_action ?? "");
+    setDescription(event.description ?? "");
+    setSelectedPersonIds(event.people.map((person) => person.id));
+    selectedEventIdRef.current = event.id;
+    setSelectedEventId(event.id);
+    setError(null);
     setDraft(null);
-  }, []);
+  }, [steps]);
+
+  const clearSelectedEvent = useCallback(() => {
+    syncSelectionForm(null);
+  }, [syncSelectionForm]);
+
+  const clearSelectedEventFromBlankCanvas = useCallback(() => {
+    if (Date.now() < ignoreBlankCalendarClickUntilRef.current) {
+      return;
+    }
+
+    suppressedItemSelectionIdRef.current = selectedEventIdRef.current;
+    ignoreStaleItemSelectionUntilRef.current = Date.now() + 1500;
+    flushSync(() => {
+      clearSelectedEvent();
+    });
+  }, [clearSelectedEvent]);
+
+  const clearSelectedEventAfterBlankClick = useCallback(() => {
+    if (Date.now() < ignoreBlankCalendarClickUntilRef.current) {
+      return;
+    }
+
+    suppressedItemSelectionIdRef.current = selectedEventIdRef.current;
+    ignoreStaleItemSelectionUntilRef.current = Date.now() + 1500;
+    flushSync(() => {
+      clearSelectedEvent();
+    });
+    window.setTimeout(() => {
+      flushSync(() => {
+        clearSelectedEvent();
+      });
+    }, 0);
+  }, [clearSelectedEvent]);
+
+  const handleCanvasClick = useCallback(() => {
+    clearSelectedEventAfterBlankClick();
+  }, [clearSelectedEventAfterBlankClick]);
+
+  const handleItemSelect = useCallback((itemId: Id) => {
+    const nextItemId = String(itemId);
+
+    if (
+      nextItemId === suppressedItemSelectionIdRef.current &&
+      Date.now() < ignoreStaleItemSelectionUntilRef.current
+    ) {
+      return;
+    }
+
+    if (nextItemId === "__draft-create__") {
+      return;
+    }
+
+    const event = events.find((candidate) => candidate.id === nextItemId) ?? null;
+    if (!event) {
+      clearSelectedEvent();
+      return;
+    }
+
+    syncSelectionForm(event);
+  }, [clearSelectedEvent, events, syncSelectionForm]);
+
+  const handleItemDeselect = useCallback(() => {
+    if (Date.now() < ignoreBlankCalendarClickUntilRef.current) {
+      return;
+    }
+
+    clearSelectedEvent();
+  }, [clearSelectedEvent]);
 
   const handleTimelinePointerDownCapture = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.target instanceof Element && event.target.closest(".ww-timeline-item")) {
       startItemDragSelectionBlock();
     }
 
+    if (event.button === 0 && event.target instanceof Element && event.target.closest(".rct-sidebar-row")) {
+      clearSelectedEventFromBlankCanvas();
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     if (event.button !== 0 || !isBlankTimelineTarget(event.target)) {
       return;
     }
 
-    if (!event.shiftKey) {
-      if (event.pointerType !== "mouse") {
-        return;
-      }
-
+    if (!(event.shiftKey || isShiftPressedRef.current)) {
       const timeline = timelineRef.current;
       if (!timeline) {
         return;
       }
 
+      clearSelectedEventFromBlankCanvas();
       event.preventDefault();
       event.stopPropagation();
       timelinePanelRef.current?.setPointerCapture?.(event.pointerId);
@@ -967,6 +1484,7 @@ export function ProcessCalendarBoard({
   }, [
     effectiveVisibleRange.end,
     effectiveVisibleRange.start,
+    clearSelectedEventFromBlankCanvas,
     getTimelinePointerTarget,
     startItemDragSelectionBlock,
     resetDraftForm,
@@ -974,6 +1492,53 @@ export function ProcessCalendarBoard({
     timelineEnd,
     timelineStart
   ]);
+
+  const handleTimelineClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.target instanceof Element && event.target.closest(".ww-timeline-item")) {
+      return;
+    }
+
+    if (event.target instanceof Element && event.target.closest(".rct-sidebar-row")) {
+      clearSelectedEventAfterBlankClick();
+      return;
+    }
+
+    if (isBlankTimelineTarget(event.target)) {
+      clearSelectedEventAfterBlankClick();
+    }
+  }, [clearSelectedEventAfterBlankClick]);
+
+  const handleTimelineNativeClickCapture = useCallback((event: MouseEvent) => {
+    const panel = timelinePanelRef.current;
+    if (
+      !panel ||
+      !(event.target instanceof Node) ||
+      (event.target !== panel && !panel.contains(event.target))
+    ) {
+      return;
+    }
+
+    if (event.target instanceof Element && event.target.closest(".ww-timeline-item")) {
+      return;
+    }
+
+    if (event.target instanceof Element && event.target.closest(".rct-sidebar-row")) {
+      clearSelectedEventAfterBlankClick();
+      return;
+    }
+
+    if (isBlankTimelineTarget(event.target)) {
+      clearSelectedEventAfterBlankClick();
+    }
+  }, [clearSelectedEventAfterBlankClick]);
+
+  useEffect(() => {
+    document.addEventListener("click", handleTimelineNativeClickCapture, { capture: true });
+
+    return () => {
+      document.removeEventListener("click", handleTimelineNativeClickCapture, { capture: true });
+    };
+  }, [handleTimelineNativeClickCapture]);
 
   const moveResizeValidator = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["moveResizeValidator"]>>(
     (action, item, time, resizeEdge) => {
@@ -996,44 +1561,124 @@ export function ProcessCalendarBoard({
 
   const handleTimeChange = useCallback<OnTimeChange<CalendarTimelineItem, TimelineLocationGroup>>(
     (visibleTimeStart, visibleTimeEnd, updateScrollCanvas) => {
-      const minStart = timelineStart;
-      const maxEnd = timelineEnd;
       const requestedSpan = visibleTimeEnd - visibleTimeStart;
-      const maxSpan = maxEnd - minStart;
+      const targetSpan = clamp(requestedSpan, MIN_ZOOM_MS, maxZoomMs);
       const currentSpan = visibleRange.end - visibleRange.start;
-      const wasZoom = requestedSpan !== currentSpan;
+      const wasZoom = targetSpan !== currentSpan;
 
       let nextStart = visibleTimeStart;
       let nextEnd = visibleTimeEnd;
 
-      if (requestedSpan >= maxSpan) {
-        nextStart = minStart;
-        nextEnd = maxEnd;
-      } else if (wasZoom) {
+      if (wasZoom) {
         const previousCenter = (visibleRange.start + visibleRange.end) / 2;
-        const halfSpan = requestedSpan / 2;
+        const halfSpan = targetSpan / 2;
         nextStart = previousCenter - halfSpan;
         nextEnd = previousCenter + halfSpan;
       }
 
-      if (nextStart < minStart) {
-        nextStart = minStart;
-        nextEnd = minStart + requestedSpan;
-      } else if (nextEnd > maxEnd) {
-        nextEnd = maxEnd;
-        nextStart = maxEnd - requestedSpan;
+      syncVisibleRange(nextStart, nextEnd, updateScrollCanvas);
+    },
+    [visibleRange, syncVisibleRange, maxZoomMs]
+  );
+
+  const handleTimelineWheelCapture = useCallback(
+    (event: WheelEvent) => {
+      const timeline = timelineRef.current;
+      const panel = timelinePanelRef.current;
+      if (!timeline || !panel) {
+        return;
       }
 
-      timelineScrollSyncRef.current = { start: nextStart, end: nextEnd, updateScrollCanvas };
-      setVisibleRange({
-        boundsStart: timelineStart,
-        boundsEnd: timelineEnd,
-        start: nextStart,
-        end: nextEnd
+      const isZoomGesture = event.ctrlKey || event.metaKey;
+      const hasHorizontalIntent = Math.abs(event.deltaX) >= Math.abs(event.deltaY);
+      if (!isZoomGesture && !hasHorizontalIntent) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const rect = timeline.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+
+      const cursorRatio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+
+      startTransition(() => {
+        setVisibleRange((previousRange) => {
+          const span = previousRange.end - previousRange.start;
+
+          if (isZoomGesture) {
+            const zoomStep = 1 + clamp(Math.abs(event.deltaY) / 200, 0.05, 0.5);
+            const nextSpan = clamp(
+              event.deltaY > 0 ? span * zoomStep : span / zoomStep,
+              MIN_ZOOM_MS,
+              maxZoomMs
+            );
+            const cursorTime = previousRange.start + span * cursorRatio;
+            const normalized = clampVisibleWindow(
+              cursorTime - nextSpan * cursorRatio,
+              cursorTime + nextSpan * (1 - cursorRatio),
+              timelineStart,
+              timelineEnd,
+              maxZoomMs
+            );
+            return {
+              boundsStart: timelineStart,
+              boundsEnd: timelineEnd,
+              ...normalized
+            };
+          }
+
+          const requestedStart = previousRange.start + (event.deltaX / rect.width) * span;
+          const normalized = clampVisibleWindow(requestedStart, requestedStart + span, timelineStart, timelineEnd, maxZoomMs);
+          return {
+            boundsStart: timelineStart,
+            boundsEnd: timelineEnd,
+            ...normalized
+          };
+        });
       });
     },
-    [visibleRange, timelineEnd, timelineStart]
+    [maxZoomMs, timelineEnd, timelineStart]
   );
+
+  useEffect(() => {
+    const panel = timelinePanelRef.current;
+    if (!panel) {
+      return;
+    }
+
+    panel.addEventListener("wheel", handleTimelineWheelCapture, { capture: true, passive: false });
+
+    return () => {
+      panel.removeEventListener("wheel", handleTimelineWheelCapture, { capture: true });
+    };
+  }, [handleTimelineWheelCapture]);
+
+  useEffect(() => {
+    const panel = timelinePanelRef.current;
+    if (!panel) {
+      return;
+    }
+
+    const preventSwipeGesture = (event: Event) => {
+      if (event.target instanceof Node && panel.contains(event.target)) {
+        event.preventDefault();
+      }
+    };
+
+    panel.addEventListener("gesturestart", preventSwipeGesture, { passive: false });
+    panel.addEventListener("gesturechange", preventSwipeGesture, { passive: false });
+    panel.addEventListener("gestureend", preventSwipeGesture, { passive: false });
+
+    return () => {
+      panel.removeEventListener("gesturestart", preventSwipeGesture);
+      panel.removeEventListener("gesturechange", preventSwipeGesture);
+      panel.removeEventListener("gestureend", preventSwipeGesture);
+    };
+  }, []);
 
   useEffect(() => {
     const pending = timelineScrollSyncRef.current;
@@ -1051,14 +1696,17 @@ export function ProcessCalendarBoard({
 
   const renderTimelineItem = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["itemRenderer"]>>(
     ({ item, itemContext, getItemProps, getResizeProps }) => {
+      const isItemSelected = item.isDraft ? Boolean(draft) : item.id === selectedEventId;
       const resizeProps = getResizeProps();
       const { key, onPointerDown, onPointerUp, onPointerCancel, ...itemProps } = getItemProps({
-        className: `ww-timeline-item ${item.toneClass} ${itemContext.selected ? "ww-timeline-item--selected" : ""}`
+        className: `ww-timeline-item ${item.toneClass} ${isItemSelected ? "ww-timeline-item--selected" : ""}`
       }) as HTMLAttributes<HTMLDivElement> & {
         key?: React.Key;
       };
 
       const handleItemPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+        suppressedItemSelectionIdRef.current = null;
+        ignoreStaleItemSelectionUntilRef.current = 0;
         startItemDragSelectionBlock();
         onPointerDown?.(event);
       };
@@ -1083,14 +1731,28 @@ export function ProcessCalendarBoard({
         >
           {itemContext.useResizeHandle ? <div {...resizeProps.left} className="ww-timeline-resize ww-timeline-resize--left" /> : null}
           <div className="ww-timeline-item-content">
-            <strong>{item.title}</strong>
-            <span>{item.peopleLabel || "Unassigned"}</span>
+            {presentationMode === "wireframe" ? (
+              <>
+                <div className="ww-timeline-item-title-row">
+                  <strong>{item.title}</strong>
+                  {item.badgeLabel ? <span className="ww-timeline-item-badge">{item.badgeLabel}</span> : null}
+                </div>
+                {item.peopleLabel ? <span className="ww-timeline-item-person">{item.peopleLabel}</span> : null}
+                <span className="ww-timeline-item-time">{item.timeLabel}</span>
+                {item.descriptionLabel ? <span className="ww-timeline-item-description">{item.descriptionLabel}</span> : null}
+              </>
+            ) : (
+              <>
+                <strong>{item.title}</strong>
+                <span>{item.peopleLabel || "Unassigned"}</span>
+              </>
+            )}
           </div>
           {itemContext.useResizeHandle ? <div {...resizeProps.right} className="ww-timeline-resize ww-timeline-resize--right" /> : null}
         </div>
       );
     },
-    [startItemDragSelectionBlock, stopItemDragSelectionBlock]
+    [draft, presentationMode, selectedEventId, startItemDragSelectionBlock, stopItemDragSelectionBlock]
   );
 
   function addPerson(person: ProcessCalendarPersonOption) {
@@ -1108,6 +1770,27 @@ export function ProcessCalendarBoard({
     }
 
     setError(null);
+
+    if (persistenceMode === "local") {
+      const createdEvent: ProcessCalendarEventView = {
+        id: `local-${Date.now().toString(36)}`,
+        process_template_id: processTemplateId,
+        location: draft.location,
+        starts_at: draft.startsAt.toISOString(),
+        ends_at: draft.endsAt.toISOString(),
+        process_step_id: actionMode === "step" && selectedStepId ? selectedStepId : null,
+        manual_action: actionMode === "manual" ? manualAction.trim() || null : null,
+        description: description.trim() || null,
+        people: selectedPeopleForSave()
+      };
+
+      setEvents((current) => sortCalendarEvents([...current, createdEvent]));
+      setDraft(null);
+      setSelectedEventId(createdEvent.id);
+      syncSelectionForm(createdEvent);
+      return;
+    }
+
     startTransition(async () => {
       const result = await createProcessCalendarEvent({
         processTemplateId,
@@ -1129,6 +1812,56 @@ export function ProcessCalendarBoard({
       setEvents((current) => sortCalendarEvents([...current, createdEvent]));
       setDraft(null);
       setSelectedEventId(createdEvent.id);
+      syncSelectionForm(createdEvent);
+    });
+  }
+
+  function saveSelectedEvent() {
+    if (!selectedEvent) {
+      return;
+    }
+
+    setError(null);
+
+    if (persistenceMode === "local") {
+      const updatedEvent: ProcessCalendarEventView = {
+        ...selectedEvent,
+        process_step_id: actionMode === "step" && selectedStepId ? selectedStepId : null,
+        manual_action: actionMode === "manual" ? manualAction.trim() || null : null,
+        description: description.trim() || null,
+        people: selectedPeopleForSave()
+      };
+
+      syncSelectionForm(updatedEvent);
+      setEvents((current) =>
+        sortCalendarEvents(
+          current.map((event) => (event.id === updatedEvent.id ? updatedEvent : event))
+        )
+      );
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await updateProcessCalendarEvent({
+        eventId: selectedEvent.id,
+        processStepId: actionMode === "step" ? selectedStepId : null,
+        manualAction: actionMode === "manual" ? manualAction : null,
+        description,
+        personIds: selectedPersonIds
+      });
+
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      const updatedEvent = result.data as ProcessCalendarEventView;
+      syncSelectionForm(updatedEvent);
+      setEvents((current) =>
+        sortCalendarEvents(
+          current.map((event) => (event.id === updatedEvent.id ? updatedEvent : event))
+        )
+      );
     });
   }
 
@@ -1138,6 +1871,13 @@ export function ProcessCalendarBoard({
     }
 
     setError(null);
+
+    if (persistenceMode === "local") {
+      setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
+      clearSelectedEvent();
+      return;
+    }
+
     startTransition(async () => {
       const result = await deleteProcessCalendarEvent({ eventId: selectedEvent.id });
       if (!result.ok) {
@@ -1146,7 +1886,7 @@ export function ProcessCalendarBoard({
       }
 
       setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
-      setSelectedEventId(null);
+      clearSelectedEvent();
     });
   }
 
@@ -1195,7 +1935,7 @@ export function ProcessCalendarBoard({
         return;
       }
 
-      if (!event.shiftKey) {
+      if (!(event.shiftKey || isShiftPressedRef.current)) {
         finishDraftDrag(event);
         return;
       }
@@ -1255,7 +1995,7 @@ export function ProcessCalendarBoard({
       }
 
       if (!pan.moved) {
-        setSelectedEventId(null);
+        clearSelectedEvent();
       }
 
       if (event) {
@@ -1290,11 +2030,13 @@ export function ProcessCalendarBoard({
 
       const span = pan.startEnd - pan.startStart;
       if (span >= timelineEnd - timelineStart) {
-        setVisibleRange({
-          boundsStart: timelineStart,
-          boundsEnd: timelineEnd,
-          start: timelineStart,
-          end: timelineEnd
+        startTransition(() => {
+          setVisibleRange({
+            boundsStart: timelineStart,
+            boundsEnd: timelineEnd,
+            start: timelineStart,
+            end: timelineEnd
+          });
         });
         return;
       }
@@ -1302,11 +2044,13 @@ export function ProcessCalendarBoard({
       const timeDelta = (dragDistance / rect.width) * span;
       const nextStart = clamp(pan.startStart - timeDelta, timelineStart, timelineEnd - span);
 
-      setVisibleRange({
-        boundsStart: timelineStart,
-        boundsEnd: timelineEnd,
-        start: nextStart,
-        end: nextStart + span
+      startTransition(() => {
+        setVisibleRange({
+          boundsStart: timelineStart,
+          boundsEnd: timelineEnd,
+          start: nextStart,
+          end: nextStart + span
+        });
       });
     };
 
@@ -1319,12 +2063,22 @@ export function ProcessCalendarBoard({
       window.removeEventListener("pointerup", finishTimelinePan);
       window.removeEventListener("pointercancel", finishTimelinePan);
     };
-  }, [timelineEnd, timelinePanPointerId, timelineStart]);
+  }, [clearSelectedEvent, timelineEnd, timelinePanPointerId, timelineStart]);
 
   return (
-    <div className="calendar-scheduler calendar-scheduler--timeline">
+    <div
+      className={[
+        "calendar-scheduler",
+        "calendar-scheduler--timeline",
+        presentationMode === "wireframe" ? "calendar-scheduler--wireframe" : undefined
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <div
         className={`calendar-timeline-panel ${isTimelinePanning ? "calendar-timeline-panel--panning" : ""}`}
+        onClickCapture={handleTimelineClickCapture}
+        onDoubleClickCapture={handleTimelineDoubleClickCapture}
         onPointerDownCapture={handleTimelinePointerDownCapture}
         ref={timelinePanelRef}
       >
@@ -1348,24 +2102,25 @@ export function ProcessCalendarBoard({
           itemHeightRatio={0.76}
           itemRenderer={renderTimelineItem}
           itemTouchSendsClick
-          itemVerticalGap={6}
+          itemVerticalGap={presentationMode === "wireframe" ? 12 : 6}
           items={timelineItems}
           keys={TIMELINE_KEYS}
-          lineHeight={46}
+          lineHeight={presentationMode === "wireframe" ? 172 : 46}
           maxZoom={maxZoomMs}
-          minZoom={2 * 60 * 60 * 1000}
+          minZoom={MIN_ZOOM_MS}
           moveResizeValidator={moveResizeValidator}
           onCanvasClick={handleCanvasClick}
           onCanvasDoubleClick={handleCanvasDoubleClick}
           onItemClick={handleItemSelect}
+          onItemDeselect={handleItemDeselect}
           onItemMove={handleItemMove}
           onItemResize={handleItemResize}
           onItemSelect={handleItemSelect}
           onTimeChange={handleTimeChange}
           ref={setTimelineRef}
           selected={draft ? ["__draft-create__"] : selectedEventId ? [selectedEventId] : []}
-          sidebarWidth={132}
-          verticalLineClassNamesForTime={todayVerticalLines}
+          sidebarWidth={presentationMode === "wireframe" ? 136 : 132}
+          verticalLineClassNamesForTime={timelineVerticalLineClassNames}
           stackItems
           timeSteps={{ second: 1, minute: 15, hour: headerScale.hourStep, day: 1, month: 1, year: 1 }}
           useResizeHandle
@@ -1374,25 +2129,58 @@ export function ProcessCalendarBoard({
         >
           <TimelineHeaders className="ww-timeline-headers">
             <SidebarHeader>
-              {({ getRootProps }) => <div {...getRootProps({ style: {} })}>Location</div>}
+              {({ getRootProps }) => {
+                const rootProps = getRootProps({ style: { color: "inherit" } }) as HTMLAttributes<HTMLDivElement> & {
+                  className?: string;
+                };
+
+                return (
+                  <div
+                    {...rootProps}
+                    className={[rootProps.className, "ww-timeline-sidebar-header"].filter(Boolean).join(" ")}
+                  >
+                    {presentationMode === "wireframe" ? "Sites" : "Location"}
+                  </div>
+                );
+              }}
             </SidebarHeader>
-            <DateHeader
-              key={`primary-${headerScale.id}`}
-              labelFormat={headerScale.primaryLabelFormat}
-              unit={headerScale.primaryUnit}
-              intervalRenderer={createCurrentDayHeaderRenderer(headerScale.primaryUnit === "day")}
-            />
-            <DateHeader
-              key={`secondary-${headerScale.id}`}
-              labelFormat={headerScale.secondaryLabelFormat}
-              unit={headerScale.secondaryUnit}
-              intervalRenderer={createCurrentDayHeaderRenderer(headerScale.secondaryUnit === "day")}
-            />
+            {presentationMode === "wireframe" ? (
+              <DateHeader
+                key={`wireframe-${wireframeHeaderScale.id}`}
+                labelFormat={wireframeHeaderScale.labelFormat}
+                unit={wireframeHeaderScale.unit}
+                intervalRenderer={createWireframeHeaderRenderer(wireframeHeaderScale.id)}
+              />
+            ) : (
+              <>
+                <DateHeader
+                  key={`primary-${headerScale.id}`}
+                  labelFormat={headerScale.primaryLabelFormat}
+                  unit={headerScale.primaryUnit}
+                  intervalRenderer={createCurrentDayHeaderRenderer(headerScale.primaryUnit === "day")}
+                />
+                <DateHeader
+                  key={`secondary-${headerScale.id}`}
+                  labelFormat={headerScale.secondaryLabelFormat}
+                  unit={headerScale.secondaryUnit}
+                  intervalRenderer={createCurrentDayHeaderRenderer(headerScale.secondaryUnit === "day")}
+                />
+              </>
+            )}
           </TimelineHeaders>
         </Timeline>
       </div>
 
-      <aside className="calendar-inspector" aria-label="Calendar event details">
+      <aside
+        className={[
+          "calendar-inspector",
+          presentationMode === "wireframe" ? "calendar-inspector--wireframe" : undefined,
+          draft || selectedEvent || error ? "calendar-inspector--active" : "calendar-inspector--empty"
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        aria-label="Calendar event details"
+      >
         <div className="calendar-filter-panel">
           <div className="calendar-filter-panel__header">
             <div>
@@ -1594,20 +2382,105 @@ export function ProcessCalendarBoard({
               </p>
             </div>
 
-            <dl className="event-detail-list">
-              <div>
-                <dt>People</dt>
-                <dd>{selectedEvent.people.map((person) => person.display_name).join(", ") || "Unassigned"}</dd>
+            <label className="field">
+              <span>Action</span>
+              <select
+                value={actionMode === "step" ? selectedStepId : "__manual"}
+                onChange={(event) => {
+                  if (event.target.value === "__manual") {
+                    setActionMode("manual");
+                    setSelectedStepId("");
+                  } else {
+                    setActionMode("step");
+                    setSelectedStepId(event.target.value);
+                  }
+                }}
+              >
+                {steps.map((step) => (
+                  <option key={step.id} value={step.id}>
+                    {step.name}
+                  </option>
+                ))}
+                <option value="__manual">Manual action</option>
+              </select>
+            </label>
+
+            {actionMode === "manual" ? (
+              <label className="field">
+                <span>Manual action</span>
+                <input
+                  value={manualAction}
+                  onChange={(event) => setManualAction(event.target.value)}
+                  placeholder="Poling"
+                />
+              </label>
+            ) : null}
+
+            <div className="field">
+              <span>People</span>
+              <div className="person-picker">
+                <div className="person-chips">
+                  {selectedPeople.map((person) => (
+                    <button key={person.id} type="button" onClick={() => removePerson(person.id)}>
+                      {person.display_name}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={personQuery}
+                  onChange={(event) => setPersonQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    const firstAvailablePerson = filteredPeople.find((entry) => !entry.conflictReason)?.person;
+
+                    if (event.key === "Enter" && firstAvailablePerson) {
+                      event.preventDefault();
+                      addPerson(firstAvailablePerson);
+                    }
+                  }}
+                  placeholder="Type a name"
+                />
+                {personQuery.trim() ? (
+                  <div className="person-suggestions">
+                    {filteredPeople.map(({ person, conflictReason }) => (
+                      <button
+                        disabled={Boolean(conflictReason)}
+                        key={person.id}
+                        type="button"
+                        title={conflictReason ?? undefined}
+                        onClick={() => addPerson(person)}
+                      >
+                        <span>{person.display_name}</span>
+                        {conflictReason ? <small>{conflictReason}</small> : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
-              <div>
-                <dt>Description</dt>
-                <dd>{selectedEvent.description || "No description"}</dd>
-              </div>
-            </dl>
+            </div>
+
+            <label className="field">
+              <span>Description</span>
+              <textarea
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                rows={4}
+                placeholder="Notes, sample set, handoff details"
+              />
+            </label>
 
             {error ? <p className="form-error">{error}</p> : null}
 
             <div className="calendar-inspector-actions">
+              <button className="button button-primary" disabled={isPending} type="button" onClick={saveSelectedEvent}>
+                Save event
+              </button>
+              <button
+                className="button"
+                type="button"
+                onClick={() => syncSelectionForm(selectedEvent)}
+              >
+                Cancel
+              </button>
               <button className="button button-danger" disabled={isPending} type="button" onClick={deleteSelectedEvent}>
                 Delete event
               </button>
