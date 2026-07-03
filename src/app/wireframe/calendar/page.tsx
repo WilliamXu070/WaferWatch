@@ -15,6 +15,35 @@ type SearchParams = {
 
 const LOCATIONS: readonly ProcessCalendarLocation[] = ["McMaster", "Waterloo", "Toronto"];
 
+type CalendarLoadResult =
+  | {
+      status: "ready";
+      data: {
+        process: {
+          id: string;
+          name: string;
+          version: string;
+        };
+        steps: { id: string; name: string }[];
+        people: { id: string; display_name: string }[];
+        initialEvents: Array<{
+          id: string;
+          process_template_id: string;
+          location: ProcessCalendarLocation;
+          starts_at: string;
+          ends_at: string;
+          process_step_id: string | null;
+          manual_action: string | null;
+          description: string | null;
+          people: { id: string; display_name: string }[];
+        }>;
+        initialStartDate: string;
+      };
+    }
+  | { status: "unauthenticated" }
+  | { status: "no-process" }
+  | { status: "unavailable"; message: string };
+
 function getRequestedProcessId(searchParams: SearchParams) {
   const raw = searchParams.processId;
   return Array.isArray(raw) ? raw[0] : raw;
@@ -32,24 +61,22 @@ function getMondayWeekStart(date: Date) {
   return next;
 }
 
-async function loadBackendCalendar(requestedProcessId?: string) {
+async function loadBackendCalendar(requestedProcessId?: string): Promise<CalendarLoadResult> {
   const supabase = await createServerSupabaseClient();
   const { data: claimsData } = await supabase.auth.getClaims();
 
   if (!claimsData?.claims?.sub) {
-    return null;
+    return { status: "unauthenticated" };
   }
 
   const templates = await listProcessTemplates();
   const fallbackTemplate = templates.find((template) => template.is_active) ?? templates[0];
 
   if (!fallbackTemplate) {
-    return null;
+    return { status: "no-process" };
   }
 
-  const process = requestedProcessId
-    ? await getProcessTemplate(requestedProcessId).catch(() => fallbackTemplate)
-    : fallbackTemplate;
+  const process = requestedProcessId ? await getProcessTemplate(requestedProcessId) : fallbackTemplate;
 
   const queryStart = new Date(2000, 0, 1);
   const queryEnd = new Date(2099, 11, 31, 23, 59, 59, 999);
@@ -60,21 +87,24 @@ async function loadBackendCalendar(requestedProcessId?: string) {
   );
 
   return {
-    process: {
-      id: process.id,
-      name: process.name,
-      version: process.version
-    },
-    steps: process.process_steps
-      .slice()
-      .sort((a, b) => a.step_order - b.step_order)
-      .map((step) => ({ id: step.id, name: step.name })),
-    people: schedule.people,
-    initialEvents: schedule.events.map((event) => ({
-      ...event,
-      location: toCalendarLocation(event.location)
-    })),
-    initialStartDate: getMondayWeekStart(new Date()).toISOString().slice(0, 10)
+    status: "ready",
+    data: {
+      process: {
+        id: process.id,
+        name: process.name,
+        version: process.version
+      },
+      steps: process.process_steps
+        .slice()
+        .sort((a, b) => a.step_order - b.step_order)
+        .map((step) => ({ id: step.id, name: step.name })),
+      people: schedule.people,
+      initialEvents: schedule.events.map((event) => ({
+        ...event,
+        location: toCalendarLocation(event.location)
+      })),
+      initialStartDate: getMondayWeekStart(new Date()).toISOString().slice(0, 10)
+    }
   };
 }
 
@@ -84,7 +114,10 @@ export default async function WireframeCalendarPage({
   searchParams: Promise<SearchParams>;
 }) {
   const requestedProcessId = getRequestedProcessId(await searchParams);
-  const calendarData = await loadBackendCalendar(requestedProcessId).catch(() => null);
+  const calendarResult = await loadBackendCalendar(requestedProcessId).catch((error: unknown) => ({
+    status: "unavailable" as const,
+    message: error instanceof Error ? error.message : "Calendar backend could not be loaded."
+  }));
 
-  return <CalendarView backendEnabled={Boolean(calendarData)} {...(calendarData ?? {})} />;
+  return <CalendarView result={calendarResult} />;
 }

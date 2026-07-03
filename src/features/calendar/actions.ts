@@ -16,6 +16,7 @@ import type { ProcessCalendarEvent, ProcessPerson, ProcessStep, ProcessTemplate 
 const TRAVEL_BUFFER_MS = 60 * 60 * 1000;
 const MISSING_CALENDAR_TABLES_MESSAGE =
   "Calendar storage is not migrated yet. Apply the latest Supabase migration and seed data, then try again.";
+const WIREFRAME_CALENDAR_PATH = "/wireframe/calendar";
 
 type ProcessTemplateAccessContext = Pick<
   ProcessTemplate,
@@ -280,6 +281,7 @@ export async function createProcessCalendarEvent(input: unknown) {
     }
 
     revalidatePath(`/processes/${parsed.processTemplateId}`);
+    revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({
       ...event,
       people
@@ -319,6 +321,7 @@ export async function deleteProcessCalendarEvent(input: unknown) {
     }
 
     revalidatePath(`/processes/${event.process_template_id}`);
+    revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({ id: parsed.eventId });
   } catch (error) {
     if (isMissingCalendarTableError(error)) {
@@ -390,6 +393,7 @@ export async function moveProcessCalendarEvent(input: unknown) {
     }
 
     revalidatePath(`/processes/${event.process_template_id}`);
+    revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({
       ...updatedEvent,
       people
@@ -472,6 +476,7 @@ export async function updateProcessCalendarEvent(input: unknown) {
     }
 
     revalidatePath(`/processes/${existingEvent.process_template_id}`);
+    revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({
       ...updatedEvent,
       people
