@@ -478,7 +478,7 @@ export const waferStatusModel: WaferStatusModel = {
       id: "gamma",
       name: "GAMMA",
       status: "setup",
-      tiles: makeWaferTiles("GAMMA", ["queued", "queued", "queued", "queued"], undefined, true)
+      tiles: makeWaferTiles("GAMMA", ["queued"], undefined, true)
     }
   ]
 };

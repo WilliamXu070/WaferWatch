@@ -54,8 +54,8 @@ function getWaferDisplayLabel(tile: WaferStatusTileModel, isUndiced: boolean) {
   return isUndiced ? tile.family : tile.code;
 }
 
-function isUndicedMode(tile: WaferStatusTileModel, modeMap: Record<string, boolean>) {
-  return Boolean(modeMap[tile.id] ?? tile.isUndiced);
+function isUndicedMode(tile: WaferStatusTileModel) {
+  return Boolean(tile.isUndiced);
 }
 
 function MetricTile({ metric }: { metric: WaferStatusMetric }) {
@@ -122,7 +122,7 @@ function WaferTile({
           selectedDieCode={isUndiced ? undefined : (tile.dieLabel || tile.code)}
           colorSeed={tile.family}
           showOnlySelectedDie={!isUndiced}
-          showDieLabel={!isUndiced}
+          showDieLabel={false}
           dimmed={tile.status === "queued"}
           className="max-h-[78px]"
         />
@@ -139,13 +139,11 @@ function WaferTile({
 function FamilySection({
   family,
   selectedTile,
-  undicedByTile,
   onSelect
 }: {
   family: WaferFamilyModel;
   selectedTile: WaferStatusTileModel;
   onSelect: (tile: WaferStatusTileModel) => void;
-  undicedByTile: Record<string, boolean>;
 }) {
   const [open, setOpen] = useState(true);
   const familyMuted = family.status === "setup";
@@ -184,7 +182,7 @@ function FamilySection({
             <WaferTile
               key={tile.id}
               tile={tile}
-              isUndiced={isUndicedMode(tile, undicedByTile)}
+              isUndiced={isUndicedMode(tile)}
               selected={selectedTile.id === tile.id}
               onSelect={() => onSelect(tile)}
             />
@@ -197,12 +195,10 @@ function FamilySection({
 
 function SelectedDiePanel({
   selectedTile,
-  isUndiced,
-  onToggleUndiced
+  isUndiced
 }: {
   selectedTile: WaferStatusTileModel;
   isUndiced: boolean;
-  onToggleUndiced: (next: boolean) => void;
 }) {
   const displayLabel = getWaferDisplayLabel(selectedTile, isUndiced);
 
@@ -222,29 +218,6 @@ function SelectedDiePanel({
         </span>
       </div>
 
-      <div className="rounded-lg border border-[#dee2d8] bg-[#f5f7f2] p-3">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#6f776d]">Wafer mode</p>
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <p className="text-sm text-[#5f675f]">Render as {isUndiced ? "whole wafer" : "die-cut layout"}</p>
-          <label className="inline-flex items-center gap-2 text-sm font-semibold text-[#3f4c42]">
-            <span>Undiced</span>
-            <button
-              type="button"
-              onClick={() => onToggleUndiced(!isUndiced)}
-              aria-pressed={isUndiced}
-              className="relative inline-flex h-5 w-10 shrink-0 items-center rounded-full border border-[#bcc5b8] bg-[#d8ddd4] p-0.5 transition-all duration-150"
-            >
-              <span
-                className={[
-                  "inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-150",
-                  isUndiced ? "translate-x-5" : "translate-x-0"
-                ].join(" ")}
-              />
-            </button>
-          </label>
-        </div>
-      </div>
-
       <div className="grid min-h-[260px] place-items-center rounded-xl border border-[#d4d9d0] bg-[#f3f6ef] p-5">
         <WaferGeometryPreview
           modeKeyword={selectedTile.waferStateName}
@@ -252,24 +225,9 @@ function SelectedDiePanel({
           selectedDieCode={isUndiced ? undefined : (selectedTile.dieLabel || selectedTile.code)}
           colorSeed={selectedTile.family}
           showOnlySelectedDie={!isUndiced}
-          showDieLabel={!isUndiced}
+          showDieLabel={false}
           className="max-h-[320px]"
         />
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 text-[13px]">
-        <div className="rounded-md border border-[#dee2d8] bg-[#f5f7f2] p-3">
-          <p className="font-semibold text-[#171a16]">Cut recipe</p>
-          <p className="mt-1 text-[#747d72]">
-            {isUndiced ? "Undiced wafer geometry only" : "4in wafer, 8 die split"}
-          </p>
-        </div>
-        <div className="rounded-md border border-[#dee2d8] bg-[#f5f7f2] p-3">
-          <p className="font-semibold text-[#171a16]">Overlay</p>
-          <p className="mt-1 text-[#747d72]">
-            {isUndiced ? "No die overlay shown" : "3 x 15 array clipped to die"}
-          </p>
-        </div>
       </div>
     </aside>
   );
@@ -284,22 +242,7 @@ export function WaferStatusView() {
     []
   );
   const [selectedTile, setSelectedTile] = useState<WaferStatusTileModel>(initialSelected);
-  const [undicedByTile, setUndicedByTile] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(
-      waferStatusModel.families
-        .flatMap((family) => family.tiles)
-        .map((tile) => [tile.id, Boolean(tile.isUndiced)])
-    )
-  );
-
-  const selectedUndiced = isUndicedMode(selectedTile, undicedByTile);
-
-  const setSelectedUndiced = (next: boolean) => {
-    setUndicedByTile((prev) => ({
-      ...prev,
-      [selectedTile.id]: next
-    }));
-  };
+  const selectedUndiced = isUndicedMode(selectedTile);
 
   return (
     <div className="grid gap-5 p-6">
@@ -316,7 +259,6 @@ export function WaferStatusView() {
               key={family.id}
               family={family}
               selectedTile={selectedTile}
-              undicedByTile={undicedByTile}
               onSelect={setSelectedTile}
             />
           ))}
@@ -324,7 +266,6 @@ export function WaferStatusView() {
         <SelectedDiePanel
           selectedTile={selectedTile}
           isUndiced={selectedUndiced}
-          onToggleUndiced={setSelectedUndiced}
         />
       </section>
 

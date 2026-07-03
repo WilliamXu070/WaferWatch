@@ -137,6 +137,21 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `svgTextCount: 0`, `rectCount: 0`, and `bottomPointCount: 4`.
   - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3005/wireframe/wafer-status /tmp/wafer-status-gamma-flat-wafer.png`
 
+## Recent development note (2026-07-02 22:26)
+
+- Cleaned `/wireframe/wafer-status` wafer previews and selected panel:
+  removed duplicate die-code SVG labels from previews, removed the wafer-mode
+  control panel, removed the cut recipe/overlay cards, and collapsed Gamma from
+  four repeated mock cards to one undiced wafer card.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser DOM check: Gamma header `GAMMA1`, `gammaCardCount: 1`, Gamma SVG
+    `visiblePolygonCount: 1`, `svgTextCount: 0`, `rectCount: 0`; side panel has
+    no `Wafer mode`, `Cut recipe`, or `Overlay` text.
+  - `curl -s http://localhost:3005/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3005/wireframe/wafer-status /tmp/wafer-status-gamma-single-clean.png`
+
 ## Recent development note (2026-07-03 00:00)
 
 - Updated process flow wireframe to use finite diagram bounds with deterministic
