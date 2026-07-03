@@ -229,3 +229,30 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Saved auth state `playwright/.auth/user.json` was not accepted, so
     authenticated wafer-status/drag persistence was not exercised.
   - Screenshot: `/tmp/waferwatch-process-flow-wireframe-auth-gated.png`
+
+## Recent development note (2026-07-03 wireframe fixture verification)
+
+- Added `scripts/wireframe-fixture.mjs` plus npm aliases for deterministic
+  wireframe backend verification:
+  `wireframe:fixture:snapshot`, `wireframe:fixture:clear`,
+  `wireframe:fixture:seed`, and `wireframe:fixture:verify`.
+- The fixture is scoped to the fixed `codex-wireframe-fixture` project/template
+  namespace and cleanup deletes only those deterministic IDs.
+- Verified clear/no-fixture state, seeded two wafers (`ALPHA-VERIFY-01`,
+  `BETA-VERIFY-02`), two assignments, eight executions, one calendar event, and
+  one persisted text surface, then cleared the fixture rows again.
+- The existing saved Playwright auth state was decoded only for metadata and was
+  expired; its refresh token was invalid, so authenticated calendar/process-flow/
+  wafer-status browser verification still needs a fresh existing login.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run wireframe:fixture:snapshot`
+  - `npm run wireframe:fixture:clear`
+  - `npm run wireframe:fixture:seed`
+  - `npm run wireframe:fixture:verify`
+  - `curl -s http://127.0.0.1:3010/api/health`
+  - Playwright at `http://127.0.0.1:3010/wireframe/dashboard`: seeded cards
+    appeared before cleanup and disappeared after cleanup with no console errors.
+  - Screenshots: `/tmp/waferwatch-seeded-dashboard.png`,
+    `/tmp/waferwatch-cleared-dashboard.png`
