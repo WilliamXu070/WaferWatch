@@ -15,6 +15,7 @@ import {
   processStepPositionUpdateSchema,
   processStepTransitionCreateSchema,
   processStepTransitionDeleteSchema,
+  processTemplateNameUpdateSchema,
   processTemplateCreateSchema,
   processStepNameUpdateSchema
 } from "@/features/process-flows/schemas";
@@ -118,7 +119,10 @@ async function getNextStepOrder(templateId: string) {
 
 function revalidateProcessFlow(templateId: string) {
   revalidatePath("/", "layout");
+  revalidatePath("/wireframe/dashboard");
   revalidatePath("/wireframe/process-flow");
+  revalidatePath("/wireframe/wafer-status");
+  revalidatePath("/wireframe/calendar");
   revalidatePath(`/processes/${templateId}`);
 }
 
@@ -150,6 +154,29 @@ export async function createProcessTemplate(input: unknown) {
     }
 
     revalidatePath("/", "layout");
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateProcessTemplateName(input: unknown) {
+  try {
+    const parsed = processTemplateNameUpdateSchema.parse(input);
+    const template = await getTemplateForWrite(parsed.templateId);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from("process_templates")
+      .update({ name: parsed.name })
+      .eq("id", parsed.templateId)
+      .select("id, name, version")
+      .single();
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(template.id);
     return ok(data);
   } catch (error) {
     return fail(toErrorMessage(error));

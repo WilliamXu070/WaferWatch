@@ -8,7 +8,6 @@ import {
   updateProcessStepPositions
 } from "@/features/process-flows/actions";
 import {
-  getFirstActiveProcessTemplateId,
   getProcessDashboardData,
   type ProcessDashboardData
 } from "@/features/process-flows/queries";
@@ -152,6 +151,10 @@ function toFlowStats(data: ProcessDashboardData | null, columns: DiagramStep[]):
 }
 
 async function loadProcessFlowData(requestedProcessId: string | undefined) {
+  if (!requestedProcessId) {
+    return null;
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
 
@@ -159,12 +162,7 @@ async function loadProcessFlowData(requestedProcessId: string | undefined) {
     return null;
   }
 
-  const processId = requestedProcessId ?? await getFirstActiveProcessTemplateId();
-  if (!processId) {
-    return null;
-  }
-
-  return getProcessDashboardData(processId, 14, false).catch(() => null);
+  return getProcessDashboardData(requestedProcessId, 14, false).catch(() => null);
 }
 
 export default async function ProcessFlowWireframePage({
@@ -178,19 +176,23 @@ export default async function ProcessFlowWireframePage({
   const flowTransitions = toFlowTransitions(dashboardData);
   const processLabel = dashboardData
     ? `${dashboardData.process.name}${dashboardData.process.version ? ` · ${dashboardData.process.version}` : ""}`
-    : "No active process";
+    : requestedProcessId ? "No active process" : "Select a process";
   const statusLabel = dashboardData
     ? `${dashboardData.activeWaferStates.length} active wafer${dashboardData.activeWaferStates.length === 1 ? "" : "s"} loaded from Supabase`
-    : "No authenticated process template or wafer assignment data is available.";
+    : requestedProcessId
+      ? "No authenticated process template or wafer assignment data is available."
+      : "Choose a process from the sidebar, then open Process Flow.";
 
   return (
     <ProcessFlowView
       processLabel={processLabel}
       statusLabel={statusLabel}
-      emptyTitle={flowColumns.length === 0 ? "No process flow data" : undefined}
+      emptyTitle={flowColumns.length === 0 ? (requestedProcessId ? "No process flow data" : "No process selected") : undefined}
       emptyDescription={
         flowColumns.length === 0
-          ? "Sign in with access to an active process template, or assign wafers to a process. No wireframe fallback data is injected."
+          ? requestedProcessId
+            ? "Sign in with access to an active process template, or assign wafers to a process. No wireframe fallback data is injected."
+            : "Select a process first. The process flow stays hidden until a process and this sub-view are selected."
           : undefined
       }
       steps={flowColumns}

@@ -14,6 +14,11 @@ export const processTemplateCreateSchema = z.object({
   isActive: z.boolean().default(true)
 });
 
+export const processTemplateNameUpdateSchema = z.object({
+  templateId: uuidSchema,
+  name: z.string().trim().min(2).max(180)
+});
+
 export const processStepCreateSchema = z.object({
   templateId: uuidSchema,
   stepOrder: z.number().int().positive(),

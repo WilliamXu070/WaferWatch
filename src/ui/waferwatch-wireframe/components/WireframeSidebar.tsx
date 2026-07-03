@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { ActionResult } from "@/lib/action-result";
 import type { WireframeShellDto } from "@/features/wireframe/types";
 import {
   CalendarIcon,
@@ -18,6 +20,11 @@ import {
   wireframeBrand,
   type SidebarNavItem
 } from "../nav";
+
+type UpdateProcessNameAction = (input: {
+  templateId: string;
+  name: string;
+}) => Promise<ActionResult<{ id: string; name: string; version: string }>>;
 
 const iconByKey = {
   grid: GridIcon,
@@ -51,10 +58,78 @@ function NavRow({ item, active }: { item: SidebarNavItem; active: boolean }) {
   );
 }
 
-export function WireframeSidebar({ shell }: { shell: WireframeShellDto }) {
+function hrefWithProcess(href: string, processId: string) {
+  return `${href}?processId=${encodeURIComponent(processId)}`;
+}
+
+export function WireframeSidebar({
+  shell,
+  onUpdateProcessName
+}: {
+  shell: WireframeShellDto;
+  onUpdateProcessName?: UpdateProcessNameAction;
+}) {
+  const router = useRouter();
   const pathname = usePathname() ?? "";
+  const searchParams = useSearchParams();
+  const selectedProcessId = searchParams.get("processId");
+  const currentProcess = shell.currentProcess;
+  const [localSelectedProcessId, setLocalSelectedProcessId] = useState<string | null>(null);
+  const processIsSelected = Boolean(
+    currentProcess &&
+      (selectedProcessId === currentProcess.id || localSelectedProcessId === currentProcess.id)
+  );
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
-  const processActive = processNav.some((item) => isActive(item.href));
+  const processActive = processIsSelected && processNav.some((item) => isActive(item.href));
+  const [isEditingProcessName, setIsEditingProcessName] = useState(false);
+  const [processNameDraft, setProcessNameDraft] = useState(currentProcess?.name ?? "");
+  const [processEditMessage, setProcessEditMessage] = useState<string | null>(null);
+  const [isRenamingProcess, startRenameProcessTransition] = useTransition();
+
+  const selectCurrentProcess = () => {
+    if (!currentProcess) {
+      return;
+    }
+
+    setLocalSelectedProcessId(currentProcess.id);
+  };
+
+  const saveProcessName = () => {
+    if (!currentProcess || !onUpdateProcessName) {
+      return;
+    }
+
+    const nextName = processNameDraft.trim();
+    if (nextName.length < 2) {
+      setProcessEditMessage("Use at least 2 characters.");
+      return;
+    }
+
+    if (nextName === currentProcess.name) {
+      setIsEditingProcessName(false);
+      setProcessEditMessage(null);
+      return;
+    }
+
+    startRenameProcessTransition(() => {
+      void (async () => {
+        const result = await onUpdateProcessName({
+          templateId: currentProcess.id,
+          name: nextName
+        });
+
+        if (!result.ok) {
+          setProcessEditMessage(result.error);
+          return;
+        }
+
+        setProcessNameDraft(result.data.name);
+        setIsEditingProcessName(false);
+        setProcessEditMessage("Saved.");
+        router.refresh();
+      })();
+    });
+  };
 
   return (
     <aside className="flex h-full w-[264px] shrink-0 flex-col border-r border-[#e9e9df] bg-white px-4 py-5">
@@ -87,39 +162,128 @@ export function WireframeSidebar({ shell }: { shell: WireframeShellDto }) {
         </p>
         <div
           className={[
-            "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm",
-            processActive
+            "rounded-xl px-3 py-2.5 text-sm transition-all",
+            processIsSelected
               ? "bg-[#f2f2e8] font-semibold text-[#151512]"
               : "font-medium text-[#55534a]"
           ].join(" ")}
         >
-          <CalendarIcon className="text-[#8a887b]" />
-          <span className="flex-1">{shell.currentProcess?.name ?? "No active process"}</span>
-          <span className="min-w-[22px] rounded-full bg-[#efefe3] px-1.5 py-0.5 text-center text-[11px] font-semibold text-[#55534a]">
-            {shell.currentProcess?.activeDieCount ?? 0}
-          </span>
-        </div>
-        <div className="mt-1 flex flex-col gap-1 pl-3">
-          {processNav.map((item) => {
-            const Icon = iconByKey[item.icon];
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.key}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={[
-                  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors",
-                  active
-                    ? "bg-[#f2f2e8] font-semibold text-[#151512]"
-                    : "font-medium text-[#6b6a5f] hover:bg-[#f7f7ee]"
-                ].join(" ")}
+          <div className="flex items-center gap-3">
+            <CalendarIcon className="shrink-0 text-[#8a887b]" />
+            {isEditingProcessName && currentProcess ? (
+              <input
+                value={processNameDraft}
+                onChange={(event) => setProcessNameDraft(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    saveProcessName();
+                  }
+
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setProcessNameDraft(currentProcess.name);
+                    setIsEditingProcessName(false);
+                    setProcessEditMessage(null);
+                  }
+                }}
+                className="min-w-0 flex-1 rounded-md border border-[#d8d6ca] bg-white px-2 py-1 text-[13px] font-semibold text-[#151512] outline-none focus:border-[#151512]"
+                aria-label="Process name"
+                autoFocus
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={selectCurrentProcess}
+                disabled={!currentProcess}
+                className="min-w-0 flex-1 truncate text-left disabled:cursor-default"
+                aria-pressed={processIsSelected}
               >
-                <Icon className={active ? "text-[#151512]" : "text-[#9c9a8c]"} />
-                {item.label}
-              </Link>
-            );
-          })}
+                {currentProcess?.name ?? "No active process"}
+              </button>
+            )}
+            {currentProcess ? (
+              <span className="min-w-[22px] rounded-full bg-[#efefe3] px-1.5 py-0.5 text-center text-[11px] font-semibold text-[#55534a]">
+                {currentProcess.activeDieCount}
+              </span>
+            ) : null}
+          </div>
+          {currentProcess ? (
+            <div className="mt-2 flex items-center gap-2 pl-8">
+              {isEditingProcessName ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={saveProcessName}
+                    disabled={isRenamingProcess}
+                    className="rounded-md bg-[#151512] px-2.5 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProcessNameDraft(currentProcess.name);
+                      setIsEditingProcessName(false);
+                      setProcessEditMessage(null);
+                    }}
+                    className="rounded-md px-2.5 py-1 text-[11px] font-semibold text-[#6b6a5f] hover:bg-[#f7f7ee]"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProcessNameDraft(currentProcess.name);
+                    setIsEditingProcessName(true);
+                    setProcessEditMessage(null);
+                  }}
+                  disabled={!onUpdateProcessName}
+                  className="rounded-md px-2.5 py-1 text-[11px] font-semibold text-[#6b6a5f] hover:bg-[#f7f7ee] disabled:opacity-50"
+                >
+                  Rename
+                </button>
+              )}
+              {processEditMessage ? (
+                <span className="text-[11px] font-medium text-[#7b796f]">{processEditMessage}</span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <div
+          className={[
+            "grid transition-[grid-template-rows,opacity,transform] duration-200 ease-out",
+            processIsSelected ? "grid-rows-[1fr] opacity-100 translate-y-0" : "grid-rows-[0fr] opacity-0 -translate-y-1"
+          ].join(" ")}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="mt-1 flex flex-col gap-1 pl-3">
+              {currentProcess
+                ? processNav.map((item) => {
+                    const Icon = iconByKey[item.icon];
+                    const active = processActive && isActive(item.href);
+                    return (
+                      <Link
+                        key={item.key}
+                        href={hrefWithProcess(item.href, currentProcess.id)}
+                        aria-current={active ? "page" : undefined}
+                        className={[
+                          "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors",
+                          active
+                            ? "bg-[#f2f2e8] font-semibold text-[#151512]"
+                            : "font-medium text-[#6b6a5f] hover:bg-[#f7f7ee]"
+                        ].join(" ")}
+                      >
+                        <Icon className={active ? "text-[#151512]" : "text-[#9c9a8c]"} />
+                        {item.label}
+                      </Link>
+                    );
+                  })
+                : null}
+            </div>
+          </div>
         </div>
       </div>
 

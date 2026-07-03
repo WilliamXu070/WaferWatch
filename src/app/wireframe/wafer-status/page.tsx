@@ -11,7 +11,30 @@ export const metadata = {
   title: "Wafer / die status · WaferWatch wireframe"
 };
 
-export default async function WireframeWaferStatusPage() {
+type WaferStatusSearchParams = {
+  processId?: string | string[];
+};
+
+function firstSearchValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function WireframeWaferStatusPage({
+  searchParams
+}: {
+  searchParams: Promise<WaferStatusSearchParams>;
+}) {
+  const requestedProcessId = firstSearchValue((await searchParams).processId);
+  if (!requestedProcessId) {
+    return (
+      <WaferStatusView
+        model={getEmptyWaferStatusModel()}
+        emptyTitle="No process selected"
+        emptyDescription="Select a process first. Wafer / die status stays hidden until a process and this sub-view are selected."
+      />
+    );
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
 
@@ -25,7 +48,7 @@ export default async function WireframeWaferStatusPage() {
     );
   }
 
-  const model = await getWaferStatusModel();
+  const model = await getWaferStatusModel(requestedProcessId);
 
   return <WaferStatusView model={model} />;
 }

@@ -332,12 +332,37 @@ export function getEmptyWaferStatusModel(): WaferStatusModel {
   };
 }
 
-export async function getWaferStatusModel(): Promise<WaferStatusModel> {
+export async function getWaferStatusModel(processTemplateId?: string): Promise<WaferStatusModel> {
   const supabase = await createServerSupabaseClient();
-  const wafersResult = await supabase
+
+  const scopedAssignmentsResult = processTemplateId
+    ? await supabase
+        .from("wafer_process_assignments")
+        .select("id, wafer_id, status, assigned_at, started_at, completed_at")
+        .eq("template_id", processTemplateId)
+        .in("status", ACTIVE_ASSIGNMENT_STATUSES)
+        .order("assigned_at", { ascending: false })
+    : null;
+
+  if (scopedAssignmentsResult?.error) {
+    throw scopedAssignmentsResult.error;
+  }
+
+  const scopedAssignments = (scopedAssignmentsResult?.data ?? []) as WaferStatusAssignmentRow[];
+  const scopedWaferIds = processTemplateId
+    ? Array.from(new Set(scopedAssignments.map((assignment) => assignment.wafer_id)))
+    : null;
+
+  if (processTemplateId && (!scopedWaferIds || scopedWaferIds.length === 0)) {
+    return getEmptyWaferStatusModel();
+  }
+
+  const wafersQuery = supabase
     .from("wafers")
     .select("id, project_id, wafer_code, status, metadata, created_at")
     .order("wafer_code", { ascending: true });
+
+  const wafersResult = scopedWaferIds ? await wafersQuery.in("id", scopedWaferIds) : await wafersQuery;
 
   if (wafersResult.error) {
     throw wafersResult.error;
@@ -349,18 +374,23 @@ export async function getWaferStatusModel(): Promise<WaferStatusModel> {
   }
 
   const waferIds = wafers.map((wafer) => wafer.id);
-  const assignmentsResult = await supabase
-    .from("wafer_process_assignments")
-    .select("id, wafer_id, status, assigned_at, started_at, completed_at")
-    .in("wafer_id", waferIds)
-    .in("status", ACTIVE_ASSIGNMENT_STATUSES)
-    .order("assigned_at", { ascending: false });
+  const assignmentsResult = processTemplateId
+    ? null
+    : await supabase
+        .from("wafer_process_assignments")
+        .select("id, wafer_id, status, assigned_at, started_at, completed_at")
+        .in("wafer_id", waferIds)
+        .in("status", ACTIVE_ASSIGNMENT_STATUSES)
+        .order("assigned_at", { ascending: false });
 
-  if (assignmentsResult.error) {
+  if (assignmentsResult?.error) {
     throw assignmentsResult.error;
   }
 
-  const assignments = (assignmentsResult.data ?? []) as WaferStatusAssignmentRow[];
+  const assignments = processTemplateId
+    ? scopedAssignments
+    : (assignmentsResult?.data ?? []) as WaferStatusAssignmentRow[];
+
   const assignmentsByWaferId = new Map<string, WaferStatusAssignmentRow>();
   for (const assignment of assignments) {
     if (!assignmentsByWaferId.has(assignment.wafer_id)) {

@@ -282,11 +282,13 @@ export function WaferStatusView({
 
   return (
     <div className="grid gap-5 p-6">
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-        {model.metrics.map((metric) => (
-          <MetricTile key={metric.id} metric={metric} />
-        ))}
-      </section>
+      {hasWafers ? (
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+          {model.metrics.map((metric) => (
+            <MetricTile key={metric.id} metric={metric} />
+          ))}
+        </section>
+      ) : null}
 
       {hasWafers ? (
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">

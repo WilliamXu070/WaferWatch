@@ -389,3 +389,24 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Screenshot: `/tmp/process-flow-buffering-create-link.png`
   - `npm run wireframe:fixture:seed` again to restore the deterministic fixture
     baseline after the test.
+
+## Recent development note (2026-07-03 process selection gate)
+
+- Updated the wireframe shell so selecting the current process only reveals the
+  animated process subnav; Process Flow and Wafer / Die Status stay hidden until
+  the user explicitly opens that sub-view with a selected `processId`.
+- Added Supabase-backed process-template renaming from the sidebar and scoped
+  wafer-status loading by selected process assignment.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3005/api/health`
+  - In-app browser at `http://127.0.0.1:3005/wireframe/process-flow`, 1440x1000:
+    no process selected shows the empty guard and no flow canvas.
+  - In-app browser at `http://127.0.0.1:3005/wireframe/wafer-status`, 1440x1000:
+    no process selected shows the empty guard and suppresses wafer metrics.
+  - Screenshots:
+    `/tmp/process-selection-flow-guard.png`,
+    `/tmp/process-selection-wafer-guard.png`
+- Authenticated selected-process browser verification was not completed because the
+  saved Playwright auth state did not decode into a usable Supabase session.
