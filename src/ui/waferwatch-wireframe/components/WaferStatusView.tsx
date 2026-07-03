@@ -2,8 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ActivityIcon, ChevronRightIcon, StackIcon, TargetIcon, WaferLogoIcon } from "../icons";
-import { waferStatusModel } from "../mock-data";
-import type { WaferFamilyModel, WaferStatusMetric, WaferStatusTileModel, WaferTileStatus } from "../types";
+import type { WaferFamilyModel, WaferStatusMetric, WaferStatusModel, WaferStatusTileModel, WaferTileStatus } from "../types";
 import { WaferGeometryPreview } from "./WaferGeometryPreview";
 
 const statusDotColor: Record<WaferTileStatus, string> = {
@@ -50,12 +49,12 @@ function getSelectedDieLabel(tile: WaferStatusTileModel) {
   return parseDieLabelIndex(tile.dieLabel || tile.code);
 }
 
-function getWaferDisplayLabel(tile: WaferStatusTileModel, isUndiced: boolean) {
-  return isUndiced ? tile.family : tile.code;
+function getWaferDisplayLabel(tile: WaferStatusTileModel) {
+  return tile.code || tile.family;
 }
 
 function isUndicedMode(tile: WaferStatusTileModel) {
-  return Boolean(tile.isUndiced);
+  return tile.mode ? tile.mode === "undiced" : Boolean(tile.isUndiced);
 }
 
 function MetricTile({ metric }: { metric: WaferStatusMetric }) {
@@ -108,7 +107,7 @@ function WaferTile({
     >
       <span className="min-w-0">
         <span className="block text-[18px] font-semibold leading-none text-[#171a16]">
-          {getWaferDisplayLabel(tile, isUndiced)}
+          {getWaferDisplayLabel(tile)}
         </span>
         <span className="mt-4 flex items-center gap-2 text-[13px] font-medium text-[#666f64]">
           <span className={["h-2.5 w-2.5 rounded-full", statusDotColor[tile.status]].join(" ")} />
@@ -142,7 +141,7 @@ function FamilySection({
   onSelect
 }: {
   family: WaferFamilyModel;
-  selectedTile: WaferStatusTileModel;
+  selectedTile: WaferStatusTileModel | null;
   onSelect: (tile: WaferStatusTileModel) => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -183,7 +182,7 @@ function FamilySection({
               key={tile.id}
               tile={tile}
               isUndiced={isUndicedMode(tile)}
-              selected={selectedTile.id === tile.id}
+              selected={selectedTile?.id === tile.id}
               onSelect={() => onSelect(tile)}
             />
           ))}
@@ -200,7 +199,7 @@ function SelectedDiePanel({
   selectedTile: WaferStatusTileModel;
   isUndiced: boolean;
 }) {
-  const displayLabel = getWaferDisplayLabel(selectedTile, isUndiced);
+  const displayLabel = getWaferDisplayLabel(selectedTile);
 
   return (
     <aside className="grid gap-4 rounded-2xl border border-[#d5d9cf] bg-[#fbfcf8] p-5 shadow-[0_14px_36px_-28px_rgba(22,29,35,0.42)]">
@@ -233,41 +232,64 @@ function SelectedDiePanel({
   );
 }
 
-export function WaferStatusView() {
+function EmptyWaferStatusState() {
+  return (
+    <section className="rounded-2xl border border-dashed border-[#cbd2c7] bg-[#fbfcf8] p-10 text-center">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#778075]">
+        Backend wafer viewer
+      </p>
+      <h2 className="mt-2 text-[24px] font-semibold leading-tight text-[#171a16]">
+        No wafers available
+      </h2>
+      <p className="mx-auto mt-3 max-w-[520px] text-[14px] leading-6 text-[#687166]">
+        Authenticated Supabase data loaded, but this project state has no wafers visible to the current session.
+      </p>
+    </section>
+  );
+}
+
+export function WaferStatusView({ model }: { model: WaferStatusModel }) {
   const initialSelected = useMemo(
     () =>
-      waferStatusModel.families
+      model.families
         .flatMap((family) => family.tiles)
-        .find((tile) => tile.isSelected) ?? waferStatusModel.families[0].tiles[0],
-    []
+        .find((tile) => tile.isSelected) ?? model.families[0]?.tiles[0] ?? null,
+    [model]
   );
-  const [selectedTile, setSelectedTile] = useState<WaferStatusTileModel>(initialSelected);
-  const selectedUndiced = isUndicedMode(selectedTile);
+  const [selectedTile, setSelectedTile] = useState<WaferStatusTileModel | null>(initialSelected);
+  const selectedUndiced = selectedTile ? isUndicedMode(selectedTile) : false;
+  const hasWafers = model.families.some((family) => family.tiles.length > 0);
 
   return (
     <div className="grid gap-5 p-6">
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-        {waferStatusModel.metrics.map((metric) => (
+        {model.metrics.map((metric) => (
           <MetricTile key={metric.id} metric={metric} />
         ))}
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="grid min-w-0 gap-4">
-          {waferStatusModel.families.map((family) => (
-            <FamilySection
-              key={family.id}
-              family={family}
+      {hasWafers ? (
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid min-w-0 gap-4">
+            {model.families.map((family) => (
+              <FamilySection
+                key={family.id}
+                family={family}
+                selectedTile={selectedTile}
+                onSelect={setSelectedTile}
+              />
+            ))}
+          </div>
+          {selectedTile ? (
+            <SelectedDiePanel
               selectedTile={selectedTile}
-              onSelect={setSelectedTile}
+              isUndiced={selectedUndiced}
             />
-          ))}
-        </div>
-        <SelectedDiePanel
-          selectedTile={selectedTile}
-          isUndiced={selectedUndiced}
-        />
-      </section>
+          ) : null}
+        </section>
+      ) : (
+        <EmptyWaferStatusState />
+      )}
 
     </div>
   );

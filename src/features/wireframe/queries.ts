@@ -3,6 +3,7 @@ import "server-only";
 import { getProcessCalendarSchedule } from "@/features/calendar/queries";
 import { getProcessDashboardData } from "@/features/process-flows/queries";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { FabricationStatus } from "@/types/database";
 import {
   createEmptyWireframeDashboardDto,
   createEmptyWireframeProcessFlowDto,
@@ -17,10 +18,122 @@ import type {
   WireframeCalendarDto,
   WireframeDashboardDto,
   WireframeProcessFlowDto,
+  WireframeShellDto,
   WireframeTextSurfaceSource,
   WireframeWaferSource,
   WireframeWaferViewerDto
 } from "./types";
+
+const ACTIVE_ASSIGNMENT_STATUSES: readonly FabricationStatus[] = [
+  "planned",
+  "queued",
+  "in_progress",
+  "on_hold"
+];
+
+type WireframeShellProfile = {
+  id: string;
+  display_name: string;
+};
+
+function getDisplayName(profile: WireframeShellProfile) {
+  return profile.display_name.trim() || "Process user";
+}
+
+function getInitials(name: string) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+
+  return initials || "WW";
+}
+
+export async function getWireframeShellModel(): Promise<WireframeShellDto> {
+  const supabase = await createServerSupabaseClient();
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+
+  if (claimsError || !claimsData?.claims?.sub) {
+    return {
+      currentProcess: null,
+      calendarEventCount: 0,
+      teamMembers: []
+    };
+  }
+
+  const templateResult = await supabase
+    .from("process_templates")
+    .select("id, name, version")
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (templateResult.error) {
+    throw templateResult.error;
+  }
+
+  const activeTemplate = templateResult.data;
+  const [assignmentsResult, calendarResult, profilesResult] = await Promise.all([
+    activeTemplate
+      ? supabase
+          .from("wafer_process_assignments")
+          .select("id", { count: "exact", head: true })
+          .eq("template_id", activeTemplate.id)
+          .in("status", [...ACTIVE_ASSIGNMENT_STATUSES])
+      : Promise.resolve({ count: 0, error: null }),
+    activeTemplate
+      ? supabase
+          .from("process_calendar_events")
+          .select("id", { count: "exact", head: true })
+          .eq("process_template_id", activeTemplate.id)
+      : Promise.resolve({ count: 0, error: null }),
+    supabase
+      .from("process_people")
+      .select("id, display_name")
+      .eq("is_active", true)
+      .order("display_name", { ascending: true })
+      .limit(3)
+  ]);
+
+  if (assignmentsResult.error) {
+    throw assignmentsResult.error;
+  }
+
+  if (calendarResult.error) {
+    throw calendarResult.error;
+  }
+
+  if (profilesResult.error) {
+    throw profilesResult.error;
+  }
+
+  const teamMembers = ((profilesResult.data ?? []) as WireframeShellProfile[]).map((profile) => {
+    const name = getDisplayName(profile);
+
+    return {
+      id: profile.id,
+      initials: getInitials(name),
+      name,
+      role: "Process team"
+    };
+  });
+
+  return {
+    currentProcess: activeTemplate
+      ? {
+          id: activeTemplate.id,
+          name: activeTemplate.name,
+          version: activeTemplate.version,
+          activeDieCount: assignmentsResult.count ?? 0
+        }
+      : null,
+    calendarEventCount: calendarResult.count ?? 0,
+    teamMembers
+  };
+}
 
 export async function getWireframeDashboardData(
   processTemplateId: string | null | undefined,

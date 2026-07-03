@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { WireframeShellDto } from "@/features/wireframe/types";
 import {
   CalendarIcon,
   ChevronRightIcon,
@@ -12,10 +13,8 @@ import {
   WaferStatusIcon
 } from "../icons";
 import {
-  currentProcess,
   mainNav,
   processNav,
-  teamMembers,
   wireframeBrand,
   type SidebarNavItem
 } from "../nav";
@@ -52,7 +51,7 @@ function NavRow({ item, active }: { item: SidebarNavItem; active: boolean }) {
   );
 }
 
-export function WireframeSidebar() {
+export function WireframeSidebar({ shell }: { shell: WireframeShellDto }) {
   const pathname = usePathname() ?? "";
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   const processActive = processNav.some((item) => isActive(item.href));
@@ -72,9 +71,14 @@ export function WireframeSidebar() {
         <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#9a988f]">
           Main
         </p>
-        {mainNav.map((item) => (
-          <NavRow key={item.key} item={item} active={isActive(item.href)} />
-        ))}
+        {mainNav.map((item) => {
+          const badge =
+            item.key === "calendar" && shell.calendarEventCount > 0
+              ? shell.calendarEventCount
+              : item.badge;
+
+          return <NavRow key={item.key} item={{ ...item, badge }} active={isActive(item.href)} />;
+        })}
       </nav>
 
       <div className="mt-7">
@@ -90,9 +94,9 @@ export function WireframeSidebar() {
           ].join(" ")}
         >
           <CalendarIcon className="text-[#7c7a73]" />
-          <span className="flex-1">{currentProcess.name}</span>
+          <span className="flex-1">{shell.currentProcess?.name ?? "No active process"}</span>
           <span className="min-w-[22px] rounded-full bg-[#e7e7e0] px-1.5 py-0.5 text-center text-[11px] font-semibold text-[#5f5d57]">
-            {currentProcess.activeDieCount}
+            {shell.currentProcess?.activeDieCount ?? 0}
           </span>
         </div>
         <div className="mt-1 flex flex-col gap-1 pl-3">
@@ -123,9 +127,10 @@ export function WireframeSidebar() {
         <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#9a988f]">
           Team
         </p>
-        <ul className="flex flex-col gap-1">
-          {teamMembers.map((member) => (
-            <li key={member.initials} className="flex items-center gap-3 px-3 py-1.5">
+        {shell.teamMembers.length > 0 ? (
+          <ul className="flex flex-col gap-1">
+            {shell.teamMembers.map((member) => (
+              <li key={member.id} className="flex items-center gap-3 px-3 py-1.5">
               <span className="grid h-8 w-8 place-items-center rounded-full border border-ww-border bg-white text-[11px] font-semibold text-[#5f5d57]">
                 {member.initials}
               </span>
@@ -133,9 +138,12 @@ export function WireframeSidebar() {
                 <span className="block text-[13px] font-semibold text-ww-ink">{member.name}</span>
                 <span className="block text-[11px] text-[#8a887f]">{member.role}</span>
               </span>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-3 text-[13px] font-medium text-[#6f6d66]">No active team members</p>
+        )}
       </div>
 
       <div className="mt-auto border-t border-ww-border pt-4">

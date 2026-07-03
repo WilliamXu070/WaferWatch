@@ -32,6 +32,24 @@ export type WireframeEmptyStateDto = {
   href?: string;
 };
 
+export type WireframeShellTeamMemberDto = {
+  id: string;
+  initials: string;
+  name: string;
+  role: string;
+};
+
+export type WireframeShellDto = {
+  currentProcess: {
+    id: string;
+    name: string;
+    version: string;
+    activeDieCount: number;
+  } | null;
+  calendarEventCount: number;
+  teamMembers: WireframeShellTeamMemberDto[];
+};
+
 export type WireframeDashboardStageId =
   | "queued"
   | "poling"

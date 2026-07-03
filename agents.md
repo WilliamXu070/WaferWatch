@@ -206,3 +206,26 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - In-app browser at `http://localhost:3008/wireframe/dashboard`, 1280x720:
     zero stats, four empty columns, no console errors, no horizontal overflow.
   - Screenshot: `/tmp/waferwatch-wireframe-dashboard-backend.png`
+
+## Recent development note (2026-07-03 integrated wireframe backend)
+
+- Integrated the wireframe backend branches and removed the remaining static
+  WaferWatch wireframe mock-data exports so active wireframe routes read from
+  Supabase-backed loaders or render explicit empty/auth states.
+- Restored `/wireframe/process-flow` to the wireframe shell/component styling
+  after the backend merge briefly exposed legacy `page-shell` UI in the route.
+- Added authenticated-session gating to wireframe shell process/team chrome so
+  unauthenticated verification does not show seeded-looking backend labels.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3009/api/health`
+  - Playwright at `http://localhost:3009/wireframe/dashboard`,
+    `/wireframe/calendar`, `/wireframe/process-flow`, and
+    `/wireframe/wafer-status` with a 1440x1000 viewport.
+  - Empty/unauthenticated routes rendered zero-state wireframe UI with no
+    console errors; `/wireframe/process-flow` had zero legacy `.page-shell`,
+    `.page-heading`, or `.panel.dashboard-panel` nodes.
+  - Saved auth state `playwright/.auth/user.json` was not accepted, so
+    authenticated wafer-status/drag persistence was not exercised.
+  - Screenshot: `/tmp/waferwatch-process-flow-wireframe-auth-gated.png`

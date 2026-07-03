@@ -1,4 +1,3 @@
-import { ProcessFlowDiagram } from "@/components/ProcessFlowDiagram";
 import { moveWaferToProcessStep } from "@/features/runs/actions";
 import {
   getFirstActiveProcessTemplateId,
@@ -6,6 +5,8 @@ import {
   type ProcessDashboardData
 } from "@/features/process-flows/queries";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { ProcessFlowView } from "@/ui/waferwatch-wireframe";
+import type { FlowStatModel } from "@/ui/waferwatch-wireframe/types";
 import type { StepStatus } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +55,68 @@ function toFlowColumns(data: ProcessDashboardData): DiagramStep[] {
     }));
 }
 
+function countStatuses(columns: DiagramStep[], statuses: readonly StepStatus[]) {
+  return columns.reduce(
+    (total, column) =>
+      total + column.wafers.filter((wafer) => wafer.currentStepStatus && statuses.includes(wafer.currentStepStatus)).length,
+    0
+  );
+}
+
+function toFlowStats(data: ProcessDashboardData | null, columns: DiagramStep[]): FlowStatModel[] {
+  const activeWaferCount = new Set(columns.flatMap((column) => column.wafers.map((wafer) => wafer.assignmentId))).size;
+  const activeStepCount = columns.filter((column) => column.wafers.length > 0).length;
+  const runningCount = countStatuses(columns, ["running"]);
+  const blockedCount = countStatuses(columns, ["blocked", "failed"]);
+  const queuedCount = countStatuses(columns, ["queued", "pending"]);
+  const totalCalendarEvents = data?.calendarDays.reduce((total, day) => total + day.events.length, 0) ?? 0;
+
+  return [
+    {
+      id: "total-steps",
+      icon: "total",
+      label: "Steps",
+      value: String(columns.length),
+      caption: data ? data.process.name : "No process loaded"
+    },
+    {
+      id: "active-wafers",
+      icon: "stack",
+      label: "Active wafers",
+      value: String(activeWaferCount),
+      caption: "From assignments"
+    },
+    {
+      id: "active-steps",
+      icon: "target",
+      label: "Active steps",
+      value: String(activeStepCount),
+      caption: `${columns.length} backend steps`
+    },
+    {
+      id: "running",
+      icon: "handoff",
+      label: "Running",
+      value: String(runningCount),
+      caption: "Step executions"
+    },
+    {
+      id: "blocked",
+      icon: "warning",
+      label: "Blocked",
+      value: String(blockedCount),
+      caption: "Blocked or failed"
+    },
+    {
+      id: "scheduled",
+      icon: "check",
+      label: "Scheduled",
+      value: String(totalCalendarEvents || queuedCount),
+      caption: totalCalendarEvents ? "Calendar events" : "Queued or pending"
+    }
+  ];
+}
+
 async function loadProcessFlowData(requestedProcessId: string | undefined) {
   const supabase = await createServerSupabaseClient();
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
@@ -78,30 +141,26 @@ export default async function ProcessFlowWireframePage({
   const requestedProcessId = firstSearchValue((await searchParams).processId);
   const dashboardData = await loadProcessFlowData(requestedProcessId);
   const flowColumns = dashboardData ? toFlowColumns(dashboardData) : [];
+  const processLabel = dashboardData
+    ? `${dashboardData.process.name}${dashboardData.process.version ? ` · ${dashboardData.process.version}` : ""}`
+    : "No active process";
+  const statusLabel = dashboardData
+    ? `${dashboardData.activeWaferStates.length} active wafer${dashboardData.activeWaferStates.length === 1 ? "" : "s"} loaded from Supabase`
+    : "No authenticated process template or wafer assignment data is available.";
 
   return (
-    <main className="page-shell">
-      <section className="page-heading" style={{ width: "100%", alignItems: "center" }}>
-        <div>
-          <p className="eyebrow">WaferWatch</p>
-          <h1>Process flow</h1>
-          <p className="muted">
-            {dashboardData
-              ? `${dashboardData.process.name} · ${dashboardData.activeWaferStates.length} active wafer${dashboardData.activeWaferStates.length === 1 ? "" : "s"}`
-              : "No authenticated process template or wafer assignment data is available."}
-          </p>
-        </div>
-      </section>
-
-      <section className="panel dashboard-panel">
-        {flowColumns.length === 0 ? (
-          <div className="section-heading">
-            <h2>No process flow data</h2>
-            <p className="muted">Sign in with access to an active process template, or assign wafers to a process.</p>
-          </div>
-        ) : null}
-        <ProcessFlowDiagram steps={flowColumns} onMoveWafer={moveWaferToProcessStep} />
-      </section>
-    </main>
+    <ProcessFlowView
+      processLabel={processLabel}
+      statusLabel={statusLabel}
+      emptyTitle={flowColumns.length === 0 ? "No process flow data" : undefined}
+      emptyDescription={
+        flowColumns.length === 0
+          ? "Sign in with access to an active process template, or assign wafers to a process. No wireframe fallback data is injected."
+          : undefined
+      }
+      steps={flowColumns}
+      stats={toFlowStats(dashboardData, flowColumns)}
+      onMoveWafer={moveWaferToProcessStep}
+    />
   );
 }
