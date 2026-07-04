@@ -441,3 +441,24 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     unauthenticated empty state, so active-die click verification needs a fresh
     existing authenticated session.
   - Screenshot: `/tmp/wafer-status-detail-auth-check.png`
+
+## Recent development note (2026-07-04 wafer die detail split)
+
+- Split the first-pass wafer die detail wireframe out of the monolithic
+  `WaferStatusView.tsx` into `src/ui/waferwatch-wireframe/components/wafer-die-detail/`.
+  The folder now separates the detail shell, tab view routing, summary cards,
+  process timeline, parameter table, result sequence, mock detail data, and
+  helper functions for agent readability.
+- Kept `WaferStatusView.tsx` as the wafer grid/detail coordinator only; no backend
+  contract or visual behavior was intentionally changed.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3000/api/health`
+  - Playwright CLI route screenshot at
+    `http://localhost:3000/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with `1440x1000` viewport and `playwright/.auth/user.json`.
+  - The saved auth state still rendered the unauthenticated empty state, so
+    active-die click verification still needs a fresh existing authenticated
+    session.
+  - Screenshot: `/tmp/wafer-status-detail-split-check.png`
