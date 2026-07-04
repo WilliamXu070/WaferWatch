@@ -752,18 +752,6 @@ export function ProcessFlowDiagram({
 
   const zoomIn = () => applyScaleAtAnchor(scaleRef.current + BUTTON_ZOOM_STEP);
   const zoomOut = () => applyScaleAtAnchor(scaleRef.current - BUTTON_ZOOM_STEP);
-  const getVisibleSceneCenter = () => {
-    const frame = frameRef.current;
-    if (!frame) {
-      return { x: sceneBounds.width / 2, y: sceneBounds.height / 2 };
-    }
-
-    return {
-      x: (frame.scrollLeft + frame.clientWidth / 2) / scaleRef.current,
-      y: (frame.scrollTop + frame.clientHeight / 2) / scaleRef.current
-    };
-  };
-
   const applyGraphFit = useCallback((fit: GraphViewportFit) => {
     const frame = frameRef.current;
     if (!frame) {
@@ -774,7 +762,12 @@ export function ProcessFlowDiagram({
     frame.scrollTop = Math.max(0, Math.round(fit.centerY * fit.scale - frame.clientHeight / 2));
   }, []);
 
-  const centerView = useCallback((targetNodes?: FlowNode[]) => {
+  const getCanvasSceneCenter = useCallback(() => ({
+    x: sceneBounds.width / 2,
+    y: sceneBounds.height / 2
+  }), [sceneBounds.width, sceneBounds.height]);
+
+  const centerView = useCallback((targetNodes?: FlowNode[], centerPoint?: ScenePoint) => {
     const frame = frameRef.current;
     const bounds = getGraphBounds(targetNodes ?? nodesRef.current);
     if (!frame || !bounds) {
@@ -785,8 +778,8 @@ export function ProcessFlowDiagram({
     const availableHeight = Math.max(1, frame.clientHeight - FIT_VIEW_PADDING);
     const nextScale = clampScale(Math.min(MAX_SCALE, availableWidth / bounds.width, availableHeight / bounds.height));
     const fit = {
-      centerX: bounds.centerX,
-      centerY: bounds.centerY,
+      centerX: centerPoint?.x ?? bounds.centerX,
+      centerY: centerPoint?.y ?? bounds.centerY,
       scale: nextScale
     };
 
@@ -812,13 +805,13 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    const targetCenter = getVisibleSceneCenter();
+    const targetCenter = getCanvasSceneCenter();
     const nextNodes = autoLayoutNodes(nodes, edges, targetCenter);
     setNodes(nextNodes);
     setSelectedNodeIds(new Set());
     setRoleMenu(null);
     setMoveMessage("Organized process flow.");
-    centerView(nextNodes);
+    centerView(nextNodes, targetCenter);
     nextNodes.forEach((node) => {
       queueNodePositionPersist(node.id, node.x, node.y);
     });
