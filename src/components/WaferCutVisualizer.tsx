@@ -157,7 +157,6 @@ const POST_ELB_GRID_DEFAULT_INCHES: DieStructureGridTemplateInInches = {
   clusterSpanFraction: 0.74,
   clusterHeightFraction: 0.48,
   horizontalOffsetFraction: 0.08,
-  verticalOffsetFraction: 0.5,
   rowDirection: "top-to-bottom"
 };
 const POST_ELB_CLUSTER_SPAN_FRACTION = 1;
@@ -181,6 +180,9 @@ const POLING_PARAMETER_FIELDS: Array<{
   { key: "postPulseWidth", label: "post-pulse width" }
 ];
 const POLING_ROW_HUES = [202, 190, 172, 154, 218, 32, 284, 122];
+const EDGE_ALIGNMENT_EPSILON_MM = 0.001;
+const RECTANGULAR_EDGE_RATIO = 0.88;
+const ASYMMETRIC_EDGE_DELTA_RATIO = 0.2;
 const WAFER_FAMILY_ORDER = [
   "alpha",
   "beta",
@@ -804,10 +806,7 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
     1,
     Math.max(0.05, template.clusterHeightFraction ?? clampSpanFraction)
   );
-  const verticalOffsetFraction = Math.min(
-    1,
-    Math.max(0, template.verticalOffsetFraction ?? 0.5)
-  );
+  const verticalOffsetFraction = deriveDieGridVerticalOffset(points, template.verticalOffsetFraction);
   const horizontalOffsetFraction = Math.min(
     1,
     Math.max(0, template.horizontalOffsetFraction ?? 0.5)
@@ -860,6 +859,45 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
   }
 
   return structures;
+}
+
+function deriveDieGridVerticalOffset(points: Point[], fallbackOffsetFraction = 0.5) {
+  const bounds = polygonBounds(points);
+  const topHorizontalSpan = boundaryHorizontalSpan(points, bounds.maxY);
+  const bottomHorizontalSpan = boundaryHorizontalSpan(points, bounds.minY);
+  const rectangularSpan = bounds.width * RECTANGULAR_EDGE_RATIO;
+  const asymmetricThreshold = bounds.width * ASYMMETRIC_EDGE_DELTA_RATIO;
+
+  if (topHorizontalSpan >= rectangularSpan && bottomHorizontalSpan >= rectangularSpan) {
+    return 0.5;
+  }
+
+  if (bottomHorizontalSpan - topHorizontalSpan > asymmetricThreshold) {
+    return 1;
+  }
+
+  if (topHorizontalSpan - bottomHorizontalSpan > asymmetricThreshold) {
+    return 0;
+  }
+
+  return Math.min(1, Math.max(0, fallbackOffsetFraction));
+}
+
+function boundaryHorizontalSpan(points: Point[], boundaryY: number) {
+  let span = 0;
+
+  for (let index = 0; index < points.length; index += 1) {
+  const start = points[index];
+  const end = points[(index + 1) % points.length];
+  const startOnBoundary = Math.abs(start.y - boundaryY) <= EDGE_ALIGNMENT_EPSILON_MM;
+  const endOnBoundary = Math.abs(end.y - boundaryY) <= EDGE_ALIGNMENT_EPSILON_MM;
+
+    if (startOnBoundary && endOnBoundary) {
+      span += Math.abs(end.x - start.x);
+    }
+  }
+
+  return span;
 }
 
 function rectMmToSvg(rect: DieStructureRectMm, viewport: SvgViewport): DieStructure {

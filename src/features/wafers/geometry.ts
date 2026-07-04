@@ -102,7 +102,6 @@ export const DEFAULT_DIE_OVERLAY_TEMPLATE: DieOverlayTemplate = {
   clusterSpanFraction: 0.74,
   clusterHeightFraction: 0.48,
   horizontalOffsetFraction: 0.08,
-  verticalOffsetFraction: 0.5,
   rowDirection: "top-to-bottom"
 };
 
@@ -347,7 +346,11 @@ export function buildDieOverlayRectsMm(
   const inset = sanitizeMm(template.insetMm ?? 0.1);
   const clampSpanFraction = clampNumber(template.clusterSpanFraction ?? 1, 0.05, 1);
   const clampHeightFraction = clampNumber(template.clusterHeightFraction ?? clampSpanFraction, 0.05, 1);
-  const verticalOffsetFraction = clampNumber(template.verticalOffsetFraction ?? 0.5, 0, 1);
+  const verticalOffsetFraction = clampNumber(
+    deriveDieOverlayVerticalOffset(points, template.verticalOffsetFraction),
+    0,
+    1
+  );
   const horizontalOffsetFraction = deriveDieOverlayHorizontalOffset(points, template.horizontalOffsetFraction);
 
   if (columns === 0 || rows === 0 || rawRectWidth === 0 || rawRectHeight === 0) {
@@ -412,6 +415,28 @@ function deriveDieOverlayHorizontalOffset(points: WaferPoint[], fallbackOffsetFr
   return clampNumber(fallbackOffsetFraction, 0, 1);
 }
 
+function deriveDieOverlayVerticalOffset(points: WaferPoint[], fallbackOffsetFraction = 0.5) {
+  const bounds = polygonBounds(points);
+  const topHorizontalSpan = boundaryHorizontalSpan(points, bounds.maxY);
+  const bottomHorizontalSpan = boundaryHorizontalSpan(points, bounds.minY);
+  const rectangularSpan = bounds.width * RECTANGULAR_EDGE_RATIO;
+  const asymmetricThreshold = bounds.width * ASYMMETRIC_EDGE_DELTA_RATIO;
+
+  if (topHorizontalSpan >= rectangularSpan && bottomHorizontalSpan >= rectangularSpan) {
+    return 0.5;
+  }
+
+  if (bottomHorizontalSpan - topHorizontalSpan > asymmetricThreshold) {
+    return 1;
+  }
+
+  if (topHorizontalSpan - bottomHorizontalSpan > asymmetricThreshold) {
+    return 0;
+  }
+
+  return clampNumber(fallbackOffsetFraction, 0, 1);
+}
+
 function boundaryVerticalSpan(points: WaferPoint[], boundaryX: number) {
   let span = 0;
 
@@ -423,6 +448,23 @@ function boundaryVerticalSpan(points: WaferPoint[], boundaryX: number) {
 
     if (startOnBoundary && endOnBoundary) {
       span += Math.abs(end.y - start.y);
+    }
+  }
+
+  return span;
+}
+
+function boundaryHorizontalSpan(points: WaferPoint[], boundaryY: number) {
+  let span = 0;
+
+  for (let index = 0; index < points.length; index += 1) {
+    const start = points[index];
+    const end = points[(index + 1) % points.length];
+    const startOnBoundary = Math.abs(start.y - boundaryY) <= EDGE_ALIGNMENT_EPSILON_MM;
+    const endOnBoundary = Math.abs(end.y - boundaryY) <= EDGE_ALIGNMENT_EPSILON_MM;
+
+    if (startOnBoundary && endOnBoundary) {
+      span += Math.abs(end.x - start.x);
     }
   }
 
