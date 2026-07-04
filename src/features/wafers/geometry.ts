@@ -347,7 +347,7 @@ export function buildDieOverlayRectsMm(
   const clampSpanFraction = clampNumber(template.clusterSpanFraction ?? 1, 0.05, 1);
   const clampHeightFraction = clampNumber(template.clusterHeightFraction ?? clampSpanFraction, 0.05, 1);
   const verticalOffsetFraction = clampNumber(
-    deriveDieOverlayVerticalOffset(points, template.verticalOffsetFraction),
+    deriveDieOverlayVerticalOffset(label, points, template.verticalOffsetFraction),
     0,
     1
   );
@@ -415,7 +415,19 @@ function deriveDieOverlayHorizontalOffset(points: WaferPoint[], fallbackOffsetFr
   return clampNumber(fallbackOffsetFraction, 0, 1);
 }
 
-function deriveDieOverlayVerticalOffset(points: WaferPoint[], fallbackOffsetFraction = 0.5) {
+function deriveDieOverlayVerticalOffset(
+  label: number,
+  points: WaferPoint[],
+  fallbackOffsetFraction = 0.5
+) {
+  if (label === 1 || label === 2) {
+    return 0;
+  }
+
+  if (label >= 7) {
+    return 1;
+  }
+
   const bounds = polygonBounds(points);
   const topHorizontalSpan = boundaryHorizontalSpan(points, bounds.maxY);
   const bottomHorizontalSpan = boundaryHorizontalSpan(points, bounds.minY);

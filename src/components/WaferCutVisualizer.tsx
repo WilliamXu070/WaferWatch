@@ -806,7 +806,7 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
     1,
     Math.max(0.05, template.clusterHeightFraction ?? clampSpanFraction)
   );
-  const verticalOffsetFraction = deriveDieGridVerticalOffset(points, template.verticalOffsetFraction);
+  const verticalOffsetFraction = deriveDieGridVerticalOffset(label, points, template.verticalOffsetFraction);
   const horizontalOffsetFraction = Math.min(
     1,
     Math.max(0, template.horizontalOffsetFraction ?? 0.5)
@@ -861,7 +861,19 @@ function buildCenteredGridRectsForDieMm(points: Point[], label: number): DieStru
   return structures;
 }
 
-function deriveDieGridVerticalOffset(points: Point[], fallbackOffsetFraction = 0.5) {
+function deriveDieGridVerticalOffset(
+  label: number,
+  points: Point[],
+  fallbackOffsetFraction = 0.5
+) {
+  if (label === 1 || label === 2) {
+    return 0;
+  }
+
+  if (label >= 7) {
+    return 1;
+  }
+
   const bounds = polygonBounds(points);
   const topHorizontalSpan = boundaryHorizontalSpan(points, bounds.maxY);
   const bottomHorizontalSpan = boundaryHorizontalSpan(points, bounds.minY);
