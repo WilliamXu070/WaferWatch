@@ -131,6 +131,10 @@ function isAlreadyDeletedStepError(message: string) {
   return message.includes("selected process steps no longer exist");
 }
 
+function isAlreadyDeletedTransitionError(message: string) {
+  return message.includes("selected transitions no longer exist");
+}
+
 export function ProcessFlowDiagram({
   steps,
   transitions = [],
@@ -185,6 +189,8 @@ export function ProcessFlowDiagram({
   const pendingTransitionCreateRef = useRef<Map<string, QueuedTransition>>(new Map());
   const pendingPositionUpdateRef = useRef<Map<string, { canvasX: number; canvasY: number }>>(new Map());
   const pendingNameUpdateRef = useRef<Map<string, string>>(new Map());
+  const undoRecoveredNodeIdsRef = useRef<Set<string>>(new Set());
+  const undoRecoveredEdgeIdsRef = useRef<Set<string>>(new Set());
   const undoStackRef = useRef<GraphSnapshot[]>([]);
   type TimerHandle = NodeJS.Timeout | number | null;
   const pendingStepCreateTimerRef = useRef<TimerHandle>(null);
@@ -914,6 +920,20 @@ export function ProcessFlowDiagram({
     pendingPositionUpdateRef.current.clear();
     pendingTransitionCreateRef.current.clear();
 
+    const currentNodeIds = new Set(nodesRef.current.map((node) => node.id));
+    const currentEdgeIds = new Set(edgesRef.current.map((edge) => edge.id));
+    for (const node of snapshot.nodes) {
+      if (!currentNodeIds.has(node.id)) {
+        undoRecoveredNodeIdsRef.current.add(node.id);
+      }
+    }
+
+    for (const edge of snapshot.edges) {
+      if (!currentEdgeIds.has(edge.id)) {
+        undoRecoveredEdgeIdsRef.current.add(edge.id);
+      }
+    }
+
     setNodes(snapshot.nodes.map((node) => ({ ...node, wafers: [...node.wafers] })));
     setEdges(normalizeFlowEdges(snapshot.edges).map((edge) => ({ ...edge })));
     setSelectedNodeIds(new Set(snapshot.selectedNodeIds));
@@ -963,13 +983,14 @@ export function ProcessFlowDiagram({
         const serverNode = serverNodeById.get(node.id);
 
         if (!serverNode) {
-          if (node.isOptimistic || pendingStepCreateRef.current.has(node.id)) {
+          if (node.isOptimistic || pendingStepCreateRef.current.has(node.id) || undoRecoveredNodeIdsRef.current.has(node.id)) {
             nextNodes.push(node);
           }
           continue;
         }
 
         seenNodeIds.add(node.id);
+        undoRecoveredNodeIdsRef.current.delete(node.id);
         nextNodes.push({
           ...node,
           subLabel: serverNode.subLabel,
@@ -1006,10 +1027,14 @@ export function ProcessFlowDiagram({
 
         const serverEdge = serverEdgeById.get(edge.id);
         if (!serverEdge) {
+          if (undoRecoveredEdgeIdsRef.current.has(edge.id)) {
+            nextEdges.push(edge);
+          }
           continue;
         }
 
         seenServerEdgeIds.add(edge.id);
+        undoRecoveredEdgeIdsRef.current.delete(edge.id);
         nextEdges.push(serverEdge);
       }
 
@@ -1030,6 +1055,8 @@ export function ProcessFlowDiagram({
     }
 
     undoStackRef.current = [];
+    undoRecoveredNodeIdsRef.current.clear();
+    undoRecoveredEdgeIdsRef.current.clear();
     setUndoStepsCount(0);
     setNodes(serverGraph.nodes);
     setEdges(normalizeFlowEdges(serverGraph.edges));
@@ -1754,7 +1781,15 @@ export function ProcessFlowDiagram({
       : `${uniqueNodeIds.length} selected steps`;
     const previousNodes = nodesRef.current;
     const previousEdges = edgesRef.current;
+    const previousRecoveredNodeIds = new Set(undoRecoveredNodeIdsRef.current);
+    const previousRecoveredEdgeIds = new Set(undoRecoveredEdgeIdsRef.current);
     const deletedIds = new Set(uniqueNodeIds);
+    uniqueNodeIds.forEach((nodeId) => undoRecoveredNodeIdsRef.current.delete(nodeId));
+    previousEdges.forEach((edge) => {
+      if (deletedIds.has(edge.from) || deletedIds.has(edge.to)) {
+        undoRecoveredEdgeIdsRef.current.delete(edge.id);
+      }
+    });
 
     setNodes((currentNodes) => currentNodes.filter((node) => !deletedIds.has(node.id)));
     setEdges((currentEdges) => normalizeFlowEdges(currentEdges.filter((edge) => !deletedIds.has(edge.from) && !deletedIds.has(edge.to))));
@@ -1778,6 +1813,8 @@ export function ProcessFlowDiagram({
 
           setNodes(previousNodes);
           setEdges(normalizeFlowEdges(previousEdges));
+          undoRecoveredNodeIdsRef.current = previousRecoveredNodeIds;
+          undoRecoveredEdgeIdsRef.current = previousRecoveredEdgeIds;
           setMoveMessage(result.error);
           return;
         }
@@ -1798,6 +1835,7 @@ export function ProcessFlowDiagram({
     }
 
     pushUndoSnapshot();
+    undoRecoveredEdgeIdsRef.current.delete(edgeId);
     setEdges((current) => normalizeFlowEdges(current.filter((edge) => edge.id !== edgeId)));
     setSelectedEdgeId(null);
 
@@ -1809,6 +1847,11 @@ export function ProcessFlowDiagram({
       void (async () => {
         const result = await onDeleteTransitions({ transitionIds: [edgeId] });
         if (!result.ok) {
+          if (isAlreadyDeletedTransitionError(result.error)) {
+            setMoveMessage("Deleted transition locally; server copy was already removed.");
+            return;
+          }
+
           setMoveMessage(result.error);
         }
       })();

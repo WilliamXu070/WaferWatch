@@ -505,3 +505,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run build`
   - `curl -s http://localhost:3001/api/health`
   - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/process-flow-delete-undo-delete-fix.png`
+
+## Recent development note (2026-07-04 process flow undo merge guard)
+
+- Fixed a race where `Delete -> Undo` could restore a step locally, then a delayed
+  server graph merge from the original delete removed the recovered step again.
+- Undo now tracks node/edge ids that were actually recovered from a snapshot.
+  Same-template server merges preserve those recovered ids even when the latest
+  Supabase graph no longer contains them, so the active canvas stays UI-authoritative.
+- Recovered ids are cleared when the user deletes them again or when the graph is
+  reseeded for a different process/template. Recovered transitions also treat
+  already-deleted server responses as idempotent local success.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/process-flow-undo-server-merge-guard.png`
