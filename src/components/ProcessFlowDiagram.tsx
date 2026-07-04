@@ -127,6 +127,10 @@ function normalizeFlowEdges(edges: FlowEdge[]) {
   return Array.from(byConnection.values());
 }
 
+function isAlreadyDeletedStepError(message: string) {
+  return message.includes("selected process steps no longer exist");
+}
+
 export function ProcessFlowDiagram({
   steps,
   transitions = [],
@@ -1767,6 +1771,11 @@ export function ProcessFlowDiagram({
         const result = await onDeleteSteps({ stepIds: uniqueNodeIds });
 
         if (!result.ok) {
+          if (isAlreadyDeletedStepError(result.error)) {
+            setMoveMessage(`Deleted ${label} locally; server copy was already removed.`);
+            return;
+          }
+
           setNodes(previousNodes);
           setEdges(normalizeFlowEdges(previousEdges));
           setMoveMessage(result.error);

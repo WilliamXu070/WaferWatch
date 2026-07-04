@@ -492,3 +492,16 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Direct Playwright console-listener verification could not run because this
   worktree has the Playwright CLI but not the `playwright`/`@playwright/test` Node
   module available to scripts.
+
+## Recent development note (2026-07-04 process flow delete undo delete)
+
+- Fixed the `Delete -> Undo -> Delete` process-flow path for locally recovered
+  steps whose first delete already succeeded on Supabase.
+- The second delete now treats the server's "selected process steps no longer
+  exist" response as idempotent success, keeping the local recovered node removed
+  instead of rolling it back into the canvas. Real delete errors still roll back.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/process-flow-delete-undo-delete-fix.png`
