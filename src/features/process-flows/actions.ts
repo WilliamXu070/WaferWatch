@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { fail, ok } from "@/lib/action-result";
 import { assertProjectAccess, requireAccount, requireProcessManager } from "@/lib/auth/session";
 import { toErrorMessage } from "@/lib/errors";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   processFlowStepCreateSchema,
   processAssignmentSchema,
@@ -508,23 +508,32 @@ export async function deleteProcessSteps(input: unknown) {
       return fail("One or more selected process steps no longer exist.");
     }
 
-    const { count, error: executionCountError } = await supabase
-      .from("step_executions")
-      .select("id", { count: "exact", head: true })
-      .in("process_step_id", stepIds);
-
-    if (executionCountError) {
-      return fail(executionCountError.message);
-    }
-
-    if ((count ?? 0) > 0) {
-      return fail("Cannot delete process steps that already have wafer execution history.");
-    }
-
     const templateIds = Array.from(new Set((steps ?? []).map((step) => step.template_id)));
     await Promise.all(templateIds.map((templateId) => getTemplateForWrite(templateId)));
+    const adminSupabase = createSupabaseAdminClient();
 
-    const { error } = await supabase
+    const { error: executionsDeleteError } = await adminSupabase
+      .from("step_executions")
+      .delete()
+      .in("process_step_id", stepIds);
+
+    if (executionsDeleteError) {
+      return fail(executionsDeleteError.message);
+    }
+
+    const { error: calendarEventsUpdateError } = await adminSupabase
+      .from("process_calendar_events")
+      .update({
+        process_step_id: null,
+        manual_action: "Removed process step"
+      })
+      .in("process_step_id", stepIds);
+
+    if (calendarEventsUpdateError) {
+      return fail(calendarEventsUpdateError.message);
+    }
+
+    const { error } = await adminSupabase
       .from("process_steps")
       .delete()
       .in("id", stepIds);

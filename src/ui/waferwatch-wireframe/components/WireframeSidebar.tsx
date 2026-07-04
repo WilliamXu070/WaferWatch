@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { ActionResult } from "@/lib/action-result";
 import type { WireframeShellDto } from "@/features/wireframe/types";
+import type { UpdateProcessNameAction } from "./WaferWatchShell";
 import {
   CalendarIcon,
   ChevronRightIcon,
@@ -20,11 +20,6 @@ import {
   wireframeBrand,
   type SidebarNavItem
 } from "../nav";
-
-type UpdateProcessNameAction = (input: {
-  templateId: string;
-  name: string;
-}) => Promise<ActionResult<{ id: string; name: string; version: string }>>;
 
 const iconByKey = {
   grid: GridIcon,
@@ -43,14 +38,14 @@ function NavRow({ item, active }: { item: SidebarNavItem; active: boolean }) {
       className={[
         "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all",
         active
-          ? "bg-[#f2f2e8] font-semibold text-[#151512]"
-          : "font-medium text-[#55534a] hover:bg-[#f7f7ee]"
+          ? "bg-[#f3f4f6] font-semibold text-[#151512]"
+          : "font-medium text-[#55534a] hover:bg-[#f8f9fb]"
       ].join(" ")}
     >
       <Icon className={active ? "text-[#151512]" : "text-[#8a887b]"} />
       <span className="flex-1">{item.label}</span>
       {item.badge ? (
-        <span className="min-w-[22px] rounded-full bg-[#efefe3] px-1.5 py-0.5 text-center text-[11px] font-semibold text-[#55534a]">
+        <span className="min-w-[22px] rounded-full bg-[#f3f4f6] px-1.5 py-0.5 text-center text-[11px] font-semibold text-[#55534a]">
           {item.badge}
         </span>
       ) : null}
@@ -74,61 +69,62 @@ export function WireframeSidebar({
   const searchParams = useSearchParams();
   const selectedProcessId = searchParams.get("processId");
   const currentProcess = shell.currentProcess;
-  const [localSelectedProcessId, setLocalSelectedProcessId] = useState<string | null>(null);
+
+  // expanded = sub-nav visible; toggled by single click
+  const [expanded, setExpanded] = useState(false);
   const processIsSelected = Boolean(
     currentProcess &&
-      (selectedProcessId === currentProcess.id || localSelectedProcessId === currentProcess.id)
+      (expanded || selectedProcessId === currentProcess.id)
   );
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   const processActive = processIsSelected && processNav.some((item) => isActive(item.href));
-  const [isEditingProcessName, setIsEditingProcessName] = useState(false);
-  const [processNameDraft, setProcessNameDraft] = useState(currentProcess?.name ?? "");
-  const [processEditMessage, setProcessEditMessage] = useState<string | null>(null);
-  const [isRenamingProcess, startRenameProcessTransition] = useTransition();
 
-  const selectCurrentProcess = () => {
-    if (!currentProcess) {
-      return;
-    }
+  // inline rename
+  const [isEditing, setIsEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState(currentProcess?.name ?? "");
+  const [, startRename] = useTransition();
+  const inputRef = useRef<HTMLInputElement>(null);
 
-    setLocalSelectedProcessId(currentProcess.id);
+  const startEditing = () => {
+    if (!currentProcess) return;
+    setNameDraft(currentProcess.name);
+    setIsEditing(true);
+    // focus on next tick after render
+    setTimeout(() => inputRef.current?.select(), 0);
   };
 
-  const saveProcessName = () => {
-    if (!currentProcess || !onUpdateProcessName) {
+  const commitRename = () => {
+    const next = nameDraft.trim();
+    if (!currentProcess || !onUpdateProcessName || next.length < 2) {
+      setIsEditing(false);
       return;
     }
-
-    const nextName = processNameDraft.trim();
-    if (nextName.length < 2) {
-      setProcessEditMessage("Use at least 2 characters.");
+    if (next === currentProcess.name) {
+      setIsEditing(false);
       return;
     }
-
-    if (nextName === currentProcess.name) {
-      setIsEditingProcessName(false);
-      setProcessEditMessage(null);
-      return;
-    }
-
-    startRenameProcessTransition(() => {
-      void (async () => {
-        const result = await onUpdateProcessName({
-          templateId: currentProcess.id,
-          name: nextName
-        });
-
-        if (!result.ok) {
-          setProcessEditMessage(result.error);
-          return;
-        }
-
-        setProcessNameDraft(result.data.name);
-        setIsEditingProcessName(false);
-        setProcessEditMessage("Saved.");
-        router.refresh();
-      })();
+    startRename(() => {
+      void onUpdateProcessName({ templateId: currentProcess.id, name: next }).then((res) => {
+        if (res.ok) router.refresh();
+      });
     });
+    setIsEditing(false);
+  };
+
+  const cancelRename = () => {
+    setIsEditing(false);
+    setNameDraft(currentProcess?.name ?? "");
+  };
+
+  const handleProcessClick = () => {
+    if (!currentProcess || isEditing) return;
+    setExpanded((prev) => !prev);
+  };
+
+  const handleProcessDoubleClick = () => {
+    if (!currentProcess || !onUpdateProcessName) return;
+    if (!expanded) setExpanded(true);
+    startEditing();
   };
 
   return (
@@ -164,38 +160,33 @@ export function WireframeSidebar({
           className={[
             "rounded-xl px-3 py-2.5 text-sm transition-all",
             processIsSelected
-              ? "bg-[#f2f2e8] font-semibold text-[#151512]"
+              ? "bg-[#f3f4f6] font-semibold text-[#151512]"
               : "font-medium text-[#55534a]"
           ].join(" ")}
         >
           <div className="flex items-center gap-3">
             <CalendarIcon className="shrink-0 text-[#8a887b]" />
-            {isEditingProcessName && currentProcess ? (
+            {isEditing && currentProcess ? (
               <input
-                value={processNameDraft}
-                onChange={(event) => setProcessNameDraft(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    saveProcessName();
-                  }
-
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    setProcessNameDraft(currentProcess.name);
-                    setIsEditingProcessName(false);
-                    setProcessEditMessage(null);
-                  }
+                ref={inputRef}
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.currentTarget.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); commitRename(); }
+                  if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
                 }}
-                className="min-w-0 flex-1 rounded-md border border-[#d8d6ca] bg-white px-2 py-1 text-[13px] font-semibold text-[#151512] outline-none focus:border-[#151512]"
+                className="min-w-0 flex-1 rounded-md border border-[#d1d5db] bg-white px-2 py-0.5 text-[13px] font-semibold text-[#151512] outline-none focus:border-[#151512]"
                 aria-label="Process name"
                 autoFocus
               />
             ) : (
               <button
                 type="button"
-                onClick={selectCurrentProcess}
+                onClick={handleProcessClick}
+                onDoubleClick={handleProcessDoubleClick}
                 disabled={!currentProcess}
+                title={onUpdateProcessName ? "Click to expand · Double-click to rename" : "Click to expand"}
                 className="min-w-0 flex-1 truncate text-left disabled:cursor-default"
                 aria-pressed={processIsSelected}
               >
@@ -203,59 +194,20 @@ export function WireframeSidebar({
               </button>
             )}
             {currentProcess ? (
-              <span className="min-w-[22px] rounded-full bg-[#efefe3] px-1.5 py-0.5 text-center text-[11px] font-semibold text-[#55534a]">
+              <span className="min-w-[22px] rounded-full bg-[#f3f4f6] px-1.5 py-0.5 text-center text-[11px] font-semibold text-[#55534a]">
                 {currentProcess.activeDieCount}
               </span>
             ) : null}
           </div>
-          {currentProcess ? (
-            <div className="mt-2 flex items-center gap-2 pl-8">
-              {isEditingProcessName ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={saveProcessName}
-                    disabled={isRenamingProcess}
-                    className="rounded-md bg-[#151512] px-2.5 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProcessNameDraft(currentProcess.name);
-                      setIsEditingProcessName(false);
-                      setProcessEditMessage(null);
-                    }}
-                    className="rounded-md px-2.5 py-1 text-[11px] font-semibold text-[#6b6a5f] hover:bg-[#f7f7ee]"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProcessNameDraft(currentProcess.name);
-                    setIsEditingProcessName(true);
-                    setProcessEditMessage(null);
-                  }}
-                  disabled={!onUpdateProcessName}
-                  className="rounded-md px-2.5 py-1 text-[11px] font-semibold text-[#6b6a5f] hover:bg-[#f7f7ee] disabled:opacity-50"
-                >
-                  Rename
-                </button>
-              )}
-              {processEditMessage ? (
-                <span className="text-[11px] font-medium text-[#7b796f]">{processEditMessage}</span>
-              ) : null}
-            </div>
-          ) : null}
         </div>
+
+        {/* Animated sub-nav: Process Flow + Wafer / Die Status */}
         <div
           className={[
             "grid transition-[grid-template-rows,opacity,transform] duration-200 ease-out",
-            processIsSelected ? "grid-rows-[1fr] opacity-100 translate-y-0" : "grid-rows-[0fr] opacity-0 -translate-y-1"
+            processIsSelected
+              ? "grid-rows-[1fr] opacity-100 translate-y-0"
+              : "grid-rows-[0fr] opacity-0 -translate-y-1"
           ].join(" ")}
         >
           <div className="min-h-0 overflow-hidden">
@@ -272,8 +224,8 @@ export function WireframeSidebar({
                         className={[
                           "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors",
                           active
-                            ? "bg-[#f2f2e8] font-semibold text-[#151512]"
-                            : "font-medium text-[#6b6a5f] hover:bg-[#f7f7ee]"
+                            ? "bg-[#f3f4f6] font-semibold text-[#151512]"
+                            : "font-medium text-[#6b6a5f] hover:bg-[#f8f9fb]"
                         ].join(" ")}
                       >
                         <Icon className={active ? "text-[#151512]" : "text-[#9c9a8c]"} />
@@ -295,7 +247,7 @@ export function WireframeSidebar({
           <ul className="flex flex-col gap-1">
             {shell.teamMembers.map((member) => (
               <li key={member.id} className="flex items-center gap-3 px-3 py-1.5">
-                <span className="grid h-8 w-8 place-items-center rounded-full border border-[#e4e3d8] bg-[#faf9f3] text-[11px] font-semibold text-[#55534a]">
+                <span className="grid h-8 w-8 place-items-center rounded-full border border-[#e5e7eb] bg-[#f8fafc] text-[11px] font-semibold text-[#55534a]">
                   {member.initials}
                 </span>
                 <span className="leading-tight">
@@ -310,10 +262,10 @@ export function WireframeSidebar({
         )}
       </div>
 
-      <div className="mt-auto border-t border-[#eeeee4] pt-4">
+      <div className="mt-auto border-t border-[#eef0f3] pt-4">
         <button
           type="button"
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#55534a] transition-colors hover:bg-[#f7f7ee]"
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#55534a] transition-colors hover:bg-[#f8f9fb]"
         >
           <HelpIcon className="text-[#8a887b]" />
           <span className="flex-1 text-left">Help &amp; support</span>

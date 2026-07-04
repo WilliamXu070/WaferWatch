@@ -55,6 +55,7 @@ type ProcessFlowViewProps = {
   onUpdateStepNodeType?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepNodeType"];
   onCreateTransition?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateTransition"];
   onDeleteSteps?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteSteps"];
+  onDeleteTransitions?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteTransitions"];
   onMoveWafer?: MoveWaferToProcessStepAction;
 };
 
@@ -73,10 +74,9 @@ export function ProcessFlowView({
   onUpdateStepNodeType,
   onCreateTransition,
   onDeleteSteps,
+  onDeleteTransitions,
   onMoveWafer
 }: ProcessFlowViewProps) {
-  const showFlowCanvas = Boolean(processTemplateId);
-
   return (
     <div className="flex flex-col gap-5 p-6">
       <section className="rounded-3xl border border-[#e5e5db] bg-[#fafaf4] p-3">
@@ -105,20 +105,19 @@ export function ProcessFlowView({
             </div>
           ) : null}
 
-          {showFlowCanvas ? (
-            <ProcessFlowDiagram
-              steps={steps}
-              transitions={transitions}
-              processTemplateId={processTemplateId}
-              onCreateStep={onCreateStep}
-              onUpdateStepPositions={onUpdateStepPositions}
-              onUpdateStepName={onUpdateStepName}
-              onUpdateStepNodeType={onUpdateStepNodeType}
-              onCreateTransition={onCreateTransition}
-              onDeleteSteps={onDeleteSteps}
-              onMoveWafer={onMoveWafer}
-            />
-          ) : null}
+          <ProcessFlowDiagram
+            steps={steps}
+            transitions={transitions}
+            processTemplateId={processTemplateId}
+            onCreateStep={onCreateStep}
+            onUpdateStepPositions={onUpdateStepPositions}
+            onUpdateStepName={onUpdateStepName}
+            onUpdateStepNodeType={onUpdateStepNodeType}
+            onCreateTransition={onCreateTransition}
+            onDeleteSteps={onDeleteSteps}
+            onDeleteTransitions={onDeleteTransitions}
+            onMoveWafer={onMoveWafer}
+          />
         </div>
       </section>
 

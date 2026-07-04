@@ -30,6 +30,7 @@ type ProcessFlowCanvasProps = {
   waferDrag: WaferDrag | null;
   edges: FlowEdge[];
   selectedNodeIds: Set<string>;
+  selectedEdgeId: string | null;
   connectionNodeId: string | null;
   roleMenu: RoleMenu | null;
   roleMenuNode: FlowNode | null;
@@ -60,6 +61,7 @@ type ProcessFlowCanvasProps = {
   onBeginWaferDrag: (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => void;
   onSetNodeRole: (nodeId: string, role: FlowNodeRole) => void;
   onDeleteNodes: (nodeIds: string[]) => void;
+  onEdgeClick: (edgeId: string) => void;
 };
 
 export function ProcessFlowCanvas({
@@ -77,6 +79,7 @@ export function ProcessFlowCanvas({
   waferDrag,
   edges,
   selectedNodeIds,
+  selectedEdgeId,
   connectionNodeId,
   roleMenu,
   roleMenuNode,
@@ -106,7 +109,8 @@ export function ProcessFlowCanvas({
   onCancelLabelEdit,
   onBeginWaferDrag,
   onSetNodeRole,
-  onDeleteNodes
+  onDeleteNodes,
+  onEdgeClick
 }: ProcessFlowCanvasProps) {
   const draftSourceNode = connectionDraft ? nodeById.get(connectionDraft.from) : null;
   const draftPath = draftSourceNode
@@ -184,14 +188,21 @@ export function ProcessFlowCanvas({
 
           const isReturn = isReturnEdge(edge, from, to, edges);
           const path = makeNodePath(edge, from, to, edges, nodes);
+          const isSelected = selectedEdgeId === edge.id;
 
           return (
-            <path
+            <g
               key={edge.id}
-              d={path}
-              className={`flow-edge ${isReturn ? "flow-edge--return" : ""}`}
-              markerEnd="url(#flowMapArrow)"
-            />
+              className="flow-edge-group"
+              onClick={(e) => { e.stopPropagation(); onEdgeClick(edge.id); }}
+            >
+              <path d={path} className="flow-edge-hit" />
+              <path
+                d={path}
+                className={`flow-edge ${isReturn ? "flow-edge--return" : ""} ${isSelected ? "flow-edge--selected" : ""}`}
+                markerEnd="url(#flowMapArrow)"
+              />
+            </g>
           );
         })}
 

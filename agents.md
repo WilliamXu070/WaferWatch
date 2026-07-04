@@ -410,3 +410,13 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `/tmp/process-selection-wafer-guard.png`
 - Authenticated selected-process browser verification was not completed because the
   saved Playwright auth state did not decode into a usable Supabase session.
+
+## Recent development note (2026-07-03 22:50)
+
+- Committed the current WaferWatch main-branch process-flow and wireframe shell
+  worktree state, including process-flow canvas/toolbar/action updates and
+  sidebar shell cleanup.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+- Browser verification was not rerun in this commit-only pass.

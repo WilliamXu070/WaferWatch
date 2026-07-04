@@ -4,7 +4,7 @@ import type { WireframeShellDto } from "@/features/wireframe/types";
 import { WireframeSidebar } from "./WireframeSidebar";
 import { WireframeTopbar } from "./WireframeTopbar";
 
-type UpdateProcessNameAction = (input: {
+export type UpdateProcessNameAction = (input: {
   templateId: string;
   name: string;
 }) => Promise<ActionResult<{ id: string; name: string; version: string }>>;

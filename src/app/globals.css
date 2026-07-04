@@ -726,6 +726,22 @@ textarea {
   opacity: 0.8;
 }
 
+.flow-edge--selected {
+  stroke: var(--accent);
+  opacity: 1;
+}
+
+.flow-edge-hit {
+  stroke: transparent;
+  stroke-width: 16;
+  fill: none;
+  cursor: pointer;
+}
+
+.flow-edge-group {
+  cursor: pointer;
+}
+
 .flow-edge--loop,
 .flow-edge--return {
   stroke-dasharray: 8 5;
@@ -2617,10 +2633,10 @@ textarea {
 /* ------------------------------------------------------------------ */
 .waferwatch-wireframe {
   --foreground: #151512;
-  --muted: #8a887b;
+  --muted: #6b7280;
   --panel: #ffffff;
-  --panel-soft: #f2f2e8;
-  --border: #e4e4da;
+  --panel-soft: #f6f7fb;
+  --border: #e5e7eb;
   --accent: #141412;
   --accent-strong: #000000;
   --ink-blue: #141412;
@@ -2628,8 +2644,8 @@ textarea {
   --danger: #a2593f;
   --success: #6b7f57;
   --status-available: #6b7f57;
-  --status-muted: #c9c8ba;
-  --shadow: 0 12px 26px rgba(30, 29, 22, 0.08);
+  --status-muted: #d9dde5;
+  --shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
   font-family: "Outfit", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   font-variant-numeric: tabular-nums;
 }
@@ -2651,7 +2667,7 @@ textarea {
 }
 
 .waferwatch-wireframe .eyebrow {
-  color: #98968a;
+  color: #6b7280;
 }
 
 .waferwatch-wireframe .button-danger {
@@ -2671,7 +2687,7 @@ textarea {
   align-items: start;
   gap: 16px;
   padding: 24px 24px 18px;
-  background: #fafaf4;
+  background: #f9fafb;
 }
 
 .wireframe-flow-surface .flow-map-summary {
@@ -2686,12 +2702,12 @@ textarea {
 }
 
 .wireframe-flow-surface .flow-map-summary em {
-  color: #8a887b;
+  color: #6b7280;
   font-size: 13px;
 }
 
 .wireframe-flow-surface .flow-map-summary span {
-  color: #8a887b;
+  color: #6b7280;
   font-size: 12px;
 }
 
@@ -2702,7 +2718,7 @@ textarea {
 
 .wireframe-flow-surface .flow-map-actions .button {
   min-height: 42px;
-  border-color: #e0dfd2;
+  border-color: #e5e7eb;
   border-radius: 9px;
   background: #ffffff;
   color: #151512;
@@ -2711,8 +2727,8 @@ textarea {
 
 .wireframe-flow-surface .flow-map-actions .button:hover,
 .wireframe-flow-surface .flow-map-actions .button:focus-visible {
-  border-color: #cfcec0;
-  background: #f6f5ec;
+  border-color: #d1d5db;
+  background: #f3f4f6;
   color: #151512;
 }
 
@@ -2730,7 +2746,7 @@ textarea {
 .wireframe-flow-surface .flow-map-help {
   flex-basis: 100%;
   margin-top: 0;
-  color: #8a887b;
+  color: #6b7280;
   font-size: 12px;
   text-align: right;
 }
@@ -2741,11 +2757,11 @@ textarea {
 
 .wireframe-flow-surface .flow-map-frame {
   height: clamp(600px, 62vh, 680px);
-  border: 1px solid #e4e4da;
+  border: 1px solid #e5e7eb;
   border-radius: 10px;
   background:
-    radial-gradient(circle at 1px 1px, rgba(30, 29, 22, 0.08) 1px, transparent 0) 0 0 / 22px 22px,
-    #fafaf4;
+    radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.08) 1px, transparent 0) 0 0 / 22px 22px,
+    #f9fafb;
   box-shadow: none;
   padding: 0;
 }
@@ -2756,20 +2772,20 @@ textarea {
 
 .wireframe-flow-surface .flow-node-card {
   fill: #ffffff;
-  stroke: #ddddd0;
+  stroke: #d1d5db;
   stroke-width: 1;
   filter: drop-shadow(0 8px 14px rgba(20, 20, 20, 0.08));
 }
 
 .wireframe-flow-surface .flow-node--selected .flow-node-card {
-  stroke: #b44c4c;
+  stroke: #2563eb;
   stroke-width: 2.5;
 }
 
 .wireframe-flow-surface .flow-node--start .flow-node-card,
 .wireframe-flow-surface .flow-node--end .flow-node-card {
-  fill: #f4f4ea;
-  stroke: #d6d5c6;
+  fill: #f8fafc;
+  stroke: #d8dde6;
 }
 
 .wireframe-flow-surface .flow-node--active .flow-node-card {
@@ -2786,7 +2802,7 @@ textarea {
 .wireframe-flow-surface .flow-node-subtitle,
 .wireframe-flow-surface .flow-node-meta {
   font-size: 12px;
-  fill: #8a887b;
+  fill: #6b7280;
 }
 
 .wireframe-flow-surface .flow-node-subtitle {
@@ -2796,7 +2812,7 @@ textarea {
 .wireframe-flow-surface .flow-node--active .flow-node-title,
 .wireframe-flow-surface .flow-node--active .flow-node-subtitle,
 .wireframe-flow-surface .flow-node--active .flow-node-meta {
-  fill: #f4f4ec;
+  fill: #f8fafc;
 }
 
 .wireframe-flow-surface .flow-node-icon {
@@ -2805,11 +2821,11 @@ textarea {
 }
 
 .wireframe-flow-surface .flow-node--active .flow-node-icon {
-  color: #f4f4ec;
+  color: #f8fafc;
 }
 
 .wireframe-flow-surface .flow-node-port {
-  fill: #fbfbf6;
+  fill: #f8fafc;
   stroke: #151512;
   stroke-width: 2;
 }
@@ -2821,12 +2837,17 @@ textarea {
 
 .wireframe-flow-surface .flow-node--active .flow-node-port {
   fill: #161613;
-  stroke: #f4f4ec;
+  stroke: #f8fafc;
 }
 
 .wireframe-flow-surface .flow-edge {
-  stroke: rgba(22, 22, 19, 0.55);
+  stroke: rgba(15, 23, 42, 0.55);
   stroke-width: 2;
+  opacity: 1;
+}
+
+.wireframe-flow-surface .flow-edge--selected {
+  stroke: #2563eb;
   opacity: 1;
 }
 
@@ -2836,5 +2857,5 @@ textarea {
 
 .wireframe-flow-surface .flow-snap-guide,
 .wireframe-flow-surface .flow-edge--draft {
-  stroke: #8a94a8;
+  stroke: #94a3b8;
 }

@@ -185,3 +185,7 @@ export type DeleteProcessStepsAction = (input: {
   stepIds: string[];
 }) => Promise<ActionResult<unknown>>;
 
+export type DeleteProcessTransitionsAction = (input: {
+  transitionIds: string[];
+}) => Promise<ActionResult<unknown>>;
+

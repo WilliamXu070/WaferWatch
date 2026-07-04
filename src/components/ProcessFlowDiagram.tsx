@@ -37,6 +37,7 @@ import type {
   CreateProcessFlowStepAction,
   CreateProcessStepTransitionAction,
   DeleteProcessStepsAction,
+  DeleteProcessTransitionsAction,
   DiagramStep,
   DiagramTransition,
   FlowEdge,
@@ -85,6 +86,7 @@ export function ProcessFlowDiagram({
   onUpdateStepNodeType,
   onCreateTransition,
   onDeleteSteps,
+  onDeleteTransitions,
   onMoveWafer
 }: {
   steps: DiagramStep[];
@@ -96,6 +98,7 @@ export function ProcessFlowDiagram({
   onUpdateStepNodeType?: UpdateProcessStepNodeTypeAction;
   onCreateTransition?: CreateProcessStepTransitionAction;
   onDeleteSteps?: DeleteProcessStepsAction;
+  onDeleteTransitions?: DeleteProcessTransitionsAction;
   onMoveWafer?: MoveWaferToProcessStepAction;
 }) {
 
@@ -110,7 +113,8 @@ export function ProcessFlowDiagram({
   const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
-  const [moveMessage, setMoveMessage] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const setMoveMessage = (msg: string | null) => { if (msg) console.warn("[ProcessFlow]", msg); };
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editingNodeLabel, setEditingNodeLabel] = useState("");
   const editingInputRef = useRef<HTMLInputElement | null>(null);
@@ -154,7 +158,6 @@ export function ProcessFlowDiagram({
   const scaledWidth = Math.round(sceneBounds.width * s);
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
-  const selectedNodeCount = selectedNodeIds.size;
   const nodesRef = useRef<FlowNode[]>([]);
   const edgesRef = useRef<FlowEdge[]>([]);
 
@@ -912,12 +915,14 @@ export function ProcessFlowDiagram({
 
     const target = event.target as EventTarget | null;
     const hasNodeTarget = target instanceof Element && target.closest(".flow-node") !== null;
-    if (hasNodeTarget) {
+    const hasEdgeTarget = target instanceof Element && target.closest(".flow-edge-group") !== null;
+    if (hasNodeTarget || hasEdgeTarget) {
       return;
     }
 
     setRoleMenu(null);
     setSelectedNodeIds(new Set());
+    setSelectedEdgeId(null);
   };
 
   const createNode = (event: MouseEvent<SVGSVGElement>) => {
@@ -1371,15 +1376,39 @@ export function ProcessFlowDiagram({
     deleteNodes([...selectedNodeIds]);
   }, [deleteNodes, selectedNodeIds]);
 
+  const deleteEdge = useCallback((edgeId: string) => {
+    setEdges((current) => current.filter((edge) => edge.id !== edgeId));
+    setSelectedEdgeId(null);
+
+    if (edgeId.startsWith(EDGE_ID_PREFIX) || !onDeleteTransitions) {
+      return;
+    }
+
+    startGraphTransition(() => {
+      void (async () => {
+        const result = await onDeleteTransitions({ transitionIds: [edgeId] });
+        if (!result.ok) {
+          setMoveMessage(result.error);
+        }
+        router.refresh();
+      })();
+    });
+  }, [onDeleteTransitions, router]);
+
   useEffect(() => {
     const onGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
       if (isTextInputTarget(event.target)) {
         return;
       }
 
-      if ((event.key === "Delete" || event.key === "Backspace") && selectedNodeIds.size > 0) {
-        event.preventDefault();
-        deleteSelectedNodes();
+      if (event.key === "Delete" || event.key === "Backspace") {
+        if (selectedEdgeId) {
+          event.preventDefault();
+          deleteEdge(selectedEdgeId);
+        } else if (selectedNodeIds.size > 0) {
+          event.preventDefault();
+          deleteSelectedNodes();
+        }
       }
     };
 
@@ -1388,7 +1417,7 @@ export function ProcessFlowDiagram({
     return () => {
       window.removeEventListener("keydown", onGlobalKeyDown);
     };
-  }, [deleteSelectedNodes, selectedNodeIds]);
+  }, [deleteEdge, deleteSelectedNodes, selectedEdgeId, selectedNodeIds]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -1464,9 +1493,6 @@ export function ProcessFlowDiagram({
     <section className="flow-map-shell">
       <ProcessFlowToolbar
         nodesCount={nodes.length}
-        edgesCount={edges.length}
-        selectedNodeCount={selectedNodeCount}
-        moveMessage={moveMessage}
         zoomPercent={Math.round(s * 100)}
         isGraphPending={isGraphPending}
         onZoomOut={zoomOut}
@@ -1490,6 +1516,7 @@ export function ProcessFlowDiagram({
         waferDrag={waferDrag}
         edges={edges}
         selectedNodeIds={selectedNodeIds}
+        selectedEdgeId={selectedEdgeId}
         nodeDrag={nodeDrag}
         editingNodeId={editingNodeId}
         editingNodeLabel={editingNodeLabel}
@@ -1526,6 +1553,7 @@ export function ProcessFlowDiagram({
         onBeginWaferDrag={beginWaferDrag}
         onSetNodeRole={setNodeRole}
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}
+        onEdgeClick={(edgeId) => { setSelectedNodeIds(new Set()); setSelectedEdgeId(edgeId); }}
       />
     </section>
   );

@@ -3,6 +3,7 @@ import {
   createProcessFlowStep,
   createProcessStepTransition,
   deleteProcessSteps,
+  deleteProcessStepTransitions,
   updateProcessStepName,
   updateProcessStepNodeType,
   updateProcessStepPositions
@@ -205,6 +206,7 @@ export default async function ProcessFlowWireframePage({
       onUpdateStepNodeType={updateProcessStepNodeType}
       onCreateTransition={createProcessStepTransition}
       onDeleteSteps={deleteProcessSteps}
+      onDeleteTransitions={deleteProcessStepTransitions}
       onMoveWafer={moveWaferToProcessStep}
     />
   );

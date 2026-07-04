@@ -27,15 +27,7 @@ export function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransi
       to: transition.to_step_id,
       kind: transition.edge_type
     }));
-  const fallbackEdges: FlowEdge[] = persistedEdges.length
-    ? []
-    : nodes.slice(0, -1).map((node, index) => ({
-        id: `fallback-${node.id}->${nodes[index + 1].id}`,
-        from: node.id,
-        to: nodes[index + 1].id,
-        kind: "flow"
-      }));
-  const edges = persistedEdges.length ? persistedEdges : fallbackEdges;
+  const edges = persistedEdges;
   const hasMissingPositions = sortedSteps.some((step) => step.canvas_x === null || step.canvas_x === undefined || step.canvas_y === null || step.canvas_y === undefined);
 
   return {
