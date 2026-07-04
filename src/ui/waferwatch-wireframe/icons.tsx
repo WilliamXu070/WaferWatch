@@ -5,6 +5,7 @@ import {
   Building2,
   CalendarDays,
   CalendarCheck,
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -88,6 +89,7 @@ export const EtchIcon = makeIcon(Sparkles, 18);
 export const CharacterizationIcon = makeIcon(Activity, 18);
 export const TotalStepsIcon = makeIcon(Scan, 16);
 export const TargetIcon = makeIcon(Target, 16);
+export const CheckIcon = makeIcon(Check, 12, 2.4);
 export const CheckCircleIcon = makeIcon(CheckCircle2, 16);
 export const HandoffIcon = makeIcon(Repeat2, 16);
 export const StackIcon = makeIcon(Layers3, 16);

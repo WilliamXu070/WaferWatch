@@ -1,4 +1,4 @@
-import { CheckCircleIcon } from "../../icons";
+import { CheckIcon } from "../../icons";
 import type { WaferStatusTileModel } from "../../types";
 import { DetailCard } from "./DetailCard";
 import { processTimeline } from "./waferDieDetailData";
@@ -85,11 +85,11 @@ export function ProcessTimelineCard({ tile }: { tile: WaferStatusTileModel }) {
               </span>
               {item.state === "complete" ? (
                 <span
-                  className="grid h-5 w-5 place-items-center rounded-full border bg-white"
-                  style={{ borderColor: accent.fill, color: accent.fill }}
+                  className="grid h-4 w-4 place-items-center rounded-full text-white"
+                  style={{ backgroundColor: accent.fill }}
                   aria-hidden
                 >
-                  <CheckCircleIcon />
+                  <CheckIcon />
                 </span>
               ) : null}
             </li>

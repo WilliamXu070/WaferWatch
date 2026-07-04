@@ -555,3 +555,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     authenticated active-die visual acceptance still needs a fresh existing
     session.
   - Screenshot: `/tmp/wafer-checkmark-opposite-fill.png`
+
+## Recent development note (2026-07-04 wafer die timeline single checkmark)
+
+- Replaced the completed-step timeline checkmark from a nested circle icon to a
+  single filled family-color disk with a plain white check glyph, avoiding the
+  double-circle artifact.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3000/api/health`
+  - Playwright CLI route screenshot at
+    `http://localhost:3000/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with `1440x1000` viewport and `playwright/.auth/user.json`.
+  - The saved auth state still rendered the unauthenticated empty state, so
+    authenticated active-die visual acceptance still needs a fresh existing
+    session.
+  - Screenshot: `/tmp/wafer-checkmark-filled-single.png`
