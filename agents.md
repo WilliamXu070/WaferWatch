@@ -438,3 +438,21 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Authenticated create/connect/wafer-move browser verification was not completed
   because this worktree had no saved Playwright auth state. The route rendered on
   the correct dev server; an existing topbar caret hydration warning remains.
+
+## Recent development note (2026-07-04 process flow multi-select drag)
+
+- Added drag-box marquee selection to `/wireframe/process-flow` so users can drag
+  across multiple process boxes and select them together.
+- Updated node dragging so moving one selected node moves the selected group while
+  preserving relative spacing and saving all changed node positions through the
+  existing debounced persistence queue.
+- Added Shift-click selection toggling in addition to Cmd/Ctrl-click. Shift-drag
+  still creates a transition once the pointer moves beyond the click threshold.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/waferwatch-process-flow-multiselect.png`
+- Authenticated drag-box/group-move browser verification was not completed from
+  Playwright because this worktree has no saved auth state. The route rendered on
+  the correct dev server; the existing topbar caret hydration warning remains.

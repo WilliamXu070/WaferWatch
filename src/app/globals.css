@@ -523,6 +523,14 @@ textarea {
   fill: transparent;
 }
 
+.flow-selection-box {
+  fill: rgb(37 99 235 / 0.1);
+  stroke: rgb(37 99 235 / 0.72);
+  stroke-width: 1.5;
+  stroke-dasharray: 8 6;
+  pointer-events: none;
+}
+
 .flow-snap-guide {
   stroke: var(--accent);
   stroke-width: 1.5;

@@ -49,6 +49,8 @@ import type {
   PersistedStepPayload,
   RoleMenu,
   ScenePoint,
+  SelectionBox,
+  SelectionRect,
   SnapGuide,
   UpdateProcessStepNameAction,
   UpdateProcessStepNodeTypeAction,
@@ -105,7 +107,9 @@ export function ProcessFlowDiagram({
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
+  const [pendingConnectionStart, setPendingConnectionStart] = useState<ConnectionDraft | null>(null);
   const [nodeDrag, setNodeDrag] = useState<NodeDrag | null>(null);
+  const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const [waferDrag, setWaferDrag] = useState<WaferDrag | null>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
@@ -701,6 +705,26 @@ export function ProcessFlowDiagram({
     getScenePointFromClient(event.clientX, event.clientY)
   ), [getScenePointFromClient]);
 
+  const getSelectionRect = useCallback((box: SelectionBox | null = selectionBox): SelectionRect | null => {
+    if (!box) {
+      return null;
+    }
+
+    return {
+      x: Math.min(box.startX, box.x),
+      y: Math.min(box.startY, box.y),
+      width: Math.abs(box.x - box.startX),
+      height: Math.abs(box.y - box.startY)
+    };
+  }, [selectionBox]);
+
+  const nodeIntersectsSelection = (node: FlowNode, rect: SelectionRect) => (
+    node.x <= rect.x + rect.width &&
+    node.x + node.width >= rect.x &&
+    node.y <= rect.y + rect.height &&
+    node.y + node.height >= rect.y
+  );
+
   const applyScaleAtAnchor = useCallback((
     nextScale: number,
     anchor: PanePoint | null = getPanePoint()
@@ -881,7 +905,9 @@ export function ProcessFlowDiagram({
     setNodes(serverGraph.nodes);
     setEdges(serverGraph.edges);
     setConnectionDraft(null);
+    setPendingConnectionStart(null);
     setNodeDrag(null);
+    setSelectionBox(null);
     setWaferDrag(null);
     setSnapGuides([]);
     setRoleMenu(null);
@@ -979,7 +1005,7 @@ export function ProcessFlowDiagram({
     panStateRef.current = null;
   };
 
-  const clearSelectionIfOffNode = (event: PointerEvent<SVGSVGElement>) => {
+  const beginCanvasSelection = (event: PointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) {
       return;
     }
@@ -991,9 +1017,72 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    event.preventDefault();
     setRoleMenu(null);
-    setSelectedNodeIds(new Set());
     setSelectedEdgeId(null);
+    const point = getScenePoint(event);
+    const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+
+    if (!additive) {
+      setSelectedNodeIds(new Set());
+    }
+
+    setSelectionBox({
+      pointerId: event.pointerId,
+      startX: point.x,
+      startY: point.y,
+      x: point.x,
+      y: point.y,
+      additive,
+      hasMoved: false,
+      baseSelectedNodeIds: additive ? [...selectedNodeIds] : []
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const updateCanvasSelection = (event: PointerEvent<SVGSVGElement>) => {
+    if (!selectionBox || selectionBox.pointerId !== event.pointerId) {
+      return false;
+    }
+
+    const point = getScenePoint(event);
+    const nextBox = {
+      ...selectionBox,
+      x: point.x,
+      y: point.y,
+      hasMoved:
+        selectionBox.hasMoved ||
+        Math.abs(point.x - selectionBox.startX) > 6 ||
+        Math.abs(point.y - selectionBox.startY) > 6
+    };
+    const rect = getSelectionRect(nextBox);
+
+    if (rect) {
+      const nextSelected = new Set(nextBox.additive ? nextBox.baseSelectedNodeIds : []);
+      nodes.forEach((node) => {
+        if (nodeIntersectsSelection(node, rect)) {
+          nextSelected.add(node.id);
+        }
+      });
+      setSelectedNodeIds(nextSelected);
+    }
+
+    setSelectionBox(nextBox);
+    return true;
+  };
+
+  const finishCanvasSelection = (event: PointerEvent<SVGSVGElement>) => {
+    if (!selectionBox || selectionBox.pointerId !== event.pointerId) {
+      return false;
+    }
+
+    if (!selectionBox.hasMoved && !selectionBox.additive) {
+      setSelectedNodeIds(new Set());
+    }
+
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    setSelectionBox(null);
+    return true;
   };
 
   const createNode = (event: MouseEvent<SVGSVGElement>) => {
@@ -1040,18 +1129,13 @@ export function ProcessFlowDiagram({
     });
   };
 
-  const beginConnection = (event: PointerEvent<SVGGElement>, nodeId: string) => {
-    if (event.button !== 0 || !event.shiftKey) {
-      return;
-    }
-
+  const beginPendingConnection = (event: PointerEvent<SVGGElement>, nodeId: string) => {
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
-    setSelectedNodeIds(new Set([nodeId]));
 
     const point = getScenePoint(event);
-    setConnectionDraft({
+    setPendingConnectionStart({
       from: nodeId,
       pointerId: event.pointerId,
       startX: point.x,
@@ -1065,7 +1149,7 @@ export function ProcessFlowDiagram({
 
   const handleNodePointerDown = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
     event.stopPropagation();
-    if (event.metaKey || event.ctrlKey) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey) {
       event.preventDefault();
       setRoleMenu(null);
       setSelectedNodeIds((current) => {
@@ -1077,11 +1161,10 @@ export function ProcessFlowDiagram({
         }
         return next;
       });
-      return;
-    }
 
-    if (event.shiftKey) {
-      beginConnection(event, node.id);
+      if (event.shiftKey && !event.metaKey && !event.ctrlKey) {
+        beginPendingConnection(event, node.id);
+      }
       return;
     }
 
@@ -1097,21 +1180,68 @@ export function ProcessFlowDiagram({
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
-    setSelectedNodeIds((current) => current.has(node.id) ? current : new Set([node.id]));
+    const selectedIds = selectedNodeIds.has(node.id) ? selectedNodeIds : new Set([node.id]);
+    setSelectedNodeIds(selectedIds);
 
     const point = getScenePoint(event);
+    const nodeStartPositions = nodes
+      .filter((currentNode) => selectedIds.has(currentNode.id))
+      .map((currentNode) => ({
+        nodeId: currentNode.id,
+        x: currentNode.x,
+        y: currentNode.y
+      }));
+
     setNodeDrag({
       nodeId: node.id,
       pointerId: event.pointerId,
       offsetX: point.x - node.x,
       offsetY: point.y - node.y,
       startX: node.x,
-      startY: node.y
+      startY: node.y,
+      nodeStartPositions
     });
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const updateNodeDrag = (event: PointerEvent<SVGGElement>) => {
+    if (pendingConnectionStart && pendingConnectionStart.pointerId === event.pointerId) {
+      const point = getScenePoint(event);
+      const hasMoved =
+        Math.abs(point.x - pendingConnectionStart.startX) > 6 ||
+        Math.abs(point.y - pendingConnectionStart.startY) > 6;
+
+      if (hasMoved) {
+        setConnectionDraft({
+          ...pendingConnectionStart,
+          x: point.x,
+          y: point.y,
+          hasMoved: true
+        });
+        setPendingConnectionStart(null);
+        setSelectedNodeIds(new Set([pendingConnectionStart.from]));
+      }
+      return;
+    }
+
+    if (connectionDraft && connectionDraft.pointerId === event.pointerId) {
+      const point = getScenePoint(event);
+      setConnectionDraft((draft) =>
+        draft
+          ? {
+              ...draft,
+              x: point.x,
+              y: point.y,
+              hasMoved:
+                draft.hasMoved ||
+                Math.abs(point.x - draft.startX) > 6 ||
+                Math.abs(point.y - draft.startY) > 6
+            }
+          : draft
+      );
+      return;
+    }
+
     if (!nodeDrag || nodeDrag.pointerId !== event.pointerId) {
       return;
     }
@@ -1123,28 +1253,47 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    const unselectedNodes = nodes.filter((node) => (
+      !nodeDrag.nodeStartPositions.some((position) => position.nodeId === node.id)
+    ));
     const snapped = getSnappedNodePosition(
       draggedNode,
       Math.round(point.x - nodeDrag.offsetX),
       Math.round(point.y - nodeDrag.offsetY),
-      nodes
+      unselectedNodes
     );
+    const deltaX = snapped.x - nodeDrag.startX;
+    const deltaY = snapped.y - nodeDrag.startY;
+    const draggedPositions = new Map(nodeDrag.nodeStartPositions.map((position) => [position.nodeId, position]));
 
     setNodes((currentNodes) =>
-      currentNodes.map((node) =>
-        node.id === nodeDrag.nodeId
+      currentNodes.map((node) => {
+        const startPosition = draggedPositions.get(node.id);
+        return startPosition
           ? {
               ...node,
-              x: snapped.x,
-              y: snapped.y
+              x: Math.max(24, Math.round(startPosition.x + deltaX)),
+              y: Math.max(24, Math.round(startPosition.y + deltaY))
             }
-          : node
-      )
+          : node;
+      })
     );
     setSnapGuides(snapped.guides);
   };
 
   const finishNodeDrag = (event: PointerEvent<SVGGElement>) => {
+    if (pendingConnectionStart && pendingConnectionStart.pointerId === event.pointerId) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      setPendingConnectionStart(null);
+      return;
+    }
+
+    if (connectionDraft && connectionDraft.pointerId === event.pointerId) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      finishConnection(event);
+      return;
+    }
+
     if (!nodeDrag || nodeDrag.pointerId !== event.pointerId) {
       return;
     }
@@ -1154,12 +1303,17 @@ export function ProcessFlowDiagram({
     setNodeDrag(null);
     setSnapGuides([]);
 
-    const draggedNode = nodes.find((node) => node.id === finishedDrag.nodeId);
-    if (!draggedNode || (draggedNode.x === finishedDrag.startX && draggedNode.y === finishedDrag.startY)) {
+    const nodeStartPositions = new Map(finishedDrag.nodeStartPositions.map((position) => [position.nodeId, position]));
+    const movedNodes = nodes.filter((node) => {
+      const startPosition = nodeStartPositions.get(node.id);
+      return startPosition && (node.x !== startPosition.x || node.y !== startPosition.y);
+    });
+
+    if (movedNodes.length === 0) {
       return;
     }
 
-    queueNodePositionPersist(draggedNode.id, draggedNode.x, draggedNode.y);
+    movedNodes.forEach((node) => queueNodePositionPersist(node.id, node.x, node.y));
   };
 
   const beginWaferDrag = (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => {
@@ -1288,6 +1442,10 @@ export function ProcessFlowDiagram({
   };
 
   const updateConnection = (event: PointerEvent<SVGSVGElement>) => {
+    if (updateCanvasSelection(event)) {
+      return;
+    }
+
     if (waferDrag) {
       updateWaferDrag(event);
       return;
@@ -1313,9 +1471,13 @@ export function ProcessFlowDiagram({
     );
   };
 
-  const finishConnection = (event: PointerEvent<SVGSVGElement>) => {
+  const finishConnection = (event: PointerEvent<SVGSVGElement | SVGGElement>) => {
+    if (event.currentTarget instanceof SVGSVGElement && finishCanvasSelection(event as PointerEvent<SVGSVGElement>)) {
+      return;
+    }
+
     if (waferDrag) {
-      finishWaferDrag(event);
+      finishWaferDrag(event as PointerEvent<SVGSVGElement>);
       return;
     }
 
@@ -1621,6 +1783,7 @@ export function ProcessFlowDiagram({
         selectedNodeIds={selectedNodeIds}
         selectedEdgeId={selectedEdgeId}
         nodeDrag={nodeDrag}
+        selectionRect={getSelectionRect()}
         editingNodeId={editingNodeId}
         editingNodeLabel={editingNodeLabel}
         editingInputRef={editingInputRef}
@@ -1635,13 +1798,16 @@ export function ProcessFlowDiagram({
         onCanvasPointerUp={finishConnection}
         onCanvasPointerCancel={() => {
           setConnectionDraft(null);
+          setPendingConnectionStart(null);
+          setSelectionBox(null);
           setWaferDrag(null);
         }}
-        onCanvasPointerDown={clearSelectionIfOffNode}
+        onCanvasPointerDown={beginCanvasSelection}
         onCanvasDoubleClick={createNode}
         onCanvasContextMenu={(event) => {
           event.preventDefault();
           setRoleMenu(null);
+          setSelectionBox(null);
           setSelectedNodeIds(new Set());
         }}
         onNodePointerDown={handleNodePointerDown}

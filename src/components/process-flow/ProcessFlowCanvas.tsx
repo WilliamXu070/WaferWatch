@@ -10,6 +10,7 @@ import type {
   FlowNodeRole,
   NodeDrag,
   RoleMenu,
+  SelectionRect,
   SnapGuide,
   WaferDrag,
   WaferPin
@@ -35,6 +36,7 @@ type ProcessFlowCanvasProps = {
   roleMenu: RoleMenu | null;
   roleMenuNode: FlowNode | null;
   nodeDrag: NodeDrag | null;
+  selectionRect: SelectionRect | null;
   editingNodeId: string | null;
   editingNodeLabel: string;
   editingInputRef: RefObject<HTMLInputElement | null>;
@@ -84,6 +86,7 @@ export function ProcessFlowCanvas({
   roleMenu,
   roleMenuNode,
   nodeDrag,
+  selectionRect,
   editingNodeId,
   editingNodeLabel,
   editingInputRef,
@@ -157,6 +160,16 @@ export function ProcessFlowCanvas({
 
         <rect className="flow-map-hit-area" x="0" y="0" width={sceneWidth} height={sceneHeight} />
 
+        {selectionRect ? (
+          <rect
+            className="flow-selection-box"
+            x={selectionRect.x}
+            y={selectionRect.y}
+            width={selectionRect.width}
+            height={selectionRect.height}
+          />
+        ) : null}
+
         {snapGuides.map((guide) =>
           guide.orientation === "vertical" ? (
             <line
@@ -227,7 +240,7 @@ export function ProcessFlowCanvas({
             key={node.id}
             node={node}
             isConnecting={connectionNodeId === node.id}
-            isDragging={nodeDrag?.nodeId === node.id}
+            isDragging={nodeDrag?.nodeStartPositions.some((position) => position.nodeId === node.id) ?? false}
             isSelected={selectedNodeIds.has(node.id)}
             isEditing={editingNodeId === node.id}
             editingNodeLabel={editingNodeLabel}
