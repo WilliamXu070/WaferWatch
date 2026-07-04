@@ -473,3 +473,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/process-flow-undo-implemented.png`
 - Browser verification is unauthenticated because no usable Playwright auth state is
   available in this environment; route renders on the correct worktree server.
+
+## Recent development note (2026-07-04 process flow edge dedupe)
+
+- Fixed a process-flow undo/recovery regression where restored local graph state and
+  server/async transition updates could leave duplicate transition objects with the
+  same persisted id, producing React duplicate-key console errors in
+  `ProcessFlowCanvas`.
+- Added centralized edge normalization in `ProcessFlowDiagram` and routed snapshot,
+  server merge, create, delete, rollback, and transition-id replacement writes
+  through it. Edges are deduped by id first and then by from/to/kind, preferring
+  persisted edges over local optimistic duplicates.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/process-flow-edge-dedupe-fix.png`
+- Direct Playwright console-listener verification could not run because this
+  worktree has the Playwright CLI but not the `playwright`/`@playwright/test` Node
+  module available to scripts.

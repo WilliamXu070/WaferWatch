@@ -89,6 +89,44 @@ type GraphSnapshot = {
 
 const MAX_UNDO_STACK = 30;
 
+function getEdgeConnectionKey(edge: FlowEdge) {
+  return `${edge.from}:${edge.to}:${edge.kind}`;
+}
+
+function normalizeFlowEdges(edges: FlowEdge[]) {
+  const byId = new Map<string, FlowEdge>();
+  for (const edge of edges) {
+    byId.set(edge.id, edge);
+  }
+
+  const byConnection = new Map<string, FlowEdge>();
+  for (const edge of byId.values()) {
+    const key = getEdgeConnectionKey(edge);
+    const existing = byConnection.get(key);
+
+    if (!existing) {
+      byConnection.set(key, edge);
+      continue;
+    }
+
+    const existingIsLocal = existing.id.startsWith(EDGE_ID_PREFIX);
+    const nextIsLocal = edge.id.startsWith(EDGE_ID_PREFIX);
+
+    if (existingIsLocal && !nextIsLocal) {
+      byConnection.set(key, edge);
+      continue;
+    }
+
+    if (!existingIsLocal && nextIsLocal) {
+      continue;
+    }
+
+    byConnection.set(key, edge);
+  }
+
+  return Array.from(byConnection.values());
+}
+
 export function ProcessFlowDiagram({
   steps,
   transitions = [],
@@ -197,7 +235,7 @@ export function ProcessFlowDiagram({
 
   const createGraphSnapshot = useCallback(() => ({
     nodes: nodesRef.current.map((node) => ({ ...node, wafers: [...node.wafers] })),
-    edges: edgesRef.current.map((edge) => ({ ...edge })),
+    edges: normalizeFlowEdges(edgesRef.current).map((edge) => ({ ...edge })),
     selectedNodeIds: [...selectedNodeIds],
     selectedEdgeId,
     scale: scaleRef.current,
@@ -296,11 +334,13 @@ export function ProcessFlowDiagram({
     );
 
     setEdges((currentEdges) =>
-      currentEdges.map((edge) => ({
-        ...edge,
-        from: edge.from === temporaryStepId ? persistedStep.id : edge.from,
-        to: edge.to === temporaryStepId ? persistedStep.id : edge.to
-      }))
+      normalizeFlowEdges(
+        currentEdges.map((edge) => ({
+          ...edge,
+          from: edge.from === temporaryStepId ? persistedStep.id : edge.from,
+          to: edge.to === temporaryStepId ? persistedStep.id : edge.to
+        }))
+      )
     );
 
     setSelectedNodeIds((current) => {
@@ -475,7 +515,7 @@ export function ProcessFlowDiagram({
           pendingTransitionCreateRef.current.set(localId, { ...transition, attempts });
         } else {
           setMoveMessage("Transition save timed out before both steps were persisted.");
-          setEdges((current) => current.filter((edge) => edge.id !== localId));
+          setEdges((current) => normalizeFlowEdges(current.filter((edge) => edge.id !== localId)));
         }
         continue;
       }
@@ -497,21 +537,23 @@ export function ProcessFlowDiagram({
         }
 
         setMoveMessage(result.error);
-        setEdges((current) => current.filter((edge) => edge.id !== localId));
+        setEdges((current) => normalizeFlowEdges(current.filter((edge) => edge.id !== localId)));
         continue;
       }
 
       const persisted = result.data;
       setEdges((currentEdges) =>
-        currentEdges.map((edge) =>
-          edge.id === localId
-            ? {
-                ...edge,
-                id: persisted.id,
-                from: persisted.from_step_id,
-                to: persisted.to_step_id
-              }
-            : edge
+        normalizeFlowEdges(
+          currentEdges.map((edge) =>
+            edge.id === localId
+              ? {
+                  ...edge,
+                  id: persisted.id,
+                  from: persisted.from_step_id,
+                  to: persisted.to_step_id
+                }
+              : edge
+          )
         )
       );
     }
@@ -550,7 +592,7 @@ export function ProcessFlowDiagram({
       if (!result.ok) {
         setMoveMessage(result.error);
         setNodes((currentNodes) => currentNodes.filter((node) => node.id !== temporaryStepId));
-        setEdges((currentEdges) => currentEdges.filter((edge) => edge.from !== temporaryStepId && edge.to !== temporaryStepId));
+        setEdges((currentEdges) => normalizeFlowEdges(currentEdges.filter((edge) => edge.from !== temporaryStepId && edge.to !== temporaryStepId)));
         clearQueuedStep(temporaryStepId);
         if (editingNodeId === temporaryStepId) {
           setEditingNode(null);
@@ -869,7 +911,7 @@ export function ProcessFlowDiagram({
     pendingTransitionCreateRef.current.clear();
 
     setNodes(snapshot.nodes.map((node) => ({ ...node, wafers: [...node.wafers] })));
-    setEdges(snapshot.edges.map((edge) => ({ ...edge })));
+    setEdges(normalizeFlowEdges(snapshot.edges).map((edge) => ({ ...edge })));
     setSelectedNodeIds(new Set(snapshot.selectedNodeIds));
     setSelectedEdgeId(snapshot.selectedEdgeId);
     setConnectionDraft(null);
@@ -973,7 +1015,7 @@ export function ProcessFlowDiagram({
         }
       }
 
-      return nextEdges;
+      return normalizeFlowEdges(nextEdges);
     });
   }, []);
 
@@ -986,7 +1028,7 @@ export function ProcessFlowDiagram({
     undoStackRef.current = [];
     setUndoStepsCount(0);
     setNodes(serverGraph.nodes);
-    setEdges(serverGraph.edges);
+    setEdges(normalizeFlowEdges(serverGraph.edges));
     setConnectionDraft(null);
     setPendingConnectionStart(null);
     setNodeDrag(null);
@@ -1603,15 +1645,17 @@ export function ProcessFlowDiagram({
 
     pushUndoSnapshot();
 
-    setEdges((currentEdges) => [
-      ...currentEdges,
-      {
-        id: temporaryTransitionId,
-        from: finishedDraft.from,
-        to: target.id,
-        kind: edgeType
-      }
-    ]);
+    setEdges((currentEdges) =>
+      normalizeFlowEdges([
+        ...currentEdges,
+        {
+          id: temporaryTransitionId,
+          from: finishedDraft.from,
+          to: target.id,
+          kind: edgeType
+        }
+      ])
+    );
     setMoveMessage("Transition queued for save.");
 
     queueTransitionPersist(temporaryTransitionId, {
@@ -1709,7 +1753,7 @@ export function ProcessFlowDiagram({
     const deletedIds = new Set(uniqueNodeIds);
 
     setNodes((currentNodes) => currentNodes.filter((node) => !deletedIds.has(node.id)));
-    setEdges((currentEdges) => currentEdges.filter((edge) => !deletedIds.has(edge.from) && !deletedIds.has(edge.to)));
+    setEdges((currentEdges) => normalizeFlowEdges(currentEdges.filter((edge) => !deletedIds.has(edge.from) && !deletedIds.has(edge.to))));
     setConnectionDraft((draft) => (draft && deletedIds.has(draft.from) ? null : draft));
     setNodeDrag((drag) => (drag && deletedIds.has(drag.nodeId) ? null : drag));
     setWaferDrag((drag) => (drag && deletedIds.has(drag.sourceStepId) ? null : drag));
@@ -1724,7 +1768,7 @@ export function ProcessFlowDiagram({
 
         if (!result.ok) {
           setNodes(previousNodes);
-          setEdges(previousEdges);
+          setEdges(normalizeFlowEdges(previousEdges));
           setMoveMessage(result.error);
           return;
         }
@@ -1745,7 +1789,7 @@ export function ProcessFlowDiagram({
     }
 
     pushUndoSnapshot();
-    setEdges((current) => current.filter((edge) => edge.id !== edgeId));
+    setEdges((current) => normalizeFlowEdges(current.filter((edge) => edge.id !== edgeId)));
     setSelectedEdgeId(null);
 
     if (edgeId.startsWith(EDGE_ID_PREFIX) || !onDeleteTransitions) {
