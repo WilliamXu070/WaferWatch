@@ -14,31 +14,40 @@ export function ProcessTimelineCard() {
     <DetailCard title="Process timeline" className="lg:col-span-3">
       <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
         <ol className="grid gap-1">
-          {processTimeline.map((item) => (
+          {processTimeline.map((item, index) => (
             <li
               key={item.step}
               className={[
-                "grid grid-cols-[28px_minmax(0,1fr)_18px] items-center gap-3 rounded-xl px-2 py-2",
-                item.state === "active" ? "bg-[#fafafa]" : ""
+                "relative grid grid-cols-[28px_minmax(0,1fr)_18px] items-center gap-3 rounded-lg px-2 py-2",
+                item.state === "active" ? "bg-[#f5f6ef]" : ""
               ].join(" ")}
             >
+              {index < processTimeline.length - 1 ? (
+                <span
+                  className={[
+                    "absolute left-[19px] top-[32px] h-[calc(100%-8px)] w-px",
+                    item.state === "pending" ? "bg-[#deded8]" : "bg-[#6f8f61]"
+                  ].join(" ")}
+                  aria-hidden
+                />
+              ) : null}
               <span
                 className={[
-                  "grid h-6 w-6 place-items-center rounded-full border text-[12px] font-semibold",
+                  "relative z-10 grid h-5 w-5 place-items-center rounded-full border text-[11px] font-semibold",
                   item.state === "pending"
-                    ? "border-[#d8d8d2] bg-white text-[#8a8a83]"
-                    : "border-[#111111] bg-[#111111] text-white"
+                    ? "border-[#d7d7d0] bg-white text-[#8a8a83]"
+                    : "border-[#5f8d4e] bg-[#5f8d4e] text-white"
                 ].join(" ")}
               >
                 {item.step}
               </span>
               <span className="min-w-0">
                 <strong className="block truncate text-[14px] text-[#151512]">{item.title}</strong>
-                <span className={["text-[12px] font-medium", item.state === "active" ? "text-[#111111]" : "text-[#8a8a83]"].join(" ")}>
+                <span className={["text-[12px] font-medium", item.state === "active" ? "text-[#5f8d4e]" : "text-[#8a8a83]"].join(" ")}>
                   {item.time}
                 </span>
               </span>
-              {item.state === "complete" ? <CheckCircleIcon className="text-[#111111]" /> : null}
+              {item.state === "complete" ? <CheckCircleIcon className="text-[#5f8d4e]" /> : null}
             </li>
           ))}
         </ol>

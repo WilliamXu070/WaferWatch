@@ -502,3 +502,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     authenticated active-die visual acceptance still needs a fresh existing
     session.
   - Screenshot: `/tmp/wafer-die-detail-removal-pass.png`
+
+## Recent development note (2026-07-04 wafer die process timeline polish)
+
+- Updated the die detail Process timeline styling to better match the reference:
+  green completed step markers/checks, a continuous vertical progress line,
+  a soft active-row background, and muted outlined pending steps.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3000/api/health`
+  - Playwright CLI route screenshot at
+    `http://localhost:3000/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with `1440x1000` viewport and `playwright/.auth/user.json`.
+  - The saved auth state still rendered the unauthenticated empty state, so
+    authenticated active-die visual acceptance still needs a fresh existing
+    session.
+  - Screenshot: `/tmp/wafer-process-timeline-style.png`
