@@ -521,3 +521,26 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run build`
   - `curl -s http://localhost:3001/api/health`
   - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/process-flow-undo-server-merge-guard.png`
+
+## Recent development note (2026-07-04 process flow A1-A8 start wafers)
+
+- Fixed process-flow data loading so active wafer/die assignments with no current
+  step execution fall back to the first/start process step instead of disappearing
+  from the canvas.
+- Updated the deterministic wireframe fixture to seed A1-A8 as planned assigned
+  die rows with no step executions, plus the existing alpha/beta fixture rows.
+  Fixture verification now asserts all A1-A8 rows exist.
+- Seeded and verified the fixture in Supabase. A1-A8 all mapped to
+  `Fixture intake` (`11111111-1111-4111-8111-111111111201`) through the start-step
+  fallback.
+- Verified with:
+  - `node --check scripts/wireframe-fixture.mjs`
+  - `npm run wireframe:fixture:seed`
+  - `npm run wireframe:fixture:verify`
+  - Direct Supabase mapping assertion for A1-A8 -> fixture start step
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-a1-a8-start-fixture.png`
+- Browser screenshot was unauthenticated and showed the backend-only empty guard;
+  no saved auth user was available to attach to the fixture project in this session.
