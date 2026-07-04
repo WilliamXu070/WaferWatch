@@ -15,6 +15,7 @@ export type ProcessCalendarEventView = Pick<
   | "starts_at"
   | "ends_at"
   | "process_step_id"
+  | "process_step_name_snapshot"
   | "manual_action"
   | "description"
 > & {
@@ -62,7 +63,7 @@ export async function getProcessCalendarSchedule(
     supabase
       .from("process_calendar_events")
       .select(
-        "id, process_template_id, location, starts_at, ends_at, process_step_id, manual_action, description"
+        "id, process_template_id, location, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description"
       )
       .eq("process_template_id", processTemplateId)
       .lt("starts_at", toIso)

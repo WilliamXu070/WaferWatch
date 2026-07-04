@@ -544,3 +544,31 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-a1-a8-start-fixture.png`
 - Browser screenshot was unauthenticated and showed the backend-only empty guard;
   no saved auth user was available to attach to the fixture project in this session.
+
+## Recent development note (2026-07-04 calendar step snapshots)
+
+- Linked calendar step selection to the current process-flow database steps while
+  preserving historical event labels through a persisted
+  `process_step_name_snapshot` column on `process_calendar_events`.
+- New/updated calendar events snapshot the selected process step name at schedule
+  time. Existing events display the snapshot first, so later process-step renames
+  do not rewrite old calendar labels.
+- Process-step deletion now nulls the live `process_step_id` reference but keeps
+  the snapshot label instead of converting old events to a generic "Removed
+  process step" action.
+- Applied migration `202607040001_calendar_step_snapshot.sql` to the linked
+  Supabase project and reseeded the deterministic wireframe fixture.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run db:push`
+  - `npm run wireframe:fixture:seed`
+  - `npm run wireframe:fixture:verify`
+  - Direct Supabase assertion: current step selector names changed after a
+    temporary step rename while the existing event snapshot stayed
+    `Fixture poling`; the step name was restored afterward.
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/calendar?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-calendar-step-snapshot.png`
+- Dev server is running on `http://localhost:3001`. Browser verification is
+  unauthenticated and shows the calendar guard because no saved auth user was
+  attached to the fixture project in this session.

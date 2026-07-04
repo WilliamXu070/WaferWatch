@@ -521,16 +521,18 @@ export async function deleteProcessSteps(input: unknown) {
       return fail(executionsDeleteError.message);
     }
 
-    const { error: calendarEventsUpdateError } = await adminSupabase
-      .from("process_calendar_events")
-      .update({
-        process_step_id: null,
-        manual_action: "Removed process step"
-      })
-      .in("process_step_id", stepIds);
+    for (const step of steps ?? []) {
+      const { error: calendarEventsUpdateError } = await adminSupabase
+        .from("process_calendar_events")
+        .update({
+          process_step_id: null,
+          process_step_name_snapshot: step.name
+        })
+        .eq("process_step_id", step.id);
 
-    if (calendarEventsUpdateError) {
-      return fail(calendarEventsUpdateError.message);
+      if (calendarEventsUpdateError) {
+        return fail(calendarEventsUpdateError.message);
+      }
     }
 
     const { error } = await adminSupabase

@@ -659,6 +659,7 @@ async function seedFixture(supabase, flags) {
         starts_at: FIXTURE.startIso,
         ends_at: FIXTURE.endIso,
         process_step_id: STEPS[1].id,
+        process_step_name_snapshot: STEPS[1].name,
         manual_action: null,
         description: "Fixture scheduled poling block from Supabase."
       })

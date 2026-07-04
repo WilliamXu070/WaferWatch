@@ -68,7 +68,14 @@ type WireframeWafer = Pick<Wafer, "id" | "wafer_code" | "project_id" | "metadata
 
 type WireframeCalendarEvent = Pick<
   ProcessCalendarEvent,
-  "id" | "process_template_id" | "starts_at" | "ends_at" | "process_step_id" | "manual_action" | "description"
+  | "id"
+  | "process_template_id"
+  | "starts_at"
+  | "ends_at"
+  | "process_step_id"
+  | "process_step_name_snapshot"
+  | "manual_action"
+  | "description"
 >;
 
 type WireframeProfile = {
@@ -638,7 +645,7 @@ export async function getWireframeDashboardModel(
       .order("updated_at", { ascending: false }),
     supabase
       .from("process_calendar_events")
-      .select("id, process_template_id, starts_at, ends_at, process_step_id, manual_action, description")
+      .select("id, process_template_id, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description")
       .order("starts_at", { ascending: true })
   ]);
 

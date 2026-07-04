@@ -17,6 +17,8 @@ const TRAVEL_BUFFER_MS = 60 * 60 * 1000;
 const MISSING_CALENDAR_TABLES_MESSAGE =
   "Calendar storage is not migrated yet. Apply the latest Supabase migration and seed data, then try again.";
 const WIREFRAME_CALENDAR_PATH = "/wireframe/calendar";
+const CALENDAR_EVENT_SELECT =
+  "id, process_template_id, location, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description";
 
 type ProcessTemplateAccessContext = Pick<
   ProcessTemplate,
@@ -123,7 +125,7 @@ async function validateProcessStep(processTemplateId: string, processStepId: str
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("process_steps")
-    .select("id, template_id")
+    .select("id, template_id, name")
     .eq("id", processStepId)
     .single();
 
@@ -131,12 +133,15 @@ async function validateProcessStep(processTemplateId: string, processStepId: str
     throw error;
   }
 
-  const step = data as Pick<ProcessStep, "id" | "template_id">;
+  const step = data as Pick<ProcessStep, "id" | "template_id" | "name">;
   if (step.template_id !== processTemplateId) {
     throw new Error("Selected action does not belong to this process.");
   }
 
-  return step.id;
+  return {
+    id: step.id,
+    name: step.name
+  };
 }
 
 async function assertNoScheduleConflicts(input: {
@@ -231,7 +236,7 @@ export async function createProcessCalendarEvent(input: unknown) {
     const personIds = Array.from(new Set(parsed.personIds));
 
     const { account } = await assertProcessCalendarAccess(parsed.processTemplateId, "write");
-    const [people, processStepId] = await Promise.all([
+    const [people, processStep] = await Promise.all([
       validatePeopleAreActive(personIds),
       validateProcessStep(parsed.processTemplateId, parsed.processStepId)
     ]);
@@ -252,14 +257,13 @@ export async function createProcessCalendarEvent(input: unknown) {
         location: parsed.location,
         starts_at: parsed.startsAt,
         ends_at: parsed.endsAt,
-        process_step_id: processStepId,
+        process_step_id: processStep?.id ?? null,
+        process_step_name_snapshot: processStep?.name ?? null,
         manual_action: parsed.manualAction?.trim() || null,
         description: parsed.description?.trim() || null,
         created_by: account.userId
       })
-      .select(
-        "id, process_template_id, location, starts_at, ends_at, process_step_id, manual_action, description"
-      )
+      .select(CALENDAR_EVENT_SELECT)
       .single();
 
     if (error) {
@@ -341,9 +345,7 @@ export async function moveProcessCalendarEvent(input: unknown) {
 
     const { data: event, error: eventError } = await supabase
       .from("process_calendar_events")
-      .select(
-        "id, process_template_id, location, starts_at, ends_at, process_step_id, manual_action, description"
-      )
+      .select(CALENDAR_EVENT_SELECT)
       .eq("id", parsed.eventId)
       .single();
 
@@ -383,9 +385,7 @@ export async function moveProcessCalendarEvent(input: unknown) {
         ends_at: parsed.endsAt
       })
       .eq("id", parsed.eventId)
-      .select(
-        "id, process_template_id, location, starts_at, ends_at, process_step_id, manual_action, description"
-      )
+      .select(CALENDAR_EVENT_SELECT)
       .single();
 
     if (updateError) {
@@ -416,7 +416,7 @@ export async function updateProcessCalendarEvent(input: unknown) {
 
     const { data: existingEvent, error: existingEventError } = await supabase
       .from("process_calendar_events")
-      .select("id, process_template_id, location, starts_at, ends_at, process_step_id, manual_action, description")
+      .select(CALENDAR_EVENT_SELECT)
       .eq("id", parsed.eventId)
       .single();
 
@@ -426,7 +426,7 @@ export async function updateProcessCalendarEvent(input: unknown) {
 
     await assertProcessCalendarAccess(existingEvent.process_template_id, "write");
 
-    const [people, processStepId] = await Promise.all([
+    const [people, processStep] = await Promise.all([
       validatePeopleAreActive(personIds),
       validateProcessStep(existingEvent.process_template_id, parsed.processStepId)
     ]);
@@ -445,14 +445,17 @@ export async function updateProcessCalendarEvent(input: unknown) {
     const { data: updatedEvent, error: updateError } = await supabase
       .from("process_calendar_events")
       .update({
-        process_step_id: processStepId,
+        process_step_id: processStep?.id ?? null,
+        process_step_name_snapshot: processStep
+          ? processStep.id === existingEvent.process_step_id
+            ? existingEvent.process_step_name_snapshot ?? processStep.name
+            : processStep.name
+          : null,
         manual_action: parsed.manualAction?.trim() || null,
         description: parsed.description?.trim() || null
       })
       .eq("id", parsed.eventId)
-      .select(
-        "id, process_template_id, location, starts_at, ends_at, process_step_id, manual_action, description"
-      )
+      .select(CALENDAR_EVENT_SELECT)
       .single();
 
     if (updateError) {
