@@ -420,3 +420,24 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run lint`
   - `npm run build`
 - Browser verification was not rerun in this commit-only pass.
+
+## Recent development note (2026-07-04 wafer die detail wireframe)
+
+- Added a first-pass `/wireframe/wafer-status` die detail viewport that opens
+  when an active diced tile is selected. The detail view includes Overview,
+  Process history, Parameters, Results, and Notes tabs, plus the screenshot-style
+  header, quick info, process timeline, result metrics, trend, and note panels.
+- Files & Data was intentionally left out of the tab set for now, and result
+  image slots render as empty placeholders.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3000/api/health`
+  - Browser route
+    `http://localhost:3000/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    at `1440x1000`: unauthenticated backend empty state rendered with no console
+    errors.
+  - Playwright CLI with `playwright/.auth/user.json` also rendered the
+    unauthenticated empty state, so active-die click verification needs a fresh
+    existing authenticated session.
+  - Screenshot: `/tmp/wafer-status-detail-auth-check.png`
