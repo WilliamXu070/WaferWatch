@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { MouseEvent, PointerEvent } from "react";
-import { useRouter } from "next/navigation";
 import type { ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
 import { ProcessFlowToolbar } from "./process-flow/ProcessFlowToolbar";
@@ -31,7 +30,7 @@ import {
   toProcessStepNodeType
 } from "./process-flow/labels";
 import { autoLayoutNodes } from "./process-flow/layout";
-import { getGraphSignature, getInitialGraph } from "./process-flow/graphSeed";
+import { getInitialGraph } from "./process-flow/graphSeed";
 import type {
   ConnectionDraft,
   CreateProcessFlowStepAction,
@@ -102,7 +101,6 @@ export function ProcessFlowDiagram({
   onMoveWafer?: MoveWaferToProcessStepAction;
 }) {
 
-  const router = useRouter();
   const [scale, setScale] = useState(1);
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
@@ -142,8 +140,9 @@ export function ProcessFlowDiagram({
   } | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const graphSignature = useMemo(() => getGraphSignature(steps, transitions), [steps, transitions]);
-  const seededSignatureRef = useRef<string | null>(null);
+  const serverGraph = useMemo(() => getInitialGraph(steps, transitions), [steps, transitions]);
+  const graphSeedKey = processTemplateId ?? `unselected:${steps.map((step) => step.id).join("|")}`;
+  const seededGraphKeyRef = useRef<string | null>(null);
 
   const sceneBounds = useMemo(() => {
     const maxNodeX = nodes.length ? Math.max(...nodes.map((node) => node.x + node.width)) + 160 : SCENE_WIDTH;
@@ -751,9 +750,9 @@ export function ProcessFlowDiagram({
     frame.scrollTop = Math.max(0, Math.round(fit.centerY * fit.scale - frame.clientHeight / 2));
   }, []);
 
-  const centerView = useCallback((targetNodes: FlowNode[] = nodes) => {
+  const centerView = useCallback((targetNodes?: FlowNode[]) => {
     const frame = frameRef.current;
-    const bounds = getGraphBounds(targetNodes);
+    const bounds = getGraphBounds(targetNodes ?? nodesRef.current);
     if (!frame || !bounds) {
       return;
     }
@@ -777,7 +776,7 @@ export function ProcessFlowDiagram({
         pendingGraphFitRef.current = null;
       }
     });
-  }, [applyGraphFit, nodes]);
+  }, [applyGraphFit]);
 
   const organizeCanvas = () => {
     if (nodes.length < 2) {
@@ -801,14 +800,86 @@ export function ProcessFlowDiagram({
     });
   };
 
+  const mergeServerGraphIntoLocal = useCallback((graph: { nodes: FlowNode[]; edges: FlowEdge[] }) => {
+    const serverNodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const serverEdgeById = new Map(graph.edges.map((edge) => [edge.id, edge]));
+
+    setNodes((currentNodes) => {
+      const nextNodes: FlowNode[] = [];
+      const seenNodeIds = new Set<string>();
+
+      for (const node of currentNodes) {
+        const serverNode = serverNodeById.get(node.id);
+
+        if (!serverNode) {
+          if (node.isOptimistic || pendingStepCreateRef.current.has(node.id)) {
+            nextNodes.push(node);
+          }
+          continue;
+        }
+
+        seenNodeIds.add(node.id);
+        nextNodes.push({
+          ...node,
+          subLabel: serverNode.subLabel,
+          order: serverNode.order,
+          isOptimistic: false
+        });
+      }
+
+      for (const serverNode of graph.nodes) {
+        if (!seenNodeIds.has(serverNode.id)) {
+          nextNodes.push(serverNode);
+        }
+      }
+
+      return nextNodes;
+    });
+
+    setEdges((currentEdges) => {
+      const nextEdges: FlowEdge[] = [];
+      const seenServerEdgeIds = new Set<string>();
+      const hasEndpointMatch = (candidate: FlowEdge) => (
+        nextEdges.some((edge) =>
+          edge.from === candidate.from &&
+          edge.to === candidate.to &&
+          edge.kind === candidate.kind
+        )
+      );
+
+      for (const edge of currentEdges) {
+        if (edge.id.startsWith(EDGE_ID_PREFIX) || pendingTransitionCreateRef.current.has(edge.id)) {
+          nextEdges.push(edge);
+          continue;
+        }
+
+        const serverEdge = serverEdgeById.get(edge.id);
+        if (!serverEdge) {
+          continue;
+        }
+
+        seenServerEdgeIds.add(edge.id);
+        nextEdges.push(serverEdge);
+      }
+
+      for (const serverEdge of graph.edges) {
+        if (!seenServerEdgeIds.has(serverEdge.id) && !hasEndpointMatch(serverEdge)) {
+          nextEdges.push(serverEdge);
+        }
+      }
+
+      return nextEdges;
+    });
+  }, []);
+
   useEffect(() => {
-    if (seededSignatureRef.current === graphSignature) {
+    if (seededGraphKeyRef.current === graphSeedKey) {
+      mergeServerGraphIntoLocal(serverGraph);
       return;
     }
 
-    const graph = getInitialGraph(steps, transitions);
-    setNodes(graph.nodes);
-    setEdges(graph.edges);
+    setNodes(serverGraph.nodes);
+    setEdges(serverGraph.edges);
     setConnectionDraft(null);
     setNodeDrag(null);
     setWaferDrag(null);
@@ -819,9 +890,9 @@ export function ProcessFlowDiagram({
     setEditingNode(null);
     clearQueuedStepMaps();
     clearTimers();
-    seededSignatureRef.current = graphSignature;
-    centerView(graph.nodes);
-  }, [clearQueuedStepMaps, centerView, clearTimers, graphSignature, steps, transitions]);
+    seededGraphKeyRef.current = graphSeedKey;
+    centerView(serverGraph.nodes);
+  }, [centerView, clearQueuedStepMaps, clearTimers, graphSeedKey, mergeServerGraphIntoLocal, serverGraph]);
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -1158,6 +1229,32 @@ export function ProcessFlowDiagram({
 
     const sourceNode = nodeById.get(finishedDrag.sourceStepId);
     const completeSourceStep = Boolean(sourceNode && target.order > sourceNode.order);
+    const movedWafer = sourceNode?.wafers.find((wafer) => wafer.assignmentId === finishedDrag.assignmentId);
+    const previousNodes = nodesRef.current;
+
+    if (movedWafer) {
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          if (node.id === finishedDrag.sourceStepId) {
+            return {
+              ...node,
+              wafers: node.wafers.filter((wafer) => wafer.assignmentId !== finishedDrag.assignmentId)
+            };
+          }
+
+          if (node.id === target.id) {
+            return {
+              ...node,
+              wafers: node.wafers.some((wafer) => wafer.assignmentId === finishedDrag.assignmentId)
+                ? node.wafers
+                : [...node.wafers, movedWafer]
+            };
+          }
+
+          return node;
+        })
+      );
+    }
 
     setMoveMessage(
       completeSourceStep
@@ -1179,10 +1276,12 @@ export function ProcessFlowDiagram({
               ? `Completed source step and moved ${finishedDrag.waferLabel} to ${target.label}.`
               : `Moved ${finishedDrag.waferLabel} to ${target.label}.`
           );
-          router.refresh();
           return;
         }
 
+        if (movedWafer) {
+          setNodes(previousNodes);
+        }
         setMoveMessage(result.error);
       })();
     });
@@ -1299,6 +1398,20 @@ export function ProcessFlowDiagram({
     }
 
     const node = nodeById.get(nodeId);
+    const previousNodes = nodesRef.current;
+    setNodes((currentNodes) =>
+      currentNodes.map((currentNode) => {
+        if (currentNode.id === nodeId) {
+          return { ...currentNode, role };
+        }
+
+        if (role !== "normal" && currentNode.role === role) {
+          return { ...currentNode, role: "normal" };
+        }
+
+        return currentNode;
+      })
+    );
     setMoveMessage(`Saving ${node?.label ?? "step"} role...`);
 
     startGraphTransition(() => {
@@ -1309,25 +1422,12 @@ export function ProcessFlowDiagram({
         });
 
         if (!result.ok) {
+          setNodes(previousNodes);
           setMoveMessage(result.error);
           return;
         }
 
-        setNodes((currentNodes) =>
-          currentNodes.map((currentNode) => {
-            if (currentNode.id === nodeId) {
-              return { ...currentNode, role };
-            }
-
-            if (role !== "normal" && currentNode.role === role) {
-              return { ...currentNode, role: "normal" };
-            }
-
-            return currentNode;
-          })
-        );
         setMoveMessage(`Saved ${node?.label ?? "step"} role.`);
-        router.refresh();
       })();
     });
   };
@@ -1346,6 +1446,18 @@ export function ProcessFlowDiagram({
     const label = uniqueNodeIds.length === 1
       ? nodeById.get(uniqueNodeIds[0])?.label ?? "selected step"
       : `${uniqueNodeIds.length} selected steps`;
+    const previousNodes = nodesRef.current;
+    const previousEdges = edgesRef.current;
+    const deletedIds = new Set(uniqueNodeIds);
+
+    setNodes((currentNodes) => currentNodes.filter((node) => !deletedIds.has(node.id)));
+    setEdges((currentEdges) => currentEdges.filter((edge) => !deletedIds.has(edge.from) && !deletedIds.has(edge.to)));
+    setConnectionDraft((draft) => (draft && deletedIds.has(draft.from) ? null : draft));
+    setNodeDrag((drag) => (drag && deletedIds.has(drag.nodeId) ? null : drag));
+    setWaferDrag((drag) => (drag && deletedIds.has(drag.sourceStepId) ? null : drag));
+    setSelectedNodeIds(new Set());
+    setSnapGuides([]);
+    setRoleMenu(null);
     setMoveMessage(`Deleting ${label}...`);
 
     startGraphTransition(() => {
@@ -1353,24 +1465,16 @@ export function ProcessFlowDiagram({
         const result = await onDeleteSteps({ stepIds: uniqueNodeIds });
 
         if (!result.ok) {
+          setNodes(previousNodes);
+          setEdges(previousEdges);
           setMoveMessage(result.error);
           return;
         }
 
-        const deletedIds = new Set(uniqueNodeIds);
-        setNodes((currentNodes) => currentNodes.filter((node) => !deletedIds.has(node.id)));
-        setEdges((currentEdges) => currentEdges.filter((edge) => !deletedIds.has(edge.from) && !deletedIds.has(edge.to)));
-        setConnectionDraft((draft) => (draft && deletedIds.has(draft.from) ? null : draft));
-        setNodeDrag((drag) => (drag && deletedIds.has(drag.nodeId) ? null : drag));
-        setWaferDrag((drag) => (drag && deletedIds.has(drag.sourceStepId) ? null : drag));
-        setSelectedNodeIds(new Set());
-        setSnapGuides([]);
-        setRoleMenu(null);
         setMoveMessage(`Deleted ${label}.`);
-        router.refresh();
       })();
     });
-  }, [nodeById, onDeleteSteps, router]);
+  }, [nodeById, onDeleteSteps]);
 
   const deleteSelectedNodes = useCallback(() => {
     deleteNodes([...selectedNodeIds]);
@@ -1390,10 +1494,9 @@ export function ProcessFlowDiagram({
         if (!result.ok) {
           setMoveMessage(result.error);
         }
-        router.refresh();
       })();
     });
-  }, [onDeleteTransitions, router]);
+  }, [onDeleteTransitions]);
 
   useEffect(() => {
     const onGlobalKeyDown = (event: globalThis.KeyboardEvent) => {

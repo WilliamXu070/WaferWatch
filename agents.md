@@ -420,3 +420,21 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run lint`
   - `npm run build`
 - Browser verification was not rerun in this commit-only pass.
+
+## Recent development note (2026-07-04 process flow local-first canvas)
+
+- Updated `/wireframe/process-flow` so background Supabase sync no longer reseeds,
+  recenters, or auto-organizes the active canvas after normal graph edits.
+- Replaced the broad graph-signature reset with first-load seeding plus local graph
+  merging that preserves node positions, zoom/pan, labels, roles, and wafer chips.
+- Removed routine `router.refresh()` calls after wafer moves, role changes, node
+  deletes, and edge deletes; wafer moves now update the local canvas immediately and
+  roll back only if persistence fails.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/waferwatch-process-flow-local-first.png`
+- Authenticated create/connect/wafer-move browser verification was not completed
+  because this worktree had no saved Playwright auth state. The route rendered on
+  the correct dev server; an existing topbar caret hydration warning remains.

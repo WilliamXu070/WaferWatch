@@ -35,16 +35,3 @@ export function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransi
     edges
   };
 }
-
-export function getGraphSignature(steps: DiagramStep[], transitions: DiagramTransition[]) {
-  const stepSignature = [...steps]
-    .sort((a, b) => a.step_order - b.step_order)
-    .map((step) => `${step.id}:${step.step_order}:${step.name}:${step.process_area}:${step.node_type ?? "procedure"}:${step.canvas_x ?? "auto"}:${step.canvas_y ?? "auto"}:${step.wafers.length}`)
-    .join("|");
-  const transitionSignature = [...transitions]
-    .sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id))
-    .map((transition) => `${transition.id}:${transition.from_step_id}:${transition.to_step_id}:${transition.edge_type}`)
-    .join("|");
-
-  return `${stepSignature}::${transitionSignature}`;
-}
