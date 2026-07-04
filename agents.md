@@ -572,3 +572,14 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Dev server is running on `http://localhost:3001`. Browser verification is
   unauthenticated and shows the calendar guard because no saved auth user was
   attached to the fixture project in this session.
+
+## Recent development note (2026-07-04 process flow wheel zoom)
+
+- Updated `/wireframe/process-flow` wheel behavior so normal vertical mouse wheel
+  input zooms the canvas at the cursor without requiring Ctrl/Cmd.
+- Mostly horizontal wheel input still pans sideways for trackpads.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-wheel-zoom.png`
