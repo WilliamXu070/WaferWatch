@@ -19,7 +19,7 @@ export function ParametersTableCard() {
             <tr className="border-b border-[#e7e7dc] text-[#8a887b]">
               <th className="py-2 pr-4 font-semibold">Parameter</th>
               {columns.map((column) => (
-                <th key={column} className={["px-3 py-2 font-semibold", column === "Pulse 8" ? "bg-[#edf6e8] text-[#151512]" : ""].join(" ")}>
+                <th key={column} className={["px-3 py-2 font-semibold", column === "Pulse 8" ? "border-b border-[#111111] text-[#111111]" : ""].join(" ")}>
                   {column}
                 </th>
               ))}
@@ -33,7 +33,7 @@ export function ParametersTableCard() {
                     key={`${row[0]}-${index}`}
                     className={[
                       "py-2 pr-4 font-medium text-[#4a483f]",
-                      index === 9 ? "bg-[#edf6e8] font-semibold text-[#4f7a43]" : "",
+                      index === 9 ? "font-semibold text-[#111111]" : "",
                       index > 0 ? "px-3" : ""
                     ].join(" ")}
                   >

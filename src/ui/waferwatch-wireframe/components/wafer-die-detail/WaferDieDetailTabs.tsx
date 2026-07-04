@@ -76,25 +76,25 @@ function DieNotesTab() {
       <DetailCard title="Notes" className="min-h-[520px]">
         <div className="grid gap-3">
           {recentNotes.map((note) => (
-            <article key={`${note.author}-${note.time}-expanded`} className="rounded-2xl border border-[#ecece1] bg-[#fafaf5] p-5">
+            <article key={`${note.author}-${note.time}-expanded`} className="border-b border-[#eeeeea] py-5">
               <div className="mb-3 flex items-center gap-2">
                 <span
                   className={[
                     "grid h-7 w-7 place-items-center rounded-lg text-[12px] font-semibold text-white",
-                    note.tone === "green" ? "bg-[#6b7f57]" : "bg-[#d9a441]"
+                    "bg-[#111111]"
                   ].join(" ")}
                 >
                   {note.author[0]}
                 </span>
-                <strong className="text-[14px] text-[#151512]">{note.author}</strong>
-                <span className="text-[13px] font-medium text-[#98968a]">{note.time}</span>
+                <strong className="text-[14px] text-[#111111]">{note.author}</strong>
+                <span className="text-[13px] font-medium text-[#8a8a83]">{note.time}</span>
               </div>
-              <p className="text-[14px] leading-6 text-[#4a483f]">{note.body}</p>
+              <p className="text-[14px] leading-6 text-[#44443f]">{note.body}</p>
             </article>
           ))}
           <button
             type="button"
-            className="h-11 rounded-xl border border-[#e1e1d7] bg-white text-[14px] font-semibold text-[#4a483f] hover:bg-[#f8f8f1]"
+            className="h-11 rounded-lg border border-[#e1e1dc] bg-white text-[14px] font-semibold text-[#44443f] hover:bg-[#fafafa]"
           >
             + Add note
           </button>

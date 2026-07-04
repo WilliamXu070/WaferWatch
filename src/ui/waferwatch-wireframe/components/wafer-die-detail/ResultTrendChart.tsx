@@ -11,10 +11,10 @@ export function ResultTrendChart() {
       {[25, 50, 75].map((y) => (
         <line key={y} x1="0" x2="100" y1={y} y2={y} stroke="#e6e6da" strokeDasharray="2 3" strokeWidth="0.7" />
       ))}
-      <path d={areaPath} fill="rgba(107,127,87,0.18)" />
-      <path d={linePath} fill="none" stroke="#6b7f57" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <path d={areaPath} fill="rgba(17,17,17,0.06)" />
+      <path d={linePath} fill="none" stroke="#111111" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
       {trendPoints.map(([x, y]) => (
-        <circle key={`${x}-${y}`} cx={x} cy={y} r="2.2" fill="#f7fbf1" stroke="#6b7f57" strokeWidth="1.4" />
+        <circle key={`${x}-${y}`} cx={x} cy={y} r="2.2" fill="#ffffff" stroke="#111111" strokeWidth="1.4" />
       ))}
     </svg>
   );

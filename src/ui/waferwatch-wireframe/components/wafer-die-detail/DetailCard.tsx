@@ -12,11 +12,11 @@ export function DetailCard({
   className?: string;
 }) {
   return (
-    <section className={["rounded-2xl border border-[#e8e8de] bg-white p-5 shadow-[0_14px_34px_-30px_rgba(30,29,22,0.34)]", className].join(" ")}>
+    <section className={["border-b border-[#eeeeea] bg-white py-5", className].join(" ")}>
       <div className="mb-4 flex items-center justify-between gap-4">
-        <h3 className="text-[15px] font-semibold text-[#151512]">{title}</h3>
+        <h3 className="text-[15px] font-semibold text-[#111111]">{title}</h3>
         {action ? (
-          <button type="button" className="text-[12px] font-semibold text-[#6b7f57] hover:text-[#40522f]">
+          <button type="button" className="text-[12px] font-semibold text-[#55554f] hover:text-[#111111]">
             {action}
           </button>
         ) : null}

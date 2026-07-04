@@ -25,13 +25,13 @@ import {
 } from "./wafer-die-detail";
 
 const statusDotColor: Record<WaferTileStatus, string> = {
-  litho: "bg-[#161613]",
-  etch: "bg-[#161613]",
-  inspection: "bg-[#161613]",
-  bond: "bg-[#8a887b]",
-  test: "bg-[#8a887b]",
-  dice: "bg-[#8a887b]",
-  queued: "bg-[#c9c8ba]"
+  litho: "bg-[#111111]",
+  etch: "bg-[#111111]",
+  inspection: "bg-[#111111]",
+  bond: "bg-[#777770]",
+  test: "bg-[#777770]",
+  dice: "bg-[#777770]",
+  queued: "bg-[#c9c9c2]"
 };
 
 const metricIcons = {
@@ -45,22 +45,15 @@ function MetricTile({ metric }: { metric: WaferStatusMetric }) {
   const Icon = metricIcons[metric.tone];
 
   return (
-    <div className="grid min-h-[108px] grid-cols-[44px_minmax(0,1fr)] items-center gap-4 rounded-2xl border border-[#e5e5db] bg-white px-5 shadow-[0_10px_24px_-20px_rgba(30,29,22,0.28)]">
-      <span
-        className={[
-          "grid h-11 w-11 place-items-center rounded-lg border",
-          metric.tone === "yield"
-            ? "border-[#dcdbca] bg-[#f2f2e8] text-[#161613]"
-            : "border-[#e5e4d8] bg-[#f7f7ef] text-[#55534a]"
-        ].join(" ")}
-      >
+    <div className="grid min-h-[88px] grid-cols-[28px_minmax(0,1fr)] items-center gap-4 border-b border-[#eeeeee] bg-white px-2 py-4">
+      <span className="grid h-7 w-7 place-items-center text-[#7a7a72]">
         <Icon />
       </span>
       <div className="min-w-0">
-        <p className="text-[32px] font-semibold leading-none tracking-normal text-[#151512]">
+        <p className="text-[32px] font-semibold leading-none tracking-normal text-[#111111]">
           {metric.value}
         </p>
-        <p className="mt-1 text-[13px] font-medium text-[#8a887b]">{metric.label}</p>
+        <p className="mt-1 text-[13px] font-medium text-[#7a7a72]">{metric.label}</p>
       </div>
     </div>
   );
@@ -83,22 +76,22 @@ function WaferTile({
       aria-pressed={selected}
       onClick={onSelect}
       className={[
-        "relative grid min-h-[132px] grid-cols-[minmax(82px,0.9fr)_minmax(112px,1.1fr)] gap-3 rounded-xl border bg-white p-4 text-left transition-all",
+        "relative grid min-h-[118px] grid-cols-[minmax(76px,0.9fr)_minmax(104px,1.1fr)] gap-4 rounded-lg border bg-white p-4 text-left transition-all",
         selected
-          ? "border-[#161613] shadow-[0_0_0_1px_rgba(22,22,19,0.28),0_14px_28px_-24px_rgba(30,29,22,0.4)]"
-          : "border-[#e5e4d8] hover:-translate-y-px hover:border-[#cfcec0] hover:bg-[#fbfbf6]"
+          ? "border-[#111111] shadow-[0_0_0_1px_rgba(17,17,17,0.16)]"
+          : "border-[#e7e7e2] hover:border-[#b9b9b0] hover:bg-[#fcfcfb]"
       ].join(" ")}
     >
       <span className="min-w-0">
-        <span className="block text-[18px] font-semibold leading-none text-[#151512]">
+        <span className="block text-[18px] font-semibold leading-none text-[#111111]">
           {getWaferDisplayLabel(tile, isUndiced)}
         </span>
-        <span className="mt-4 flex items-center gap-2 text-[13px] font-medium text-[#6b6a5f]">
+        <span className="mt-4 flex items-center gap-2 text-[13px] font-medium text-[#6f6f68]">
           <span className={["h-2.5 w-2.5 rounded-full", statusDotColor[tile.status]].join(" ")} />
           {tile.stepLabel}
         </span>
       </span>
-      <span className="grid min-h-[86px] place-items-center rounded-lg border border-[#e7e6da] bg-[#f7f7ef] px-2 py-1">
+      <span className="grid min-h-[80px] place-items-center rounded-md border border-[#eeeeea] bg-white px-2 py-1">
         <WaferGeometryPreview
           modeKeyword={tile.waferStateName}
           selectedLabel={getSelectedDieLabel(tile)}
@@ -111,7 +104,7 @@ function WaferTile({
         />
       </span>
       {selected ? (
-        <span className="absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-[#161613] text-[12px] font-semibold text-white">
+        <span className="absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-[#111111] text-[12px] font-semibold text-white">
           ✓
         </span>
       ) : null}
@@ -132,23 +125,23 @@ function FamilySection({
   const familyMuted = family.status === "setup";
 
   return (
-    <section className="rounded-2xl border border-[#e5e5db] bg-white shadow-[0_12px_32px_-28px_rgba(30,29,22,0.3)]">
+    <section className="border-b border-[#e7e7e2] bg-white">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-center gap-3 px-6 py-4 text-left"
+        className="flex w-full items-center gap-3 px-2 py-4 text-left"
       >
         <span
           className={[
-            "h-3.5 w-3.5 rounded-full",
-            family.status === "active" ? "bg-[#161613]" : "bg-[#c9c8ba]"
+            "h-2.5 w-2.5 rounded-full",
+            family.status === "active" ? "bg-[#111111]" : "bg-[#c9c9c2]"
           ].join(" ")}
         />
-        <span className={["text-[24px] font-semibold leading-none tracking-normal", familyMuted ? "text-[#98968a]" : "text-[#151512]"].join(" ")}>
+        <span className={["text-[24px] font-semibold leading-none tracking-normal", familyMuted ? "text-[#9b9b94]" : "text-[#111111]"].join(" ")}>
           {family.name}
         </span>
-        <span className="rounded-md bg-[#efefe3] px-2 py-0.5 text-[12px] font-semibold text-[#55534a]">
+        <span className="rounded-md border border-[#e4e4df] bg-white px-2 py-0.5 text-[12px] font-semibold text-[#5d5d56]">
           {family.tiles.length}
         </span>
         <ChevronRightIcon
@@ -160,7 +153,7 @@ function FamilySection({
       </button>
 
       {open ? (
-        <div className="grid grid-cols-1 gap-3 border-t border-[#eeeee4] p-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 pb-5 md:grid-cols-2 xl:grid-cols-4">
           {family.tiles.map((tile) => (
             <WaferTile
               key={tile.id}
@@ -186,22 +179,22 @@ function SelectedDiePanel({
   const displayLabel = getWaferDisplayLabel(selectedTile, isUndiced);
 
   return (
-    <aside className="grid gap-4 rounded-2xl border border-[#e5e5db] bg-white p-5 shadow-[0_14px_36px_-28px_rgba(30,29,22,0.32)]">
+    <aside className="sticky top-6 grid max-h-[calc(100svh-8rem)] gap-5 border-l border-[#eeeeea] bg-white pl-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.08em] text-[#98968a]">
+          <p className="text-[11px] font-semibold tracking-[0.08em] text-[#9b9b94]">
             {isUndiced ? "Selected wafer" : "Selected die"}
           </p>
-          <h2 className="mt-1 text-[24px] font-semibold leading-none text-[#151512]">
+          <h2 className="mt-1 text-[28px] font-semibold leading-none text-[#111111]">
             {displayLabel}
           </h2>
         </div>
-        <span className="rounded-md border border-[#dcdbca] bg-[#f2f2e8] px-2.5 py-1 text-[12px] font-semibold text-[#161613]">
+        <span className="rounded-md border border-[#e4e4df] bg-white px-2.5 py-1 text-[12px] font-semibold text-[#222222]">
           {selectedTile.stepLabel}
         </span>
       </div>
 
-      <div className="grid min-h-[260px] place-items-center rounded-xl border border-[#e7e6da] bg-[#f7f7ef] p-5">
+      <div className="grid min-h-[420px] place-items-center bg-white p-4">
         <WaferGeometryPreview
           modeKeyword={selectedTile.waferStateName}
           selectedLabel={getSelectedDieLabel(selectedTile)}
@@ -224,14 +217,14 @@ function EmptyWaferStatusState({
   description: string;
 }) {
   return (
-    <section className="rounded-2xl border border-dashed border-[#d8d6ca] bg-[#fbfbf7] p-10 text-center">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#98968a]">
+    <section className="border border-dashed border-[#ddddda] bg-white p-10 text-center">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9b9b94]">
         Backend wafer viewer
       </p>
-      <h2 className="mt-2 text-[24px] font-semibold leading-tight text-[#151512]">
+      <h2 className="mt-2 text-[24px] font-semibold leading-tight text-[#111111]">
         {title}
       </h2>
-      <p className="mx-auto mt-3 max-w-[520px] text-[14px] leading-6 text-[#6b6a5f]">
+      <p className="mx-auto mt-3 max-w-[520px] text-[14px] leading-6 text-[#6f6f68]">
         {description}
       </p>
     </section>
@@ -284,7 +277,7 @@ export function WaferStatusView({
 
   if (hasWafers && activeDetailTile) {
     return (
-      <div className="grid gap-5 p-6">
+      <div className="grid gap-5 bg-white p-6">
         <DieDetailView
           tile={activeDetailTile}
           onBack={() => setDetailTile(null)}
@@ -297,9 +290,9 @@ export function WaferStatusView({
   }
 
   return (
-    <div className="grid gap-5 p-6">
+    <div className="grid gap-6 bg-white p-6">
       {hasWafers ? (
-        <section className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+        <section className="grid grid-cols-1 gap-x-8 gap-y-2 lg:grid-cols-4">
           {model.metrics.map((metric) => (
             <MetricTile key={metric.id} metric={metric} />
           ))}
@@ -307,8 +300,8 @@ export function WaferStatusView({
       ) : null}
 
       {hasWafers ? (
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="grid min-w-0 gap-4">
+        <section className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid min-w-0 gap-5">
             {model.families.map((family) => (
               <FamilySection
                 key={family.id}
