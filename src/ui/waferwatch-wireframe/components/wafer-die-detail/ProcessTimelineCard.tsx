@@ -83,7 +83,15 @@ export function ProcessTimelineCard({ tile }: { tile: WaferStatusTileModel }) {
                   {item.time}
                 </span>
               </span>
-              {item.state === "complete" ? <CheckCircleIcon style={{ color: accent.fill }} /> : null}
+              {item.state === "complete" ? (
+                <span
+                  className="grid h-5 w-5 place-items-center rounded-full border bg-white"
+                  style={{ borderColor: accent.fill, color: accent.fill }}
+                  aria-hidden
+                >
+                  <CheckCircleIcon />
+                </span>
+              ) : null}
             </li>
           ))}
         </ol>
