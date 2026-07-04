@@ -102,7 +102,7 @@ export const DEFAULT_DIE_OVERLAY_TEMPLATE: DieOverlayTemplate = {
   clusterSpanFraction: 0.74,
   clusterHeightFraction: 0.48,
   horizontalOffsetFraction: 0.08,
-  verticalOffsetFraction: 0.04,
+  verticalOffsetFraction: 0.5,
   rowDirection: "top-to-bottom"
 };
 

@@ -157,7 +157,7 @@ const POST_ELB_GRID_DEFAULT_INCHES: DieStructureGridTemplateInInches = {
   clusterSpanFraction: 0.74,
   clusterHeightFraction: 0.48,
   horizontalOffsetFraction: 0.08,
-  verticalOffsetFraction: 0.04,
+  verticalOffsetFraction: 0.5,
   rowDirection: "top-to-bottom"
 };
 const POST_ELB_CLUSTER_SPAN_FRACTION = 1;
