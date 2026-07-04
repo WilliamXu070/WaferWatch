@@ -456,3 +456,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Authenticated drag-box/group-move browser verification was not completed from
   Playwright because this worktree has no saved auth state. The route rendered on
   the correct dev server; the existing topbar caret hydration warning remains.
+
+## Recent development note (2026-07-04 process flow undo snapshots)
+
+- Added graph-level undo support to `/wireframe/process-flow` via snapshot-based
+  local history (up to 30 steps). Undo restores nodes, edges, selection, viewport,
+  and zoom/pan, including deletions with connected edges and multi-step/connection
+  edits.
+- Added an Undo toolbar button and Cmd/Ctrl+Z keyboard shortcut (`Shift+Z` unaffected).
+- Added snapshot capture before local mutations: node create, inline rename, move,
+  role change, transition add, delete node(s), delete edge, and organize.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/process-flow-undo-implemented.png`
+- Browser verification is unauthenticated because no usable Playwright auth state is
+  available in this environment; route renders on the correct worktree server.

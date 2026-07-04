@@ -77,6 +77,18 @@ type QueuedStepCreate = {
   nodeType: ProcessStepNodeType;
 };
 
+type GraphSnapshot = {
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+  selectedNodeIds: string[];
+  selectedEdgeId: string | null;
+  scale: number;
+  scrollLeft: number;
+  scrollTop: number;
+};
+
+const MAX_UNDO_STACK = 30;
+
 export function ProcessFlowDiagram({
   steps,
   transitions = [],
@@ -116,6 +128,7 @@ export function ProcessFlowDiagram({
   const [isPanning, setIsPanning] = useState(false);
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [undoStepsCount, setUndoStepsCount] = useState(0);
   const setMoveMessage = (msg: string | null) => { if (msg) console.warn("[ProcessFlow]", msg); };
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editingNodeLabel, setEditingNodeLabel] = useState("");
@@ -130,6 +143,7 @@ export function ProcessFlowDiagram({
   const pendingTransitionCreateRef = useRef<Map<string, QueuedTransition>>(new Map());
   const pendingPositionUpdateRef = useRef<Map<string, { canvasX: number; canvasY: number }>>(new Map());
   const pendingNameUpdateRef = useRef<Map<string, string>>(new Map());
+  const undoStackRef = useRef<GraphSnapshot[]>([]);
   type TimerHandle = NodeJS.Timeout | number | null;
   const pendingStepCreateTimerRef = useRef<TimerHandle>(null);
   const pendingTransitionCreateTimerRef = useRef<TimerHandle>(null);
@@ -180,6 +194,34 @@ export function ProcessFlowDiagram({
     (stepId: string) => stepId.startsWith(NODE_ID_PREFIX),
     []
   );
+
+  const createGraphSnapshot = useCallback(() => ({
+    nodes: nodesRef.current.map((node) => ({ ...node, wafers: [...node.wafers] })),
+    edges: edgesRef.current.map((edge) => ({ ...edge })),
+    selectedNodeIds: [...selectedNodeIds],
+    selectedEdgeId,
+    scale: scaleRef.current,
+    scrollLeft: frameRef.current?.scrollLeft ?? 0,
+    scrollTop: frameRef.current?.scrollTop ?? 0
+  }), [selectedEdgeId, selectedNodeIds]);
+
+  const pushUndoSnapshot = useCallback(() => {
+    const snapshot = createGraphSnapshot();
+    undoStackRef.current = [...undoStackRef.current, snapshot].slice(-MAX_UNDO_STACK);
+    setUndoStepsCount(undoStackRef.current.length);
+  }, [createGraphSnapshot]);
+
+  const popUndoSnapshot = useCallback(() => {
+    const current = undoStackRef.current;
+    if (current.length === 0) {
+      return null;
+    }
+
+    const snapshot = current[current.length - 1];
+    undoStackRef.current = current.slice(0, -1);
+    setUndoStepsCount(undoStackRef.current.length);
+    return snapshot;
+  }, []);
 
   const clearTimers = useCallback(() => {
     if (pendingStepCreateTimerRef.current) {
@@ -621,6 +663,7 @@ export function ProcessFlowDiagram({
     }
 
     if (nextLabel !== node.label) {
+      pushUndoSnapshot();
       setNodes((currentNodes) =>
         currentNodes.map((item) =>
           item.id === nodeId
@@ -636,7 +679,7 @@ export function ProcessFlowDiagram({
     }
 
     clearEditingNode();
-  }, [clearEditingNode, nodeById, queueNodeNamePersist]);
+  }, [clearEditingNode, nodeById, pushUndoSnapshot, queueNodeNamePersist]);
 
   const cancelNodeLabelEdit = (nodeId: string) => {
     const currentNode = nodeById.get(nodeId);
@@ -805,6 +848,8 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    pushUndoSnapshot();
+
     const targetCenter = getCanvasSceneCenter();
     const nextNodes = autoLayoutNodes(nodes, edges, targetCenter);
     setNodes(nextNodes);
@@ -816,6 +861,49 @@ export function ProcessFlowDiagram({
       queueNodePositionPersist(node.id, node.x, node.y);
     });
   };
+
+  const restoreFromSnapshot = useCallback((snapshot: GraphSnapshot) => {
+    clearTimers();
+    clearQueuedStepMaps();
+    pendingPositionUpdateRef.current.clear();
+    pendingTransitionCreateRef.current.clear();
+
+    setNodes(snapshot.nodes.map((node) => ({ ...node, wafers: [...node.wafers] })));
+    setEdges(snapshot.edges.map((edge) => ({ ...edge })));
+    setSelectedNodeIds(new Set(snapshot.selectedNodeIds));
+    setSelectedEdgeId(snapshot.selectedEdgeId);
+    setConnectionDraft(null);
+    setPendingConnectionStart(null);
+    setNodeDrag(null);
+    setSelectionBox(null);
+    setWaferDrag(null);
+    setSnapGuides([]);
+    setRoleMenu(null);
+    setEditingNodeId(null);
+    setEditingNodeLabel("");
+    setMoveMessage("Undid last edit.");
+    scaleRef.current = snapshot.scale;
+    setScale(snapshot.scale);
+
+    window.requestAnimationFrame(() => {
+      const frame = frameRef.current;
+      if (!frame) {
+        return;
+      }
+
+      frame.scrollLeft = snapshot.scrollLeft;
+      frame.scrollTop = snapshot.scrollTop;
+    });
+  }, [clearQueuedStepMaps, clearTimers]);
+
+  const undoLastEdit = useCallback(() => {
+    const snapshot = popUndoSnapshot();
+    if (!snapshot) {
+      return;
+    }
+
+    restoreFromSnapshot(snapshot);
+  }, [popUndoSnapshot, restoreFromSnapshot]);
 
   const mergeServerGraphIntoLocal = useCallback((graph: { nodes: FlowNode[]; edges: FlowEdge[] }) => {
     const serverNodeById = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -895,6 +983,8 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    undoStackRef.current = [];
+    setUndoStepsCount(0);
     setNodes(serverGraph.nodes);
     setEdges(serverGraph.edges);
     setConnectionDraft(null);
@@ -1090,6 +1180,8 @@ export function ProcessFlowDiagram({
       setMoveMessage("Load an authenticated process template before editing the graph.");
       return;
     }
+
+    pushUndoSnapshot();
 
     const point = getScenePoint(event);
     const canvasX = Math.max(24, Math.round(point.x - NODE_WIDTH / 2));
@@ -1306,6 +1398,8 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    pushUndoSnapshot();
+
     movedNodes.forEach((node) => queueNodePositionPersist(node.id, node.x, node.y));
   };
 
@@ -1507,6 +1601,8 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    pushUndoSnapshot();
+
     setEdges((currentEdges) => [
       ...currentEdges,
       {
@@ -1553,6 +1649,11 @@ export function ProcessFlowDiagram({
     }
 
     const node = nodeById.get(nodeId);
+    if (!node || node.role === role) {
+      return;
+    }
+
+    pushUndoSnapshot();
     const previousNodes = nodesRef.current;
     setNodes((currentNodes) =>
       currentNodes.map((currentNode) => {
@@ -1598,6 +1699,8 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    pushUndoSnapshot();
+
     const label = uniqueNodeIds.length === 1
       ? nodeById.get(uniqueNodeIds[0])?.label ?? "selected step"
       : `${uniqueNodeIds.length} selected steps`;
@@ -1629,13 +1732,19 @@ export function ProcessFlowDiagram({
         setMoveMessage(`Deleted ${label}.`);
       })();
     });
-  }, [nodeById, onDeleteSteps]);
+  }, [nodeById, onDeleteSteps, pushUndoSnapshot]);
 
   const deleteSelectedNodes = useCallback(() => {
     deleteNodes([...selectedNodeIds]);
   }, [deleteNodes, selectedNodeIds]);
 
   const deleteEdge = useCallback((edgeId: string) => {
+    const hasEdge = edges.some((edge) => edge.id === edgeId);
+    if (!hasEdge) {
+      return;
+    }
+
+    pushUndoSnapshot();
     setEdges((current) => current.filter((edge) => edge.id !== edgeId));
     setSelectedEdgeId(null);
 
@@ -1651,11 +1760,18 @@ export function ProcessFlowDiagram({
         }
       })();
     });
-  }, [onDeleteTransitions]);
+  }, [edges, onDeleteTransitions, pushUndoSnapshot]);
 
   useEffect(() => {
     const onGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
       if (isTextInputTarget(event.target)) {
+        return;
+      }
+
+      const isUndoShortcut = (event.key === "z" || event.key === "Z") && (event.ctrlKey || event.metaKey) && !event.shiftKey;
+      if (isUndoShortcut) {
+        event.preventDefault();
+        undoLastEdit();
         return;
       }
 
@@ -1675,7 +1791,7 @@ export function ProcessFlowDiagram({
     return () => {
       window.removeEventListener("keydown", onGlobalKeyDown);
     };
-  }, [deleteEdge, deleteSelectedNodes, selectedEdgeId, selectedNodeIds]);
+  }, [deleteEdge, deleteSelectedNodes, selectedEdgeId, selectedNodeIds, undoLastEdit]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -1757,6 +1873,8 @@ export function ProcessFlowDiagram({
         onZoomIn={zoomIn}
         onCenterView={() => centerView()}
         onOrganize={organizeCanvas}
+        onUndo={undoLastEdit}
+        canUndo={undoStepsCount > 0}
       />
       <ProcessFlowCanvas
         frameRef={frameRef}
