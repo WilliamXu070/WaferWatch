@@ -1,6 +1,13 @@
 import { CheckCircleIcon } from "../../icons";
 import { DetailCard } from "./DetailCard";
-import { parameterRows, processTimeline } from "./waferDieDetailData";
+import { processTimeline } from "./waferDieDetailData";
+
+const keyParameterRows = [
+  ["Current focus", "Uniformity review"],
+  ["Best image", "Pending"],
+  ["Source step", "Fixture inspection"],
+  ["Review state", "In progress"]
+] as const;
 
 export function ProcessTimelineCard() {
   return (
@@ -37,47 +44,15 @@ export function ProcessTimelineCard() {
         </ol>
 
         <div className="border-l border-[#eeeeea] pl-5">
-          <div className="mb-5 flex items-center gap-3">
-            <h3 className="text-[17px] font-semibold text-[#111111]">Step 4: Fixture poling</h3>
-            <span className="rounded-md border border-[#e4e4df] bg-white px-2 py-1 text-[12px] font-semibold text-[#44443f]">
-              In progress
-            </span>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="border border-[#eeeeea] p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h4 className="text-[14px] font-semibold text-[#111111]">Parameters</h4>
-                <button type="button" className="rounded-md border border-[#e4e4df] px-2 py-1 text-[12px] font-semibold text-[#66665f]">
-                  Edit
-                </button>
+          <h3 className="mb-4 text-[17px] font-semibold text-[#111111]">Key parameter information</h3>
+          <dl className="grid max-w-[520px] gap-3 text-[14px]">
+            {keyParameterRows.map(([label, value]) => (
+              <div key={label} className="grid grid-cols-[150px_minmax(0,1fr)] gap-4 border-b border-[#eeeeea] pb-3">
+                <dt className="text-[#66665f]">{label}</dt>
+                <dd className="font-semibold text-[#111111]">{value}</dd>
               </div>
-              <dl className="grid gap-3 text-[14px]">
-                {parameterRows.map(([label, value]) => (
-                  <div key={label} className="flex justify-between gap-4">
-                    <dt className="text-[#66665f]">{label}</dt>
-                    <dd className="font-semibold text-[#111111]">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-            <div className="border border-[#eeeeea] p-4">
-              <h4 className="mb-4 text-[14px] font-semibold text-[#111111]">Live log</h4>
-              <div className="grid gap-3 text-[14px]">
-                {[
-                  ["10:42 AM", "Step started by adam"],
-                  ["10:43 AM", "Fixture connected"],
-                  ["10:44 AM", "Voltage ramp initiated"],
-                  ["10:52 AM", "Target temperature reached"],
-                  ["11:12 AM", "Holding... (15/30 min)"]
-                ].map(([time, text]) => (
-                  <div key={time} className="grid grid-cols-[78px_minmax(0,1fr)] gap-4">
-                    <span className="font-medium text-[#98968a]">{time}</span>
-                    <span className={text.startsWith("Holding") ? "font-semibold text-[#111111]" : "text-[#44443f]"}>{text}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+            ))}
+          </dl>
         </div>
       </div>
     </DetailCard>

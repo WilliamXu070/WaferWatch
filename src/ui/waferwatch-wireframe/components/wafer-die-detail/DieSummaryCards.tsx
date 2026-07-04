@@ -1,9 +1,8 @@
 import type { WaferStatusTileModel } from "../../types";
 import { WaferGeometryPreview } from "../WaferGeometryPreview";
 import { DetailCard } from "./DetailCard";
-import { ResultTrendChart } from "./ResultTrendChart";
-import { recentNotes, resultMetrics } from "./waferDieDetailData";
-import { getDieIdentity, getSelectedDieLabel, statusLabel } from "./waferDieDetailHelpers";
+import { recentNotes } from "./waferDieDetailData";
+import { getSelectedDieLabel, statusLabel } from "./waferDieDetailHelpers";
 
 export function DiePreviewCard({ tile }: { tile: WaferStatusTileModel }) {
   return (
@@ -71,63 +70,20 @@ export function CurrentStepCard({ tile }: { tile: WaferStatusTileModel }) {
   );
 }
 
-export function QuickInfoCard({ tile }: { tile: WaferStatusTileModel }) {
-  const identity = getDieIdentity(tile);
-  const rows = [
-    ["Wafer", tile.family],
-    ["Die ID", identity.dieId],
-    ["Material", identity.material],
-    ["Dimensions", identity.dimensions],
-    ["Thickness", identity.thickness],
-    ["Orientation", identity.orientation],
-    ["Created", "Jun 28, 2025"],
-    ["Status", "Active"]
-  ];
-
-  return (
-    <DetailCard title="Quick info">
-      <dl className="grid gap-4 text-[14px]">
-        {rows.map(([label, value]) => (
-          <div key={label} className="grid grid-cols-[120px_minmax(0,1fr)] items-center gap-4">
-            <dt className="font-medium text-[#777770]">{label}</dt>
-            <dd className="font-semibold text-[#111111]">
-              {label === "Status" ? (
-                <span className="rounded-md border border-[#e4e4df] bg-white px-2 py-1 text-[12px] text-[#44443f]">{value}</span>
-              ) : (
-                value
-              )}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </DetailCard>
-  );
-}
-
 export function KeyResultsCard() {
   return (
-    <DetailCard title="Key results (latest)" action="View all">
-      <div className="grid grid-cols-2 gap-3">
-        {resultMetrics.map(([label, value]) => (
-          <div key={label} className="border-b border-[#eeeeea] py-3">
-            <p className="text-[12px] font-medium text-[#777770]">{label}</p>
-            <p className="mt-1 text-[16px] font-semibold text-[#111111]">{value}</p>
+    <DetailCard title="Key results">
+      <div className="grid gap-5">
+        <div className="border-b border-[#eeeeea] pb-4">
+          <p className="text-[12px] font-medium text-[#777770]">Uniformity</p>
+          <p className="mt-1 text-[24px] font-semibold text-[#111111]">Pending</p>
+        </div>
+        <div>
+          <p className="mb-3 text-[12px] font-medium text-[#777770]">Best image</p>
+          <div className="grid min-h-[180px] place-items-center rounded-lg border border-dashed border-[#ddddda] bg-white text-[13px] font-semibold text-[#8a8a83]">
+            No image yet
           </div>
-        ))}
-      </div>
-    </DetailCard>
-  );
-}
-
-export function PerformanceTrendCard() {
-  return (
-    <DetailCard title="Performance trend" action="View details">
-      <ResultTrendChart />
-      <div className="mt-1 flex justify-between text-[11px] font-medium text-[#8a887b]">
-        <span>Step 1</span>
-        <span>Step 2</span>
-        <span>Step 3</span>
-        <span>Step 4</span>
+        </div>
       </div>
     </DetailCard>
   );

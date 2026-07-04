@@ -29,15 +29,6 @@ export const parameterRows = [
   ["Fixture ID", "FIX-023"]
 ] as const;
 
-export const resultMetrics = [
-  ["Center wavelength", "1550.12 nm"],
-  ["Insertion loss", "0.32 dB"],
-  ["Extinction ratio", "18.7 dB"],
-  ["Sidewall angle", "86.2 deg"],
-  ["Roughness (RMS)", "1.2 nm"],
-  ["Yield impact", "Low risk"]
-] as const;
-
 export const pulseResults = [
   "18.2 dB",
   "18.7 dB",

@@ -482,3 +482,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     authenticated active-die visual acceptance still needs a fresh existing
     session.
   - Screenshot: `/tmp/wafer-status-minimal-white.png`
+
+## Recent development note (2026-07-04 wafer die detail removal pass)
+
+- Removed generated/filler die detail UI: the `Codex Wireframe V1` breadcrumb
+  crumb, die metadata chip row, Quick info panel, Performance trend panel, and
+  the old repeated Step 4 parameter/live-log block.
+- Replaced Key results with only Uniformity plus an empty Best image placeholder.
+  Replaced the lower timeline detail block with a concise Key parameter
+  information section.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3000/api/health`
+  - Playwright CLI route screenshot at
+    `http://localhost:3000/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with `1440x1000` viewport and `playwright/.auth/user.json`.
+  - The saved auth state still rendered the unauthenticated empty state, so
+    authenticated active-die visual acceptance still needs a fresh existing
+    session.
+  - Screenshot: `/tmp/wafer-die-detail-removal-pass.png`

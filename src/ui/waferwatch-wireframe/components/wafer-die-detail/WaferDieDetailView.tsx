@@ -9,7 +9,6 @@ import {
   DotsIcon
 } from "../../icons";
 import { dieDetailTabs, type DieDetailTab } from "./waferDieDetailData";
-import { getDieIdentity } from "./waferDieDetailHelpers";
 import { WaferDieDetailTabs } from "./WaferDieDetailTabs";
 
 export function DieDetailView({
@@ -26,7 +25,6 @@ export function DieDetailView({
   canNavigateForward: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<DieDetailTab>("overview");
-  const identity = getDieIdentity(tile);
   const displayLabel = tile.dieLabel || tile.code;
 
   return (
@@ -34,8 +32,6 @@ export function DieDetailView({
       <div className="border-b border-[#eeeeea] bg-white pb-6">
         <div className="mb-6 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-[#8a887b]">
           <button type="button" onClick={onBack} className="hover:text-[#111111]">Wafers</button>
-          <ChevronRightIcon />
-          <span>Codex Wireframe V1</span>
           <ChevronRightIcon />
           <span className="text-[#111111]">Die {displayLabel}</span>
         </div>
@@ -50,12 +46,7 @@ export function DieDetailView({
               </span>
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-[#66665f]">
-              {[tile.family, `Row ${identity.row}`, `Position ${identity.position}`, `ID: ${identity.dieId}`].map((tag) => (
-                <span key={tag} className="rounded-lg border border-[#e7e7e2] bg-white px-2.5 py-1">
-                  {tag}
-                </span>
-              ))}
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[#98968a]">
+              <span className="inline-flex items-center gap-1.5 text-[#98968a]">
                 <ClockIcon />
                 Last updated 2h ago by adam
               </span>

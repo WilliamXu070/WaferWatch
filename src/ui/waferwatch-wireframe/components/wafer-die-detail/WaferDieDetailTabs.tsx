@@ -4,9 +4,7 @@ import {
   CurrentStepCard,
   DiePreviewCard,
   KeyResultsCard,
-  NotesCard,
-  PerformanceTrendCard,
-  QuickInfoCard
+  NotesCard
 } from "./DieSummaryCards";
 import { ParametersTableCard } from "./ParametersTableCard";
 import { ProcessTimelineCard } from "./ProcessTimelineCard";
@@ -16,15 +14,13 @@ import { recentNotes, type DieDetailTab } from "./waferDieDetailData";
 function DieOverviewTab({ tile }: { tile: WaferStatusTileModel }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2">
         <DiePreviewCard tile={tile} />
         <CurrentStepCard tile={tile} />
-        <QuickInfoCard tile={tile} />
         <ProcessTimelineCard />
       </div>
       <aside className="grid content-start gap-4">
         <KeyResultsCard />
-        <PerformanceTrendCard />
         <NotesCard />
       </aside>
     </div>
@@ -36,7 +32,6 @@ function DieHistoryTab() {
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
       <ProcessTimelineCard />
       <aside className="grid content-start gap-4">
-        <PerformanceTrendCard />
         <NotesCard />
       </aside>
     </div>
@@ -64,7 +59,6 @@ function DieResultsTab() {
       </div>
       <aside className="grid content-start gap-4">
         <KeyResultsCard />
-        <PerformanceTrendCard />
       </aside>
     </div>
   );
@@ -102,7 +96,6 @@ function DieNotesTab() {
       </DetailCard>
       <aside className="grid content-start gap-4">
         <KeyResultsCard />
-        <PerformanceTrendCard />
       </aside>
     </div>
   );
