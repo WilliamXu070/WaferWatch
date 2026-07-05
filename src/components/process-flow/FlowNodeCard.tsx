@@ -1,7 +1,8 @@
 import type { ChangeEvent, KeyboardEvent, MouseEvent, PointerEvent, RefObject } from "react";
 import {
-  MAX_NODE_CHIPS,
-  WAFER_CHIP_GAP,
+  NODE_CHIP_COLUMNS,
+  WAFER_CHIP_GAP_X,
+  WAFER_CHIP_GAP_Y,
   WAFER_CHIP_HEIGHT,
   WAFER_CHIP_WIDTH
 } from "./constants";
@@ -53,8 +54,6 @@ export function FlowNodeCard({
   onCancelLabelEdit,
   onBeginWaferDrag
 }: FlowNodeCardProps) {
-  const visibleWafers = node.wafers.slice(0, MAX_NODE_CHIPS);
-  const hiddenWaferCount = Math.max(0, node.wafers.length - visibleWafers.length);
   const active = hasActiveWafer(node);
 
   return (
@@ -123,21 +122,15 @@ export function FlowNodeCard({
         {describeRole(node.role)}
       </text>
       <g transform="translate(64 96)">
-        {visibleWafers.map((wafer, index) => (
+        {node.wafers.map((wafer, index) => (
           <WaferChip
             key={wafer.assignmentId}
             label={getWaferChipLabel(wafer)}
-            x={index * WAFER_CHIP_GAP}
+            x={(index % NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_X}
+            y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
             onPointerDown={(event) => onBeginWaferDrag(event, node, wafer)}
           />
         ))}
-        {hiddenWaferCount > 0 ? (
-          <WaferChip
-            className="flow-wafer-chip--overflow"
-            label={`+${hiddenWaferCount}`}
-            x={visibleWafers.length * WAFER_CHIP_GAP}
-          />
-        ) : null}
       </g>
     </g>
   );

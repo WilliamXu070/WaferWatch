@@ -20,7 +20,8 @@ import {
   SCENE_WIDTH,
   TRANSITION_RETRY_DELAY_MS,
   TRANSITION_RETRY_LIMIT,
-  WHEEL_ZOOM_STEP
+  WHEEL_ZOOM_STEP,
+  getNodeHeightForWaferCount
 } from "./process-flow/constants";
 import { getGraphBounds, getSnappedNodePosition, nodeContainsPoint } from "./process-flow/geometry";
 import {
@@ -993,6 +994,8 @@ export function ProcessFlowDiagram({
         undoRecoveredNodeIdsRef.current.delete(node.id);
         nextNodes.push({
           ...node,
+          wafers: serverNode.wafers,
+          height: getNodeHeightForWaferCount(serverNode.wafers.length),
           subLabel: serverNode.subLabel,
           order: serverNode.order,
           isOptimistic: false
@@ -1268,7 +1271,7 @@ export function ProcessFlowDiagram({
       x: canvasX,
       y: canvasY,
       width: NODE_WIDTH,
-      height: NODE_HEIGHT,
+      height: getNodeHeightForWaferCount(0),
       role: "normal",
       order: nodes.length + 1,
       isOptimistic: true
@@ -1550,18 +1553,22 @@ export function ProcessFlowDiagram({
       setNodes((currentNodes) =>
         currentNodes.map((node) => {
           if (node.id === finishedDrag.sourceStepId) {
+            const nextWafers = node.wafers.filter((wafer) => wafer.assignmentId !== finishedDrag.assignmentId);
             return {
               ...node,
-              wafers: node.wafers.filter((wafer) => wafer.assignmentId !== finishedDrag.assignmentId)
+              wafers: nextWafers,
+              height: getNodeHeightForWaferCount(nextWafers.length)
             };
           }
 
           if (node.id === target.id) {
+            const nextWafers = node.wafers.some((wafer) => wafer.assignmentId === finishedDrag.assignmentId)
+              ? node.wafers
+              : [...node.wafers, movedWafer];
             return {
               ...node,
-              wafers: node.wafers.some((wafer) => wafer.assignmentId === finishedDrag.assignmentId)
-                ? node.wafers
-                : [...node.wafers, movedWafer]
+              wafers: nextWafers,
+              height: getNodeHeightForWaferCount(nextWafers.length)
             };
           }
 

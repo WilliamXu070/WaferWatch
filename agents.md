@@ -594,3 +594,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run build`
   - `curl -s http://localhost:3001/api/health`
   - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-trackpad-pan-mouse-zoom.png`
+
+## Recent development note (2026-07-05 process flow expanded wafer chips)
+
+- Removed the `+N` wafer overflow chip from process-flow nodes and render every
+  wafer/die chip in a fixed four-column grid.
+- Process-flow node height now expands from wafer count on initial graph load,
+  server graph merges, wafer drag/drop moves, and organize layout calculations.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-expanded-wafer-chips.png`
+- Browser screenshot was unauthenticated and showed the backend-only empty guard,
+  so authenticated seeded graph visual acceptance still needs an existing saved
+  auth session.

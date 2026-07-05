@@ -709,15 +709,6 @@ textarea {
   fill: #745522;
 }
 
-.flow-wafer-chip--overflow rect {
-  fill: #f2f2ee;
-  stroke: #cdccc4;
-}
-
-.flow-wafer-chip--overflow text {
-  fill: #5f5f58;
-}
-
 .flow-node--active .flow-wafer-chip rect {
   fill: #173a31;
   stroke: #4ea883;

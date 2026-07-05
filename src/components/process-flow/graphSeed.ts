@@ -1,4 +1,4 @@
-import { NODE_WIDTH, NODE_HEIGHT, SCENE_HEIGHT, SCENE_WIDTH } from "./constants";
+import { NODE_WIDTH, SCENE_HEIGHT, SCENE_WIDTH, getNodeHeightForWaferCount } from "./constants";
 import { autoLayoutNodes } from "./layout";
 import { toFlowNodeRole } from "./labels";
 import type { DiagramStep, DiagramTransition, FlowEdge, FlowNode } from "./types";
@@ -13,7 +13,7 @@ export function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransi
       x: step.canvas_x ?? 0,
       y: step.canvas_y ?? 0,
       width: NODE_WIDTH,
-      height: NODE_HEIGHT,
+      height: getNodeHeightForWaferCount(step.wafers.length),
       role: toFlowNodeRole(step.node_type),
       order: index + 1
     }));

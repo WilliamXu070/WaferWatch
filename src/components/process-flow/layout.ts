@@ -237,7 +237,7 @@ function buildLayoutComponents(nodes: FlowNode[], edges: FlowEdge[], orderedIds:
       );
       const hasStart = sortedNodeIds.some((id) => nodeById.get(id)?.role === "start");
       const hasEnd = sortedNodeIds.some((id) => nodeById.get(id)?.role === "end");
-      const dimensions = getComponentDimensions(sortedNodeIds.length, hasStart || hasEnd);
+      const dimensions = getComponentDimensions(sortedNodeIds, nodeById, hasStart || hasEnd);
 
       return {
         id: `component-${index}`,
@@ -376,21 +376,28 @@ function getStronglyConnectedComponents(
   return components;
 }
 
-function getComponentDimensions(nodeCount: number, hasPinnedRole: boolean) {
+function getComponentDimensions(
+  nodeIds: string[],
+  nodeById: Map<string, FlowNode>,
+  hasPinnedRole: boolean
+) {
+  const nodeCount = nodeIds.length;
+  const maxNodeHeight = Math.max(NODE_HEIGHT, ...nodeIds.map((id) => nodeById.get(id)?.height ?? NODE_HEIGHT));
+
   if (nodeCount <= 1) {
-    return { width: NODE_WIDTH, height: NODE_HEIGHT };
+    return { width: NODE_WIDTH, height: maxNodeHeight };
   }
 
   if (nodeCount === 2 && !hasPinnedRole) {
     return {
       width: NODE_WIDTH * 2 + LAYOUT_LOOP_GAP_X,
-      height: NODE_HEIGHT
+      height: maxNodeHeight
     };
   }
 
   return {
     width: LAYOUT_LOOP_RADIUS_X * 2 + NODE_WIDTH,
-    height: LAYOUT_LOOP_RADIUS_Y * 2 + NODE_HEIGHT
+    height: LAYOUT_LOOP_RADIUS_Y * 2 + maxNodeHeight
   };
 }
 
@@ -441,7 +448,7 @@ function positionComponentNodes(
     positioned.set(id, {
       ...node,
       x: Math.round(componentX + point.x - NODE_WIDTH / 2),
-      y: Math.round(componentY + point.y - NODE_HEIGHT / 2)
+      y: Math.round(componentY + point.y - node.height / 2)
     });
   }
 
@@ -452,11 +459,11 @@ function positionComponentNodes(
     }
 
     if (component.hasStart || component.hasEnd) {
-      const point = getPinnedRoleFreeNodePoint(component, index, freeNodeIds.length);
+      const point = getPinnedRoleFreeNodePoint(component, nodeById, index, freeNodeIds.length);
       positioned.set(id, {
         ...node,
         x: Math.round(componentX + point.x - NODE_WIDTH / 2),
-        y: Math.round(componentY + point.y - NODE_HEIGHT / 2)
+        y: Math.round(componentY + point.y - node.height / 2)
       });
       return;
     }
@@ -465,7 +472,7 @@ function positionComponentNodes(
     positioned.set(id, {
       ...node,
       x: Math.round(centerX + Math.cos(angle) * LAYOUT_LOOP_RADIUS_X - NODE_WIDTH / 2),
-      y: Math.round(centerY + Math.sin(angle) * LAYOUT_LOOP_RADIUS_Y - NODE_HEIGHT / 2)
+      y: Math.round(centerY + Math.sin(angle) * LAYOUT_LOOP_RADIUS_Y - node.height / 2)
     });
   });
 }
@@ -476,12 +483,14 @@ function getPinnedComponentPositions(component: LayoutComponent, nodeById: Map<s
 
   const startId = component.nodeIds.find((id) => nodeById.get(id)?.role === "start");
   if (startId) {
-    pinned.set(startId, { x: centerX, y: NODE_HEIGHT / 2 });
+    const startNode = nodeById.get(startId);
+    pinned.set(startId, { x: centerX, y: (startNode?.height ?? NODE_HEIGHT) / 2 });
   }
 
   const endId = component.nodeIds.find((id) => nodeById.get(id)?.role === "end");
   if (endId && endId !== startId) {
-    pinned.set(endId, { x: centerX, y: component.height - NODE_HEIGHT / 2 });
+    const endNode = nodeById.get(endId);
+    pinned.set(endId, { x: centerX, y: component.height - (endNode?.height ?? NODE_HEIGHT) / 2 });
   }
 
   return pinned;
@@ -532,13 +541,18 @@ function getComponentPlacementNodeIds(component: LayoutComponent, nodeById: Map<
   return ordered;
 }
 
-function getPinnedRoleFreeNodePoint(component: LayoutComponent, index: number, count: number) {
+function getPinnedRoleFreeNodePoint(
+  component: LayoutComponent,
+  nodeById: Map<string, FlowNode>,
+  index: number,
+  count: number
+) {
   const side = index % 2 === 0 ? -1 : 1;
   const sideIndex = Math.floor(index / 2);
   const sideCount = Math.ceil(count / 2);
   const hasBothRoles = component.hasStart && component.hasEnd;
-  const topPadding = component.hasStart ? NODE_HEIGHT : NODE_HEIGHT / 2;
-  const bottomPadding = component.hasEnd ? NODE_HEIGHT : NODE_HEIGHT / 2;
+  const topPadding = component.hasStart ? getPinnedNodeHeight(component, nodeById, "start") : NODE_HEIGHT / 2;
+  const bottomPadding = component.hasEnd ? getPinnedNodeHeight(component, nodeById, "end") : NODE_HEIGHT / 2;
   const usableHeight = Math.max(NODE_HEIGHT, component.height - topPadding - bottomPadding);
   const yGap = hasBothRoles
     ? usableHeight / Math.max(1, sideCount + 1)
@@ -550,6 +564,15 @@ function getPinnedRoleFreeNodePoint(component: LayoutComponent, index: number, c
   };
 }
 
+function getPinnedNodeHeight(
+  component: LayoutComponent,
+  nodeById: Map<string, FlowNode>,
+  role: FlowNodeRole
+) {
+  const nodeId = component.nodeIds.find((id) => nodeById.get(id)?.role === role);
+  return nodeId ? nodeById.get(nodeId)?.height ?? NODE_HEIGHT : NODE_HEIGHT;
+}
+
 function getFreeNodeAngle(index: number, count: number) {
   if (count <= 1) {
     return Math.PI;
@@ -557,4 +580,3 @@ function getFreeNodeAngle(index: number, count: number) {
 
   return -Math.PI / 2 + (index * Math.PI * 2) / count;
 }
-
