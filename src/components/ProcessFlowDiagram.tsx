@@ -1899,9 +1899,15 @@ export function ProcessFlowDiagram({
       event.preventDefault();
       event.stopPropagation();
 
-      const isMostlyHorizontalPan = Math.abs(event.deltaX) > Math.abs(event.deltaY) && !event.ctrlKey && !event.metaKey;
-      if (isMostlyHorizontalPan) {
+      const absDeltaX = Math.abs(event.deltaX);
+      const absDeltaY = Math.abs(event.deltaY);
+      const hasPreciseTrackpadDeltas =
+        event.deltaMode === WheelEvent.DOM_DELTA_PIXEL &&
+        (absDeltaX > 0 || (absDeltaY > 0 && absDeltaY < 50));
+
+      if (!event.ctrlKey && !event.metaKey && hasPreciseTrackpadDeltas) {
         frame.scrollLeft += event.deltaX;
+        frame.scrollTop += event.deltaY;
         return;
       }
 

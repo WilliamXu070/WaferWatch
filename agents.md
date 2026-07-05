@@ -583,3 +583,14 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run build`
   - `curl -s http://localhost:3001/api/health`
   - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-wheel-zoom.png`
+
+## Recent development note (2026-07-05 process flow trackpad pan)
+
+- Refined `/wireframe/process-flow` wheel behavior so coarse mouse wheel input
+  still zooms at the cursor, while precise pixel-delta trackpad scrolling pans the
+  2D canvas vertically/horizontally.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-trackpad-pan-mouse-zoom.png`
