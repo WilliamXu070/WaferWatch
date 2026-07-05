@@ -623,3 +623,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Browser screenshot was unauthenticated and showed the backend-only empty guard,
   so authenticated right-click interaction still needs an existing saved auth
   session.
+
+## Recent development note (2026-07-05 process flow edit polish and edge routing)
+
+- Tightened inline step rename editing so the input aligns with the normal title
+  text, uses the same title scale, and no longer covers the subtitle/meta area.
+- Added explicit blank-canvas/different-node click-away commit for rename edits
+  before canvas pointer handling prevents browser blur.
+- Updated start-step styling to a distinct green treatment in the wireframe
+  process-flow surface while preserving selected-state blue borders.
+- Reworked process-flow edge routing so reciprocal edges and direct edges that
+  intersect other node boxes try larger curved lanes and sample against node
+  bounds before choosing a path.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-rename-start-edge-routing.png`
+- Browser screenshot was unauthenticated and showed the backend-only empty guard,
+  so authenticated rename/right-click/edge visual acceptance still needs an
+  existing saved auth session.

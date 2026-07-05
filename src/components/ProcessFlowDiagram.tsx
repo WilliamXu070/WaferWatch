@@ -731,6 +731,14 @@ export function ProcessFlowDiagram({
     clearEditingNode();
   }, [clearEditingNode, nodeById, pushUndoSnapshot, queueNodeNamePersist]);
 
+  const commitActiveNodeLabel = useCallback(() => {
+    if (!editingNodeId) {
+      return;
+    }
+
+    commitNodeLabel(editingNodeId, editingInputRef.current?.value ?? editingNodeLabel);
+  }, [commitNodeLabel, editingNodeId, editingNodeLabel]);
+
   const cancelNodeLabelEdit = (nodeId: string) => {
     const currentNode = nodeById.get(nodeId);
     if (currentNode) {
@@ -1173,6 +1181,7 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    commitActiveNodeLabel();
     event.preventDefault();
     setRoleMenu(null);
     setSelectedEdgeId(null);
@@ -1307,6 +1316,10 @@ export function ProcessFlowDiagram({
 
   const handleNodePointerDown = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
     event.stopPropagation();
+    if (editingNodeId && editingNodeId !== node.id) {
+      commitActiveNodeLabel();
+    }
+
     if (event.metaKey || event.ctrlKey || event.shiftKey) {
       event.preventDefault();
       setRoleMenu(null);

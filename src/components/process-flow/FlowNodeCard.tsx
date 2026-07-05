@@ -80,8 +80,14 @@ export function FlowNodeCard({
         <circle cx={node.width - 24} cy="24" r="8" className="flow-node-port" />
       </g>
       {isEditing ? (
-        <foreignObject x="58" y="20" width="190" height="34">
-          <div style={{ width: "190px", height: "34px" }}>
+        <foreignObject
+          x="62"
+          y="17"
+          width={Math.max(150, node.width - 104)}
+          height="26"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <div className="flow-node-title-input-frame">
             <input
               ref={editingInputRef}
               type="text"

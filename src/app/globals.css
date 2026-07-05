@@ -547,8 +547,9 @@ textarea {
 }
 
 .flow-node--start .flow-node-card {
-  fill: #fb923c;
-  stroke: #ea580c;
+  fill: #ecfdf3;
+  stroke: #16a34a;
+  stroke-width: 1.6;
 }
 
 .flow-node--end .flow-node-card {
@@ -606,21 +607,27 @@ textarea {
 .flow-node-title-input {
   width: 100%;
   height: 100%;
-  border: 1px solid color-mix(in srgb, var(--foreground) 28%, transparent);
-  border-radius: 8px;
-  background: var(--panel);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--foreground);
   font: inherit;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
-  padding: 6px 8px;
+  line-height: 22px;
+  padding: 1px 2px 2px;
   outline: 0;
   box-sizing: border-box;
 }
 
 .flow-node-title-input:focus {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  box-shadow: none;
+}
+
+.flow-node-title-input-frame {
+  width: 100%;
+  height: 100%;
 }
 
 .flow-node-subtitle,
@@ -2781,10 +2788,24 @@ textarea {
   stroke-width: 2.5;
 }
 
-.wireframe-flow-surface .flow-node--start .flow-node-card,
+.wireframe-flow-surface .flow-node--start .flow-node-card {
+  fill: #ecfdf3;
+  stroke: #16a34a;
+  stroke-width: 2;
+}
+
+.wireframe-flow-surface .flow-node--start .flow-node-icon {
+  color: #15803d;
+}
+
 .wireframe-flow-surface .flow-node--end .flow-node-card {
   fill: #f8fafc;
   stroke: #d8dde6;
+}
+
+.wireframe-flow-surface .flow-node--selected .flow-node-card {
+  stroke: #2563eb;
+  stroke-width: 2.5;
 }
 
 .wireframe-flow-surface .flow-node--active .flow-node-card {
