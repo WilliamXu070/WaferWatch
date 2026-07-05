@@ -27,8 +27,7 @@ import { getGraphBounds, getSnappedNodePosition, nodeContainsPoint } from "./pro
 import {
   clampScale,
   getWaferChipLabel,
-  isTextInputTarget,
-  toProcessStepNodeType
+  isTextInputTarget
 } from "./process-flow/labels";
 import { autoLayoutNodes } from "./process-flow/layout";
 import { getInitialGraph } from "./process-flow/graphSeed";
@@ -42,7 +41,6 @@ import type {
   DiagramTransition,
   FlowEdge,
   FlowNode,
-  FlowNodeRole,
   GraphViewportFit,
   MoveWaferToProcessStepAction,
   NodeDrag,
@@ -143,7 +141,6 @@ export function ProcessFlowDiagram({
   onCreateStep,
   onUpdateStepPositions,
   onUpdateStepName,
-  onUpdateStepNodeType,
   onCreateTransition,
   onDeleteSteps,
   onDeleteTransitions,
@@ -1723,53 +1720,6 @@ export function ProcessFlowDiagram({
     });
   };
 
-  const setNodeRole = (nodeId: string, role: FlowNodeRole) => {
-    setRoleMenu(null);
-    if (!onUpdateStepNodeType) {
-      setMoveMessage("Graph node type persistence is not available for this process view.");
-      return;
-    }
-
-    const node = nodeById.get(nodeId);
-    if (!node || node.role === role) {
-      return;
-    }
-
-    pushUndoSnapshot();
-    const previousNodes = nodesRef.current;
-    setNodes((currentNodes) =>
-      currentNodes.map((currentNode) => {
-        if (currentNode.id === nodeId) {
-          return { ...currentNode, role };
-        }
-
-        if (role !== "normal" && currentNode.role === role) {
-          return { ...currentNode, role: "normal" };
-        }
-
-        return currentNode;
-      })
-    );
-    setMoveMessage(`Saving ${node?.label ?? "step"} role...`);
-
-    startGraphTransition(() => {
-      void (async () => {
-        const result = await onUpdateStepNodeType({
-          stepId: nodeId,
-          nodeType: toProcessStepNodeType(role)
-        });
-
-        if (!result.ok) {
-          setNodes(previousNodes);
-          setMoveMessage(result.error);
-          return;
-        }
-
-        setMoveMessage(`Saved ${node?.label ?? "step"} role.`);
-      })();
-    });
-  };
-
   const deleteNodes = useCallback((nodeIds: string[]) => {
     const uniqueNodeIds = Array.from(new Set(nodeIds)).filter((nodeId) => nodeById.has(nodeId));
     if (uniqueNodeIds.length === 0) {
@@ -2039,7 +1989,6 @@ export function ProcessFlowDiagram({
         onCommitLabel={commitNodeLabel}
         onCancelLabelEdit={cancelNodeLabelEdit}
         onBeginWaferDrag={beginWaferDrag}
-        onSetNodeRole={setNodeRole}
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}
         onEdgeClick={(edgeId) => { setSelectedNodeIds(new Set()); setSelectedEdgeId(edgeId); }}
       />

@@ -609,3 +609,17 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Browser screenshot was unauthenticated and showed the backend-only empty guard,
   so authenticated seeded graph visual acceptance still needs an existing saved
   auth session.
+
+## Recent development note (2026-07-05 process flow delete-only context menu)
+
+- Simplified the process-flow node right-click menu so it only offers step
+  deletion. Removed Beginning step, End step, and Normal step role actions from
+  the context menu path.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-delete-only-context-menu.png`
+- Browser screenshot was unauthenticated and showed the backend-only empty guard,
+  so authenticated right-click interaction still needs an existing saved auth
+  session.

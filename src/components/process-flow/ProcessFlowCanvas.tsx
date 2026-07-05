@@ -7,7 +7,6 @@ import type {
   ConnectionDraft,
   FlowEdge,
   FlowNode,
-  FlowNodeRole,
   NodeDrag,
   RoleMenu,
   SelectionRect,
@@ -61,7 +60,6 @@ type ProcessFlowCanvasProps = {
   onCommitLabel: (nodeId: string, value: string) => void;
   onCancelLabelEdit: (nodeId: string) => void;
   onBeginWaferDrag: (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => void;
-  onSetNodeRole: (nodeId: string, role: FlowNodeRole) => void;
   onDeleteNodes: (nodeIds: string[]) => void;
   onEdgeClick: (edgeId: string) => void;
 };
@@ -111,7 +109,6 @@ export function ProcessFlowCanvas({
   onCommitLabel,
   onCancelLabelEdit,
   onBeginWaferDrag,
-  onSetNodeRole,
   onDeleteNodes,
   onEdgeClick
 }: ProcessFlowCanvasProps) {
@@ -266,17 +263,8 @@ export function ProcessFlowCanvas({
           className="flow-role-menu"
           style={{ left: `${roleMenu.paneX}px`, top: `${roleMenu.paneY}px` }}
           role="menu"
-          aria-label={`${roleMenuNode.label} role`}
+          aria-label={`${roleMenuNode.label} actions`}
         >
-          <button type="button" role="menuitem" onClick={() => onSetNodeRole(roleMenu.nodeId, "start")}>
-            Beginning step
-          </button>
-          <button type="button" role="menuitem" onClick={() => onSetNodeRole(roleMenu.nodeId, "end")}>
-            End step
-          </button>
-          <button type="button" role="menuitem" onClick={() => onSetNodeRole(roleMenu.nodeId, "normal")}>
-            Normal step
-          </button>
           <button
             type="button"
             role="menuitem"
