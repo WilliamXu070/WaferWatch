@@ -18,20 +18,6 @@ export function DiePreviewCard({ tile }: { tile: WaferStatusTileModel }) {
           className="max-h-[210px]"
         />
       </div>
-      <div className="mt-4 grid grid-cols-3 overflow-hidden rounded-lg border border-[#e8e8e3] bg-white text-center text-[13px] font-semibold text-[#66665f]">
-        {["Front", "Back", "3D"].map((view, index) => (
-          <button
-            key={view}
-            type="button"
-            className={[
-              "h-10 hover:bg-[#fafafa]",
-              index === 0 ? "bg-[#fafafa] text-[#111111]" : "border-l border-[#eeeeea]"
-            ].join(" ")}
-          >
-            {view}
-          </button>
-        ))}
-      </div>
     </DetailCard>
   );
 }

@@ -572,3 +572,35 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     authenticated active-die visual acceptance still needs a fresh existing
     session.
   - Screenshot: `/tmp/wafer-checkmark-filled-single.png`
+
+## Recent development note (2026-07-05 wafer die preview controls removal)
+
+- Removed the nonfunctional Front/Back/3D segmented control from the die preview
+  card in the wafer die detail viewer.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3000/api/health`
+  - Playwright CLI route screenshot at
+    `http://localhost:3000/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with `1440x1000` viewport and `playwright/.auth/user.json`.
+  - The saved auth state still rendered the unauthenticated empty state, so
+    authenticated active-die visual acceptance still needs a fresh existing
+    session.
+  - Screenshot: `/tmp/wafer-die-preview-toggle-removed.png`
+
+## Recent development note (2026-07-05 wafer die tab order)
+
+- Reordered the wafer die detail tabs to Overview, Parameters, Results, Notes,
+  then Process history.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3000/api/health`
+  - Playwright CLI route screenshot at
+    `http://localhost:3000/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with `1440x1000` viewport and `playwright/.auth/user.json`.
+  - The saved auth state still rendered the unauthenticated empty state, so
+    authenticated active-die visual acceptance still needs a fresh existing
+    session.
+  - Screenshot: `/tmp/wafer-die-tabs-reordered.png`
