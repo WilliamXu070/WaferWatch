@@ -183,6 +183,20 @@ export type WaferTileStatus = "litho" | "etch" | "inspection" | "bond" | "test" 
 
 export type WaferDisplayMode = "diced" | "undiced";
 
+export type DiePolingParameterField =
+  | "voltage"
+  | "width"
+  | "pulseCount"
+  | "postPulseVoltage"
+  | "postPulseWidth"
+  | "peakVoltage"
+  | "pulseDuration"
+  | "description";
+
+export type DiePolingCellValues = Partial<Record<DiePolingParameterField, string>>;
+
+export type DiePolingRows = Record<string, Record<string, DiePolingCellValues>>;
+
 export type WaferStatusTileModel = {
   id: string;
   projectId: string;
@@ -198,6 +212,7 @@ export type WaferStatusTileModel = {
   mode?: WaferDisplayMode;
   isUndiced?: boolean;
   isSelected?: boolean;
+  diePolingParameters?: Record<string, DiePolingRows>;
 };
 
 export type WaferFamilyModel = {

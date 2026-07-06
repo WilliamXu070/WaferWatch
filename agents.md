@@ -666,3 +666,105 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The saved auth state still rendered the unauthenticated empty state, so
     authenticated Notes interaction was not browser-exercised in the main checkout.
   - Screenshot: `/tmp/waferwatch-main-notes-merge.png`
+
+## Recent development note (2026-07-06 fabrication parameters chip matrix)
+
+- Updated the wafer die detail Fabrication parameters card from pulse-oriented
+  columns to a chip-row matrix while preserving the original light product-table
+  style: recipe metadata, R1/R2/R3 sections, R*C1-C15 chip columns, the
+  requested voltage/pulse/post-pulse rows, no separate units column, and
+  row-level note actions.
+- Made parameter cells editable with local-first draft updates and debounced
+  batched background persistence to `wafers.metadata.die_poling_parameters`
+  through the existing wafer poling parameter action path.
+- Kept the existing component reuse behavior unchanged; Results still imports
+  the same Parameters table component.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Playwright CLI screenshot at
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport.
+  - Screenshot: `/tmp/wafer-parameters-editable-smoke.png`
+  - The available browser sessions rendered the unauthenticated backend empty
+    state, so authenticated parameter editing and DB persistence still need a
+    fresh existing login to exercise visually.
+
+## Recent development note (2026-07-06 fabrication parameters clipboard selection)
+
+- Added spreadsheet-style selection behavior to the Fabrication parameters
+  matrix: drag or Shift+Arrow selects rectangular cell ranges, clicking an
+  R1/R2/R3 chip-row header selects the full 5x15 section, and browser copy/paste
+  uses tab-separated values so a full R1 parameter block can be pasted onto R2
+  or R3.
+- Pasted parameter values continue through the same debounced batched background
+  save path as individual cell edits, and paste is blocked in read-only states
+  instead of creating local-only parameter drafts.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - In-app browser route
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    reloaded at the target URL with zero console errors.
+  - Playwright CLI screenshot at the same route with a `1440x1000` viewport:
+    `/tmp/wafer-parameters-clipboard-empty-state.png`
+  - The available browser session rendered the unauthenticated backend empty
+    state, so authenticated R1-to-R2 clipboard and database persistence still
+    need a fresh existing login to exercise visually.
+
+## Recent development note (2026-07-06 fabrication parameters paste origin)
+
+- Fixed Fabrication parameters range paste so multi-cell paste always starts at
+  the selected range's top-left cell instead of the drag end/active cell. This
+  makes top-left-to-bottom-right and bottom-right-to-top-left selections behave
+  the same when copying one chip-row block into another.
+- Replaced the heavy black active-cell outline/focus box with a quieter selected
+  cell tint and neutral focus border so the table no longer shows the boxed
+  selectable UI around an edited value.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - In-app browser route
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    had zero console errors.
+  - The available browser session rendered the unauthenticated backend empty
+    state, so authenticated clipboard interaction still needs a fresh existing
+    login to exercise visually.
+
+## Recent development note (2026-07-06 fabrication parameters value colors)
+
+- Removed the visible Fabrication parameters save-status label from each chip-row
+  header while keeping the existing debounced background save behavior.
+- Added value-based cell tinting for parameter rows: fields with multiple
+  distinct values get a subtle per-field palette, and identical values share the
+  same tint across R1/R2/R3. Uniform fields remain neutral.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Browser verification still needs an authenticated session to visually inspect
+    the live parameter table; the available session has recently rendered the
+    unauthenticated backend empty state.
+
+## Recent development note (2026-07-06 parameters branch main merge)
+
+- Merged `codex/parameters-chip-matrix` into local `main` with a non-fast-forward
+  merge commit so the Parameters feature remains revertable as one integration
+  unit.
+- Resolved conflicts with the already-merged Notes work by keeping Notes state
+  and text-surface wiring from `main` while adding Parameters tile metadata,
+  editable chip matrix persistence, clipboard behavior, and value-based coloring.
+- Verified from the main checkout with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3014/api/health`
+  - Playwright at
+    `http://localhost:3014/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport.
+  - The route rendered the unauthenticated backend empty state with zero console
+    errors, so authenticated Parameters interaction was not browser-exercised in
+    the main checkout.
+  - Screenshot: `/tmp/waferwatch-main-parameters-merge.png`

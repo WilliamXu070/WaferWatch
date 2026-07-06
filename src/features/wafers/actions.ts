@@ -9,6 +9,7 @@ import {
   lotCreateSchema,
   waferCreateSchema,
   waferDieDescriptionSchema,
+  waferDiePolingParameterBatchSchema,
   waferDiePolingParameterSchema,
   waferStatusSchema
 } from "@/features/wafers/schemas";
@@ -270,6 +271,89 @@ export async function updateWaferDiePolingParameter(input: unknown) {
     };
 
     if (Object.keys(nextDieParameters).length === 0) {
+      delete nextDiePolingParameters[parsed.dieCode];
+    }
+
+    const nextMetadata: Record<string, unknown> = {
+      ...metadata,
+      [DIE_POLING_PARAMETERS_KEY]: nextDiePolingParameters,
+      die_poling_parameter_updated_by: account.userId,
+      die_poling_parameter_updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from("wafers")
+      .update({ metadata: nextMetadata as Json })
+      .eq("id", parsed.waferId)
+      .select("id, metadata")
+      .single();
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidatePath("/", "layout");
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateWaferDiePolingParameters(input: unknown) {
+  try {
+    const account = await requireAccount();
+    const parsed = waferDiePolingParameterBatchSchema.parse(input);
+
+    const supabase = await createServerSupabaseClient();
+    const { data: wafer, error: waferError } = await supabase
+      .from("wafers")
+      .select("id, project_id, metadata")
+      .eq("id", parsed.waferId)
+      .single();
+
+    if (waferError) {
+      return fail(waferError.message);
+    }
+
+    await assertProjectAccess(wafer.project_id, "write");
+
+    const metadata = toMetadataObject(wafer.metadata as Json);
+    const diePolingParameters = toRecordObject(metadata[DIE_POLING_PARAMETERS_KEY]);
+    const dieParameters = toRecordObject(diePolingParameters[parsed.dieCode]);
+
+    for (const update of parsed.updates) {
+      const rowKey = `R${update.row}`;
+      const columnKey = `C${update.column}`;
+      const rowParameters = toRecordObject(dieParameters[rowKey]);
+      const columnParameters = toRecordObject(rowParameters[columnKey]);
+      const nextColumnParameters = {
+        ...columnParameters,
+        [update.field]: update.value
+      };
+
+      if (!update.value.trim()) {
+        delete nextColumnParameters[update.field];
+      }
+
+      if (Object.keys(nextColumnParameters).length === 0) {
+        delete rowParameters[columnKey];
+      } else {
+        rowParameters[columnKey] = nextColumnParameters;
+      }
+
+      if (Object.keys(rowParameters).length === 0) {
+        delete dieParameters[rowKey];
+      } else {
+        dieParameters[rowKey] = rowParameters;
+      }
+    }
+
+    const nextDiePolingParameters = {
+      ...diePolingParameters,
+      [parsed.dieCode]: dieParameters
+    };
+
+    if (Object.keys(dieParameters).length === 0) {
       delete nextDiePolingParameters[parsed.dieCode];
     }
 

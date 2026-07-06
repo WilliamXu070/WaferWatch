@@ -72,7 +72,7 @@ function DieParametersTab({
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <ParametersTableCard />
+      <ParametersTableCard key={`parameters-${tile.id}`} tile={tile} />
       <aside className="grid content-start gap-4">
         <CurrentStepCard tile={tile} />
         <NotesCard notes={notes} onOpenNotes={onOpenNotes} />
@@ -81,12 +81,12 @@ function DieParametersTab({
   );
 }
 
-function DieResultsTab() {
+function DieResultsTab({ tile }: { tile: WaferStatusTileModel }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="grid gap-4">
         <ResultsSequenceCard />
-        <ParametersTableCard />
+        <ParametersTableCard key={`results-parameters-${tile.id}`} tile={tile} />
       </div>
       <aside className="grid content-start gap-4">
         <KeyResultsCard />
@@ -129,7 +129,7 @@ export function WaferDieDetailTabs({
 
   if (activeTab === "history") return <DieHistoryTab tile={tile} notes={notes} onOpenNotes={onOpenNotes} />;
   if (activeTab === "parameters") return <DieParametersTab tile={tile} notes={notes} onOpenNotes={onOpenNotes} />;
-  if (activeTab === "results") return <DieResultsTab />;
+  if (activeTab === "results") return <DieResultsTab tile={tile} />;
   if (activeTab === "notes") return <DieNotesTab tile={tile} notes={notes} onNotesChange={setNotes} />;
   return <DieOverviewTab tile={tile} notes={notes} onOpenNotes={onOpenNotes} />;
 }

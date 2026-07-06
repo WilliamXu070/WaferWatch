@@ -3,6 +3,7 @@ import "server-only";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Json, FabricationStatus, ProcessStep, StepExecution, StepStatus, WaferProcessAssignment } from "@/types/database";
 import type {
+  DiePolingRows,
   WaferDisplayMode,
   WaferFamilyModel,
   WaferFamilyStatus,
@@ -17,6 +18,7 @@ import {
 } from "@/ui/waferwatch-wireframe/components/wafer-die-detail/waferDieDetailData";
 
 type JsonRecord = { [key: string]: Json | undefined };
+type DiePolingParameters = Record<string, DiePolingRows>;
 
 type WaferStatusWaferRow = {
   id: string;
@@ -49,6 +51,7 @@ type WaferStatusExecutionRow = Pick<
 type WaferStatusStepRow = Pick<ProcessStep, "id" | "name" | "process_area" | "step_order">;
 
 const ACTIVE_ASSIGNMENT_STATUSES: FabricationStatus[] = ["planned", "queued", "in_progress", "on_hold"];
+const DIE_POLING_PARAMETERS_KEY = "die_poling_parameters";
 
 function toJsonRecord(metadata: Json): JsonRecord {
   return metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
@@ -57,6 +60,14 @@ function toJsonRecord(metadata: Json): JsonRecord {
 function getRecord(record: JsonRecord, key: string): JsonRecord | null {
   const value = record[key];
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function readDiePolingParameters(metadata: Json): DiePolingParameters {
+  const root = toJsonRecord(metadata);
+  const value = root[DIE_POLING_PARAMETERS_KEY];
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as DiePolingParameters)
+    : {};
 }
 
 function getString(record: JsonRecord, key: string) {
@@ -328,7 +339,8 @@ function mapWafersToStatusModel({
       legacyNote: wafer.notes,
       notesSurfaceValue: notesSurface?.value ?? null,
       mode,
-      isUndiced: mode === "undiced"
+      isUndiced: mode === "undiced",
+      diePolingParameters: readDiePolingParameters(wafer.metadata)
     };
 
     tiles.push(tile);
