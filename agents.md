@@ -803,3 +803,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The route rendered the unauthenticated backend empty state with zero console
     errors, so authenticated Notes-row editing was not browser-exercised.
   - Screenshot: `/tmp/wafer-parameters-notes-row-auth-state.png`
+
+## Recent development note (2026-07-06 parameters tab side card removal)
+
+- Removed the Current step/notes side rail from the wafer die detail Parameters
+  tab so the tab shows only the Fabrication parameters matrix.
+- Overview and Process history still keep their current-step/timeline/note
+  context where applicable.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Playwright at
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport.
+  - The route rendered the unauthenticated backend empty state with zero console
+    errors, so authenticated Parameters-tab visual acceptance still needs an
+    existing signed-in browser session.
