@@ -886,3 +886,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `/tmp/waferwatch-results-uniformity-percent-input-auth-gated.png`
 - Authenticated editing persistence still needs a fresh signed-in browser
   session to exercise visually.
+
+## Recent development note (2026-07-06 results seeded image removal)
+
+- Removed the synthetic seeded microscopy images and fake per-sample image counts
+  from the Results grid and selected-image rail. Empty samples now render as
+  upload placeholders until real persisted inspection images exist.
+- Persisted result images now render through an `<img>` element with
+  `object-contain` inside a stable frame so uploaded images preserve their aspect
+  ratio instead of being horizontally distorted by background sizing.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-seeded-images-removed-auth-gated.png`
+- Authenticated upload/preview formatting still needs a fresh signed-in browser
+  session to exercise against real persisted images.

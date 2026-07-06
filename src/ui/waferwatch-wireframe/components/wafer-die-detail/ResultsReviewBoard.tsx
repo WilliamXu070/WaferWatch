@@ -40,8 +40,6 @@ type ResultSample = {
   row: number;
   column: number;
   status: ResultStatus;
-  imageCount: number;
-  selectedImage: number;
   uniformityPercent: string;
 };
 
@@ -96,8 +94,6 @@ function buildSamples() {
         row,
         column,
         status,
-        imageCount: status === "missing" ? 0 : column % 4 === 0 ? 2 : column === 12 ? 3 : 1,
-        selectedImage: status === "missing" ? 0 : column === 12 ? 3 : 1,
         uniformityPercent: status === "missing" ? "" : `${Math.min(99.9, 86 + row * 1.2 + column * 0.45).toFixed(1)}`
       };
     });
@@ -161,53 +157,26 @@ function getParameterToneClass(
   return toneMaps[field].get(value.trim()) ?? "";
 }
 
-function getMicroscopyBackground(sample: ResultSample, imageIndex = sample.selectedImage || 1) {
-  const xShift = (sample.column * 9 + imageIndex * 17) % 100;
-  const yShift = (sample.row * 21 + imageIndex * 11) % 100;
-  return {
-    backgroundImage: [
-      "linear-gradient(90deg, rgba(45,31,99,0.94) 0 7%, transparent 7% 12%, rgba(33,122,124,0.76) 12% 18%, transparent 18% 26%, rgba(255,230,37,0.8) 26% 40%, transparent 40% 48%, rgba(37,89,122,0.82) 48% 54%, transparent 54% 66%, rgba(248,222,41,0.78) 66% 100%)",
-      "repeating-linear-gradient(90deg, rgba(36,28,92,0.86) 0 5px, rgba(29,164,132,0.62) 5px 12px, rgba(241,232,45,0.72) 12px 18px)",
-      "linear-gradient(180deg, rgba(48,8,74,0.92) 0 13%, rgba(54,198,142,0.65) 13% 48%, rgba(244,225,45,0.78) 48% 72%, rgba(47,28,92,0.9) 72% 100%)"
-    ].join(", "),
-    backgroundBlendMode: "multiply, screen, normal",
-    backgroundPosition: `${xShift}% ${yShift}%`
-  };
-}
-
 function ResultImage({
-  sample,
   imageUrl,
-  imageIndex,
   className = ""
 }: {
-  sample: ResultSample;
   imageUrl?: string | null;
-  imageIndex?: number;
   className?: string;
 }) {
   if (imageUrl) {
     return (
-      <div
-        className={["rounded-md border border-[#d8d8d2] bg-cover bg-center bg-no-repeat shadow-inner", className].join(" ")}
-        style={{ backgroundImage: `url("${imageUrl}")` }}
-      />
-    );
-  }
-
-  if (sample.status === "missing") {
-    return (
-      <div className={["grid place-items-center rounded-md border border-dashed border-[#d8d8d2] bg-[#f7f7f3] text-[#777770]", className].join(" ")}>
-        <span className="text-[18px]">+</span>
+      <div className={["overflow-hidden rounded-md border border-[#d8d8d2] bg-[#f7f7f3] shadow-inner", className].join(" ")}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={imageUrl} alt="" className="h-full w-full object-contain" />
       </div>
     );
   }
 
   return (
-    <div
-      className={["rounded-md border border-[#d8d8d2] bg-[#1e275f] shadow-inner", className].join(" ")}
-      style={getMicroscopyBackground(sample, imageIndex)}
-    />
+    <div className={["grid place-items-center rounded-md border border-dashed border-[#d8d8d2] bg-[#f7f7f3] text-[#777770]", className].join(" ")}>
+      <span className="text-[18px]">+</span>
+    </div>
   );
 }
 
@@ -236,7 +205,7 @@ function SampleTile({
       aria-label={`Select ${sample.id} result sample`}
     >
       <span className={["absolute left-2 top-2 z-10 h-2.5 w-2.5 rounded-full", meta.dot].join(" ")} />
-      <ResultImage sample={sample} imageUrl={imageUrl} className="h-[88px] w-full" />
+      <ResultImage imageUrl={imageUrl} className="h-[88px] w-full" />
       {sample.status === "best" ? (
         <span className="absolute -right-1 -top-2 rounded-md bg-[#2aa866] px-2 py-0.5 text-[10px] font-semibold text-white">
           Best
@@ -450,8 +419,8 @@ function SelectedSamplePanel({
 }) {
   const sampleTitle = `${recipeCode} ${selectedSample.id}`;
   const realImageCount = selectedInspections.length;
-  const displayImageCount = realImageCount || selectedSample.imageCount;
-  const displayImageOrdinal = realImageCount ? selectedImageOrdinal : selectedSample.selectedImage;
+  const displayImageCount = realImageCount;
+  const displayImageOrdinal = realImageCount ? selectedImageOrdinal : 0;
   const { getRootProps, getInputProps, open, isDragActive } = useDropzone({
     accept: {
       "image/png": [".png"],
@@ -520,9 +489,7 @@ function SelectedSamplePanel({
         >
           <input {...getInputProps()} />
           <ResultImage
-            sample={selectedSample}
             imageUrl={selectedInspection?.imageUrl}
-            imageIndex={realImageCount ? selectedImageOrdinal : undefined}
             className="h-[210px] w-full"
           />
           {isDragActive ? (
@@ -662,7 +629,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     Math.max(selectedInspections.length - 1, 0)
   );
   const selectedInspection = selectedInspections[selectedImageIndex] ?? null;
-  const selectedImageOrdinal = selectedInspections.length ? selectedImageIndex + 1 : selectedSample.selectedImage || 0;
+  const selectedImageOrdinal = selectedInspections.length ? selectedImageIndex + 1 : 0;
   const selectedImageKey = selectedInspection ? `inspection-${selectedInspection.id}` : `image-${selectedImageOrdinal}`;
   const sampleMetricScopeKey = useMemo(() => getSampleMetricKey(tile, selectedSample), [selectedSample, tile]);
   const sampleScopeKey = useMemo(
