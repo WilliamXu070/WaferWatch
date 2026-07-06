@@ -807,3 +807,16 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     errors, so authenticated Parameters interaction was not browser-exercised in
     the main checkout.
   - Screenshot: `/tmp/waferwatch-main-parameters-merge.png`
+
+## Recent development note (2026-07-06 results related images removal)
+
+- Removed the lower `All images for ...` thumbnail/upload strip from the Results
+  review board so the selected-image workflow stays focused in the right rail.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-related-images-removed-auth-gated.png`
+- Authenticated Results interaction still needs a fresh signed-in browser
+  session to exercise visually.

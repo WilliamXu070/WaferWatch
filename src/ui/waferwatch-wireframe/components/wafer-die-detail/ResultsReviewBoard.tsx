@@ -6,8 +6,7 @@ import type { WaferStatusTileModel } from "../../types";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
-  FilterIcon,
-  PlusIcon
+  FilterIcon
 } from "../../icons";
 import {
   buildToneMap,
@@ -385,48 +384,6 @@ function ParameterContext({
   );
 }
 
-function RelatedImages({
-  selectedSample
-}: {
-  selectedSample: ResultSample;
-}) {
-  return (
-    <section className="rounded-lg border border-[#e8e8e3] bg-white px-4 py-3">
-      <h3 className="text-[14px] font-semibold text-[#111111]">
-        All images for {selectedSample.id} ({selectedSample.imageCount})
-      </h3>
-      <div className="mt-3 flex flex-wrap gap-3">
-        {selectedSample.imageCount > 0
-          ? Array.from({ length: selectedSample.imageCount }, (_, index) => (
-              <button
-                key={index}
-                type="button"
-                className={[
-                  "relative h-[88px] w-[150px] rounded-lg border bg-white p-1",
-                  index + 1 === selectedSample.selectedImage ? "border-[#111111] shadow-[0_0_0_1px_#111111]" : "border-[#e4e4df]"
-                ].join(" ")}
-              >
-                <span className="absolute left-2 top-2 z-10 grid h-5 w-5 place-items-center rounded-full bg-white text-[11px] font-semibold text-[#44443f]">
-                  {index + 1}
-                </span>
-                <ResultImage sample={selectedSample} imageIndex={index + 1} className="h-full w-full" />
-              </button>
-            ))
-          : null}
-        <button
-          type="button"
-          className="grid h-[88px] w-[118px] place-items-center rounded-lg border border-dashed border-[#d8d8d2] bg-white text-[12px] font-semibold text-[#777770]"
-        >
-          <span className="grid gap-1 place-items-center">
-            <PlusIcon />
-            Upload more
-          </span>
-        </button>
-      </div>
-    </section>
-  );
-}
-
 function SelectedSamplePanel({
   tile,
   selectedSample,
@@ -670,7 +627,6 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
         <ResultMetadataBand />
         <ResultsGrid selectedSample={selectedSample} onSelectSample={selectSample} />
         <ParameterContext tile={tile} selectedSample={selectedSample} />
-        <RelatedImages selectedSample={selectedSample} />
       </div>
 
       <SelectedSamplePanel
