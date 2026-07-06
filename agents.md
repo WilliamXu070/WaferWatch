@@ -604,3 +604,27 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     authenticated active-die visual acceptance still needs a fresh existing
     session.
   - Screenshot: `/tmp/wafer-die-tabs-reordered.png`
+
+## Recent development note (2026-07-06 fabrication parameters chip matrix)
+
+- Updated the wafer die detail Fabrication parameters card from pulse-oriented
+  columns to a chip-row matrix while preserving the original light product-table
+  style: recipe metadata, R1/R2/R3 sections, R*C1-C15 chip columns, the
+  requested voltage/pulse/post-pulse rows, no separate units column, and
+  row-level note actions.
+- Made parameter cells editable with local-first draft updates and debounced
+  batched background persistence to `wafers.metadata.die_poling_parameters`
+  through the existing wafer poling parameter action path.
+- Kept the existing component reuse behavior unchanged; Results still imports
+  the same Parameters table component.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Playwright CLI screenshot at
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport.
+  - Screenshot: `/tmp/wafer-parameters-editable-smoke.png`
+  - The available browser sessions rendered the unauthenticated backend empty
+    state, so authenticated parameter editing and DB persistence still need a
+    fresh existing login to exercise visually.

@@ -41,7 +41,7 @@ function DieHistoryTab({ tile }: { tile: WaferStatusTileModel }) {
 function DieParametersTab({ tile }: { tile: WaferStatusTileModel }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <ParametersTableCard />
+      <ParametersTableCard key={`parameters-${tile.id}`} tile={tile} />
       <aside className="grid content-start gap-4">
         <CurrentStepCard tile={tile} />
         <NotesCard />
@@ -50,12 +50,12 @@ function DieParametersTab({ tile }: { tile: WaferStatusTileModel }) {
   );
 }
 
-function DieResultsTab() {
+function DieResultsTab({ tile }: { tile: WaferStatusTileModel }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="grid gap-4">
         <ResultsSequenceCard />
-        <ParametersTableCard />
+        <ParametersTableCard key={`results-parameters-${tile.id}`} tile={tile} />
       </div>
       <aside className="grid content-start gap-4">
         <KeyResultsCard />
@@ -110,7 +110,7 @@ export function WaferDieDetailTabs({
 }) {
   if (activeTab === "history") return <DieHistoryTab tile={tile} />;
   if (activeTab === "parameters") return <DieParametersTab tile={tile} />;
-  if (activeTab === "results") return <DieResultsTab />;
+  if (activeTab === "results") return <DieResultsTab tile={tile} />;
   if (activeTab === "notes") return <DieNotesTab />;
   return <DieOverviewTab tile={tile} />;
 }
