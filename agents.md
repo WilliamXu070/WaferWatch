@@ -605,6 +605,45 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     session.
   - Screenshot: `/tmp/wafer-die-tabs-reordered.png`
 
+## Recent development note (2026-07-06 results review board)
+
+- Replaced the wafer die detail Results tab with an image-first result review
+  board: all row/column samples render at once, sample selection drives the
+  right-side inspector, the bottom parameter context follows the selected row
+  and column, related images are grouped below, and notes are scoped to the
+  selected result sample via `text_surfaces`.
+- Kept Parameters, Notes, Process history, wafer grid behavior, auth, and schema
+  surfaces unchanged.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - In-app browser at
+    `http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`:
+    unauthenticated backend empty state rendered with no console errors.
+  - Playwright CLI screenshot of the same unauthenticated route:
+    `/tmp/waferwatch-results-review-board-auth-gated.png`
+- Authenticated visual interaction with the Results board still needs a fresh
+  existing browser session; this worktree has no saved `playwright/.auth/user.json`.
+
+## Recent development note (2026-07-06 results parameter context alignment)
+
+- Updated the Results review board so the bottom parameter context and right-side
+  source parameters read from the same exported Parameters display contract:
+  chip row grouping, chip columns, row metadata, parameter values, and color tone
+  maps now come from `ParametersTableCard.tsx`.
+- This keeps Results column highlighting and row switching aligned with the
+  Parameters tab instead of maintaining a duplicate static parameter copy.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-parameter-context-shared-auth-gated-v2.png`
+- In-app browser control timed out while reloading the route; authenticated
+  interaction with the actual Results board still needs a fresh signed-in
+  browser session.
+
 ## Recent development note (2026-07-06 wafer die notes persistence)
 
 - Added persistent create/edit/delete support for the wafer die detail Notes tab.
@@ -768,3 +807,113 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     errors, so authenticated Parameters interaction was not browser-exercised in
     the main checkout.
   - Screenshot: `/tmp/waferwatch-main-parameters-merge.png`
+
+## Recent development note (2026-07-06 results related images removal)
+
+- Removed the lower `All images for ...` thumbnail/upload strip from the Results
+  review board so the selected-image workflow stays focused in the right rail.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-related-images-removed-auth-gated.png`
+- Authenticated Results interaction still needs a fresh signed-in browser
+  session to exercise visually.
+
+## Recent development note (2026-07-06 results grid label removal)
+
+- Removed the Results grid view switcher/status legend row and removed the
+  per-sample metric label under each image tile. Tiles now show only the image,
+  corner status dot, selection state, and best badge where applicable.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-view-labels-removed-auth-gated.png`
+- Authenticated Results interaction still needs a fresh signed-in browser
+  session to exercise visually.
+
+## Recent development note (2026-07-06 results metadata card removal)
+
+- Removed the top recipe/performed-by/fabrication metadata card from the Results
+  review board while keeping the selected-image rail title intact.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-metadata-card-removed-auth-gated.png`
+- Authenticated Results interaction still needs a fresh signed-in browser
+  session to exercise visually.
+
+## Recent development note (2026-07-06 results image upload/delete)
+
+- Wired the Results selected-image rail to the existing die inspection image
+  backend used by the old WaferWatch inspection map: `die_inspections`,
+  `/api/storage/signed-upload`, Supabase Storage, signed preview URLs, and the
+  existing inspection delete action.
+- Result samples now load persisted images by die row/column, support multiple
+  images per R/C sample, accept multi-image drag/drop and clipboard image paste,
+  allow previous/next image navigation, and can delete the selected persisted
+  image.
+- Notes remain scoped to the selected persisted inspection id when an uploaded
+  image exists, with the placeholder image ordinal used only before upload.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-image-upload-delete-auth-gated-v3.png`
+- Authenticated upload/delete interaction still needs a fresh signed-in browser
+  session to exercise against Supabase Storage.
+
+## Recent development note (2026-07-06 results uniformity input)
+
+- Simplified the Results right rail by removing the Key results loss/status
+  block and the Source parameters block. The rail now shows only an editable
+  Uniformity percentage field below the selected image.
+- Uniformity saves through `text_surfaces` using the selected result R/C sample
+  scope and field `uniformity_percent`.
+- Preserved the current collapsible parameter-context table behavior in the
+  Results tab.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-uniformity-percent-input-auth-gated.png`
+- Authenticated editing persistence still needs a fresh signed-in browser
+  session to exercise visually.
+
+## Recent development note (2026-07-06 results seeded image removal)
+
+- Removed the synthetic seeded microscopy images and fake per-sample image counts
+  from the Results grid and selected-image rail. Empty samples now render as
+  upload placeholders until real persisted inspection images exist.
+- Persisted result images now render through an `<img>` element with
+  `object-contain` inside a stable frame so uploaded images preserve their aspect
+  ratio instead of being horizontally distorted by background sizing.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-seeded-images-removed-auth-gated.png`
+- Authenticated upload/preview formatting still needs a fresh signed-in browser
+  session to exercise against real persisted images.
+
+## Recent development note (2026-07-06 results status icon removal)
+
+- Removed seeded Best/Good/Review/Fail/No image status modeling from the Results
+  grid. Result tiles no longer show colored status dots or a Best badge.
+- Renamed the right-rail selected image label from `Best image` to `Image`; the
+  visible result signal is now the editable Uniformity percentage.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-status-icons-removed-auth-gated.png`
+- Authenticated visual inspection still needs a fresh signed-in browser session.
