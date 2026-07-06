@@ -651,3 +651,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The saved auth state still rendered the unauthenticated empty state, so
     authenticated visual confirmation of the Notes tab was not browser-exercised.
   - Screenshot: `/tmp/waferwatch-notes-key-results-removed.png`
+
+## Recent development note (2026-07-06 notes branch main merge)
+
+- Merged `codex/wafer-notes-tab` into local `main` with a non-fast-forward merge
+  commit so the Notes feature remains revertable as one integration unit.
+- Verified from the main checkout with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3014/api/health`
+  - Playwright at
+    `http://localhost:3014/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport and the existing saved auth state.
+  - The saved auth state still rendered the unauthenticated empty state, so
+    authenticated Notes interaction was not browser-exercised in the main checkout.
+  - Screenshot: `/tmp/waferwatch-main-notes-merge.png`
