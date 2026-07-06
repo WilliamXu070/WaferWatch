@@ -9,10 +9,17 @@ import {
   FilterIcon,
   PlusIcon
 } from "../../icons";
+import {
+  buildToneMap,
+  chipColumns,
+  chipRowSections,
+  getDisplayParameterValue,
+  parameterRows,
+  parameterTonePalettes,
+  type VisibleParameterField
+} from "./ParametersTableCard";
 
 type ResultStatus = "best" | "good" | "review" | "fail" | "missing";
-
-type ParameterField = "voltage" | "width" | "pulseCount" | "postPulseVoltage" | "postPulseWidth";
 
 type ResultSample = {
   id: string;
@@ -36,38 +43,6 @@ type SampleNote = {
 const RESULT_SAMPLE_SCOPE_TYPE = "wireframe:result_sample";
 const RESULT_SAMPLE_NOTES_FIELD = "notes";
 const recipeCode = "TFA3.1M1R1";
-const chipColumns = Array.from({ length: 15 }, (_, index) => index + 1);
-const parameterRows: Array<{ field: ParameterField; label: string; unit?: string }> = [
-  { field: "voltage", label: "Voltage", unit: "mV" },
-  { field: "width", label: "Pulse Width", unit: "ms" },
-  { field: "pulseCount", label: "# of Pulses" },
-  { field: "postPulseVoltage", label: "Post-pulse voltage" },
-  { field: "postPulseWidth", label: "Post-pulse width" }
-];
-
-const rowParameters: Record<number, Record<ParameterField, string[]>> = {
-  1: {
-    voltage: ["520", "520", "520", "520", "510", "510", "510", "510", "500", "500", "500", "500", "490", "490", "490"],
-    width: ["10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10"],
-    pulseCount: ["5", "10", "15", "20", "25", "30", "35", "40", "5", "10", "15", "20", "25", "30", "35"],
-    postPulseVoltage: ["300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300"],
-    postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"]
-  },
-  2: {
-    voltage: ["510", "510", "510", "510", "510", "510", "510", "510", "500", "500", "500", "500", "500", "500", "500"],
-    width: ["10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10"],
-    pulseCount: ["5", "10", "15", "20", "25", "30", "35", "40", "5", "10", "15", "20", "25", "30", "35"],
-    postPulseVoltage: ["300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300"],
-    postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"]
-  },
-  3: {
-    voltage: ["500", "500", "500", "500", "490", "490", "490", "490", "480", "480", "480", "480", "470", "470", "470"],
-    width: ["10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10"],
-    pulseCount: ["5", "10", "15", "20", "25", "30", "35", "40", "5", "10", "15", "20", "25", "30", "35"],
-    postPulseVoltage: ["300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300"],
-    postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"]
-  }
-};
 
 const statusMeta: Record<ResultStatus, { label: string; dot: string; badge: string }> = {
   best: { label: "Best", dot: "bg-[#2aa866]", badge: "border-[#8fcba8] bg-[#eaf7ef] text-[#207a49]" },
@@ -82,8 +57,10 @@ function buildSamples() {
   const failedColumns = new Set(["2:13", "2:14", "3:14"]);
   const missingColumns = new Set(["3:12", "3:13", "3:15"]);
 
-  return [1, 2, 3].flatMap((row) =>
-    chipColumns.map((column): ResultSample => {
+  return chipRowSections.flatMap((section) => {
+    const row = Number(section.id.replace("R", ""));
+    return chipColumns.map((columnLabel): ResultSample => {
+      const column = Number(columnLabel.replace("C", ""));
       const key = `${row}:${column}`;
       const base = 17.2 + row * 0.35 + column * 0.18;
       const status: ResultStatus =
@@ -110,8 +87,8 @@ function buildSamples() {
         uniformity: status === "missing" ? "Pending" : `${(base + 0.7).toFixed(1)} dB`,
         loss: status === "missing" ? "Pending" : status === "review" ? "Pending" : `${(1.8 + row * 0.1 + column * 0.03).toFixed(2)} dB`
       };
-    })
-  );
+    });
+  });
 }
 
 const resultSamples = buildSamples();
@@ -121,12 +98,26 @@ function getSampleKey(tile: WaferStatusTileModel, sample: ResultSample) {
   return `${tile.waferId}:${dieCode}:R${sample.row}:C${sample.column}:image-${sample.selectedImage || 0}`;
 }
 
-function formatParameterLabel(row: { label: string; unit?: string }) {
-  return row.unit ? `${row.label} (${row.unit})` : row.label;
+function buildDisplayToneMaps(tile: WaferStatusTileModel) {
+  return Object.fromEntries(
+    parameterRows.map((parameterRow) => {
+      const values = chipRowSections.flatMap((section) => {
+        const row = Number(section.id.replace("R", ""));
+        return chipColumns.map((columnLabel) =>
+          getDisplayParameterValue(tile, row, Number(columnLabel.replace("C", "")), parameterRow.field)
+        );
+      });
+      return [parameterRow.field, buildToneMap(values, parameterTonePalettes[parameterRow.field])];
+    })
+  ) as Record<VisibleParameterField, Map<string, string>>;
 }
 
-function getParameterValue(sample: ResultSample, field: ParameterField) {
-  return rowParameters[sample.row][field][sample.column - 1] ?? "";
+function getParameterToneClass(
+  toneMaps: Record<VisibleParameterField, Map<string, string>>,
+  field: VisibleParameterField,
+  value: string
+) {
+  return toneMaps[field].get(value.trim()) ?? "";
 }
 
 function getMicroscopyBackground(sample: ResultSample, imageIndex = sample.selectedImage || 1) {
@@ -278,30 +269,40 @@ function ResultsGrid({
           <div className="grid grid-cols-[62px_repeat(15,minmax(56px,1fr))] gap-2 text-center text-[12px] font-semibold text-[#55554f]">
             <span />
             {chipColumns.map((column) => (
-              <span key={column}>C{column}</span>
+              <span key={column}>{column}</span>
             ))}
           </div>
-          {[1, 2, 3].map((row) => (
-            <div key={row} className="grid grid-cols-[62px_repeat(15,minmax(56px,1fr))] gap-2">
-              <div className="pt-1">
-                <p className="text-[16px] font-semibold text-[#111111]">R{row}</p>
-                <p className="text-[12px] font-semibold text-[#777770]">Row {row}</p>
-                <p className="mt-3 text-[10px] font-semibold leading-4 text-[#777770]">Period 2.5<br />Gap 20 um<br />sharp-sharp<br />LN 0.5 um</p>
+          {chipRowSections.map((section) => {
+            const row = Number(section.id.replace("R", ""));
+            return (
+              <div key={row} className="grid grid-cols-[62px_repeat(15,minmax(56px,1fr))] gap-2">
+                <div className="pt-1">
+                  <p className="text-[16px] font-semibold text-[#111111]">{section.id}</p>
+                  <p className="text-[12px] font-semibold text-[#777770]">{section.label}</p>
+                  <p className="mt-3 text-[10px] font-semibold leading-4 text-[#777770]">
+                    Period {section.period}
+                    <br />
+                    Gap {section.gap}
+                    <br />
+                    {section.variant}
+                  </p>
+                </div>
+                {chipColumns.map((columnLabel) => {
+                  const column = Number(columnLabel.replace("C", ""));
+                  const sample = resultSamples.find((candidate) => candidate.row === row && candidate.column === column);
+                  if (!sample) return null;
+                  return (
+                    <SampleTile
+                      key={sample.id}
+                      sample={sample}
+                      selected={sample.id === selectedSample.id}
+                      onSelect={onSelectSample}
+                    />
+                  );
+                })}
               </div>
-              {chipColumns.map((column) => {
-                const sample = resultSamples.find((candidate) => candidate.row === row && candidate.column === column);
-                if (!sample) return null;
-                return (
-                  <SampleTile
-                    key={sample.id}
-                    sample={sample}
-                    selected={sample.id === selectedSample.id}
-                    onSelect={onSelectSample}
-                  />
-                );
-              })}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>
@@ -309,10 +310,14 @@ function ResultsGrid({
 }
 
 function ParameterContext({
+  tile,
   selectedSample
 }: {
+  tile: WaferStatusTileModel;
   selectedSample: ResultSample;
 }) {
+  const toneMaps = useMemo(() => buildDisplayToneMaps(tile), [tile]);
+
   return (
     <section className="rounded-lg border border-[#e8e8e3] bg-white">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eeeeea] px-4 py-3">
@@ -334,34 +339,43 @@ function ParameterContext({
           <thead>
             <tr className="border-b border-[#eeeeea] text-[#777770]">
               <th className="w-[150px] px-4 py-2 font-semibold">Parameter</th>
-              {chipColumns.map((column) => (
-                <th
-                  key={column}
-                  className={[
-                    "px-2 py-2 text-center font-semibold",
-                    column === selectedSample.column ? "border-x border-t border-[#111111] text-[#111111]" : ""
-                  ].join(" ")}
-                >
-                  C{column}
-                </th>
-              ))}
+              {chipColumns.map((columnLabel) => {
+                const column = Number(columnLabel.replace("C", ""));
+                return (
+                  <th
+                    key={columnLabel}
+                    className={[
+                      "px-2 py-2 text-center font-semibold",
+                      column === selectedSample.column ? "border-x border-t border-[#111111] text-[#111111]" : ""
+                    ].join(" ")}
+                  >
+                    {columnLabel}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {parameterRows.map((row) => (
               <tr key={row.field} className="border-b border-[#eeeeea] last:border-b-0">
-                <th className="px-4 py-2 text-[12px] font-semibold text-[#55554f]">{formatParameterLabel(row)}</th>
-                {chipColumns.map((column) => (
-                  <td
-                    key={`${row.field}-${column}`}
-                    className={[
-                      "px-2 py-2 text-center text-[12px] font-semibold text-[#4a483f]",
-                      column === selectedSample.column ? "border-x border-[#111111] bg-[#f7f7f3] text-[#111111]" : ""
-                    ].join(" ")}
-                  >
-                    {rowParameters[selectedSample.row][row.field][column - 1]}
-                  </td>
-                ))}
+                <th className="px-4 py-2 text-[12px] font-semibold text-[#55554f]">{row.label}</th>
+                {chipColumns.map((columnLabel) => {
+                  const column = Number(columnLabel.replace("C", ""));
+                  const value = getDisplayParameterValue(tile, selectedSample.row, column, row.field);
+                  const toneClass = getParameterToneClass(toneMaps, row.field, value);
+                  return (
+                    <td
+                      key={`${row.field}-${columnLabel}`}
+                      className={[
+                        "px-2 py-2 text-center text-[12px] font-semibold text-[#4a483f]",
+                        toneClass,
+                        column === selectedSample.column ? "border-x border-[#111111] text-[#111111]" : ""
+                      ].join(" ")}
+                    >
+                      {value}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -515,8 +529,10 @@ function SelectedSamplePanel({
         <dl className="mt-3 grid gap-2 text-[13px]">
           {parameterRows.map((row) => (
             <div key={row.field} className="flex items-center justify-between gap-4">
-              <dt className="text-[#777770]">{formatParameterLabel(row)}</dt>
-              <dd className="font-semibold text-[#111111]">{getParameterValue(selectedSample, row.field)}</dd>
+              <dt className="text-[#777770]">{row.label}</dt>
+              <dd className="font-semibold text-[#111111]">
+                {getDisplayParameterValue(tile, selectedSample.row, selectedSample.column, row.field)}
+              </dd>
             </div>
           ))}
         </dl>
@@ -653,7 +669,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
 
         <ResultMetadataBand />
         <ResultsGrid selectedSample={selectedSample} onSelectSample={selectSample} />
-        <ParameterContext selectedSample={selectedSample} />
+        <ParameterContext tile={tile} selectedSample={selectedSample} />
         <RelatedImages selectedSample={selectedSample} />
       </div>
 

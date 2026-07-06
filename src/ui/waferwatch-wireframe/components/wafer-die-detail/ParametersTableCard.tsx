@@ -17,7 +17,7 @@ const recipeDetails = [
   ["Wafer ID", "TFLN-3"]
 ] as const;
 
-const parameterRows = [
+export const parameterRows = [
   { label: "Voltage (mV)", field: "voltage" },
   { label: "Pulse Width (ms)", field: "width" },
   { label: "# of Pulses", field: "pulseCount" },
@@ -25,18 +25,18 @@ const parameterRows = [
   { label: "Post-pulse width", field: "postPulseWidth" }
 ] as const;
 
-type VisibleParameterField = (typeof parameterRows)[number]["field"];
+export type VisibleParameterField = (typeof parameterRows)[number]["field"];
 type ParameterCellKey = `R${number}:C${number}:${VisibleParameterField}`;
 type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
 type CellUpdate = { key: ParameterCellKey; value: string };
 type FieldToneMaps = Record<VisibleParameterField, Map<string, string>>;
 
-const chipColumns = Array.from({ length: 15 }, (_, index) => `C${index + 1}`);
+export const chipColumns = Array.from({ length: 15 }, (_, index) => `C${index + 1}`);
 const PARAMETER_SAVE_DEBOUNCE_MS = 1100;
 const DIE_CODE_PATTERN = /^[A-Z][1-8]-V\d+$/;
 const SHORT_DIE_CODE_PATTERN = /^[A-Z][1-8]$/;
 
-const parameterTonePalettes: Record<VisibleParameterField, readonly string[]> = {
+export const parameterTonePalettes: Record<VisibleParameterField, readonly string[]> = {
   voltage: [
     "bg-[#eef7ff]",
     "bg-[#e2f1ff]",
@@ -89,7 +89,7 @@ const parameterTonePalettes: Record<VisibleParameterField, readonly string[]> = 
   ]
 };
 
-const chipRowSections = [
+export const chipRowSections = [
   {
     id: "R1",
     label: "Row 1",
@@ -262,7 +262,7 @@ function sortToneValues(values: string[]) {
   });
 }
 
-function buildToneMap(values: string[], palette: readonly string[]) {
+export function buildToneMap(values: string[], palette: readonly string[]) {
   const uniqueValues = sortToneValues([...new Set(values.map(normalizeToneValue).filter(Boolean))]);
   const toneMap = new Map<string, string>();
 
@@ -281,7 +281,7 @@ function buildToneMap(values: string[], palette: readonly string[]) {
   return toneMap;
 }
 
-function getPersistenceDieCode(tile?: WaferStatusTileModel) {
+export function getPersistenceDieCode(tile?: WaferStatusTileModel) {
   const candidate = (tile?.dieLabel || tile?.code || "").trim().toUpperCase();
   if (DIE_CODE_PATTERN.test(candidate)) {
     return candidate;
@@ -294,12 +294,12 @@ function getPersistenceDieCode(tile?: WaferStatusTileModel) {
   return null;
 }
 
-function getDefaultValue(row: number, column: number, field: VisibleParameterField) {
+export function getDefaultValue(row: number, column: number, field: VisibleParameterField) {
   const section = chipRowSections.find((candidate) => candidate.id === `R${row}`);
   return section?.values[field][column - 1] ?? "";
 }
 
-function getSavedValue(
+export function getSavedValue(
   tile: WaferStatusTileModel | undefined,
   dieCode: string | null,
   row: number,
@@ -311,6 +311,16 @@ function getSavedValue(
   }
 
   return tile.diePolingParameters?.[dieCode]?.[`R${row}`]?.[`C${column}`]?.[field];
+}
+
+export function getDisplayParameterValue(
+  tile: WaferStatusTileModel | undefined,
+  row: number,
+  column: number,
+  field: VisibleParameterField
+) {
+  const dieCode = getPersistenceDieCode(tile);
+  return getSavedValue(tile, dieCode, row, column, field) ?? getDefaultValue(row, column, field);
 }
 
 export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {

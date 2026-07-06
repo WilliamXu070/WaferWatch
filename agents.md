@@ -626,6 +626,24 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Authenticated visual interaction with the Results board still needs a fresh
   existing browser session; this worktree has no saved `playwright/.auth/user.json`.
 
+## Recent development note (2026-07-06 results parameter context alignment)
+
+- Updated the Results review board so the bottom parameter context and right-side
+  source parameters read from the same exported Parameters display contract:
+  chip row grouping, chip columns, row metadata, parameter values, and color tone
+  maps now come from `ParametersTableCard.tsx`.
+- This keeps Results column highlighting and row switching aligned with the
+  Parameters tab instead of maintaining a duplicate static parameter copy.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-parameter-context-shared-auth-gated-v2.png`
+- In-app browser control timed out while reloading the route; authenticated
+  interaction with the actual Results board still needs a fresh signed-in
+  browser session.
+
 ## Recent development note (2026-07-06 wafer die notes persistence)
 
 - Added persistent create/edit/delete support for the wafer die detail Notes tab.
