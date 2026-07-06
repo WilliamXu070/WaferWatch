@@ -189,30 +189,6 @@ function SampleTile({
   );
 }
 
-function ResultMetadataBand() {
-  const metadata = [
-    ["Recipe", recipeCode],
-    ["Performed by", "Saeed / Lai / William"],
-    ["Fabricated by", "Saeed"],
-    ["Stack", "1 mm PPLN on TFLN-3"],
-    ["Electrode", "sharp-sharp"],
-    ["Wafer EBL", "May 28"],
-    ["Poling date", "Pending"],
-    ["Wafer ID", "TFLN-3"]
-  ];
-
-  return (
-    <section className="grid gap-y-5 rounded-lg border border-[#e8e8e3] bg-white px-5 py-4 sm:grid-cols-2 xl:grid-cols-4">
-      {metadata.map(([label, value]) => (
-        <div key={label} className="min-w-0 pr-5">
-          <p className="text-[12px] font-semibold text-[#8a887b]">{label}</p>
-          <p className="mt-1 truncate text-[14px] font-semibold text-[#33332f]">{value}</p>
-        </div>
-      ))}
-    </section>
-  );
-}
-
 function ResultsGrid({
   selectedSample,
   onSelectSample
@@ -583,7 +559,6 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
           </div>
         </div>
 
-        <ResultMetadataBand />
         <ResultsGrid selectedSample={selectedSample} onSelectSample={selectSample} />
         <ParameterContext tile={tile} selectedSample={selectedSample} />
       </div>

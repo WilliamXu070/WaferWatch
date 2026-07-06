@@ -834,3 +834,16 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `/tmp/waferwatch-results-view-labels-removed-auth-gated.png`
 - Authenticated Results interaction still needs a fresh signed-in browser
   session to exercise visually.
+
+## Recent development note (2026-07-06 results metadata card removal)
+
+- Removed the top recipe/performed-by/fabrication metadata card from the Results
+  review board while keeping the selected-image rail title intact.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-metadata-card-removed-auth-gated.png`
+- Authenticated Results interaction still needs a fresh signed-in browser
+  session to exercise visually.
