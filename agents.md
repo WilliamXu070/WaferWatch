@@ -628,3 +628,26 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The available browser sessions rendered the unauthenticated backend empty
     state, so authenticated parameter editing and DB persistence still need a
     fresh existing login to exercise visually.
+
+## Recent development note (2026-07-06 fabrication parameters clipboard selection)
+
+- Added spreadsheet-style selection behavior to the Fabrication parameters
+  matrix: drag or Shift+Arrow selects rectangular cell ranges, clicking an
+  R1/R2/R3 chip-row header selects the full 5x15 section, and browser copy/paste
+  uses tab-separated values so a full R1 parameter block can be pasted onto R2
+  or R3.
+- Pasted parameter values continue through the same debounced batched background
+  save path as individual cell edits, and paste is blocked in read-only states
+  instead of creating local-only parameter drafts.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - In-app browser route
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    reloaded at the target URL with zero console errors.
+  - Playwright CLI screenshot at the same route with a `1440x1000` viewport:
+    `/tmp/wafer-parameters-clipboard-empty-state.png`
+  - The available browser session rendered the unauthenticated backend empty
+    state, so authenticated R1-to-R2 clipboard and database persistence still
+    need a fresh existing login to exercise visually.
