@@ -17,8 +17,14 @@ export type WaferDieNote = {
   updatedAt: string;
 };
 
+type NotesSortOrder = "newest" | "oldest";
+
 const MAX_NOTE_LENGTH = 1600;
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const notesSortOptions: Array<{ id: NotesSortOrder; label: string }> = [
+  { id: "newest", label: "Newest first" },
+  { id: "oldest", label: "Oldest first" }
+];
 
 function nowIso() {
   return new Date().toISOString();
@@ -82,7 +88,7 @@ function parsePersistedNotes(value: string | null | undefined) {
     return parsed
       .map(coerceNote)
       .filter((note): note is WaferDieNote => Boolean(note))
-      .sort((first, second) => getNoteTimeValue(second) - getNoteTimeValue(first));
+      .sort((first, second) => getNoteTimeValue(first) - getNoteTimeValue(second));
   } catch {
     return [];
   }
@@ -138,7 +144,10 @@ export function NotesCard({
   notes: readonly WaferDieNote[];
   onOpenNotes: () => void;
 }) {
-  const latestNotes = notes.slice(0, 2);
+  const latestNotes = useMemo(
+    () => [...notes].sort((first, second) => getNoteTimeValue(second) - getNoteTimeValue(first)).slice(0, 2),
+    [notes]
+  );
 
   return (
     <DetailCard title="Notes (latest)">
@@ -185,6 +194,7 @@ export function WaferDieNotesDashboard({
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [sortOrder, setSortOrder] = useState<NotesSortOrder>("oldest");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -196,6 +206,14 @@ export function WaferDieNotesDashboard({
       fieldKey: waferDieNotesSurface.fieldKey
     }),
     [tile.code, tile.dieLabel, tile.projectId, tile.waferId]
+  );
+  const visibleNotes = useMemo(
+    () =>
+      [...notes].sort((first, second) => {
+        const difference = getNoteTimeValue(first) - getNoteTimeValue(second);
+        return sortOrder === "oldest" ? difference : -difference;
+      }),
+    [notes, sortOrder]
   );
 
   const persistNotes = useCallback(
@@ -229,14 +247,14 @@ export function WaferDieNotesDashboard({
 
     const timestamp = nowIso();
     const nextNotes = [
+      ...notes,
       {
         id: crypto.randomUUID(),
         author: "You",
         body: body.slice(0, MAX_NOTE_LENGTH),
         createdAt: timestamp,
         updatedAt: timestamp
-      },
-      ...notes
+      }
     ];
 
     setDraft("");
@@ -288,30 +306,26 @@ export function WaferDieNotesDashboard({
   return (
     <DetailCard title="Notes" className="min-h-[520px]">
       <div className="grid gap-5">
-        <div className="rounded-lg border border-[#e6e6e0] bg-white p-4">
-          <textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value.slice(0, MAX_NOTE_LENGTH))}
-            placeholder="Write a note..."
-            className="min-h-[112px] w-full resize-y border-0 bg-transparent text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94]"
-          />
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#eeeeea] pt-3">
-            <p className="text-[12px] font-medium text-[#8a8a83]">
-              {draft.length}/{MAX_NOTE_LENGTH}
-            </p>
-            <button
-              type="button"
-              onClick={addNote}
-              disabled={!draft.trim() || isSaving}
-              className="h-10 rounded-lg bg-[#111111] px-4 text-[14px] font-semibold text-white hover:bg-[#333333] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
-            >
-              Add note
-            </button>
-          </div>
-        </div>
-
-        <div className="flex min-h-5 items-center justify-between gap-3 text-[12px] font-semibold">
+        <div className="flex min-h-5 flex-wrap items-center justify-between gap-3 text-[12px] font-semibold">
           <span className="text-[#777770]">{notes.length} {notes.length === 1 ? "note" : "notes"}</span>
+          <div className="flex items-center gap-1 rounded-lg border border-[#e1e1dc] bg-white p-1">
+            {notesSortOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setSortOrder(option.id)}
+                className={[
+                  "h-7 rounded-md px-3 text-[12px] font-semibold",
+                  sortOrder === option.id
+                    ? "bg-[#111111] text-white"
+                    : "text-[#66665f] hover:bg-[#fafafa]"
+                ].join(" ")}
+                aria-pressed={sortOrder === option.id}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
           <span className={error ? "text-[#a33a2b]" : "text-[#777770]"}>
             {error ?? (isSaving ? "Saving..." : savedAt ? `Saved ${formatNoteTime(savedAt)}` : "")}
           </span>
@@ -319,7 +333,7 @@ export function WaferDieNotesDashboard({
 
         {notes.length ? (
           <div className="grid gap-1">
-            {notes.map((note) => (
+            {visibleNotes.map((note) => (
               <article key={note.id} className="border-b border-[#eeeeea] py-5">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
@@ -390,6 +404,28 @@ export function WaferDieNotesDashboard({
         ) : (
           <EmptyNotesState />
         )}
+
+        <div className="rounded-lg border border-[#e6e6e0] bg-white p-4">
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value.slice(0, MAX_NOTE_LENGTH))}
+            placeholder="Write a note..."
+            className="min-h-[112px] w-full resize-y border-0 bg-transparent text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94]"
+          />
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#eeeeea] pt-3">
+            <p className="text-[12px] font-medium text-[#8a8a83]">
+              {draft.length}/{MAX_NOTE_LENGTH}
+            </p>
+            <button
+              type="button"
+              onClick={addNote}
+              disabled={!draft.trim() || isSaving}
+              className="h-10 rounded-lg bg-[#111111] px-4 text-[14px] font-semibold text-white hover:bg-[#333333] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
+            >
+              Add note
+            </button>
+          </div>
+        </div>
       </div>
     </DetailCard>
   );
