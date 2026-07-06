@@ -868,3 +868,21 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `/tmp/waferwatch-results-image-upload-delete-auth-gated-v3.png`
 - Authenticated upload/delete interaction still needs a fresh signed-in browser
   session to exercise against Supabase Storage.
+
+## Recent development note (2026-07-06 results uniformity input)
+
+- Simplified the Results right rail by removing the Key results loss/status
+  block and the Source parameters block. The rail now shows only an editable
+  Uniformity percentage field below the selected image.
+- Uniformity saves through `text_surfaces` using the selected result R/C sample
+  scope and field `uniformity_percent`.
+- Preserved the current collapsible parameter-context table behavior in the
+  Results tab.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-uniformity-percent-input-auth-gated.png`
+- Authenticated editing persistence still needs a fresh signed-in browser
+  session to exercise visually.

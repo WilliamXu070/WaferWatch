@@ -14,7 +14,7 @@ import {
   listDieInspectionsForDie,
   type DieInspectionRecord
 } from "@/features/inspections/actions";
-import { upsertTextSurface } from "@/features/text-surfaces/actions";
+import { getTextSurface, upsertTextSurface } from "@/features/text-surfaces/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
 import {
@@ -42,8 +42,7 @@ type ResultSample = {
   status: ResultStatus;
   imageCount: number;
   selectedImage: number;
-  uniformity: string;
-  loss: string;
+  uniformityPercent: string;
 };
 
 type SampleNote = {
@@ -57,6 +56,7 @@ type SampleInspectionMap = Record<string, DieInspectionRecord[]>;
 
 const RESULT_SAMPLE_SCOPE_TYPE = "wireframe:result_sample";
 const RESULT_SAMPLE_NOTES_FIELD = "notes";
+const RESULT_SAMPLE_UNIFORMITY_FIELD = "uniformity_percent";
 const INSPECTION_BUCKET = "wafer-process-files";
 const recipeCode = "TFA3.1M1R1";
 
@@ -78,7 +78,6 @@ function buildSamples() {
     return chipColumns.map((columnLabel): ResultSample => {
       const column = Number(columnLabel.replace("C", ""));
       const key = `${row}:${column}`;
-      const base = 17.2 + row * 0.35 + column * 0.18;
       const status: ResultStatus =
         row === 2 && column === 7
           ? "best"
@@ -99,8 +98,7 @@ function buildSamples() {
         status,
         imageCount: status === "missing" ? 0 : column % 4 === 0 ? 2 : column === 12 ? 3 : 1,
         selectedImage: status === "missing" ? 0 : column === 12 ? 3 : 1,
-        uniformity: status === "missing" ? "Pending" : `${(base + 0.7).toFixed(1)} dB`,
-        loss: status === "missing" ? "Pending" : status === "review" ? "Pending" : `${(1.8 + row * 0.1 + column * 0.03).toFixed(2)} dB`
+        uniformityPercent: status === "missing" ? "" : `${Math.min(99.9, 86 + row * 1.2 + column * 0.45).toFixed(1)}`
       };
     });
   });
@@ -111,6 +109,11 @@ const resultSamples = buildSamples();
 function getSampleKey(tile: WaferStatusTileModel, sample: ResultSample, imageKey: string) {
   const dieCode = tile.dieLabel || tile.code;
   return `${tile.waferId}:${dieCode}:R${sample.row}:C${sample.column}:${imageKey}`;
+}
+
+function getSampleMetricKey(tile: WaferStatusTileModel, sample: ResultSample) {
+  const dieCode = tile.dieLabel || tile.code;
+  return `${tile.waferId}:${dieCode}:R${sample.row}:C${sample.column}`;
 }
 
 function getSampleInspectionKey(row: number, column: number) {
@@ -312,12 +315,21 @@ function ParameterContext({
   onContextRowChange: (row: number) => void;
 }) {
   const toneMaps = useMemo(() => buildDisplayToneMaps(tile), [tile]);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   return (
     <section className="rounded-lg border border-[#e8e8e3] bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eeeeea] px-4 py-3">
+      <div className={["flex flex-wrap items-center justify-between gap-3 px-4 py-3", isExpanded ? "border-b border-[#eeeeea]" : ""].join(" ")}>
         <div className="flex items-center gap-2">
-          <ChevronRightIcon className="rotate-90 text-[#55554f]" />
+          <button
+            type="button"
+            onClick={() => setIsExpanded((current) => !current)}
+            className="grid h-7 w-7 place-items-center rounded-md text-[#55554f] hover:bg-[#f4f4f0] focus:outline-none focus:ring-2 focus:ring-[#111111]/20"
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? "Collapse parameter row" : "Expand parameter row"}
+          >
+            <ChevronRightIcon className={isExpanded ? "rotate-90" : ""} />
+          </button>
           <h3 className="text-[14px] font-semibold text-[#111111]">Row {contextRow}</h3>
         </div>
         <select
@@ -336,53 +348,55 @@ function ParameterContext({
           })}
         </select>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] table-fixed border-collapse text-left text-[12px]">
-          <thead>
-            <tr className="border-b border-[#eeeeea] text-[#777770]">
-              <th className="w-[150px] px-4 py-2 font-semibold">Parameter</th>
-              {chipColumns.map((columnLabel) => {
-                const column = Number(columnLabel.replace("C", ""));
-                return (
-                  <th
-                    key={columnLabel}
-                    className={[
-                      "px-2 py-2 text-center font-semibold",
-                      column === selectedSample.column ? "border-x border-t border-[#111111] text-[#111111]" : ""
-                    ].join(" ")}
-                  >
-                    {columnLabel}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {parameterRows.map((row) => (
-              <tr key={row.field} className="border-b border-[#eeeeea] last:border-b-0">
-                <th className="px-4 py-2 text-[12px] font-semibold text-[#55554f]">{row.label}</th>
+      {isExpanded ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] table-fixed border-collapse text-left text-[12px]">
+            <thead>
+              <tr className="border-b border-[#eeeeea] text-[#777770]">
+                <th className="w-[150px] px-4 py-2 font-semibold">Parameter</th>
                 {chipColumns.map((columnLabel) => {
                   const column = Number(columnLabel.replace("C", ""));
-                  const value = getDisplayParameterValue(tile, contextRow, column, row.field);
-                  const toneClass = getParameterToneClass(toneMaps, row.field, value);
                   return (
-                    <td
-                      key={`${row.field}-${columnLabel}`}
+                    <th
+                      key={columnLabel}
                       className={[
-                        "px-2 py-2 text-center text-[12px] font-semibold text-[#4a483f]",
-                        toneClass,
-                        column === selectedSample.column ? "border-x border-[#111111] text-[#111111]" : ""
+                        "px-2 py-2 text-center font-semibold",
+                        column === selectedSample.column ? "border-x border-t border-[#111111] text-[#111111]" : ""
                       ].join(" ")}
                     >
-                      {value}
-                    </td>
+                      {columnLabel}
+                    </th>
                   );
                 })}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {parameterRows.map((row) => (
+                <tr key={row.field} className="border-b border-[#eeeeea] last:border-b-0">
+                  <th className="px-4 py-2 text-[12px] font-semibold text-[#55554f]">{row.label}</th>
+                  {chipColumns.map((columnLabel) => {
+                    const column = Number(columnLabel.replace("C", ""));
+                    const value = getDisplayParameterValue(tile, contextRow, column, row.field);
+                    const toneClass = getParameterToneClass(toneMaps, row.field, value);
+                    return (
+                      <td
+                        key={`${row.field}-${columnLabel}`}
+                        className={[
+                          "px-2 py-2 text-center text-[12px] font-semibold text-[#4a483f]",
+                          toneClass,
+                          column === selectedSample.column ? "border-x border-[#111111] text-[#111111]" : ""
+                        ].join(" ")}
+                      >
+                        {value}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -395,6 +409,9 @@ function SelectedSamplePanel({
   selectedImageOrdinal,
   isImageBusy,
   imageError,
+  uniformityValue,
+  isSavingUniformity,
+  uniformityError,
   notes,
   draftNote,
   isSavingNote,
@@ -404,6 +421,8 @@ function SelectedSamplePanel({
   onFilesAdd,
   onDeleteImage,
   onNavigateImage,
+  onUniformityChange,
+  onUniformityBlur,
   onNavigateSample
 }: {
   tile: WaferStatusTileModel;
@@ -413,6 +432,9 @@ function SelectedSamplePanel({
   selectedImageOrdinal: number;
   isImageBusy: boolean;
   imageError: string | null;
+  uniformityValue: string;
+  isSavingUniformity: boolean;
+  uniformityError: string | null;
   notes: readonly SampleNote[];
   draftNote: string;
   isSavingNote: boolean;
@@ -422,9 +444,10 @@ function SelectedSamplePanel({
   onFilesAdd: (files: readonly File[]) => void;
   onDeleteImage: () => void;
   onNavigateImage: (direction: -1 | 1) => void;
+  onUniformityChange: (value: string) => void;
+  onUniformityBlur: () => void;
   onNavigateSample: (direction: -1 | 1) => void;
 }) {
-  const meta = statusMeta[selectedSample.status];
   const sampleTitle = `${recipeCode} ${selectedSample.id}`;
   const realImageCount = selectedInspections.length;
   const displayImageCount = realImageCount || selectedSample.imageCount;
@@ -552,42 +575,24 @@ function SelectedSamplePanel({
       </div>
 
       <div className="border-t border-[#eeeeea] pt-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-[14px] font-semibold text-[#111111]">Key results</h3>
-          <span className={["rounded-md border px-2 py-1 text-[12px] font-semibold", meta.badge].join(" ")}>
-            {meta.label}
+        <label className="grid gap-2">
+          <span className="text-[14px] font-semibold text-[#111111]">Uniformity</span>
+          <span className="flex items-center rounded-lg border border-[#e1e1dc] bg-white px-3 focus-within:border-[#111111]">
+            <input
+              type="text"
+              inputMode="decimal"
+              value={uniformityValue}
+              onChange={(event) => onUniformityChange(event.target.value)}
+              onBlur={onUniformityBlur}
+              className="min-w-0 flex-1 bg-transparent py-3 text-[28px] font-semibold text-[#111111] outline-none"
+              aria-label="Uniformity percentage"
+            />
+            <span className="text-[22px] font-semibold text-[#777770]">%</span>
           </span>
-        </div>
-        <dl className="grid gap-3 text-[13px]">
-          <div>
-            <dt className="text-[12px] font-semibold text-[#777770]">Uniformity</dt>
-            <dd className="mt-1 text-[24px] font-semibold text-[#111111]">{selectedSample.uniformity}</dd>
-          </div>
-          <div className="grid grid-cols-2 gap-3 border-t border-[#eeeeea] pt-3">
-            <div>
-              <dt className="text-[12px] font-semibold text-[#777770]">Loss (est.)</dt>
-              <dd className="mt-1 font-semibold text-[#111111]">{selectedSample.loss}</dd>
-            </div>
-            <div>
-              <dt className="text-[12px] font-semibold text-[#777770]">Status</dt>
-              <dd className="mt-1 font-semibold text-[#111111]">{meta.label}</dd>
-            </div>
-          </div>
-        </dl>
-      </div>
-
-      <div className="border-t border-[#eeeeea] pt-4">
-        <h3 className="text-[14px] font-semibold text-[#111111]">Source parameters</h3>
-        <dl className="mt-3 grid gap-2 text-[13px]">
-          {parameterRows.map((row) => (
-            <div key={row.field} className="flex items-center justify-between gap-4">
-              <dt className="text-[#777770]">{row.label}</dt>
-              <dd className="font-semibold text-[#111111]">
-                {getDisplayParameterValue(tile, selectedSample.row, selectedSample.column, row.field)}
-              </dd>
-            </div>
-          ))}
-        </dl>
+        </label>
+        <p className={["mt-2 text-[12px] font-semibold", uniformityError ? "text-[#a33a2b]" : "text-[#777770]"].join(" ")}>
+          {uniformityError ?? (isSavingUniformity ? "Saving uniformity..." : "Saved")}
+        </p>
       </div>
 
       <div className="border-t border-[#eeeeea] pt-4">
@@ -638,6 +643,10 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
   const [selectedImageIndexBySample, setSelectedImageIndexBySample] = useState<Record<string, number>>({});
   const [isImageBusy, setIsImageBusy] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [uniformityBySample, setUniformityBySample] = useState<Record<string, string>>({});
+  const [savedUniformityBySample, setSavedUniformityBySample] = useState<Record<string, string>>({});
+  const [isSavingUniformity, setIsSavingUniformity] = useState(false);
+  const [uniformityError, setUniformityError] = useState<string | null>(null);
   const [draftNote, setDraftNote] = useState("");
   const [notesBySample, setNotesBySample] = useState<Record<string, SampleNote[]>>({});
   const [isSavingNote, setIsSavingNote] = useState(false);
@@ -655,11 +664,49 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
   const selectedInspection = selectedInspections[selectedImageIndex] ?? null;
   const selectedImageOrdinal = selectedInspections.length ? selectedImageIndex + 1 : selectedSample.selectedImage || 0;
   const selectedImageKey = selectedInspection ? `inspection-${selectedInspection.id}` : `image-${selectedImageOrdinal}`;
+  const sampleMetricScopeKey = useMemo(() => getSampleMetricKey(tile, selectedSample), [selectedSample, tile]);
   const sampleScopeKey = useMemo(
     () => getSampleKey(tile, selectedSample, selectedImageKey),
     [selectedImageKey, selectedSample, tile]
   );
   const selectedNotes = useMemo(() => notesBySample[sampleScopeKey] ?? [], [notesBySample, sampleScopeKey]);
+  const uniformityValue = uniformityBySample[sampleMetricScopeKey] ?? selectedSample.uniformityPercent;
+
+  useEffect(() => {
+    if (sampleMetricScopeKey in uniformityBySample) {
+      return;
+    }
+
+    let isStale = false;
+    void getTextSurface({
+      projectId: tile.projectId,
+      scopeType: RESULT_SAMPLE_SCOPE_TYPE,
+      scopeKey: sampleMetricScopeKey,
+      fieldKey: RESULT_SAMPLE_UNIFORMITY_FIELD
+    }).then((result) => {
+      if (isStale) {
+        return;
+      }
+
+      if (result.ok) {
+        const value = result.data?.value ?? selectedSample.uniformityPercent;
+        setUniformityBySample((current) => ({
+          ...current,
+          [sampleMetricScopeKey]: value
+        }));
+        setSavedUniformityBySample((current) => ({
+          ...current,
+          [sampleMetricScopeKey]: value
+        }));
+      } else {
+        setUniformityError(result.error);
+      }
+    });
+
+    return () => {
+      isStale = true;
+    };
+  }, [sampleMetricScopeKey, selectedSample.uniformityPercent, tile.projectId, uniformityBySample]);
 
   useEffect(() => {
     if (!tile.waferId || !dieCode) {
@@ -718,6 +765,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     setDraftNote("");
     setNoteError(null);
     setImageError(null);
+    setUniformityError(null);
   }, []);
 
   const navigateSample = useCallback((direction: -1 | 1) => {
@@ -769,6 +817,46 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
       setNoteError(result.error);
     }
   }, [draftNote, isSavingNote, sampleScopeKey, selectedNotes, tile.projectId]);
+
+  const saveUniformity = useCallback(async () => {
+    const value = uniformityValue.trim();
+    const savedValue = savedUniformityBySample[sampleMetricScopeKey] ?? selectedSample.uniformityPercent;
+    if (value === savedValue || isSavingUniformity) {
+      return;
+    }
+
+    setIsSavingUniformity(true);
+    setUniformityError(null);
+
+    const result = await upsertTextSurface({
+      projectId: tile.projectId,
+      scopeType: RESULT_SAMPLE_SCOPE_TYPE,
+      scopeKey: sampleMetricScopeKey,
+      fieldKey: RESULT_SAMPLE_UNIFORMITY_FIELD,
+      value
+    });
+
+    setIsSavingUniformity(false);
+    if (result.ok) {
+      setUniformityBySample((current) => ({
+        ...current,
+        [sampleMetricScopeKey]: result.data.value
+      }));
+      setSavedUniformityBySample((current) => ({
+        ...current,
+        [sampleMetricScopeKey]: result.data.value
+      }));
+    } else {
+      setUniformityError(result.error);
+    }
+  }, [
+    isSavingUniformity,
+    sampleMetricScopeKey,
+    savedUniformityBySample,
+    selectedSample.uniformityPercent,
+    tile.projectId,
+    uniformityValue
+  ]);
 
   const uploadResultFiles = useCallback(async (files: readonly File[]) => {
     if (!tile.projectId || !tile.waferId || !dieCode) {
@@ -970,6 +1058,9 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
         selectedImageOrdinal={selectedImageOrdinal}
         isImageBusy={isImageBusy}
         imageError={imageError}
+        uniformityValue={uniformityValue}
+        isSavingUniformity={isSavingUniformity}
+        uniformityError={uniformityError}
         notes={selectedNotes}
         draftNote={draftNote}
         isSavingNote={isSavingNote}
@@ -979,6 +1070,14 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
         onFilesAdd={(files) => void uploadResultFiles(files)}
         onDeleteImage={deleteSelectedImage}
         onNavigateImage={navigateImage}
+        onUniformityChange={(value) => {
+          setUniformityError(null);
+          setUniformityBySample((current) => ({
+            ...current,
+            [sampleMetricScopeKey]: value
+          }));
+        }}
+        onUniformityBlur={() => void saveUniformity()}
         onNavigateSample={navigateSample}
       />
     </div>
