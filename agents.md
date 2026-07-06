@@ -903,3 +903,17 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `/tmp/waferwatch-results-seeded-images-removed-auth-gated.png`
 - Authenticated upload/preview formatting still needs a fresh signed-in browser
   session to exercise against real persisted images.
+
+## Recent development note (2026-07-06 results status icon removal)
+
+- Removed seeded Best/Good/Review/Fail/No image status modeling from the Results
+  grid. Result tiles no longer show colored status dots or a Best badge.
+- Renamed the right-rail selected image label from `Best image` to `Image`; the
+  visible result signal is now the editable Uniformity percentage.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-status-icons-removed-auth-gated.png`
+- Authenticated visual inspection still needs a fresh signed-in browser session.

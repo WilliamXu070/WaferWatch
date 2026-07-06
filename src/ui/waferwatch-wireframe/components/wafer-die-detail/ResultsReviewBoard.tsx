@@ -33,13 +33,10 @@ import {
   type VisibleParameterField
 } from "./ParametersTableCard";
 
-type ResultStatus = "best" | "good" | "review" | "fail" | "missing";
-
 type ResultSample = {
   id: string;
   row: number;
   column: number;
-  status: ResultStatus;
   uniformityPercent: string;
 };
 
@@ -58,43 +55,17 @@ const RESULT_SAMPLE_UNIFORMITY_FIELD = "uniformity_percent";
 const INSPECTION_BUCKET = "wafer-process-files";
 const recipeCode = "TFA3.1M1R1";
 
-const statusMeta: Record<ResultStatus, { label: string; dot: string; badge: string }> = {
-  best: { label: "Best", dot: "bg-[#2aa866]", badge: "border-[#8fcba8] bg-[#eaf7ef] text-[#207a49]" },
-  good: { label: "Good", dot: "bg-[#3e8edb]", badge: "border-[#b9d7ef] bg-[#edf6ff] text-[#286da8]" },
-  review: { label: "Review", dot: "bg-[#f2b632]", badge: "border-[#f1d58f] bg-[#fff8e7] text-[#90640d]" },
-  fail: { label: "Fail", dot: "bg-[#c93535]", badge: "border-[#efb9b9] bg-[#fff0ef] text-[#9b2727]" },
-  missing: { label: "No image", dot: "bg-[#bbbbb2]", badge: "border-[#ddddda] bg-[#f7f7f3] text-[#777770]" }
-};
-
 function buildSamples() {
-  const reviewColumns = new Set(["1:14", "2:12", "2:13", "3:10"]);
-  const failedColumns = new Set(["2:13", "2:14", "3:14"]);
-  const missingColumns = new Set(["3:12", "3:13", "3:15"]);
-
   return chipRowSections.flatMap((section) => {
     const row = Number(section.id.replace("R", ""));
     return chipColumns.map((columnLabel): ResultSample => {
       const column = Number(columnLabel.replace("C", ""));
-      const key = `${row}:${column}`;
-      const status: ResultStatus =
-        row === 2 && column === 7
-          ? "best"
-          : missingColumns.has(key)
-            ? "missing"
-            : failedColumns.has(key)
-              ? "fail"
-              : reviewColumns.has(key)
-                ? "review"
-                : column % 6 === 0
-                  ? "good"
-                  : "good";
 
       return {
         id: `R${row}C${column}`,
         row,
         column,
-        status,
-        uniformityPercent: status === "missing" ? "" : `${Math.min(99.9, 86 + row * 1.2 + column * 0.45).toFixed(1)}`
+        uniformityPercent: `${Math.min(99.9, 86 + row * 1.2 + column * 0.45).toFixed(1)}`
       };
     });
   });
@@ -191,26 +162,18 @@ function SampleTile({
   selected: boolean;
   onSelect: (sample: ResultSample) => void;
 }) {
-  const meta = statusMeta[sample.status];
   return (
     <button
       type="button"
       onClick={() => onSelect(sample)}
       className={[
         "relative grid gap-1 rounded-lg border bg-white p-1.5 text-left transition-colors",
-        selected ? "border-[#111111] shadow-[0_0_0_1px_#111111]" : "border-[#e4e4df] hover:border-[#c8c8c0]",
-        sample.status === "missing" ? "text-[#777770]" : "text-[#111111]"
+        selected ? "border-[#111111] shadow-[0_0_0_1px_#111111]" : "border-[#e4e4df] hover:border-[#c8c8c0]"
       ].join(" ")}
       aria-pressed={selected}
       aria-label={`Select ${sample.id} result sample`}
     >
-      <span className={["absolute left-2 top-2 z-10 h-2.5 w-2.5 rounded-full", meta.dot].join(" ")} />
       <ResultImage imageUrl={imageUrl} className="h-[88px] w-full" />
-      {sample.status === "best" ? (
-        <span className="absolute -right-1 -top-2 rounded-md bg-[#2aa866] px-2 py-0.5 text-[10px] font-semibold text-white">
-          Best
-        </span>
-      ) : null}
     </button>
   );
 }
@@ -472,7 +435,7 @@ function SelectedSamplePanel({
 
       <div className="border-t border-[#eeeeea] pt-4">
         <div className="mb-3 flex items-center justify-between text-[13px] font-semibold">
-          <span className="text-[#44443f]">Best image</span>
+          <span className="text-[#44443f]">Image</span>
           <span className="text-[#777770]">
             {displayImageCount ? `${displayImageOrdinal} of ${displayImageCount}` : "0 of 0"}
           </span>
