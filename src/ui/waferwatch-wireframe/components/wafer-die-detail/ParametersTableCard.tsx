@@ -22,7 +22,8 @@ const parameterRows = [
   { label: "Pulse Width (ms)", field: "width" },
   { label: "# of Pulses", field: "pulseCount" },
   { label: "Post-pulse voltage", field: "postPulseVoltage" },
-  { label: "Post-pulse width", field: "postPulseWidth" }
+  { label: "Post-pulse width", field: "postPulseWidth" },
+  { label: "Notes", field: "description" }
 ] as const;
 
 type VisibleParameterField = (typeof parameterRows)[number]["field"];
@@ -86,8 +87,11 @@ const parameterTonePalettes: Record<VisibleParameterField, readonly string[]> = 
     "bg-[#a6d2cb]",
     "bg-[#99cac2]",
     "bg-[#8cc1b9]"
-  ]
+  ],
+  description: []
 };
+
+const emptyNotes = Array.from({ length: 15 }, () => "");
 
 const chipRowSections = [
   {
@@ -102,7 +106,8 @@ const chipRowSections = [
       width: ["10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10"],
       pulseCount: ["5", "10", "15", "20", "25", "30", "35", "40", "5", "10", "15", "20", "25", "30", "35"],
       postPulseVoltage: ["300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300"],
-      postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"]
+      postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"],
+      description: emptyNotes
     }
   },
   {
@@ -117,7 +122,8 @@ const chipRowSections = [
       width: ["10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10"],
       pulseCount: ["5", "10", "15", "20", "25", "30", "35", "40", "5", "10", "15", "20", "25", "30", "35"],
       postPulseVoltage: ["300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300"],
-      postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"]
+      postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"],
+      description: emptyNotes
     }
   },
   {
@@ -132,7 +138,8 @@ const chipRowSections = [
       width: ["10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10"],
       pulseCount: ["5", "10", "15", "20", "25", "30", "35", "40", "5", "10", "15", "20", "25", "30", "35"],
       postPulseVoltage: ["300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300"],
-      postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"]
+      postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"],
+      description: emptyNotes
     }
   }
 ] as const;
@@ -285,7 +292,7 @@ function buildToneMap(values: string[], palette: readonly string[]) {
   const uniqueValues = sortToneValues([...new Set(values.map(normalizeToneValue).filter(Boolean))]);
   const toneMap = new Map<string, string>();
 
-  if (uniqueValues.length <= 1) {
+  if (palette.length === 0 || uniqueValues.length <= 1) {
     return toneMap;
   }
 
@@ -843,6 +850,7 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                           const columnNumber = index + 1;
                           const chipId = `${section.id}${chipColumns[index]}`;
                           const isSelected = chipId === "R2C7" && row.label === "# of Pulses";
+                          const isNotesRow = row.field === "description";
                           const cellKey = getCellKey(rowNumber, columnNumber, row.field);
                           const isCellSelected = selectedCellSet.has(cellKey);
                           const isActiveCell = activeCellKey === cellKey;
@@ -862,9 +870,10 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                             >
                               <input
                                 type="text"
-                                inputMode={row.field === "pulseCount" ? "numeric" : "decimal"}
+                                inputMode={isNotesRow ? "text" : row.field === "pulseCount" ? "numeric" : "decimal"}
                                 aria-label={`${chipId}, ${row.label}`}
                                 data-parameter-cell-key={cellKey}
+                                placeholder={isNotesRow ? "Note" : undefined}
                                 value={cellValue}
                                 disabled={!canPersist}
                                 onFocus={() => handleCellFocus(cellKey)}
@@ -879,6 +888,7 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                                   "h-7 w-full rounded-sm border border-transparent bg-transparent px-0.5 text-center text-[13px] font-semibold outline-none transition-colors",
                                   "text-[#4a483f] hover:border-[#e1e1dc] hover:bg-[#fafafa] focus:border-[#c7c7bd] focus:bg-[#fbfbf8]",
                                   "disabled:cursor-not-allowed disabled:text-[#777770]",
+                                  isNotesRow ? "px-1 text-left text-[12px] font-medium placeholder:text-[#aaa79b]" : "",
                                   isSelected ? "text-[#111111]" : ""
                                 ].join(" ")}
                               />
@@ -889,18 +899,6 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eeeeea] pb-5 pt-1">
-                <p className="text-[13px] font-medium leading-5 text-[#66665f]">
-                  <span className="font-semibold text-[#44443f]">Row notes:</span> {section.note}
-                </p>
-                <button
-                  type="button"
-                  className="h-9 rounded-lg border border-[#e1e1dc] bg-white px-3 text-[13px] font-semibold text-[#44443f] hover:bg-[#fafafa]"
-                >
-                  + Add row note
-                </button>
               </div>
             </section>
           ))}

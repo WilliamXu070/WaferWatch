@@ -785,3 +785,21 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     had zero console errors.
   - The available browser session rendered the unauthenticated backend empty
     state, so authenticated Enter-key interaction was not browser-exercised.
+
+## Recent development note (2026-07-06 fabrication parameters notes row)
+
+- Added a `Notes` row to the bottom of each Fabrication parameters chip-row
+  matrix. Each chip note is an editable text cell stored through the existing
+  `description` field in `wafers.metadata.die_poling_parameters`.
+- Removed the old nonfunctional row-notes footer/button below each R section so
+  notes live directly inside the spreadsheet-style matrix.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Playwright at
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport.
+  - The route rendered the unauthenticated backend empty state with zero console
+    errors, so authenticated Notes-row editing was not browser-exercised.
+  - Screenshot: `/tmp/wafer-parameters-notes-row-auth-state.png`
