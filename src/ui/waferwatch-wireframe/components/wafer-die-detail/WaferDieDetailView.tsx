@@ -103,7 +103,12 @@ export function DieDetailView({
         </div>
       </div>
 
-      <WaferDieDetailTabs activeTab={activeTab} tile={tile} />
+      <WaferDieDetailTabs
+        key={`${tile.id}:${tile.notesSurfaceValue ?? ""}:${tile.legacyNote ?? ""}`}
+        activeTab={activeTab}
+        tile={tile}
+        onOpenNotes={() => setActiveTab("notes")}
+      />
     </section>
   );
 }

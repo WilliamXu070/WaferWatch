@@ -1,7 +1,6 @@
 import type { WaferStatusTileModel } from "../../types";
 import { WaferGeometryPreview } from "../WaferGeometryPreview";
 import { DetailCard } from "./DetailCard";
-import { recentNotes } from "./waferDieDetailData";
 import { getSelectedDieLabel, statusLabel } from "./waferDieDetailHelpers";
 
 export function DiePreviewCard({ tile }: { tile: WaferStatusTileModel }) {
@@ -70,38 +69,6 @@ export function KeyResultsCard() {
             No image yet
           </div>
         </div>
-      </div>
-    </DetailCard>
-  );
-}
-
-export function NotesCard() {
-  return (
-    <DetailCard title="Notes (latest)" action="View all">
-      <div className="grid gap-3">
-        {recentNotes.map((note) => (
-          <article key={`${note.author}-${note.time}`} className="border-b border-[#eeeeea] py-4">
-            <div className="mb-2 flex items-center gap-2">
-              <span
-                className={[
-                  "grid h-5 w-5 place-items-center rounded-md text-[11px] font-semibold text-white",
-                  "bg-[#111111]"
-                ].join(" ")}
-              >
-                {note.author[0]}
-              </span>
-              <strong className="text-[13px] text-[#111111]">{note.author}</strong>
-              <span className="text-[12px] font-medium text-[#8a8a83]">{note.time}</span>
-            </div>
-            <p className="text-[13px] leading-5 text-[#44443f]">{note.body}</p>
-          </article>
-        ))}
-        <button
-          type="button"
-          className="mt-1 h-10 rounded-lg border border-[#e1e1dc] bg-white text-[14px] font-semibold text-[#44443f] hover:bg-[#fafafa]"
-        >
-          + Add note
-        </button>
       </div>
     </DetailCard>
   );
