@@ -686,3 +686,24 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The browser session rendered the unauthenticated backend-empty state, so
     authenticated wafer drag/drop persistence was not browser-exercised.
   - Screenshot: `/tmp/waferwatch-process-flow-guarded-move.png`
+
+## Recent development note (2026-07-06 process flow curved arrow routing)
+
+- Fixed return-edge routing in the process-flow canvas so curved arrows choose a
+  side lane outside nearby node cards instead of falling back to a known-colliding
+  shallow Bezier path.
+- Added a focused regression covering the stacked fixture-card geometry where a
+  lower completion step returns to an upper active step without crossing the
+  middle cards.
+- Verified with:
+  - `npx --yes tsx --test src/components/process-flow/edges.test.ts`
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3013/api/health`
+  - Playwright CLI screenshot at
+    `http://localhost:3013/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport.
+  - The browser session rendered the unauthenticated backend-empty state, so
+    populated graph visual acceptance was covered by the focused geometry test
+    rather than authenticated route interaction.
+  - Screenshot: `/tmp/waferwatch-process-flow-curved-arrow-routing-final.png`
