@@ -174,6 +174,25 @@ function getCellCoordinates(key: ParameterCellKey) {
   };
 }
 
+function getNextCellKey(key: ParameterCellKey) {
+  const coordinates = getCellCoordinates(key);
+  if (!coordinates) {
+    return null;
+  }
+
+  const nextField = parameterRows[coordinates.fieldIndex + 1]?.field;
+  if (nextField) {
+    return getCellKey(coordinates.row, coordinates.column, nextField);
+  }
+
+  const nextRow = coordinates.row + 1;
+  if (nextRow > chipRowSections.length) {
+    return null;
+  }
+
+  return getCellKey(nextRow, coordinates.column, parameterRows[0].field);
+}
+
 function getRectangularSelection(startKey: ParameterCellKey, endKey: ParameterCellKey) {
   const start = getCellCoordinates(startKey);
   const end = getCellCoordinates(endKey);
@@ -691,6 +710,27 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
 
   const handleCellKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>, key: ParameterCellKey) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        const nextKey = getNextCellKey(key);
+        if (!nextKey) {
+          return;
+        }
+
+        event.preventDefault();
+        setSelectedCellKeys([nextKey]);
+        setAnchorCellKey(nextKey);
+        setActiveCellKey(nextKey);
+
+        window.requestAnimationFrame(() => {
+          const nextInput = document.querySelector<HTMLInputElement>(
+            `input[data-parameter-cell-key="${nextKey}"]`
+          );
+          nextInput?.focus();
+          nextInput?.select();
+        });
+        return;
+      }
+
       if (!event.shiftKey) {
         return;
       }
@@ -824,6 +864,7 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                                 type="text"
                                 inputMode={row.field === "pulseCount" ? "numeric" : "decimal"}
                                 aria-label={`${chipId}, ${row.label}`}
+                                data-parameter-cell-key={cellKey}
                                 value={cellValue}
                                 disabled={!canPersist}
                                 onFocus={() => handleCellFocus(cellKey)}

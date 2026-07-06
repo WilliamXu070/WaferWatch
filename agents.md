@@ -768,3 +768,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     errors, so authenticated Parameters interaction was not browser-exercised in
     the main checkout.
   - Screenshot: `/tmp/waferwatch-main-parameters-merge.png`
+
+## Recent development note (2026-07-06 fabrication parameters enter navigation)
+
+- Updated the Fabrication parameters matrix so pressing Enter inside an editable
+  parameter cell moves focus down one parameter row in the same chip column,
+  selecting the next value for immediate editing. The last parameter row advances
+  to the first parameter row of the next R section when available.
+- Existing Shift+Arrow rectangular selection behavior is unchanged.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - In-app browser route
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    had zero console errors.
+  - The available browser session rendered the unauthenticated backend empty
+    state, so authenticated Enter-key interaction was not browser-exercised.
