@@ -35,8 +35,9 @@ type ProcessFlowTransitionModel = {
 
 type MoveWaferToProcessStepAction = (input: {
   assignmentId: string;
+  sourceStepId: string;
   targetStepId: string;
-  note?: string | null;
+  note: string;
   completeSourceStep?: boolean;
 }) => Promise<ActionResult<unknown>>;
 

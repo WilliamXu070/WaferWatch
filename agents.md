@@ -666,3 +666,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The saved auth state still rendered the unauthenticated empty state, so
     authenticated Notes interaction was not browser-exercised in the main checkout.
   - Screenshot: `/tmp/waferwatch-main-notes-merge.png`
+
+## Recent development note (2026-07-06 process flow guarded wafer moves)
+
+- Guarded process-flow wafer moves so drag/drop only opens a move confirmation
+  when the target step is directly connected by a directed `process_step_transitions`
+  edge from the wafer's active source step.
+- Added server-side enforcement for the same source/target transition check, so
+  reverse movement is rejected unless a reverse transition exists in the graph.
+- Added a required process-note dialog before submitting a wafer move; the note is
+  stored through the existing move action/process event path.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3013/api/health`
+  - Playwright CLI screenshot at
+    `http://localhost:3013/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport.
+  - The browser session rendered the unauthenticated backend-empty state, so
+    authenticated wafer drag/drop persistence was not browser-exercised.
+  - Screenshot: `/tmp/waferwatch-process-flow-guarded-move.png`

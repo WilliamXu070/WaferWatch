@@ -101,6 +101,16 @@ export type WaferDrag = {
   hasMoved: boolean;
 };
 
+export type PendingWaferMove = {
+  assignmentId: string;
+  sourceStepId: string;
+  sourceLabel: string;
+  targetStepId: string;
+  targetLabel: string;
+  waferLabel: string;
+  completeSourceStep: boolean;
+};
+
 export type SnapGuide = {
   id: string;
   orientation: "horizontal" | "vertical";
@@ -140,8 +150,9 @@ export type GraphViewportFit = {
 
 export type MoveWaferToProcessStepAction = (input: {
   assignmentId: string;
+  sourceStepId: string;
   targetStepId: string;
-  note?: string | null;
+  note: string;
   completeSourceStep?: boolean;
 }) => Promise<ActionResult<unknown>>;
 
@@ -188,4 +199,3 @@ export type DeleteProcessStepsAction = (input: {
 export type DeleteProcessTransitionsAction = (input: {
   transitionIds: string[];
 }) => Promise<ActionResult<unknown>>;
-

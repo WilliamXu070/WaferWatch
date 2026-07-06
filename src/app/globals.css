@@ -519,6 +519,126 @@ textarea {
   border-radius: 10px;
 }
 
+.flow-wafer-move-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(21 21 18 / 22%);
+}
+
+.flow-wafer-move-dialog {
+  display: grid;
+  width: min(100%, 520px);
+  gap: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 22px;
+  box-shadow: 0 24px 80px rgb(21 21 18 / 20%);
+}
+
+.flow-wafer-move-dialog__header {
+  display: grid;
+  gap: 6px;
+}
+
+.flow-wafer-move-dialog__header h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.flow-wafer-move-dialog__header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.flow-wafer-move-dialog__path {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.flow-wafer-move-dialog__path div {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 12px;
+}
+
+.flow-wafer-move-dialog__path dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.flow-wafer-move-dialog__path dd {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.flow-wafer-move-dialog__field {
+  display: grid;
+  gap: 8px;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.flow-wafer-move-dialog__field textarea {
+  min-height: 128px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 12px;
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.flow-wafer-move-dialog__field textarea:focus {
+  outline: none;
+  border-color: var(--foreground);
+  box-shadow: 0 0 0 3px rgb(21 21 18 / 12%);
+}
+
+.flow-wafer-move-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .flow-wafer-move-dialog-backdrop {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .flow-wafer-move-dialog {
+    border-radius: 12px;
+    padding: 18px;
+  }
+
+  .flow-wafer-move-dialog__path {
+    grid-template-columns: 1fr;
+  }
+}
+
 .flow-map-hit-area {
   fill: transparent;
 }
