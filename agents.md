@@ -820,3 +820,17 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `/tmp/waferwatch-results-related-images-removed-auth-gated.png`
 - Authenticated Results interaction still needs a fresh signed-in browser
   session to exercise visually.
+
+## Recent development note (2026-07-06 results grid label removal)
+
+- Removed the Results grid view switcher/status legend row and removed the
+  per-sample metric label under each image tile. Tiles now show only the image,
+  corner status dot, selection state, and best badge where applicable.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-view-labels-removed-auth-gated.png`
+- Authenticated Results interaction still needs a fresh signed-in browser
+  session to exercise visually.

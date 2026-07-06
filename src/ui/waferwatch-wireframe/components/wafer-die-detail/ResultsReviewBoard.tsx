@@ -25,7 +25,6 @@ type ResultSample = {
   row: number;
   column: number;
   status: ResultStatus;
-  metric: string;
   imageCount: number;
   selectedImage: number;
   uniformity: string;
@@ -80,7 +79,6 @@ function buildSamples() {
         row,
         column,
         status,
-        metric: status === "missing" ? "No image" : `${(base + (status === "best" ? 1.5 : 0)).toFixed(1)} dB`,
         imageCount: status === "missing" ? 0 : column % 4 === 0 ? 2 : column === 12 ? 3 : 1,
         selectedImage: status === "missing" ? 0 : column === 12 ? 3 : 1,
         uniformity: status === "missing" ? "Pending" : `${(base + 0.7).toFixed(1)} dB`,
@@ -181,11 +179,7 @@ function SampleTile({
       aria-label={`Select ${sample.id} result sample`}
     >
       <span className={["absolute left-2 top-2 z-10 h-2.5 w-2.5 rounded-full", meta.dot].join(" ")} />
-      <ResultImage sample={sample} className="h-[72px] w-full" />
-      <span className="flex items-center gap-1 text-[11px] font-semibold text-[#44443f]">
-        <span className={["h-2 w-2 rounded-full", meta.dot].join(" ")} />
-        {sample.metric}
-      </span>
+      <ResultImage sample={sample} className="h-[88px] w-full" />
       {sample.status === "best" ? (
         <span className="absolute -right-1 -top-2 rounded-md bg-[#2aa866] px-2 py-0.5 text-[10px] font-semibold text-white">
           Best
@@ -219,40 +213,6 @@ function ResultMetadataBand() {
   );
 }
 
-function ViewControls() {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-4">
-      <div className="flex items-center gap-2 text-[13px] font-semibold text-[#777770]">
-        <span>View</span>
-        <div className="flex rounded-lg border border-[#e4e4df] bg-white p-1">
-          {["Grid", "List", "Heatmap"].map((view) => (
-            <button
-              key={view}
-              type="button"
-              className={[
-                "h-8 rounded-md px-3 text-[12px] font-semibold",
-                view === "Grid" ? "bg-[#f1f1ed] text-[#111111]" : "text-[#66665f] hover:bg-[#fafafa]"
-              ].join(" ")}
-              aria-pressed={view === "Grid"}
-            >
-              {view}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-4 text-[12px] font-semibold text-[#66665f]">
-        {(Object.keys(statusMeta) as ResultStatus[]).map((status) => (
-          <span key={status} className="inline-flex items-center gap-2">
-            <span className={["h-2.5 w-2.5 rounded-full", statusMeta[status].dot].join(" ")} />
-            {statusMeta[status].label}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function ResultsGrid({
   selectedSample,
   onSelectSample
@@ -262,7 +222,6 @@ function ResultsGrid({
 }) {
   return (
     <section className="grid gap-6">
-      <ViewControls />
       <div className="overflow-x-auto pb-1">
         <div className="grid min-w-[1180px] gap-5">
           <div className="grid grid-cols-[62px_repeat(15,minmax(56px,1fr))] gap-2 text-center text-[12px] font-semibold text-[#55554f]">
