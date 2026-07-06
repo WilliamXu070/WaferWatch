@@ -185,12 +185,16 @@ export type WaferDisplayMode = "diced" | "undiced";
 
 export type WaferStatusTileModel = {
   id: string;
+  projectId: string;
+  waferId: string;
   code: string;
   family: string;
   dieLabel: string;
   stepLabel: string;
   status: WaferTileStatus;
   waferStateName: string;
+  legacyNote?: string | null;
+  notesSurfaceValue?: string | null;
   mode?: WaferDisplayMode;
   isUndiced?: boolean;
   isSelected?: boolean;

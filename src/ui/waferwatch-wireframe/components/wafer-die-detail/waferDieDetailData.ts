@@ -8,6 +8,15 @@ export const dieDetailTabs = [
 
 export type DieDetailTab = (typeof dieDetailTabs)[number]["id"];
 
+export const waferDieNotesSurface = {
+  scopeType: "wireframe:wafer_die",
+  fieldKey: "notes"
+} as const;
+
+export function getWaferDieNotesScopeKey(waferId: string, dieLabel: string) {
+  return `${waferId}:${dieLabel}`;
+}
+
 export const processTimeline = [
   { step: 1, title: "Wafer cleaning", time: "Jun 28, 9:10 AM", state: "complete" },
   { step: 2, title: "Lithography", time: "Jun 28, 11:05 AM", state: "complete" },
@@ -54,19 +63,4 @@ export const trendPoints = [
   [80, 42],
   [90, 48],
   [100, 58]
-] as const;
-
-export const recentNotes = [
-  {
-    author: "adam",
-    time: "Jul 1, 10:45 AM",
-    body: "Using new poling fixture FIX-023. Stable temperature ramp observed.",
-    tone: "green"
-  },
-  {
-    author: "barbara",
-    time: "Jun 28, 1:35 PM",
-    body: "Etch profile looks good. Sidewall angle within spec.",
-    tone: "amber"
-  }
 ] as const;

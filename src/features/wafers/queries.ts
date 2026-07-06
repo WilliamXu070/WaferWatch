@@ -11,6 +11,10 @@ import type {
   WaferStatusTileModel,
   WaferTileStatus
 } from "@/ui/waferwatch-wireframe/types";
+import {
+  getWaferDieNotesScopeKey,
+  waferDieNotesSurface
+} from "@/ui/waferwatch-wireframe/components/wafer-die-detail/waferDieDetailData";
 
 type JsonRecord = { [key: string]: Json | undefined };
 
@@ -19,8 +23,17 @@ type WaferStatusWaferRow = {
   project_id: string;
   wafer_code: string;
   status: FabricationStatus;
+  notes: string | null;
   metadata: Json;
   created_at: string;
+};
+
+type WaferStatusTextSurfaceRow = {
+  project_id: string;
+  scope_type: string;
+  scope_key: string;
+  field_key: string;
+  value: string;
 };
 
 type WaferStatusAssignmentRow = Pick<
@@ -251,16 +264,33 @@ function buildMetrics(wafers: WaferStatusWaferRow[]): WaferStatusMetric[] {
   ];
 }
 
+function getNotesSurfaceMapKey({
+  projectId,
+  scopeKey
+}: {
+  projectId: string;
+  scopeKey: string;
+}) {
+  return [
+    projectId,
+    waferDieNotesSurface.scopeType,
+    scopeKey,
+    waferDieNotesSurface.fieldKey
+  ].join(":");
+}
+
 function mapWafersToStatusModel({
   wafers,
   assignmentsByWaferId,
   executionsByAssignmentId,
-  stepsById
+  stepsById,
+  textSurfacesByKey
 }: {
   wafers: WaferStatusWaferRow[];
   assignmentsByWaferId: Map<string, WaferStatusAssignmentRow>;
   executionsByAssignmentId: Map<string, WaferStatusExecutionRow[]>;
   stepsById: Map<string, WaferStatusStepRow>;
+  textSurfacesByKey: Map<string, WaferStatusTextSurfaceRow>;
 }): WaferStatusModel {
   const familyBuckets = new Map<string, { wafers: WaferStatusWaferRow[]; tiles: WaferStatusTileModel[] }>();
   const tiles: WaferStatusTileModel[] = [];
@@ -272,6 +302,14 @@ function mapWafersToStatusModel({
     const dieLabel = extractDieLabel(wafer.metadata);
     const mode = deriveWaferMode(wafer.metadata, dieLabel);
     const family = deriveFamily(wafer.wafer_code, wafer.metadata);
+    const displayDieLabel = dieLabel ?? wafer.wafer_code;
+    const notesScopeKey = getWaferDieNotesScopeKey(wafer.id, displayDieLabel);
+    const notesSurface = textSurfacesByKey.get(
+      getNotesSurfaceMapKey({
+        projectId: wafer.project_id,
+        scopeKey: notesScopeKey
+      })
+    );
     const status = mapTileStatus({
       waferStatus: wafer.status,
       currentStep,
@@ -279,12 +317,16 @@ function mapWafersToStatusModel({
     });
     const tile: WaferStatusTileModel = {
       id: wafer.id,
-      code: mode === "undiced" ? wafer.wafer_code : dieLabel ?? wafer.wafer_code,
+      projectId: wafer.project_id,
+      waferId: wafer.id,
+      code: mode === "undiced" ? wafer.wafer_code : displayDieLabel,
       family,
-      dieLabel: dieLabel ?? wafer.wafer_code,
+      dieLabel: displayDieLabel,
       stepLabel: formatStepLabel({ waferStatus: wafer.status, currentStep }),
       status,
       waferStateName: mode === "undiced" ? "pre-dice" : "post-dice",
+      legacyNote: wafer.notes,
+      notesSurfaceValue: notesSurface?.value ?? null,
       mode,
       isUndiced: mode === "undiced"
     };
@@ -359,7 +401,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
 
   const wafersQuery = supabase
     .from("wafers")
-    .select("id, project_id, wafer_code, status, metadata, created_at")
+    .select("id, project_id, wafer_code, status, notes, metadata, created_at")
     .order("wafer_code", { ascending: true });
 
   const wafersResult = scopedWaferIds ? await wafersQuery.in("id", scopedWaferIds) : await wafersQuery;
@@ -374,6 +416,30 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   }
 
   const waferIds = wafers.map((wafer) => wafer.id);
+  const projectIds = Array.from(new Set(wafers.map((wafer) => wafer.project_id)));
+  const textSurfacesResult = projectIds.length
+    ? await supabase
+        .from("text_surfaces")
+        .select("project_id, scope_type, scope_key, field_key, value")
+        .in("project_id", projectIds)
+        .eq("scope_type", waferDieNotesSurface.scopeType)
+        .eq("field_key", waferDieNotesSurface.fieldKey)
+    : ({ data: [], error: null } as const);
+
+  if (textSurfacesResult.error) {
+    throw textSurfacesResult.error;
+  }
+
+  const textSurfacesByKey = new Map(
+    ((textSurfacesResult.data ?? []) as WaferStatusTextSurfaceRow[]).map((surface) => [
+      getNotesSurfaceMapKey({
+        projectId: surface.project_id,
+        scopeKey: surface.scope_key
+      }),
+      surface
+    ])
+  );
+
   const assignmentsResult = processTemplateId
     ? null
     : await supabase
@@ -441,7 +507,8 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     wafers,
     assignmentsByWaferId,
     executionsByAssignmentId,
-    stepsById
+    stepsById,
+    textSurfacesByKey
   });
 }
 
