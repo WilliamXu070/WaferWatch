@@ -671,3 +671,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The available browser session rendered the unauthenticated backend empty
     state, so authenticated clipboard interaction still needs a fresh existing
     login to exercise visually.
+
+## Recent development note (2026-07-06 fabrication parameters value colors)
+
+- Removed the visible Fabrication parameters save-status label from each chip-row
+  header while keeping the existing debounced background save behavior.
+- Added value-based cell tinting for parameter rows: fields with multiple
+  distinct values get a subtle per-field palette, and identical values share the
+  same tint across R1/R2/R3. Uniform fields remain neutral.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Browser verification still needs an authenticated session to visually inspect
+    the live parameter table; the available session has recently rendered the
+    unauthenticated backend empty state.

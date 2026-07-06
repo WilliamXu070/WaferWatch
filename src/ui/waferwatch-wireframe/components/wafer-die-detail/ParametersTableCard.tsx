@@ -29,11 +29,65 @@ type VisibleParameterField = (typeof parameterRows)[number]["field"];
 type ParameterCellKey = `R${number}:C${number}:${VisibleParameterField}`;
 type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
 type CellUpdate = { key: ParameterCellKey; value: string };
+type FieldToneMaps = Record<VisibleParameterField, Map<string, string>>;
 
 const chipColumns = Array.from({ length: 15 }, (_, index) => `C${index + 1}`);
 const PARAMETER_SAVE_DEBOUNCE_MS = 1100;
 const DIE_CODE_PATTERN = /^[A-Z][1-8]-V\d+$/;
 const SHORT_DIE_CODE_PATTERN = /^[A-Z][1-8]$/;
+
+const parameterTonePalettes: Record<VisibleParameterField, readonly string[]> = {
+  voltage: [
+    "bg-[#eef7ff]",
+    "bg-[#e2f1ff]",
+    "bg-[#d5eafd]",
+    "bg-[#c7e2f8]",
+    "bg-[#b9daf1]",
+    "bg-[#abd2ea]",
+    "bg-[#9dccdf]",
+    "bg-[#90c4d5]"
+  ],
+  width: [
+    "bg-[#f4f1ff]",
+    "bg-[#ebe5ff]",
+    "bg-[#e2d9fb]",
+    "bg-[#d8cdf4]",
+    "bg-[#cec1ec]",
+    "bg-[#c4b7e4]",
+    "bg-[#baaddb]",
+    "bg-[#b0a3d1]"
+  ],
+  pulseCount: [
+    "bg-[#f1f8ec]",
+    "bg-[#e8f3df]",
+    "bg-[#deedd1]",
+    "bg-[#d4e7c4]",
+    "bg-[#cae0b8]",
+    "bg-[#c0d9ad]",
+    "bg-[#b6d2a2]",
+    "bg-[#accb98]"
+  ],
+  postPulseVoltage: [
+    "bg-[#fff5e5]",
+    "bg-[#ffeed4]",
+    "bg-[#ffe6c1]",
+    "bg-[#ffddad]",
+    "bg-[#f7d29e]",
+    "bg-[#edc891]",
+    "bg-[#e3be85]",
+    "bg-[#d9b478]"
+  ],
+  postPulseWidth: [
+    "bg-[#eaf8f5]",
+    "bg-[#ddf2ee]",
+    "bg-[#cfebe5]",
+    "bg-[#c1e3dc]",
+    "bg-[#b3dbd4]",
+    "bg-[#a6d2cb]",
+    "bg-[#99cac2]",
+    "bg-[#8cc1b9]"
+  ]
+};
 
 const chipRowSections = [
   {
@@ -189,6 +243,44 @@ function parseClipboardTable(text: string) {
   return normalizedText.split("\n").map((line) => line.split("\t"));
 }
 
+function normalizeToneValue(value: string) {
+  return value.trim();
+}
+
+function sortToneValues(values: string[]) {
+  return [...values].sort((a, b) => {
+    const aNumber = Number(a);
+    const bNumber = Number(b);
+    const aIsNumeric = Number.isFinite(aNumber);
+    const bIsNumeric = Number.isFinite(bNumber);
+
+    if (aIsNumeric && bIsNumeric) {
+      return aNumber - bNumber;
+    }
+
+    return a.localeCompare(b, undefined, { numeric: true });
+  });
+}
+
+function buildToneMap(values: string[], palette: readonly string[]) {
+  const uniqueValues = sortToneValues([...new Set(values.map(normalizeToneValue).filter(Boolean))]);
+  const toneMap = new Map<string, string>();
+
+  if (uniqueValues.length <= 1) {
+    return toneMap;
+  }
+
+  uniqueValues.forEach((value, index) => {
+    const paletteIndex =
+      uniqueValues.length === 1
+        ? 0
+        : Math.round((index / (uniqueValues.length - 1)) * (palette.length - 1));
+    toneMap.set(value, palette[paletteIndex]);
+  });
+
+  return toneMap;
+}
+
 function getPersistenceDieCode(tile?: WaferStatusTileModel) {
   const candidate = (tile?.dieLabel || tile?.code || "").trim().toUpperCase();
   if (DIE_CODE_PATTERN.test(candidate)) {
@@ -221,21 +313,12 @@ function getSavedValue(
   return tile.diePolingParameters?.[dieCode]?.[`R${row}`]?.[`C${column}`]?.[field];
 }
 
-function getSaveLabel(saveState: SaveState, canPersist: boolean) {
-  if (!canPersist) return "Read only";
-  if (saveState === "pending") return "Pending changes";
-  if (saveState === "saving") return "Saving...";
-  if (saveState === "saved") return "Saved";
-  if (saveState === "error") return "Save failed";
-  return "Editable";
-}
-
 export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
   const dieCode = useMemo(() => getPersistenceDieCode(tile), [tile]);
   const canPersist = Boolean(tile?.waferId && dieCode);
   const [draftValues, setDraftValues] = useState<Record<ParameterCellKey, string>>({});
   const [savedOverrides, setSavedOverrides] = useState<Record<ParameterCellKey, string>>({});
-  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [, setSaveState] = useState<SaveState>("idle");
   const [selectedCellKeys, setSelectedCellKeys] = useState<ParameterCellKey[]>([]);
   const [anchorCellKey, setAnchorCellKey] = useState<ParameterCellKey | null>(null);
   const [activeCellKey, setActiveCellKey] = useState<ParameterCellKey | null>(null);
@@ -377,6 +460,29 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
       return draftValues[key] ?? getPersistedOrDefaultValue(key);
     },
     [draftValues, getPersistedOrDefaultValue]
+  );
+
+  const fieldToneMaps = useMemo<FieldToneMaps>(() => {
+    const nextMaps = {} as FieldToneMaps;
+
+    for (const parameterRow of parameterRows) {
+      const values: string[] = [];
+      for (const section of chipRowSections) {
+        const rowNumber = Number(section.id.replace("R", ""));
+        for (let column = 1; column <= chipColumns.length; column += 1) {
+          values.push(getCellValue(rowNumber, column, parameterRow.field));
+        }
+      }
+
+      nextMaps[parameterRow.field] = buildToneMap(values, parameterTonePalettes[parameterRow.field]);
+    }
+
+    return nextMaps;
+  }, [getCellValue]);
+
+  const getCellToneClass = useCallback(
+    (field: VisibleParameterField, value: string) => fieldToneMaps[field].get(normalizeToneValue(value)) ?? "",
+    [fieldToneMaps]
   );
 
   const applyCellUpdates = useCallback(
@@ -660,7 +766,6 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                   <span>Period {section.period}</span>
                   <span>Gap {section.gap}</span>
                   <span>{section.variant}</span>
-                  <span>{getSaveLabel(saveState, canPersist)}</span>
                 </div>
               </div>
 
@@ -701,6 +806,8 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                           const cellKey = getCellKey(rowNumber, columnNumber, row.field);
                           const isCellSelected = selectedCellSet.has(cellKey);
                           const isActiveCell = activeCellKey === cellKey;
+                          const cellValue = getCellValue(rowNumber, columnNumber, row.field);
+                          const toneClass = getCellToneClass(row.field, cellValue);
                           return (
                             <td
                               key={cellKey}
@@ -708,6 +815,7 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                               onPointerEnter={() => handleCellPointerEnter(cellKey)}
                               className={[
                                 "px-1 py-1.5 text-center transition-colors",
+                                toneClass,
                                 isCellSelected ? "bg-[#f5f5f0] shadow-[inset_0_0_0_1px_#dfdfd6]" : "",
                                 isActiveCell ? "bg-[#f1f1eb]" : ""
                               ].join(" ")}
@@ -716,7 +824,7 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                                 type="text"
                                 inputMode={row.field === "pulseCount" ? "numeric" : "decimal"}
                                 aria-label={`${chipId}, ${row.label}`}
-                                value={getCellValue(rowNumber, columnNumber, row.field)}
+                                value={cellValue}
                                 disabled={!canPersist}
                                 onFocus={() => handleCellFocus(cellKey)}
                                 onKeyDown={(event) => handleCellKeyDown(event, cellKey)}
