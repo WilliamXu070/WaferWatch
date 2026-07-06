@@ -651,3 +651,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The available browser session rendered the unauthenticated backend empty
     state, so authenticated R1-to-R2 clipboard and database persistence still
     need a fresh existing login to exercise visually.
+
+## Recent development note (2026-07-06 fabrication parameters paste origin)
+
+- Fixed Fabrication parameters range paste so multi-cell paste always starts at
+  the selected range's top-left cell instead of the drag end/active cell. This
+  makes top-left-to-bottom-right and bottom-right-to-top-left selections behave
+  the same when copying one chip-row block into another.
+- Replaced the heavy black active-cell outline/focus box with a quieter selected
+  cell tint and neutral focus border so the table no longer shows the boxed
+  selectable UI around an edited value.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - In-app browser route
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    had zero console errors.
+  - The available browser session rendered the unauthenticated backend empty
+    state, so authenticated clipboard interaction still needs a fresh existing
+    login to exercise visually.

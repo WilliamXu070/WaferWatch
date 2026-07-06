@@ -453,26 +453,26 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
   );
 
   const getPasteOrigin = useCallback(() => {
-    if (activeCellKey) {
-      return getCellCoordinates(activeCellKey);
+    if (selectedCellKeys.length > 1) {
+      const bounds = getSelectionBounds(selectedCellKeys);
+      if (!bounds) {
+        return null;
+      }
+
+      const field = parameterRows[bounds.minFieldIndex]?.field;
+      if (!field) {
+        return null;
+      }
+
+      return {
+        row: bounds.minRow,
+        column: bounds.minColumn,
+        field,
+        fieldIndex: bounds.minFieldIndex
+      };
     }
 
-    const bounds = getSelectionBounds(selectedCellKeys);
-    if (!bounds) {
-      return null;
-    }
-
-    const field = parameterRows[bounds.minFieldIndex]?.field;
-    if (!field) {
-      return null;
-    }
-
-    return {
-      row: bounds.minRow,
-      column: bounds.minColumn,
-      field,
-      fieldIndex: bounds.minFieldIndex
-    };
+    return activeCellKey ? getCellCoordinates(activeCellKey) : null;
   }, [activeCellKey, selectedCellKeys]);
 
   const handleCopy = useCallback(
@@ -707,9 +707,9 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                               onPointerDown={(event) => handleCellPointerDown(event, cellKey)}
                               onPointerEnter={() => handleCellPointerEnter(cellKey)}
                               className={[
-                                "px-1 py-1.5 text-center",
-                                isCellSelected ? "bg-[#f6f6f2]" : "",
-                                isActiveCell ? "outline outline-2 -outline-offset-2 outline-[#111111]" : isCellSelected ? "outline outline-1 -outline-offset-1 outline-[#b6b6ad]" : ""
+                                "px-1 py-1.5 text-center transition-colors",
+                                isCellSelected ? "bg-[#f5f5f0] shadow-[inset_0_0_0_1px_#dfdfd6]" : "",
+                                isActiveCell ? "bg-[#f1f1eb]" : ""
                               ].join(" ")}
                             >
                               <input
@@ -728,7 +728,7 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                                 }}
                                 className={[
                                   "h-7 w-full rounded-sm border border-transparent bg-transparent px-0.5 text-center text-[13px] font-semibold outline-none transition-colors",
-                                  "text-[#4a483f] hover:border-[#e1e1dc] hover:bg-[#fafafa] focus:border-[#111111] focus:bg-white",
+                                  "text-[#4a483f] hover:border-[#e1e1dc] hover:bg-[#fafafa] focus:border-[#c7c7bd] focus:bg-[#fbfbf8]",
                                   "disabled:cursor-not-allowed disabled:text-[#777770]",
                                   isSelected ? "text-[#111111]" : ""
                                 ].join(" ")}
