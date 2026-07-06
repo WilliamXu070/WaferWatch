@@ -105,16 +105,13 @@ function DieNotesTab({
   onNotesChange: (notes: WaferDieNote[]) => void;
 }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="grid gap-4">
       <WaferDieNotesDashboard
         key={tile.id}
         tile={tile}
         notes={notes}
         onNotesChange={onNotesChange}
       />
-      <aside className="grid content-start gap-4">
-        <KeyResultsCard />
-      </aside>
     </div>
   );
 }

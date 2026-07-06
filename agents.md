@@ -636,3 +636,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The saved auth state still rendered the unauthenticated empty state, so
     authenticated visual confirmation of the Notes controls was not browser-exercised.
   - Screenshot: `/tmp/waferwatch-notes-bottom-sort.png`
+
+## Recent development note (2026-07-06 wafer die notes remove key results)
+
+- Removed the Key results side panel from the wafer die detail Notes tab so the
+  Notes dashboard owns the full tab width.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3013/api/health`
+  - Playwright at
+    `http://localhost:3013/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport and the existing saved auth state.
+  - The saved auth state still rendered the unauthenticated empty state, so
+    authenticated visual confirmation of the Notes tab was not browser-exercised.
+  - Screenshot: `/tmp/waferwatch-notes-key-results-removed.png`
