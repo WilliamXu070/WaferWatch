@@ -847,3 +847,24 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `/tmp/waferwatch-results-metadata-card-removed-auth-gated.png`
 - Authenticated Results interaction still needs a fresh signed-in browser
   session to exercise visually.
+
+## Recent development note (2026-07-06 results image upload/delete)
+
+- Wired the Results selected-image rail to the existing die inspection image
+  backend used by the old WaferWatch inspection map: `die_inspections`,
+  `/api/storage/signed-upload`, Supabase Storage, signed preview URLs, and the
+  existing inspection delete action.
+- Result samples now load persisted images by die row/column, support multiple
+  images per R/C sample, accept multi-image drag/drop and clipboard image paste,
+  allow previous/next image navigation, and can delete the selected persisted
+  image.
+- Notes remain scoped to the selected persisted inspection id when an uploaded
+  image exists, with the placeholder image ordinal used only before upload.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-image-upload-delete-auth-gated-v3.png`
+- Authenticated upload/delete interaction still needs a fresh signed-in browser
+  session to exercise against Supabase Storage.

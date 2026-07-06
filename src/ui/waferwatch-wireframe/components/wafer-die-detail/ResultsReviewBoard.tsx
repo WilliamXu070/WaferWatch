@@ -1,7 +1,21 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import {
+  type ClipboardEvent as ReactClipboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from "react";
+import { useDropzone } from "react-dropzone";
+import {
+  createDieInspection,
+  deleteDieInspection,
+  listDieInspectionsForDie,
+  type DieInspectionRecord
+} from "@/features/inspections/actions";
 import { upsertTextSurface } from "@/features/text-surfaces/actions";
+import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
 import {
   ChevronLeftIcon,
@@ -13,6 +27,7 @@ import {
   chipColumns,
   chipRowSections,
   getDisplayParameterValue,
+  getPersistenceDieCode,
   parameterRows,
   parameterTonePalettes,
   type VisibleParameterField
@@ -38,8 +53,11 @@ type SampleNote = {
   createdAt: string;
 };
 
+type SampleInspectionMap = Record<string, DieInspectionRecord[]>;
+
 const RESULT_SAMPLE_SCOPE_TYPE = "wireframe:result_sample";
 const RESULT_SAMPLE_NOTES_FIELD = "notes";
+const INSPECTION_BUCKET = "wafer-process-files";
 const recipeCode = "TFA3.1M1R1";
 
 const statusMeta: Record<ResultStatus, { label: string; dot: string; badge: string }> = {
@@ -90,9 +108,32 @@ function buildSamples() {
 
 const resultSamples = buildSamples();
 
-function getSampleKey(tile: WaferStatusTileModel, sample: ResultSample) {
+function getSampleKey(tile: WaferStatusTileModel, sample: ResultSample, imageKey: string) {
   const dieCode = tile.dieLabel || tile.code;
-  return `${tile.waferId}:${dieCode}:R${sample.row}:C${sample.column}:image-${sample.selectedImage || 0}`;
+  return `${tile.waferId}:${dieCode}:R${sample.row}:C${sample.column}:${imageKey}`;
+}
+
+function getSampleInspectionKey(row: number, column: number) {
+  return `R${row}C${column}`;
+}
+
+function getFileExtension(file: File) {
+  return file.type === "image/jpeg" ? "jpg" : "png";
+}
+
+function normalizeImageFile(file: File) {
+  if (file.type === "image/png" || file.type === "image/jpeg") {
+    return file;
+  }
+
+  throw new Error("Use PNG or JPEG images for result uploads.");
+}
+
+function getClipboardImageFiles(event: ReactClipboardEvent<HTMLElement> | ClipboardEvent) {
+  return Array.from(event.clipboardData?.items ?? [])
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
 }
 
 function buildDisplayToneMaps(tile: WaferStatusTileModel) {
@@ -133,13 +174,24 @@ function getMicroscopyBackground(sample: ResultSample, imageIndex = sample.selec
 
 function ResultImage({
   sample,
+  imageUrl,
   imageIndex,
   className = ""
 }: {
   sample: ResultSample;
+  imageUrl?: string | null;
   imageIndex?: number;
   className?: string;
 }) {
+  if (imageUrl) {
+    return (
+      <div
+        className={["rounded-md border border-[#d8d8d2] bg-cover bg-center bg-no-repeat shadow-inner", className].join(" ")}
+        style={{ backgroundImage: `url("${imageUrl}")` }}
+      />
+    );
+  }
+
   if (sample.status === "missing") {
     return (
       <div className={["grid place-items-center rounded-md border border-dashed border-[#d8d8d2] bg-[#f7f7f3] text-[#777770]", className].join(" ")}>
@@ -158,10 +210,12 @@ function ResultImage({
 
 function SampleTile({
   sample,
+  imageUrl,
   selected,
   onSelect
 }: {
   sample: ResultSample;
+  imageUrl?: string | null;
   selected: boolean;
   onSelect: (sample: ResultSample) => void;
 }) {
@@ -179,7 +233,7 @@ function SampleTile({
       aria-label={`Select ${sample.id} result sample`}
     >
       <span className={["absolute left-2 top-2 z-10 h-2.5 w-2.5 rounded-full", meta.dot].join(" ")} />
-      <ResultImage sample={sample} className="h-[88px] w-full" />
+      <ResultImage sample={sample} imageUrl={imageUrl} className="h-[88px] w-full" />
       {sample.status === "best" ? (
         <span className="absolute -right-1 -top-2 rounded-md bg-[#2aa866] px-2 py-0.5 text-[10px] font-semibold text-white">
           Best
@@ -190,9 +244,11 @@ function SampleTile({
 }
 
 function ResultsGrid({
+  inspectionsBySample,
   selectedSample,
   onSelectSample
 }: {
+  inspectionsBySample: SampleInspectionMap;
   selectedSample: ResultSample;
   onSelectSample: (sample: ResultSample) => void;
 }) {
@@ -229,6 +285,7 @@ function ResultsGrid({
                     <SampleTile
                       key={sample.id}
                       sample={sample}
+                      imageUrl={inspectionsBySample[sample.id]?.[0]?.imageUrl}
                       selected={sample.id === selectedSample.id}
                       onSelect={onSelectSample}
                     />
@@ -245,10 +302,14 @@ function ResultsGrid({
 
 function ParameterContext({
   tile,
-  selectedSample
+  selectedSample,
+  contextRow,
+  onContextRowChange
 }: {
   tile: WaferStatusTileModel;
   selectedSample: ResultSample;
+  contextRow: number;
+  onContextRowChange: (row: number) => void;
 }) {
   const toneMaps = useMemo(() => buildDisplayToneMaps(tile), [tile]);
 
@@ -257,16 +318,23 @@ function ParameterContext({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eeeeea] px-4 py-3">
         <div className="flex items-center gap-2">
           <ChevronRightIcon className="rotate-90 text-[#55554f]" />
-          <h3 className="text-[14px] font-semibold text-[#111111]">Parameter context (Row {selectedSample.row})</h3>
+          <h3 className="text-[14px] font-semibold text-[#111111]">Row {contextRow}</h3>
         </div>
-        <div className="flex items-center gap-3 text-[12px] font-semibold text-[#777770]">
-          <span>Show:</span>
-          <span className="rounded-md border border-[#e1e1dc] bg-white px-3 py-1.5 text-[#44443f]">Row {selectedSample.row}</span>
-          <span>Units</span>
-          <span className="h-5 w-9 rounded-full bg-[#777770] p-0.5">
-            <span className="block h-4 w-4 translate-x-4 rounded-full bg-white" />
-          </span>
-        </div>
+        <select
+          aria-label="Parameter row"
+          value={contextRow}
+          onChange={(event) => onContextRowChange(Number(event.target.value))}
+          className="h-9 rounded-lg border border-[#e1e1dc] bg-white px-3 text-[13px] font-semibold text-[#44443f] outline-none hover:bg-[#fafafa] focus:border-[#111111]"
+        >
+          {chipRowSections.map((section) => {
+            const row = Number(section.id.replace("R", ""));
+            return (
+              <option key={section.id} value={row}>
+                Row {row}
+              </option>
+            );
+          })}
+        </select>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] table-fixed border-collapse text-left text-[12px]">
@@ -295,7 +363,7 @@ function ParameterContext({
                 <th className="px-4 py-2 text-[12px] font-semibold text-[#55554f]">{row.label}</th>
                 {chipColumns.map((columnLabel) => {
                   const column = Number(columnLabel.replace("C", ""));
-                  const value = getDisplayParameterValue(tile, selectedSample.row, column, row.field);
+                  const value = getDisplayParameterValue(tile, contextRow, column, row.field);
                   const toneClass = getParameterToneClass(toneMaps, row.field, value);
                   return (
                     <td
@@ -322,26 +390,66 @@ function ParameterContext({
 function SelectedSamplePanel({
   tile,
   selectedSample,
+  selectedInspections,
+  selectedInspection,
+  selectedImageOrdinal,
+  isImageBusy,
+  imageError,
   notes,
   draftNote,
   isSavingNote,
   noteError,
   onDraftNoteChange,
   onAddNote,
+  onFilesAdd,
+  onDeleteImage,
+  onNavigateImage,
   onNavigateSample
 }: {
   tile: WaferStatusTileModel;
   selectedSample: ResultSample;
+  selectedInspections: readonly DieInspectionRecord[];
+  selectedInspection: DieInspectionRecord | null;
+  selectedImageOrdinal: number;
+  isImageBusy: boolean;
+  imageError: string | null;
   notes: readonly SampleNote[];
   draftNote: string;
   isSavingNote: boolean;
   noteError: string | null;
   onDraftNoteChange: (value: string) => void;
   onAddNote: () => void;
+  onFilesAdd: (files: readonly File[]) => void;
+  onDeleteImage: () => void;
+  onNavigateImage: (direction: -1 | 1) => void;
   onNavigateSample: (direction: -1 | 1) => void;
 }) {
   const meta = statusMeta[selectedSample.status];
   const sampleTitle = `${recipeCode} ${selectedSample.id}`;
+  const realImageCount = selectedInspections.length;
+  const displayImageCount = realImageCount || selectedSample.imageCount;
+  const displayImageOrdinal = realImageCount ? selectedImageOrdinal : selectedSample.selectedImage;
+  const { getRootProps, getInputProps, open, isDragActive } = useDropzone({
+    accept: {
+      "image/png": [".png"],
+      "image/jpeg": [".jpg", ".jpeg"]
+    },
+    multiple: true,
+    noClick: true,
+    noKeyboard: true,
+    disabled: isImageBusy,
+    onDrop: (acceptedFiles) => onFilesAdd(acceptedFiles)
+  });
+
+  const handlePaste = (event: ReactClipboardEvent<HTMLElement>) => {
+    const files = getClipboardImageFiles(event);
+    if (files.length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    onFilesAdd(files);
+  };
 
   return (
     <aside className="grid content-start gap-4 rounded-lg border border-[#e8e8e3] bg-white p-4 xl:sticky xl:top-4">
@@ -374,21 +482,73 @@ function SelectedSamplePanel({
         <div className="mb-3 flex items-center justify-between text-[13px] font-semibold">
           <span className="text-[#44443f]">Best image</span>
           <span className="text-[#777770]">
-            {selectedSample.imageCount ? `${selectedSample.selectedImage} of ${selectedSample.imageCount}` : "0 of 0"}
+            {displayImageCount ? `${displayImageOrdinal} of ${displayImageCount}` : "0 of 0"}
           </span>
         </div>
-        <ResultImage sample={selectedSample} className="h-[210px] w-full" />
+        <div
+          {...getRootProps({
+            className: [
+              "relative rounded-lg border border-dashed p-2 outline-none transition-colors",
+              isDragActive ? "border-[#111111] bg-[#f7f7f3]" : "border-[#deded8] bg-white"
+            ].join(" "),
+            onPaste: handlePaste
+          })}
+          tabIndex={0}
+        >
+          <input {...getInputProps()} />
+          <ResultImage
+            sample={selectedSample}
+            imageUrl={selectedInspection?.imageUrl}
+            imageIndex={realImageCount ? selectedImageOrdinal : undefined}
+            className="h-[210px] w-full"
+          />
+          {isDragActive ? (
+            <div className="absolute inset-x-4 bottom-4 rounded-md bg-white/90 px-3 py-2 text-center text-[12px] font-semibold text-[#55554f] shadow-sm">
+              Release to upload
+            </div>
+          ) : null}
+        </div>
         <div className="mt-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1 rounded-lg border border-[#e1e1dc] bg-white px-2 py-1.5 text-[12px] font-semibold text-[#44443f]">
-            <span>-</span>
-            <span>100%</span>
-            <span>+</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="grid h-8 w-8 place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa] disabled:opacity-40"
+              onClick={() => onNavigateImage(-1)}
+              disabled={realImageCount < 2}
+              aria-label="Previous image"
+            >
+              <ChevronLeftIcon />
+            </button>
+            <button
+              type="button"
+              className="grid h-8 w-8 place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa] disabled:opacity-40"
+              onClick={() => onNavigateImage(1)}
+              disabled={realImageCount < 2}
+              aria-label="Next image"
+            >
+              <ChevronRightIcon />
+            </button>
           </div>
           <div className="flex items-center gap-2 text-[12px] font-semibold text-[#55554f]">
-            <button type="button" className="rounded-md border border-[#e1e1dc] px-2 py-1 hover:bg-[#fafafa]">Download</button>
-            <button type="button" className="rounded-md border border-[#e1e1dc] px-2 py-1 hover:bg-[#fafafa]">Expand</button>
+            <button
+              type="button"
+              className="rounded-md border border-[#e1e1dc] px-2 py-1 hover:bg-[#fafafa] disabled:opacity-40"
+              onClick={open}
+              disabled={isImageBusy}
+            >
+              {isImageBusy ? "Uploading..." : "Add images"}
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-[#e1e1dc] px-2 py-1 text-[#9b2727] hover:bg-[#fff0ef] disabled:text-[#aaa] disabled:hover:bg-transparent"
+              onClick={onDeleteImage}
+              disabled={!selectedInspection || isImageBusy}
+            >
+              Delete
+            </button>
           </div>
         </div>
+        {imageError ? <p className="mt-2 text-[12px] font-semibold text-[#a33a2b]">{imageError}</p> : null}
       </div>
 
       <div className="border-t border-[#eeeeea] pt-4">
@@ -450,7 +610,7 @@ function SelectedSamplePanel({
         <textarea
           value={draftNote}
           onChange={(event) => onDraftNoteChange(event.target.value)}
-          placeholder={`Add a note linked to ${tile.dieLabel || tile.code} ${selectedSample.id} image ${selectedSample.selectedImage || 0}...`}
+          placeholder={`Add a note linked to ${tile.dieLabel || tile.code} ${selectedSample.id} image ${displayImageOrdinal || 0}...`}
           className="min-h-[86px] w-full resize-none rounded-lg border border-[#e1e1dc] bg-white px-3 py-2 text-[13px] leading-5 text-[#111111] outline-none focus:border-[#111111]"
         />
         <div className="mt-2 flex items-center justify-between gap-3">
@@ -473,6 +633,11 @@ function SelectedSamplePanel({
 
 export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
   const [selectedSampleId, setSelectedSampleId] = useState("R1C12");
+  const [contextRow, setContextRow] = useState(1);
+  const [inspectionsBySample, setInspectionsBySample] = useState<SampleInspectionMap>({});
+  const [selectedImageIndexBySample, setSelectedImageIndexBySample] = useState<Record<string, number>>({});
+  const [isImageBusy, setIsImageBusy] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [draftNote, setDraftNote] = useState("");
   const [notesBySample, setNotesBySample] = useState<Record<string, SampleNote[]>>({});
   const [isSavingNote, setIsSavingNote] = useState(false);
@@ -481,13 +646,78 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     () => resultSamples.find((sample) => sample.id === selectedSampleId) ?? resultSamples[0],
     [selectedSampleId]
   );
-  const sampleScopeKey = useMemo(() => getSampleKey(tile, selectedSample), [selectedSample, tile]);
+  const dieCode = useMemo(() => getPersistenceDieCode(tile), [tile]);
+  const selectedInspections = inspectionsBySample[selectedSample.id] ?? [];
+  const selectedImageIndex = Math.min(
+    selectedImageIndexBySample[selectedSample.id] ?? 0,
+    Math.max(selectedInspections.length - 1, 0)
+  );
+  const selectedInspection = selectedInspections[selectedImageIndex] ?? null;
+  const selectedImageOrdinal = selectedInspections.length ? selectedImageIndex + 1 : selectedSample.selectedImage || 0;
+  const selectedImageKey = selectedInspection ? `inspection-${selectedInspection.id}` : `image-${selectedImageOrdinal}`;
+  const sampleScopeKey = useMemo(
+    () => getSampleKey(tile, selectedSample, selectedImageKey),
+    [selectedImageKey, selectedSample, tile]
+  );
   const selectedNotes = useMemo(() => notesBySample[sampleScopeKey] ?? [], [notesBySample, sampleScopeKey]);
+
+  useEffect(() => {
+    if (!tile.waferId || !dieCode) {
+      return;
+    }
+
+    let isStale = false;
+
+    void listDieInspectionsForDie({
+      waferId: tile.waferId,
+      dieCode
+    }).then((result) => {
+      if (isStale) {
+        return;
+      }
+
+      if (result.ok) {
+        const nextBySample: SampleInspectionMap = {};
+        for (const inspection of result.data) {
+          const key = getSampleInspectionKey(inspection.row, inspection.column);
+          nextBySample[key] = [...(nextBySample[key] ?? []), inspection];
+        }
+        setInspectionsBySample(nextBySample);
+      } else {
+        setImageError(result.error);
+      }
+    });
+
+    return () => {
+      isStale = true;
+    };
+  }, [dieCode, tile.waferId]);
+
+  useEffect(() => {
+    const warmedImages = Object.values(inspectionsBySample)
+      .flat()
+      .map((inspection) => inspection.imageUrl)
+      .filter((imageUrl): imageUrl is string => Boolean(imageUrl))
+      .map((imageUrl) => {
+        const image = new window.Image();
+        image.decoding = "async";
+        image.src = imageUrl;
+        return image;
+      });
+
+    return () => {
+      for (const image of warmedImages) {
+        image.src = "";
+      }
+    };
+  }, [inspectionsBySample]);
 
   const selectSample = useCallback((sample: ResultSample) => {
     setSelectedSampleId(sample.id);
+    setContextRow(sample.row);
     setDraftNote("");
     setNoteError(null);
+    setImageError(null);
   }, []);
 
   const navigateSample = useCallback((direction: -1 | 1) => {
@@ -540,6 +770,166 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     }
   }, [draftNote, isSavingNote, sampleScopeKey, selectedNotes, tile.projectId]);
 
+  const uploadResultFiles = useCallback(async (files: readonly File[]) => {
+    if (!tile.projectId || !tile.waferId || !dieCode) {
+      setImageError("Select a persisted wafer die before attaching result images.");
+      return;
+    }
+
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length === 0) {
+      setImageError("Use PNG or JPEG images for result uploads.");
+      return;
+    }
+
+    setIsImageBusy(true);
+    setImageError(null);
+
+    try {
+      const uploaded: DieInspectionRecord[] = [];
+
+      for (const rawFile of imageFiles) {
+        const file = normalizeImageFile(rawFile);
+        const inspectionId = crypto.randomUUID();
+        const extension = getFileExtension(file);
+        const imagePath =
+          `${tile.projectId}/wafers/${tile.waferId}/dies/${dieCode}/results/${selectedSample.id}/${inspectionId}.${extension}`;
+
+        const signedResponse = await fetch("/api/storage/signed-upload", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            projectId: tile.projectId,
+            bucketName: INSPECTION_BUCKET,
+            objectPath: imagePath
+          })
+        });
+
+        if (!signedResponse.ok) {
+          const payload = await signedResponse.json().catch(() => null) as { error?: string } | null;
+          throw new Error(payload?.error ?? "Unable to create result image upload.");
+        }
+
+        const signedUpload = await signedResponse.json() as { path: string; token: string };
+        const supabase = createClient();
+        const { error: uploadErrorResult } = await supabase.storage
+          .from(INSPECTION_BUCKET)
+          .uploadToSignedUrl(signedUpload.path, signedUpload.token, file, {
+            contentType: file.type
+          });
+
+        if (uploadErrorResult) {
+          throw new Error(uploadErrorResult.message);
+        }
+
+        const result = await createDieInspection({
+          id: inspectionId,
+          projectId: tile.projectId,
+          waferId: tile.waferId,
+          dieCode,
+          row: selectedSample.row,
+          column: selectedSample.column,
+          xRatio: 0.5,
+          yRatio: 0.5,
+          imageBucket: INSPECTION_BUCKET,
+          imagePath,
+          imageMimeType: file.type,
+          imageSizeBytes: file.size,
+          imageFileName: file.name || `result-${selectedSample.id}-${inspectionId}.${extension}`
+        });
+
+        if (!result.ok) {
+          throw new Error(result.error);
+        }
+
+        uploaded.push(result.data);
+      }
+
+      if (uploaded.length > 0) {
+        setInspectionsBySample((current) => {
+          const existing = current[selectedSample.id] ?? [];
+          return {
+            ...current,
+            [selectedSample.id]: [...existing, ...uploaded]
+          };
+        });
+        setSelectedImageIndexBySample((current) => ({
+          ...current,
+          [selectedSample.id]: (inspectionsBySample[selectedSample.id]?.length ?? 0) + uploaded.length - 1
+        }));
+      }
+    } catch (error) {
+      setImageError(error instanceof Error ? error.message : "Result image upload failed.");
+    } finally {
+      setIsImageBusy(false);
+    }
+  }, [dieCode, inspectionsBySample, selectedSample, tile.projectId, tile.waferId]);
+
+  const deleteSelectedImage = useCallback(async () => {
+    if (!selectedInspection || isImageBusy) {
+      return;
+    }
+
+    setIsImageBusy(true);
+    setImageError(null);
+
+    const result = await deleteDieInspection({ inspectionId: selectedInspection.id });
+    if (!result.ok) {
+      setImageError(result.error);
+      setIsImageBusy(false);
+      return;
+    }
+
+    setInspectionsBySample((current) => {
+      const remaining = (current[selectedSample.id] ?? []).filter((inspection) => inspection.id !== selectedInspection.id);
+      return {
+        ...current,
+        [selectedSample.id]: remaining
+      };
+    });
+    setSelectedImageIndexBySample((current) => ({
+      ...current,
+      [selectedSample.id]: Math.max(0, selectedImageIndex - 1)
+    }));
+    setIsImageBusy(false);
+  }, [isImageBusy, selectedImageIndex, selectedInspection, selectedSample.id]);
+
+  const navigateImage = useCallback((direction: -1 | 1) => {
+    const count = selectedInspections.length;
+    if (count < 2) {
+      return;
+    }
+
+    setSelectedImageIndexBySample((current) => ({
+      ...current,
+      [selectedSample.id]: ((current[selectedSample.id] ?? 0) + direction + count) % count
+    }));
+    setDraftNote("");
+    setNoteError(null);
+  }, [selectedInspections.length, selectedSample.id]);
+
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+
+      const files = getClipboardImageFiles(event);
+      if (files.length === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      void uploadResultFiles(files);
+    };
+
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [uploadResultFiles]);
+
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="grid gap-5">
@@ -559,19 +949,36 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
           </div>
         </div>
 
-        <ResultsGrid selectedSample={selectedSample} onSelectSample={selectSample} />
-        <ParameterContext tile={tile} selectedSample={selectedSample} />
+        <ResultsGrid
+          inspectionsBySample={inspectionsBySample}
+          selectedSample={selectedSample}
+          onSelectSample={selectSample}
+        />
+        <ParameterContext
+          tile={tile}
+          selectedSample={selectedSample}
+          contextRow={contextRow}
+          onContextRowChange={setContextRow}
+        />
       </div>
 
       <SelectedSamplePanel
         tile={tile}
         selectedSample={selectedSample}
+        selectedInspections={selectedInspections}
+        selectedInspection={selectedInspection}
+        selectedImageOrdinal={selectedImageOrdinal}
+        isImageBusy={isImageBusy}
+        imageError={imageError}
         notes={selectedNotes}
         draftNote={draftNote}
         isSavingNote={isSavingNote}
         noteError={noteError}
         onDraftNoteChange={setDraftNote}
         onAddNote={addSampleNote}
+        onFilesAdd={(files) => void uploadResultFiles(files)}
+        onDeleteImage={deleteSelectedImage}
+        onNavigateImage={navigateImage}
         onNavigateSample={navigateSample}
       />
     </div>
