@@ -9,7 +9,7 @@ import {
 } from "./DieSummaryCards";
 import { ParametersTableCard } from "./ParametersTableCard";
 import { ProcessTimelineCard } from "./ProcessTimelineCard";
-import { ResultsSequenceCard } from "./ResultsSequenceCard";
+import { ResultsReviewBoard } from "./ResultsReviewBoard";
 import {
   getInitialWaferDieNotes,
   NotesCard,
@@ -82,17 +82,7 @@ function DieParametersTab({
 }
 
 function DieResultsTab({ tile }: { tile: WaferStatusTileModel }) {
-  return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="grid gap-4">
-        <ResultsSequenceCard />
-        <ParametersTableCard key={`results-parameters-${tile.id}`} tile={tile} />
-      </div>
-      <aside className="grid content-start gap-4">
-        <KeyResultsCard />
-      </aside>
-    </div>
-  );
+  return <ResultsReviewBoard tile={tile} />;
 }
 
 function DieNotesTab({

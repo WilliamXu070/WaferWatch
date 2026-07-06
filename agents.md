@@ -605,6 +605,27 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     session.
   - Screenshot: `/tmp/wafer-die-tabs-reordered.png`
 
+## Recent development note (2026-07-06 results review board)
+
+- Replaced the wafer die detail Results tab with an image-first result review
+  board: all row/column samples render at once, sample selection drives the
+  right-side inspector, the bottom parameter context follows the selected row
+  and column, related images are grouped below, and notes are scoped to the
+  selected result sample via `text_surfaces`.
+- Kept Parameters, Notes, Process history, wafer grid behavior, auth, and schema
+  surfaces unchanged.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - In-app browser at
+    `http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`:
+    unauthenticated backend empty state rendered with no console errors.
+  - Playwright CLI screenshot of the same unauthenticated route:
+    `/tmp/waferwatch-results-review-board-auth-gated.png`
+- Authenticated visual interaction with the Results board still needs a fresh
+  existing browser session; this worktree has no saved `playwright/.auth/user.json`.
+
 ## Recent development note (2026-07-06 wafer die notes persistence)
 
 - Added persistent create/edit/delete support for the wafer die detail Notes tab.
