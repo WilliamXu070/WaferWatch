@@ -1507,3 +1507,101 @@
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 767px) {
+  .wireframe-calendar-view {
+    padding: 0;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card {
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card__header {
+    gap: 14px;
+    padding: 16px 14px 14px;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card__header h1 {
+    font-size: 21px;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card__header p {
+    margin-top: 4px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card__controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card__range {
+    min-height: 44px;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card__range button,
+  .waferwatch-wireframe .wireframe-calendar-card__today {
+    min-height: 44px;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card__range span {
+    font-size: 13px;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card__today {
+    padding: 0 14px;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-toolbar {
+    display: flex;
+    min-height: 54px;
+    padding: 10px 12px;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-toolbar .muted {
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-toolbar .calendar-new-event-button {
+    min-height: 40px;
+    white-space: nowrap;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar,
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-header,
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-sidebar-header {
+    width: 96px !important;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-row {
+    min-height: 118px;
+    padding: 0 9px;
+    font-size: 11px;
+    line-height: 1.35 !important;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-scroll {
+    min-height: 420px;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-calendar-header [data-testid="dateHeader"],
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-dateHeader,
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-wireframe-day-header {
+    min-height: 64px;
+    height: 64px !important;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-wireframe-day-header strong {
+    font-size: 11px;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-wireframe-day-header span {
+    font-size: 10px;
+  }
+}

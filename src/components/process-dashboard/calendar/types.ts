@@ -32,6 +32,8 @@ export type DraftDragSelection = {
 export type TimelinePanState = {
   pointerId: number;
   startX: number;
+  startY: number;
+  pointerType: string;
   startStart: number;
   startEnd: number;
   moved: boolean;

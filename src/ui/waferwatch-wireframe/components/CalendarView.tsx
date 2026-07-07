@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ProcessCalendarBoard } from "@/components/process-dashboard/ProcessCalendarBoard";
 import { ChevronLeftIcon, ChevronRightIcon } from "../icons";
 import type {
@@ -13,7 +13,6 @@ const MIN_WINDOW_DAYS = 365;
 const LOOKBACK_DAYS = 180;
 const LOOKAHEAD_DAYS = 180;
 const CALENDAR_TITLE = "Calendar";
-const CALENDAR_RANGE_LABEL = "Backend schedule";
 
 type ProcessStepOption = {
   id: string;
@@ -59,6 +58,26 @@ function toIsoDate(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function addDateDays(input: string, days: number) {
+  const date = parseIsoDate(input);
+  date.setDate(date.getDate() + days);
+  return toIsoDate(date);
+}
+
+function formatRangeLabel(input: string) {
+  const start = parseIsoDate(input);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+
+  return `${start.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric"
+  })} - ${end.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric"
+  })}`;
 }
 
 function getCalendarWindowFallback(startDate: Date, eventStart: number, eventEnd: number) {
@@ -141,6 +160,9 @@ function getDisabledStateCopy(status: Exclude<CalendarViewProps["result"], { sta
 export function CalendarView({ result }: CalendarViewProps) {
   const isBackendReady = result.status === "ready";
   const calendarData = isBackendReady ? result.data : null;
+  const [visibleStartDate, setVisibleStartDate] = useState(() =>
+    calendarData?.initialStartDate ?? toIsoDate(new Date())
+  );
   const resolvedSteps = useMemo(() => (calendarData ? [...calendarData.steps] : []), [calendarData]);
   const resolvedWafers = useMemo(() => (calendarData ? [...calendarData.wafers] : []), [calendarData]);
   const resolvedPeople = useMemo(() => (calendarData ? [...calendarData.people] : []), [calendarData]);
@@ -154,9 +176,10 @@ export function CalendarView({ result }: CalendarViewProps) {
     [calendarData, resolvedEvents]
   );
   const disabledState = isBackendReady ? null : getDisabledStateCopy(result);
+  const rangeLabel = calendarData ? formatRangeLabel(visibleStartDate) : "Backend schedule";
 
   return (
-    <div className="flex flex-col gap-5 p-4 md:p-6">
+    <div className="wireframe-calendar-view flex flex-col gap-5 p-2 md:p-6">
       <section className="wireframe-calendar-card rounded-2xl border border-[#e5e5db] bg-white md:rounded-3xl">
         <header className="wireframe-calendar-card__header">
           <div>
@@ -170,16 +193,31 @@ export function CalendarView({ result }: CalendarViewProps) {
 
           <div className="wireframe-calendar-card__controls" aria-label="Calendar display controls">
             <div className="wireframe-calendar-card__range" aria-label="Current range">
-              <button type="button" aria-label="Previous range">
+              <button
+                type="button"
+                aria-label="Previous week"
+                disabled={!calendarData}
+                onClick={() => setVisibleStartDate((current) => addDateDays(current, -7))}
+              >
                 <ChevronLeftIcon />
               </button>
-              <span>{CALENDAR_RANGE_LABEL}</span>
-              <button type="button" aria-label="Next range">
+              <span>{rangeLabel}</span>
+              <button
+                type="button"
+                aria-label="Next week"
+                disabled={!calendarData}
+                onClick={() => setVisibleStartDate((current) => addDateDays(current, 7))}
+              >
                 <ChevronRightIcon />
               </button>
             </div>
 
-            <button type="button" className="wireframe-calendar-card__today">
+            <button
+              type="button"
+              className="wireframe-calendar-card__today"
+              disabled={!calendarData}
+              onClick={() => setVisibleStartDate(toIsoDate(new Date()))}
+            >
               Today
             </button>
           </div>
@@ -198,6 +236,7 @@ export function CalendarView({ result }: CalendarViewProps) {
               ) : null}
 
               <ProcessCalendarBoard
+                key={`${calendarData.process.id}:${visibleStartDate}`}
                 processTemplateId={calendarData.process.id}
                 calendarStartDate={calendarWindowRange.startDate}
                 days={calendarWindowRange.days}
@@ -205,7 +244,7 @@ export function CalendarView({ result }: CalendarViewProps) {
                 wafers={resolvedWafers}
                 people={resolvedPeople}
                 initialEvents={resolvedEvents}
-                initialVisibleStartDate={calendarData.initialStartDate}
+                initialVisibleStartDate={visibleStartDate}
                 presentationMode="wireframe"
               />
             </>

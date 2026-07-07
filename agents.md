@@ -690,6 +690,27 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright touch-emulation on `/wireframe/dashboard` at `390x844`: page drag
     moved `window.scrollY` to `603`.
   - Console error log was empty.
+
+## Recent development note (2026-07-07 calendar mobile logic)
+
+- Fixed calendar week navigation by wiring the Previous, Next, and Today controls
+  to the board's visible start date instead of leaving them inert.
+- Added a visible `New event` entry point in the timeline toolbar and defaulted
+  draft events to the first available process person, so seeded event creation
+  does not immediately fail the required people validation.
+- Improved phone calendar sizing: full-width mobile card, compact header,
+  visible timeline toolbar, smaller site column, shorter mobile rows, and shorter
+  date headers.
+- Adjusted timeline touch history movement so vertical swipes can scroll the
+  page while horizontal swipes on blank timeline space pan through calendar
+  history.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -I http://localhost:3015/calendar?processId=11111111-1111-4111-8111-111111111103`
+    confirmed the Playwright/CLI session is unauthenticated and redirects to `/`;
+    authenticated seeded browser mutation testing still needs William's signed-in
+    browser session.
   - Playwright rendered the unauthenticated backend empty state, so authenticated
     visual acceptance still needs William's signed-in browser session.
 

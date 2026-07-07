@@ -162,6 +162,7 @@ export function ProcessCalendarBoard({
   const itemMoveFrameRef = useRef<number | null>(null);
   const [timelinePanPointerId, setTimelinePanPointerId] = useState<number | null>(null);
   const [isTimelinePanning, setIsTimelinePanning] = useState(false);
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
 
   const startDate = useMemo(() => new Date(`${calendarStartDate}T00:00:00`), [calendarStartDate]);
   const timelineStart = useMemo(() => buildDateAtMinute(startDate, START_MINUTE).getTime(), [startDate]);
@@ -178,6 +179,16 @@ export function ProcessCalendarBoard({
   useEffect(() => {
     selectedEventIdRef.current = selectedEventId;
   }, [selectedEventId]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const updateCompactViewport = () => setIsCompactViewport(mediaQuery.matches);
+
+    updateCompactViewport();
+    mediaQuery.addEventListener("change", updateCompactViewport);
+
+    return () => mediaQuery.removeEventListener("change", updateCompactViewport);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -455,9 +466,9 @@ export function ProcessCalendarBoard({
     setSelectedWaferId("");
     setManualAction("");
     setDescription("");
-    setSelectedPersonIds([]);
+    setSelectedPersonIds(people[0]?.id ? [people[0].id] : []);
     setPersonQuery("");
-  }, [steps]);
+  }, [people, steps]);
 
   const openDraft = useCallback((nextDraft: DraftEvent) => {
     resetDraftForm();
@@ -849,6 +860,21 @@ export function ProcessCalendarBoard({
     [openDraft]
   );
 
+  const openDefaultDraft = useCallback(() => {
+    const start = clamp(
+      snapTime(effectiveVisibleRange.start + 2 * 60 * 60 * 1000),
+      timelineStart,
+      timelineEnd - DEFAULT_EVENT_MS
+    );
+    const end = Math.min(start + DEFAULT_EVENT_MS, timelineEnd);
+
+    openDraft({
+      location: groups[0]?.id ?? "McMaster",
+      startsAt: new Date(start),
+      endsAt: new Date(end)
+    });
+  }, [effectiveVisibleRange.start, groups, openDraft, timelineEnd, timelineStart]);
+
   const handleTimelineDoubleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (!isBlankTimelineTarget(event.target)) {
       return;
@@ -985,12 +1011,18 @@ export function ProcessCalendarBoard({
       }
 
       clearSelectedEventFromBlankCanvas();
-      event.preventDefault();
+      if (event.pointerType !== "touch") {
+        event.preventDefault();
+      }
       event.stopPropagation();
-      timelinePanelRef.current?.setPointerCapture?.(event.pointerId);
+      if (event.pointerType !== "touch") {
+        timelinePanelRef.current?.setPointerCapture?.(event.pointerId);
+      }
       timelinePanRef.current = {
         pointerId: event.pointerId,
         startX: event.clientX,
+        startY: event.clientY,
+        pointerType: event.pointerType,
         startStart: effectiveVisibleRange.start,
         startEnd: effectiveVisibleRange.end,
         moved: false
@@ -1479,7 +1511,10 @@ export function ProcessCalendarBoard({
       }
 
       if (event) {
-        timelinePanelRef.current?.releasePointerCapture?.(event.pointerId);
+        const panel = timelinePanelRef.current;
+        if (panel?.hasPointerCapture?.(event.pointerId)) {
+          panel.releasePointerCapture(event.pointerId);
+        }
       }
 
       timelinePanRef.current = null;
@@ -1500,7 +1535,16 @@ export function ProcessCalendarBoard({
       }
 
       const dragDistance = event.clientX - pan.startX;
+      const verticalDistance = event.clientY - pan.startY;
       if (!pan.moved && Math.abs(dragDistance) < 4) {
+        return;
+      }
+
+      if (
+        pan.pointerType === "touch" &&
+        !pan.moved &&
+        Math.abs(verticalDistance) > Math.abs(dragDistance)
+      ) {
         return;
       }
 
@@ -1563,10 +1607,16 @@ export function ProcessCalendarBoard({
         ref={timelinePanelRef}
       >
         <div className="calendar-timeline-toolbar">
-          <p className="eyebrow">Schedule map</p>
-          <p className="muted">
-            {formatDateTime(new Date(timelineStart))} - {formatDateTime(new Date(timelineEnd))}
-          </p>
+          <div>
+            <p className="eyebrow">Schedule map</p>
+            <p className="muted">
+              {formatDateTime(new Date(effectiveVisibleRange.start))} -{" "}
+              {formatDateTime(new Date(effectiveVisibleRange.end))}
+            </p>
+          </div>
+          <button type="button" className="button button-primary calendar-new-event-button" onClick={openDefaultDraft}>
+            New event
+          </button>
         </div>
 
         <Timeline<CalendarTimelineItem, TimelineLocationGroup>
@@ -1585,7 +1635,7 @@ export function ProcessCalendarBoard({
           itemVerticalGap={presentationMode === "wireframe" ? 12 : 6}
           items={timelineItems}
           keys={TIMELINE_KEYS}
-          lineHeight={presentationMode === "wireframe" ? 172 : 46}
+          lineHeight={presentationMode === "wireframe" ? (isCompactViewport ? 118 : 172) : 46}
           maxZoom={maxZoomMs}
           minZoom={MIN_ZOOM_MS}
           moveResizeValidator={moveResizeValidator}
@@ -1599,7 +1649,7 @@ export function ProcessCalendarBoard({
           onTimeChange={handleTimeChange}
           ref={setTimelineRef}
           selected={draft ? ["__draft-create__"] : selectedEventId ? [selectedEventId] : []}
-          sidebarWidth={presentationMode === "wireframe" ? 136 : 132}
+          sidebarWidth={presentationMode === "wireframe" ? (isCompactViewport ? 96 : 136) : 132}
           verticalLineClassNamesForTime={timelineVerticalLineClassNames}
           stackItems
           timeSteps={{ second: 1, minute: 15, hour: headerScale.hourStep, day: 1, month: 1, year: 1 }}
