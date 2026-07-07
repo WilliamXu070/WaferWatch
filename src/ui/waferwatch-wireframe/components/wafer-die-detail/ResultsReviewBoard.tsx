@@ -45,7 +45,7 @@ const RESULT_SAMPLE_SCOPE_TYPE = "wireframe:result_sample";
 const RESULT_SAMPLE_UNIFORMITY_FIELD = "uniformity_percent";
 const INSPECTION_BUCKET = "wafer-process-files";
 const recipeCode = "TFA3.1M1R1";
-const GALLERY_VISIBLE_COUNT = 8;
+const GALLERY_VISIBLE_COUNT = 5;
 const maxGalleryStartColumn = Math.max(1, chipColumns.length - GALLERY_VISIBLE_COUNT + 1);
 
 function buildSamples() {
@@ -179,14 +179,14 @@ function GalleryTile({
   return (
     <article
       className={[
-        "grid min-w-0 grid-rows-[minmax(260px,42vh)_auto] overflow-hidden rounded-lg border bg-white transition-colors",
+        "grid min-w-0 overflow-hidden rounded-lg border bg-white transition-colors",
         selected ? "border-[#111111] shadow-[0_0_0_1px_#111111]" : "border-[#e4e4df]"
       ].join(" ")}
     >
       <button
         type="button"
         onClick={() => onSelect(sample)}
-        className="block min-h-0 bg-white p-1.5 text-left"
+        className="block aspect-[4/3] min-h-0 bg-white p-1.5 text-left"
         aria-pressed={selected}
         aria-label={`Select ${sample.id} result sample`}
       >
@@ -333,7 +333,7 @@ function ResultsGalleryViewport({
         tabIndex={0}
       >
         <input {...getInputProps()} />
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {visibleSamples.map((sample) => {
             const inspections = inspectionsBySample[sample.id] ?? [];
             const imageIndex = Math.min(imageIndexBySample[sample.id] ?? 0, Math.max(inspections.length - 1, 0));

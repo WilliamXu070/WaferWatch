@@ -638,6 +638,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright rendered the unauthenticated backend empty state, so authenticated
     visual acceptance still needs William's signed-in browser session.
 
+## Recent development note (2026-07-07 results five-sample gallery)
+
+- Reduced the Results gallery viewport from eight visible samples to five visible
+  samples so each capture has more horizontal room.
+- Changed each capture well from a tall viewport-height slot to a 4:3 image well,
+  preserving `object-contain` while removing the large vertical blank bands.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-five-gallery-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    visual acceptance still needs William's signed-in browser session.
+
 ## Recent development note (2026-07-06 results review board)
 
 - Replaced the wafer die detail Results tab with an image-first result review
