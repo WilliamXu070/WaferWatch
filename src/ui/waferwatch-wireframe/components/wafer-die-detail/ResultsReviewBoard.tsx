@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from "react";
 import { useDropzone } from "react-dropzone";
@@ -43,11 +44,20 @@ type ResultSample = {
 
 type SampleInspectionMap = Record<string, DieInspectionRecord[]>;
 
+type PendingDeletion = {
+  inspection: DieInspectionRecord;
+  sampleId: string;
+  sampleIndex: number;
+  imageIndex: number;
+  timeoutId: number;
+};
+
 const RESULT_SAMPLE_SCOPE_TYPE = "wireframe:result_sample";
 const RESULT_SAMPLE_UNIFORMITY_FIELD = "uniformity_percent";
 const INSPECTION_BUCKET = "wafer-process-files";
 const recipeCode = "TFA3.1M1R1";
 const GALLERY_VISIBLE_COUNT = 5;
+const DELETE_UNDO_DELAY_MS = 3500;
 const maxGalleryStartColumn = Math.max(1, chipColumns.length - GALLERY_VISIBLE_COUNT + 1);
 
 function buildSamples() {
@@ -389,7 +399,7 @@ function ResultsGalleryViewport({
           <button
             type="button"
             onClick={onDeleteImage}
-            disabled={!selectedInspection || isImageBusy}
+            disabled={!selectedInspection}
             className="h-9 rounded-md border border-[#e1e1dc] bg-white px-3 text-[#9b2727] hover:bg-[#fff0ef] disabled:text-[#aaa] disabled:hover:bg-transparent"
           >
             Delete
@@ -553,6 +563,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
   const [savedUniformityBySample, setSavedUniformityBySample] = useState<Record<string, string>>({});
   const [isSavingUniformity, setIsSavingUniformity] = useState(false);
   const [uniformityError, setUniformityError] = useState<string | null>(null);
+  const pendingDeletionRef = useRef<PendingDeletion | null>(null);
   const selectedSample = useMemo(
     () => resultSamples.find((sample) => sample.id === selectedSampleId) ?? resultSamples[0],
     [selectedSampleId]
@@ -885,20 +896,89 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     }
   }, [dieCode, selectedSample, tile.projectId, tile.waferId]);
 
-  const deleteSelectedImage = useCallback(async () => {
-    if (!selectedInspection || isImageBusy) {
+  const restoreDeletedInspection = useCallback((deletion: PendingDeletion) => {
+    setInspectionsBySample((current) => {
+      const existing = current[deletion.sampleId] ?? [];
+      if (existing.some((inspection) => inspection.id === deletion.inspection.id)) {
+        return current;
+      }
+
+      const restored = [...existing];
+      restored.splice(Math.min(deletion.sampleIndex, restored.length), 0, deletion.inspection);
+
+      return {
+        ...current,
+        [deletion.sampleId]: restored
+      };
+    });
+    setSelectedSampleId(deletion.sampleId);
+    const restoredSample = resultSamples.find((sample) => sample.id === deletion.sampleId);
+    if (restoredSample) {
+      setContextRow(restoredSample.row);
+      setGalleryStartColumn((current) => ensureColumnInGalleryWindow(current, restoredSample.column));
+    }
+    setSelectedImageIndexBySample((current) => ({
+      ...current,
+      [deletion.sampleId]: deletion.imageIndex
+    }));
+  }, []);
+
+  const commitDeletionInBackground = useCallback((deletion: PendingDeletion, restoreOnFailure: boolean) => {
+    void deleteDieInspection({ inspectionId: deletion.inspection.id }).then((result) => {
+      if (!result.ok) {
+        setImageError(result.error);
+        if (restoreOnFailure) {
+          restoreDeletedInspection(deletion);
+        }
+      }
+    });
+  }, [restoreDeletedInspection]);
+
+  const undoLastDeletion = useCallback(() => {
+    const deletion = pendingDeletionRef.current;
+    if (!deletion) {
       return;
     }
 
-    setIsImageBusy(true);
+    window.clearTimeout(deletion.timeoutId);
+    pendingDeletionRef.current = null;
+    restoreDeletedInspection(deletion);
     setImageError(null);
+  }, [restoreDeletedInspection]);
 
-    const result = await deleteDieInspection({ inspectionId: selectedInspection.id });
-    if (!result.ok) {
-      setImageError(result.error);
-      setIsImageBusy(false);
+  const deleteSelectedImage = useCallback(() => {
+    if (!selectedInspection) {
       return;
     }
+
+    const previousDeletion = pendingDeletionRef.current;
+    if (previousDeletion) {
+      window.clearTimeout(previousDeletion.timeoutId);
+      pendingDeletionRef.current = null;
+      commitDeletionInBackground(previousDeletion, false);
+    }
+
+    const sampleId = selectedSample.id;
+    const sampleInspections = inspectionsBySample[sampleId] ?? [];
+    const sampleIndex = sampleInspections.findIndex((inspection) => inspection.id === selectedInspection.id);
+    const deletion: PendingDeletion = {
+      inspection: selectedInspection,
+      sampleId,
+      sampleIndex: Math.max(0, sampleIndex),
+      imageIndex: selectedImageIndex,
+      timeoutId: window.setTimeout(() => {
+        const pending = pendingDeletionRef.current;
+        if (!pending || pending.inspection.id !== selectedInspection.id) {
+          return;
+        }
+
+        pendingDeletionRef.current = null;
+        commitDeletionInBackground(pending, true);
+      }, DELETE_UNDO_DELAY_MS)
+    };
+
+    pendingDeletionRef.current = deletion;
+    setImageError(null);
 
     setInspectionsBySample((current) => {
       const remaining = (current[selectedSample.id] ?? []).filter((inspection) => inspection.id !== selectedInspection.id);
@@ -911,8 +991,23 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
       ...current,
       [selectedSample.id]: Math.max(0, selectedImageIndex - 1)
     }));
-    setIsImageBusy(false);
-  }, [isImageBusy, selectedImageIndex, selectedInspection, selectedSample.id]);
+  }, [
+    commitDeletionInBackground,
+    inspectionsBySample,
+    selectedImageIndex,
+    selectedInspection,
+    selectedSample.id
+  ]);
+
+  useEffect(() => {
+    return () => {
+      const deletion = pendingDeletionRef.current;
+      if (deletion) {
+        window.clearTimeout(deletion.timeoutId);
+        commitDeletionInBackground(deletion, false);
+      }
+    };
+  }, [commitDeletionInBackground]);
 
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
@@ -940,12 +1035,28 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) {
         return;
       }
 
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable='true']")) {
+      const isCommandShortcut = event.metaKey || event.ctrlKey;
+      if (isCommandShortcut && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        undoLastDeletion();
+        return;
+      }
+
+      if (
+        isCommandShortcut &&
+        (event.key === "Backspace" || event.key === "Delete")
+      ) {
+        event.preventDefault();
+        deleteSelectedImage();
+        return;
+      }
+
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
         return;
       }
 
@@ -955,7 +1066,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigateSampleByKey]);
+  }, [deleteSelectedImage, navigateSampleByKey, undoLastDeletion]);
 
   const navigateGalleryWindow = useCallback((direction: -1 | 1) => {
     setGalleryStartColumn((current) => Math.min(maxGalleryStartColumn, Math.max(1, current + direction)));
