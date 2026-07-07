@@ -1016,23 +1016,6 @@ export function ProcessCalendarBoard({
     };
   }, [handleTimelineNativeClickCapture]);
 
-  useEffect(() => {
-    const panel = timelinePanelRef.current;
-    if (!panel) { return; }
-
-    const handleTouchStart = (event: TouchEvent) => {
-      if (event.target instanceof Element && event.target.closest(".rct-item, .ww-timeline-item")) {
-        event.preventDefault();
-      }
-    };
-
-    panel.addEventListener("touchstart", handleTouchStart, { passive: false, capture: true });
-
-    return () => {
-      panel.removeEventListener("touchstart", handleTouchStart, { capture: true });
-    };
-  }, []);
-
   const moveResizeValidator = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["moveResizeValidator"]>>(
     (action, item, time, resizeEdge) => {
       const minTime = timelineStart;

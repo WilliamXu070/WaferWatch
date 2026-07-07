@@ -1,8 +1,4 @@
-import {
-  HTMLAttributes,
-  RefObject,
-  type PointerEvent as ReactPointerEvent
-} from "react";
+import { HTMLAttributes, RefObject, type PointerEvent as ReactPointerEvent } from "react";
 import type { ReactCalendarTimelineProps } from "react-calendar-timeline";
 import type {
   CalendarPresentationMode,
@@ -39,10 +35,21 @@ export function renderCalendarTimelineItem({
   const { item, itemContext, getItemProps, getResizeProps } = rendererProps;
   const isItemSelected = item.isDraft ? Boolean(draft) : item.id === selectedEventId;
   const resizeProps = getResizeProps();
-  const { key, onPointerDown, onPointerUp, onPointerCancel, ...itemProps } = getItemProps({
+  const itemPropsAll = getItemProps({
     className: `ww-timeline-item ${item.toneClass} ${isItemSelected ? "ww-timeline-item--selected" : ""}`
-  }) as HTMLAttributes<HTMLDivElement> & {
-    key?: React.Key;
+  }) as HTMLAttributes<HTMLDivElement> & { key?: React.Key; ref?: unknown };
+  const { key, onPointerDown, onPointerUp, onPointerCancel, ref: itemRef, ...itemProps } = itemPropsAll;
+
+  const handleItemRef = (el: HTMLDivElement | null) => {
+    if (typeof itemRef === "function") {
+      itemRef(el);
+    } else if (itemRef && typeof itemRef === "object") {
+      (itemRef as { current: HTMLDivElement | null }).current = el;
+    }
+    if (el && !el.dataset.prevented) {
+      el.dataset.prevented = "true";
+      el.addEventListener("touchstart", (e) => { e.preventDefault(); }, { passive: false });
+    }
   };
 
   const handleItemPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -69,6 +76,7 @@ export function renderCalendarTimelineItem({
       onPointerDown={handleItemPointerDown}
       onPointerUp={handleItemPointerUp}
       onPointerCancel={handleItemPointerCancel}
+      ref={handleItemRef}
     >
       {itemContext.useResizeHandle ? (
         <div {...resizeProps.left} className="ww-timeline-resize ww-timeline-resize--left" />
