@@ -153,6 +153,7 @@ export function ProcessCalendarBoard({
   const suppressedItemSelectionIdRef = useRef<string | null>(null);
   const ignoreStaleItemSelectionUntilRef = useRef(0);
   const ignoreBlankCalendarClickUntilRef = useRef(0);
+  const lastTimelineTouchTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const itemMoveRef = useRef<PendingTimelineMove | null>(null);
   const itemMoveFrameRef = useRef<number | null>(null);
   const [timelinePanPointerId, setTimelinePanPointerId] = useState<number | null>(null);
@@ -942,14 +943,45 @@ export function ProcessCalendarBoard({
       return;
     }
 
-    // Touch: let native scroll and timeline library handle it directly
     if (event.pointerType === "touch") {
-      return;
+      const now = Date.now();
+      const lastTap = lastTimelineTouchTapRef.current;
+      const tapDistance = lastTap
+        ? Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y)
+        : Number.POSITIVE_INFINITY;
+      const isDoubleTap = Boolean(lastTap && now - lastTap.time <= 360 && tapDistance <= 28);
+
+      if (isDoubleTap) {
+        lastTimelineTouchTapRef.current = null;
+
+        const pointerTarget = getTimelinePointerTarget(event);
+        if (!pointerTarget) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const startsAt = new Date(pointerTarget.time);
+        const endsAt = new Date(Math.min(pointerTarget.time + DEFAULT_EVENT_MS, timelineEnd));
+        openDraft({ location: pointerTarget.location, startsAt, endsAt });
+        return;
+      }
+
+      lastTimelineTouchTapRef.current = {
+        time: now,
+        x: event.clientX,
+        y: event.clientY
+      };
+    } else {
+      lastTimelineTouchTapRef.current = null;
     }
 
     clearSelectedEventFromBlankCanvas();
-    event.preventDefault();
     event.stopPropagation();
+    if (event.pointerType !== "touch") {
+      event.preventDefault();
+    }
     timelinePanelRef.current?.setPointerCapture?.(event.pointerId);
     timelinePanRef.current = {
       pointerId: event.pointerId,
@@ -966,7 +998,10 @@ export function ProcessCalendarBoard({
     effectiveVisibleRange.start,
     effectiveVisibleRange.end,
     clearSelectedEventFromBlankCanvas,
+    getTimelinePointerTarget,
+    openDraft,
     startItemDragSelectionBlock,
+    timelineEnd
   ]);
 
   const handleTimelineClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {

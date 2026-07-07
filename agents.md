@@ -1842,3 +1842,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run lint`
   - `npm run build`
 - Committed as `5287c45`, pushed to `origin/main`, deployed to Vercel production.
+
+## Recent development note (2026-07-07 calendar iPhone history pan and double-tap)
+
+- Updated `/calendar` / `/wireframe/calendar` timeline touch behavior so blank
+  timeline drags can use the board's pointer-pan path on iPhone instead of
+  handing horizontal history swipes to the page background.
+- Added explicit touch double-tap detection on blank timeline space to open the
+  same one-hour draft event used by desktop double-click.
+- Updated the deterministic wireframe fixture so the basic 30-minute seeded
+  intake/completion step durations are one hour, and shifted the Alpha/Beta
+  intake execution windows to one-hour blocks.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+- Browser/iPhone interaction verification was blocked in this automation session:
+  the in-app browser bridge failed to initialize, and `npx playwright` attempted
+  a network install that was rejected outside the sandbox. Signed-in iPhone
+  visual acceptance still needs William's existing browser session or an
+  explicitly approved Playwright install/run.
