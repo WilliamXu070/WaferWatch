@@ -2,6 +2,8 @@
 
 import {
   type ClipboardEvent as ReactClipboardEvent,
+  memo,
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -132,18 +134,34 @@ function getParameterToneClass(
   return toneMaps[field].get(value.trim()) ?? "";
 }
 
-function ResultImage({
+const ResultImage = memo(function ResultImage({
   imageUrl,
+  isActive = true,
   className = ""
 }: {
   imageUrl?: string | null;
+  isActive?: boolean;
   className?: string;
 }) {
   if (imageUrl) {
     return (
-      <div className={["overflow-hidden rounded-md border border-[#d8d8d2] bg-[#f7f7f3] shadow-inner", className].join(" ")}>
+      <div
+        className={[
+          "overflow-hidden rounded-md border border-[#d8d8d2] bg-[#f7f7f3] shadow-inner",
+          isActive ? "" : "pointer-events-none absolute inset-0 opacity-0",
+          className
+        ].join(" ")}
+        aria-hidden={!isActive}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageUrl} alt="" className="h-full w-full object-contain" />
+        <img
+          src={imageUrl}
+          alt=""
+          className="h-full w-full object-contain"
+          decoding="async"
+          fetchPriority={isActive ? "high" : "low"}
+          draggable={false}
+        />
       </div>
     );
   }
@@ -153,11 +171,39 @@ function ResultImage({
       <span className="text-[18px]">+</span>
     </div>
   );
+});
+
+function ResultImageStack({
+  inspections,
+  activeIndex,
+  className = ""
+}: {
+  inspections: readonly DieInspectionRecord[];
+  activeIndex: number;
+  className?: string;
+}) {
+  if (inspections.length === 0) {
+    return <ResultImage className={className} />;
+  }
+
+  return (
+    <div className={["relative", className].join(" ")}>
+      {inspections.map((inspection, index) => (
+        <ResultImage
+          key={inspection.id}
+          imageUrl={inspection.imageUrl}
+          isActive={index === activeIndex}
+          className="h-full w-full"
+        />
+      ))}
+    </div>
+  );
 }
 
-function GalleryTile({
+const GalleryTile = memo(function GalleryTile({
   sample,
-  inspection,
+  inspections,
+  imageIndex,
   imageOrdinal,
   imageCount,
   uniformityValue,
@@ -167,7 +213,8 @@ function GalleryTile({
   onUniformityBlur
 }: {
   sample: ResultSample;
-  inspection?: DieInspectionRecord;
+  inspections: readonly DieInspectionRecord[];
+  imageIndex: number;
   imageOrdinal: number;
   imageCount: number;
   uniformityValue: string;
@@ -176,6 +223,18 @@ function GalleryTile({
   onUniformityChange: (sample: ResultSample, value: string) => void;
   onUniformityBlur: (sample: ResultSample) => void;
 }) {
+  const handleImageKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === " ") {
+      event.preventDefault();
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onSelect(sample);
+    }
+  };
+
   return (
     <article
       className={[
@@ -186,11 +245,12 @@ function GalleryTile({
       <button
         type="button"
         onClick={() => onSelect(sample)}
+        onKeyDown={handleImageKeyDown}
         className="block aspect-[4/3] min-h-0 bg-white p-1.5 text-left"
         aria-pressed={selected}
         aria-label={`Select ${sample.id} result sample`}
       >
-        <ResultImage imageUrl={inspection?.imageUrl} className="h-full w-full" />
+        <ResultImageStack inspections={inspections} activeIndex={imageIndex} className="h-full w-full" />
       </button>
       <div className="grid gap-2 border-t border-[#eeeeea] px-2 py-2">
         <div className="flex min-w-0 items-center justify-between gap-2 text-[12px] font-semibold">
@@ -213,7 +273,7 @@ function GalleryTile({
       </div>
     </article>
   );
-}
+});
 
 function ResultsGalleryViewport({
   tile,
@@ -341,7 +401,8 @@ function ResultsGalleryViewport({
               <GalleryTile
                 key={sample.id}
                 sample={sample}
-                inspection={inspections[imageIndex]}
+                inspections={inspections}
+                imageIndex={imageIndex}
                 imageOrdinal={inspections.length ? imageIndex + 1 : 0}
                 imageCount={inspections.length}
                 uniformityValue={uniformityBySample[getSampleMetricKey(tile, sample)] ?? sample.uniformityPercent}
@@ -496,6 +557,26 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
   );
   const selectedInspection = selectedInspections[selectedImageIndex] ?? null;
   const sampleMetricScopeKey = useMemo(() => getSampleMetricKey(tile, selectedSample), [selectedSample, tile]);
+  const warmImageUrls = useMemo(() => {
+    const warmColumnStart = Math.max(1, galleryStartColumn - 1);
+    const warmColumnEnd = Math.min(chipColumns.length, galleryStartColumn + GALLERY_VISIBLE_COUNT);
+    const warmSampleIds = new Set(
+      resultSamples
+        .filter((sample) =>
+          sample.row === selectedSample.row &&
+          sample.column >= warmColumnStart &&
+          sample.column <= warmColumnEnd
+        )
+        .map((sample) => sample.id)
+    );
+
+    warmSampleIds.add(selectedSample.id);
+
+    return Array.from(warmSampleIds)
+      .flatMap((sampleId) => inspectionsBySample[sampleId] ?? [])
+      .map((inspection) => inspection.imageUrl)
+      .filter((imageUrl): imageUrl is string => Boolean(imageUrl));
+  }, [galleryStartColumn, inspectionsBySample, selectedSample]);
 
   useEffect(() => {
     if (sampleMetricScopeKey in uniformityBySample) {
@@ -566,10 +647,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
   }, [dieCode, tile.waferId]);
 
   useEffect(() => {
-    const warmedImages = Object.values(inspectionsBySample)
-      .flat()
-      .map((inspection) => inspection.imageUrl)
-      .filter((imageUrl): imageUrl is string => Boolean(imageUrl))
+    const warmedImages = warmImageUrls
       .map((imageUrl) => {
         const image = new window.Image();
         image.decoding = "async";
@@ -582,7 +660,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
         image.src = "";
       }
     };
-  }, [inspectionsBySample]);
+  }, [warmImageUrls]);
 
   const selectSample = useCallback((sample: ResultSample) => {
     setSelectedSampleId(sample.id);
@@ -612,22 +690,6 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     const columnCount = chipColumns.length;
     const rowIndex = selectedSample.row - 1;
     const columnIndex = selectedSample.column - 1;
-
-    if (key === "ArrowLeft" && selectedImageIndex > 0) {
-      setSelectedImageIndexBySample((current) => ({
-        ...current,
-        [selectedSample.id]: selectedImageIndex - 1
-      }));
-      return;
-    }
-
-    if (key === "ArrowRight" && selectedImageIndex < selectedInspections.length - 1) {
-      setSelectedImageIndexBySample((current) => ({
-        ...current,
-        [selectedSample.id]: selectedImageIndex + 1
-      }));
-      return;
-    }
 
     if (key === "ArrowLeft" && columnIndex === 0) {
       return;
@@ -664,7 +726,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     if (nextSample) {
       selectSample(nextSample);
     }
-  }, [selectSample, selectedImageIndex, selectedInspections.length, selectedSample]);
+  }, [selectSample, selectedSample]);
 
   const saveUniformity = useCallback(async (sample: ResultSample) => {
     const scopeKey = getSampleMetricKey(tile, sample);

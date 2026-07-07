@@ -652,6 +652,25 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright rendered the unauthenticated backend empty state, so authenticated
     visual acceptance still needs William's signed-in browser session.
 
+## Recent development note (2026-07-07 results gallery hot-load)
+
+- Changed visible Results tiles to keep all uploaded images for that sample
+  mounted in a hidden stack, so advancing within a chip reveals a preloaded image
+  instead of swapping a fresh image source.
+- Narrowed image warming to the current five-sample viewport plus adjacent row
+  columns and the selected sample, matching the old inspection-viewer preload
+  approach without warming the whole board every time.
+- Arrow keys now move chip selection only. Image advancement is limited to an
+  explicit click or Return/Enter on the chip image; Space is suppressed so scroll
+  intent does not accidentally advance the gallery from a focused image button.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-gallery-hotload-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    visual acceptance still needs William's signed-in browser session.
+
 ## Recent development note (2026-07-06 results review board)
 
 - Replaced the wafer die detail Results tab with an image-first result review
