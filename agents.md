@@ -1829,3 +1829,16 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run build`
 - Signed-in drag-and-drop visual acceptance still needs William's logged-in
   browser session to exercise against seeded wafer chips.
+
+## Recent development note (2026-07-07 calendar item touch drag fix)
+
+- Applied the same native `touchstart` pattern from Process Flow (`{ passive: false }`
+  + `preventDefault()`) to calendar timeline items so touch drag on events works
+  without the browser intercepting the gesture as a scroll/pan.
+- Used a ref callback in `CalendarTimelineItemRenderer` to attach the listener
+  directly to each item div, preserving the library's original item ref.
+- Removed the panel-level capture-phase touchstart handler (replaced by per-item).
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+- Committed as `5287c45`, pushed to `origin/main`, deployed to Vercel production.
