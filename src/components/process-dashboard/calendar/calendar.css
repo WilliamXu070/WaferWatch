@@ -294,6 +294,11 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--foreground) 18%, transparent);
 }
 
+.rct-item,
+.ww-timeline-item {
+  touch-action: none;
+}
+
 .ww-timeline-item--green {
   background: color-mix(in srgb, var(--accent) 52%, var(--panel));
 }
@@ -573,17 +578,12 @@
 /* Calendar wireframe week board. Scoped to the preview route only.     */
 /* ------------------------------------------------------------------ */
 .wireframe-calendar-surface .calendar-timeline-panel {
-  overscroll-behavior-x: contain;
-  overscroll-behavior-y: auto;
-  touch-action: pan-x pan-y;
-}
-
-.wireframe-calendar-surface .calendar-timeline-panel * {
-  touch-action: pan-x pan-y;
+  overscroll-behavior: auto;
+  touch-action: manipulation;
 }
 
 .wireframe-calendar-surface .ww-process-timeline {
-  overscroll-behavior: none;
+  overscroll-behavior: auto;
 }
 
 .wireframe-calendar-card {
@@ -1150,21 +1150,16 @@
   background: #ffffff;
   box-shadow: none;
   overflow: auto;
-  overscroll-behavior-x: contain;
-  overscroll-behavior-y: auto;
-  touch-action: pan-x pan-y;
+  overscroll-behavior: auto;
+  touch-action: manipulation;
   -webkit-overflow-scrolling: touch;
-}
-
-.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-panel * {
-  touch-action: pan-x pan-y;
 }
 
 .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-process-timeline {
   border: 0;
   background: #ffffff;
   font-family: inherit;
-  overscroll-behavior: none;
+  overscroll-behavior: auto;
 }
 
 .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-header-root {

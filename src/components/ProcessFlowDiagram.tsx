@@ -1490,9 +1490,6 @@ export function ProcessFlowDiagram({
 
     setSelectedNodeIds(new Set([node.id]));
     setSelectedWafer(null);
-    if (event.pointerType === "touch") {
-      return;
-    }
     beginNodeDrag(event, node);
   };
 
@@ -1527,6 +1524,7 @@ export function ProcessFlowDiagram({
       nodeStartPositions
     });
     event.currentTarget.setPointerCapture(event.pointerId);
+    setDragTouchAction();
   };
 
   const updateNodeDrag = (event: PointerEvent<SVGGElement>) => {
@@ -1607,6 +1605,7 @@ export function ProcessFlowDiagram({
   };
 
   const finishNodeDrag = (event: PointerEvent<SVGGElement>) => {
+    clearDragTouchAction();
     if (pendingConnectionStart && pendingConnectionStart.pointerId === event.pointerId) {
       event.currentTarget.releasePointerCapture(event.pointerId);
       setPendingConnectionStart(null);
@@ -1648,10 +1647,6 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    if (event.pointerType === "touch") {
-      return;
-    }
-
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
@@ -1670,6 +1665,7 @@ export function ProcessFlowDiagram({
       hasMoved: false
     });
     event.currentTarget.setPointerCapture(event.pointerId);
+    setDragTouchAction();
   };
 
   const updateWaferDrag = (event: PointerEvent<SVGSVGElement>) => {
@@ -1693,11 +1689,30 @@ export function ProcessFlowDiagram({
     );
   };
 
+  const clearDragTouchAction = () => {
+    if (frameRef.current) {
+      frameRef.current.style.touchAction = "";
+    }
+    if (svgRef.current) {
+      svgRef.current.style.touchAction = "";
+    }
+  };
+
+  const setDragTouchAction = () => {
+    if (frameRef.current) {
+      frameRef.current.style.touchAction = "none";
+    }
+    if (svgRef.current) {
+      svgRef.current.style.touchAction = "none";
+    }
+  };
+
   const finishWaferDrag = (event: PointerEvent<SVGSVGElement>) => {
     if (!waferDrag || waferDrag.pointerId !== event.pointerId) {
       return;
     }
 
+    clearDragTouchAction();
     const finishedDrag = waferDrag;
     setWaferDrag(null);
 
@@ -2264,6 +2279,7 @@ export function ProcessFlowDiagram({
         onCanvasPointerMove={updateConnection}
         onCanvasPointerUp={finishConnection}
         onCanvasPointerCancel={() => {
+          clearDragTouchAction();
           setConnectionDraft(null);
           setPendingConnectionStart(null);
           setSelectionBox(null);

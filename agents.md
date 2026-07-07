@@ -1742,6 +1742,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   all-stage note mutation, and calendar wafer selection still need William's
   signed-in browser session for visual acceptance.
 
+## Recent development note (2026-07-07 calendar mobile scroll fix)
+
+- Fixed calendar surface vertical scrolling on mobile by changing
+  `overscroll-behavior: none` to `overscroll-behavior: auto` on the timeline
+  panel and the wireframe timeline wrapper, so touch scroll propagates to the
+  page when the calendar reaches its boundary.
+- Removed the blanket `touch-action: pan-x pan-y` from all timeline panel
+  children, which was overriding natural browser scroll behavior.
+- Changed panel `touch-action` from `pan-x pan-y` to `pan-y` so vertical page
+  scroll is allowed while still enabling horizontal timeline pan gestures.
+- Stopped calling `stopPropagation()` on touch pointer events so the timeline
+  library's own touch detection (double-tap for event creation, item selection)
+  is not blocked by the capture-phase handler.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+
 ## Recent development note (2026-07-07 process flow mobile die movement)
 
 - Fixed mobile Process Flow wafer/die selection by stopping wafer-chip pointer
@@ -1763,3 +1780,52 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     console errors.
 - The unauthenticated wireframe route had no wafer chips, so signed-in seeded
   die-move visual acceptance still needs William's signed-in browser session.
+
+## Recent development note (2026-07-07 calendar mobile scroll, double-tap creation, hour headers)
+
+- Fixed calendar vertical scrolling on mobile by changing `.calendar-timeline-panel`
+  `touch-action` from `pan-y` to `manipulation`, which allows both horizontal and
+  vertical native scroll while still disabling double-tap zoom for our own
+  double-tap event creation.
+- Removed the shift+drag-based event creation path from
+  `handleTimelinePointerDownCapture`. Touch pointer events now return early so
+  native scroll and the timeline library's touch handlers work directly.
+- Added early return for `event.pointerType === "touch"` in the blank-canvas
+  pointer down handler to let native page scroll and timeline library horizontal
+  scroll pass through without JS pan interference.
+- Added hour/block-level header rendering: when the timeline is zoomed in to a
+  sub-day span, the wireframe header now renders a secondary `DateHeader` below
+  the primary day/week/month header using the default header scale's
+  `secondaryUnit`/`secondaryLabelFormat` and `createCurrentDayHeaderRenderer`.
+- Cleaned up unused code: removed `draftDragSelection`, `draftDragSelectionRef`,
+  `setActiveDraftDrag`, `finishDraftDrag`, `handleCanvasDoubleClick`, and
+  `isShiftPressedRef` (no longer needed without shift-click creation).
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+- Browser verification was not completed because this session is unauthenticated.
+
+## Recent development note (2026-07-07 mobile touch drag freeze rewrite)
+
+- Fixed mobile Process Flow touch drag freeze (wafer chips and step/node cards
+  initiating drag previews but the viewport scrolling instead of the element
+  following the finger). Replaced React `onTouchStart` with native
+  `addEventListener("touchstart", preventScroll, { passive: false })` in both
+  FlowNodeCard and WaferChip components, because React 19 may use passive
+  `touchstart` listeners that make `preventDefault()` a no-op.
+- Added `foreignObject` guard to FlowNodeCard's touchstart listener so the title
+  edit input on mobile still receives normal touch input.
+- Added `touch-action: none` inline style on all visible SVG child elements
+  (path, text, circle, rect) inside FlowNodeCard as belt-and-suspenders.
+- WaferChip's effect conditionally registers the listener only when
+  `pointerEvents !== "none"` (avoids interference with the drag preview overlay).
+- Removed `overflow-hidden` from the Process Flow parent div so mobile child
+  scroll containers work.
+- Fixed mobile toolbar Organize/Add wafer overlap by changing `.flow-map-actions`
+  from `display: inline-flex` to `display: flex` in the mobile media query.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+- Signed-in drag-and-drop visual acceptance still needs William's logged-in
+  browser session to exercise against seeded wafer chips.

@@ -3249,19 +3249,12 @@ textarea {
   }
 
   .waferwatch-wireframe .wireframe-flow-surface .flow-map-actions {
+    display: flex;
     width: 100%;
     margin-left: 0;
     justify-content: flex-start;
-    flex-wrap: nowrap;
-    overflow-x: auto;
+    flex-wrap: wrap;
     gap: 6px;
-    padding-bottom: 0;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-
-  .waferwatch-wireframe .wireframe-flow-surface .flow-map-actions::-webkit-scrollbar {
-    display: none;
   }
 
   .waferwatch-wireframe .wireframe-flow-surface .flow-map-actions .button {
@@ -3299,7 +3292,6 @@ textarea {
     overflow: auto;
     overscroll-behavior: contain;
     touch-action: pan-x pan-y;
-    -webkit-overflow-scrolling: touch;
   }
 
   .waferwatch-wireframe .wireframe-flow-surface .flow-map-canvas {
@@ -3332,7 +3324,6 @@ textarea {
     overflow-x: auto;
     padding-bottom: 0;
     flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
   }
 
