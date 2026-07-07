@@ -671,6 +671,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright rendered the unauthenticated backend empty state, so authenticated
     visual acceptance still needs William's signed-in browser session.
 
+## Recent development note (2026-07-07 results gallery loop dedupe)
+
+- Restored loop-around for explicit image cycling inside one selected chip:
+  clicking or pressing Return on the selected result image now advances from the
+  last image back to the first.
+- Fixed duplicate single-image registration by stopping paste events from being
+  handled by both the gallery dropzone and the global paste listener, and by
+  de-duping inspection records by id when loading/appending results.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-gallery-loop-dedupe-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    upload/gallery acceptance still needs William's signed-in browser session.
+
 ## Recent development note (2026-07-06 results review board)
 
 - Replaced the wafer die detail Results tab with an image-first result review

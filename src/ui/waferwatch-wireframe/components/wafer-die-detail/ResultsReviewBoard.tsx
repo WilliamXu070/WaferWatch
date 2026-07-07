@@ -93,6 +93,19 @@ function getSampleInspectionKey(row: number, column: number) {
   return `R${row}C${column}`;
 }
 
+function mergeUniqueInspections(
+  existing: readonly DieInspectionRecord[],
+  incoming: readonly DieInspectionRecord[]
+) {
+  const merged = new Map<string, DieInspectionRecord>();
+
+  for (const inspection of [...existing, ...incoming]) {
+    merged.set(inspection.id, inspection);
+  }
+
+  return Array.from(merged.values());
+}
+
 function getFileExtension(file: File) {
   return file.type === "image/jpeg" ? "jpg" : "png";
 }
@@ -335,6 +348,7 @@ function ResultsGalleryViewport({
     }
 
     event.preventDefault();
+    event.stopPropagation();
     onFilesAdd(files);
   };
 
@@ -633,7 +647,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
         const nextBySample: SampleInspectionMap = {};
         for (const inspection of result.data) {
           const key = getSampleInspectionKey(inspection.row, inspection.column);
-          nextBySample[key] = [...(nextBySample[key] ?? []), inspection];
+          nextBySample[key] = mergeUniqueInspections(nextBySample[key] ?? [], [inspection]);
         }
         setInspectionsBySample(nextBySample);
       } else {
@@ -676,7 +690,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
       if (count > 1) {
         setSelectedImageIndexBySample((current) => ({
           ...current,
-          [sample.id]: Math.min((current[sample.id] ?? 0) + 1, count - 1)
+          [sample.id]: ((current[sample.id] ?? 0) + 1) % count
         }));
       }
       return;
@@ -847,22 +861,29 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
       if (uploaded.length > 0) {
         setInspectionsBySample((current) => {
           const existing = current[selectedSample.id] ?? [];
+          const merged = mergeUniqueInspections(existing, uploaded);
+          const lastUploadedId = uploaded.at(-1)?.id;
+          const nextIndex = lastUploadedId
+            ? Math.max(0, merged.findIndex((inspection) => inspection.id === lastUploadedId))
+            : Math.max(0, merged.length - 1);
+
+          setSelectedImageIndexBySample((imageIndexes) => ({
+            ...imageIndexes,
+            [selectedSample.id]: nextIndex
+          }));
+
           return {
             ...current,
-            [selectedSample.id]: [...existing, ...uploaded]
+            [selectedSample.id]: merged
           };
         });
-        setSelectedImageIndexBySample((current) => ({
-          ...current,
-          [selectedSample.id]: (inspectionsBySample[selectedSample.id]?.length ?? 0) + uploaded.length - 1
-        }));
       }
     } catch (error) {
       setImageError(error instanceof Error ? error.message : "Result image upload failed.");
     } finally {
       setIsImageBusy(false);
     }
-  }, [dieCode, inspectionsBySample, selectedSample, tile.projectId, tile.waferId]);
+  }, [dieCode, selectedSample, tile.projectId, tile.waferId]);
 
   const deleteSelectedImage = useCallback(async () => {
     if (!selectedInspection || isImageBusy) {
@@ -897,6 +918,10 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     const handlePaste = (event: ClipboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+
+      if (event.defaultPrevented) {
         return;
       }
 
