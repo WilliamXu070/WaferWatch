@@ -1741,3 +1741,25 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - The browser session was unauthenticated, so signed-in process creation,
   all-stage note mutation, and calendar wafer selection still need William's
   signed-in browser session for visual acceptance.
+
+## Recent development note (2026-07-07 process flow mobile die movement)
+
+- Fixed mobile Process Flow wafer/die selection by stopping wafer-chip pointer
+  events from bubbling into the parent step node. This preserves selected-wafer
+  state on touch so the explicit move/delete action strip can appear instead of
+  immediately clearing selection.
+- Compacted the phone Process Flow controls into one horizontally scrollable
+  toolbar, enlarged the canvas viewport, made selected-wafer actions sticky and
+  horizontally scrollable, and made the move-note dialog fit phone height.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -I http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    confirmed this automation session is unauthenticated and redirects to `/`.
+  - Playwright at
+    `http://localhost:3015/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    with a `390x844` viewport: toolbar computed as `nowrap` with horizontal
+    scrolling, canvas height `610px`, no page-level horizontal overflow, and no
+    console errors.
+- The unauthenticated wireframe route had no wafer chips, so signed-in seeded
+  die-move visual acceptance still needs William's signed-in browser session.

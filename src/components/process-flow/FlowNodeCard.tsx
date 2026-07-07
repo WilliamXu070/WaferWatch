@@ -143,6 +143,7 @@ export function FlowNodeCard({
             y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
             isSelected={selectedWaferAssignmentId === wafer.assignmentId}
             onPointerDown={(event) => {
+              event.stopPropagation();
               onSelectWafer(node.id, wafer);
               onBeginWaferDrag(event, node, wafer);
             }}
