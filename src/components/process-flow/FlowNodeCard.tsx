@@ -8,9 +8,7 @@ import {
   WAFER_CHIP_WIDTH
 } from "./constants";
 import {
-  describeRole,
   getNodeIconPath,
-  getVisibleNodeSubtitle,
   getWaferChipLabel,
   hasActiveWafer,
   truncateLabel
@@ -62,7 +60,6 @@ export function FlowNodeCard({
 }: FlowNodeCardProps) {
   const active = hasActiveWafer(node);
   const nodeCardRef = useRef<SVGGElement>(null);
-  const visibleSubtitle = getVisibleNodeSubtitle(node.label, node.subLabel);
 
   useEffect(() => {
     const el = nodeCardRef.current;
@@ -93,7 +90,7 @@ export function FlowNodeCard({
         onBeginLabelEdit(node.id);
       }}
     >
-      <title>{visibleSubtitle ? `${node.label} · ${visibleSubtitle}` : node.label}</title>
+      <title>{node.label}</title>
       <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" style={{ touchAction: "none" }} />
       <path className="flow-node-icon" d={getNodeIconPath(node.role)} style={{ touchAction: "none" }} />
       <text x="31" y="35" className="flow-node-order" style={{ touchAction: "none" }}>
@@ -139,21 +136,13 @@ export function FlowNodeCard({
           {truncateLabel(node.label, 20)}
         </text>
       )}
-      {visibleSubtitle ? (
-        <text x="64" y="56" className="flow-node-subtitle" style={{ touchAction: "none" }}>
-          {truncateLabel(visibleSubtitle, 28)}
-        </text>
-      ) : null}
       {active ? (
         <g className="flow-node-active-pill" transform={`translate(${node.width - 78} 22)`}>
           <rect x="0" y="0" width="56" height="22" rx="11" style={{ touchAction: "none" }} />
           <text x="28" y="15" style={{ touchAction: "none" }}>Active</text>
         </g>
       ) : null}
-      <text x="64" y="82" className="flow-node-meta" style={{ touchAction: "none" }}>
-        {describeRole(node.role)}
-      </text>
-      <g transform="translate(64 96)">
+      <g transform="translate(64 58)">
         {node.wafers.map((wafer, index) => (
           <WaferChip
             key={wafer.assignmentId}

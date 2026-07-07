@@ -1947,3 +1947,17 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - `http://localhost:3015/process-flow` redirected to `/` in Playwright because
   the browser session was unauthenticated, so the exact signed-in numbered graph
   still needs William's browser-session acceptance.
+
+## Recent development note (2026-07-07 process-flow node copy removal)
+
+- Removed the visible secondary copy under each Process Flow node title,
+  including the process-area subtitle and generic role label such as `Step`.
+- Moved wafer chips upward in the node card so cards do not keep the old blank
+  copy area.
+- Verified with:
+  - `npm run lint`
+  - `npm run build` (rerun with approved escalation after the sandbox blocked
+    Turbopack's internal port bind)
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright at `http://localhost:3015/wireframe/process-flow`, 390x844:
+    route loaded with no console errors.
