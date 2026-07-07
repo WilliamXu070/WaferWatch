@@ -184,6 +184,8 @@ function WaferChip({
   isSelected?: boolean;
   onPointerDown?: (event: PointerEvent<SVGGElement>) => void;
 }) {
+  const textScaleWidth = Math.max(28, WAFER_CHIP_WIDTH - 12);
+
   return (
     <g
       className={`flow-wafer-chip ${isSelected ? "flow-wafer-chip--selected" : ""} ${className}`.trim()}
@@ -193,8 +195,13 @@ function WaferChip({
       onPointerDown={onPointerDown}
     >
       <rect x="0" y="0" width={WAFER_CHIP_WIDTH} height={WAFER_CHIP_HEIGHT} rx="7" />
-      <text x={WAFER_CHIP_WIDTH / 2} y={WAFER_CHIP_HEIGHT / 2}>
-        {truncateLabel(label, 4)}
+      <text
+        x={WAFER_CHIP_WIDTH / 2}
+        y={WAFER_CHIP_HEIGHT / 2}
+        textLength={label.length > 6 ? textScaleWidth : undefined}
+        lengthAdjust="spacingAndGlyphs"
+      >
+        {label}
       </text>
     </g>
   );

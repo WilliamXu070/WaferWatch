@@ -1567,3 +1567,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     copy, no `Backend only`, and no console errors.
 - The browser session was unauthenticated, so live Add wafer mutation still needs
   William's signed-in browser session for visual acceptance.
+
+## Recent development note (2026-07-07 process flow wafer chip label fit)
+
+- Fixed Process Flow wafer chips so full wafer family labels such as `ALPHA` and
+  `EPSILON` no longer collapse to ellipses. Chips are wider, laid out in two
+  columns, and SVG text is condensed inside the chip only when needed.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - In-app browser at
+    `http://localhost:3015/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    Process Flow route rendered, toolbar Add wafer present, no `Backend only`,
+    and no console errors.
+- The browser session was unauthenticated, so live wafer chip visual acceptance
+  still needs William's signed-in browser session.
