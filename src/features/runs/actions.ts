@@ -44,12 +44,11 @@ function levenshteinDistance(a: string, b: string) {
   return rows[a.length][b.length];
 }
 
-function isDicingLikeStep(step: Pick<ProcessStep, "name" | "slug" | "process_area" | "instructions">) {
+function isDicingLikeStep(step: Pick<ProcessStep, "name" | "slug" | "process_area">) {
   const text = normalizeProcessText([
     step.name,
     step.slug,
-    step.process_area,
-    step.instructions ?? ""
+    step.process_area
   ].join(" "));
   const compact = text.replace(/\s+/g, "");
 
@@ -86,7 +85,7 @@ async function splitWaferAfterDicing({
 }: {
   accountId: string;
   assignmentId: string;
-  currentStep: Pick<ProcessStep, "id" | "name" | "slug" | "process_area" | "instructions">;
+  currentStep: Pick<ProcessStep, "id" | "name" | "slug" | "process_area">;
   nextSteps: ProcessStep[];
   now: string;
   projectId: string;
@@ -106,7 +105,13 @@ async function splitWaferAfterDicing({
   }
 
   const parentMetadata = toJsonRecord(wafer.metadata);
-  if (parentMetadata.dicing_completed_at || parentMetadata.diced_child_die_labels) {
+  if (
+    parentMetadata.dicing_completed_at ||
+    parentMetadata.diced_child_die_labels ||
+    parentMetadata.parent_wafer_id ||
+    parentMetadata.current_die ||
+    parentMetadata.created_from === "dicing_completion"
+  ) {
     return;
   }
 

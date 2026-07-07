@@ -1583,3 +1583,32 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     and no console errors.
 - The browser session was unauthenticated, so live wafer chip visual acceptance
   still needs William's signed-in browser session.
+
+## Recent development note (2026-07-07 prevent child die resplitting)
+
+- Diagnosed the Process Flow bug where dragging A1 from Sample cleaning / EBL
+  prep to Chrome deposition created `A1-A1` through `A1-A8` copies at Chrome.
+- Root cause: the dicing detector scanned process-step instructions. The
+  cleaning step instructions included `diced`, so cleaning was misclassified as
+  another dicing step. Already-diced child wafers also lacked a hard server-side
+  guard against being split again.
+- Fixed `isDicingLikeStep` to inspect only step identity fields
+  (`name`, `slug`, `process_area`) and added a split guard for child/die wafers
+  with `parent_wafer_id`, `current_die`, or `created_from: dicing_completion`.
+- Cleaned Supabase bad state:
+  deleted 2 false `wafer_diced` events, deleted 16 nested child wafers, restored
+  `ALPHA-A1` and `BETA-A1` metadata/status, and verified `remainingNestedCount: 0`.
+- Also kept the compact wafer-chip fit behavior from the interrupted pass:
+  chips are compact again and labels shrink/condense before clipping.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Direct Supabase check: `BETA-A1` and `ALPHA-A1` are in Chrome deposition
+    queued/in_progress, no bad nested `*-A1-A*` rows remain.
+  - In-app browser at
+    `http://localhost:3015/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    route rendered unauthenticated empty state, toolbar Add wafer present, no
+    `Backend only`, and no console errors.
+- The browser session was unauthenticated, so exact signed-in drag/drop visual
+  acceptance still needs William's signed-in browser session.

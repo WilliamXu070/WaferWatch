@@ -184,7 +184,13 @@ function WaferChip({
   isSelected?: boolean;
   onPointerDown?: (event: PointerEvent<SVGGElement>) => void;
 }) {
-  const textScaleWidth = Math.max(28, WAFER_CHIP_WIDTH - 12);
+  const textScaleWidth = Math.max(24, WAFER_CHIP_WIDTH - 8);
+  const fontSize =
+    label.length <= 3 ? 12 :
+    label.length <= 5 ? 9.5 :
+    label.length <= 7 ? 7.5 :
+    6.5;
+  const shouldCondense = label.length > 5;
 
   return (
     <g
@@ -198,8 +204,9 @@ function WaferChip({
       <text
         x={WAFER_CHIP_WIDTH / 2}
         y={WAFER_CHIP_HEIGHT / 2}
-        textLength={label.length > 6 ? textScaleWidth : undefined}
+        textLength={shouldCondense ? textScaleWidth : undefined}
         lengthAdjust="spacingAndGlyphs"
+        style={{ fontSize: `${fontSize}px` }}
       >
         {label}
       </text>
