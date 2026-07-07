@@ -2,9 +2,12 @@
 
 import {
   type ClipboardEvent as ReactClipboardEvent,
+  memo,
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from "react";
 import { useDropzone } from "react-dropzone";
@@ -19,8 +22,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
 import {
   ChevronLeftIcon,
-  ChevronRightIcon,
-  FilterIcon
+  ChevronRightIcon
 } from "../../icons";
 import {
   buildToneMap,
@@ -40,20 +42,23 @@ type ResultSample = {
   uniformityPercent: string;
 };
 
-type SampleNote = {
-  id: string;
-  body: string;
-  author: string;
-  createdAt: string;
-};
-
 type SampleInspectionMap = Record<string, DieInspectionRecord[]>;
 
+type PendingDeletion = {
+  inspection: DieInspectionRecord;
+  sampleId: string;
+  sampleIndex: number;
+  imageIndex: number;
+  timeoutId: number;
+};
+
 const RESULT_SAMPLE_SCOPE_TYPE = "wireframe:result_sample";
-const RESULT_SAMPLE_NOTES_FIELD = "notes";
 const RESULT_SAMPLE_UNIFORMITY_FIELD = "uniformity_percent";
 const INSPECTION_BUCKET = "wafer-process-files";
 const recipeCode = "TFA3.1M1R1";
+const GALLERY_VISIBLE_COUNT = 5;
+const DELETE_UNDO_DELAY_MS = 3500;
+const maxGalleryStartColumn = Math.max(1, chipColumns.length - GALLERY_VISIBLE_COUNT + 1);
 
 function buildSamples() {
   return chipRowSections.flatMap((section) => {
@@ -73,9 +78,20 @@ function buildSamples() {
 
 const resultSamples = buildSamples();
 
-function getSampleKey(tile: WaferStatusTileModel, sample: ResultSample, imageKey: string) {
-  const dieCode = tile.dieLabel || tile.code;
-  return `${tile.waferId}:${dieCode}:R${sample.row}:C${sample.column}:${imageKey}`;
+function getGalleryWindowStartForColumn(column: number) {
+  return Math.min(maxGalleryStartColumn, Math.max(1, column - Math.floor(GALLERY_VISIBLE_COUNT / 2)));
+}
+
+function ensureColumnInGalleryWindow(currentStart: number, column: number) {
+  if (column < currentStart) {
+    return column;
+  }
+
+  if (column >= currentStart + GALLERY_VISIBLE_COUNT) {
+    return Math.min(maxGalleryStartColumn, column - GALLERY_VISIBLE_COUNT + 1);
+  }
+
+  return currentStart;
 }
 
 function getSampleMetricKey(tile: WaferStatusTileModel, sample: ResultSample) {
@@ -85,6 +101,19 @@ function getSampleMetricKey(tile: WaferStatusTileModel, sample: ResultSample) {
 
 function getSampleInspectionKey(row: number, column: number) {
   return `R${row}C${column}`;
+}
+
+function mergeUniqueInspections(
+  existing: readonly DieInspectionRecord[],
+  incoming: readonly DieInspectionRecord[]
+) {
+  const merged = new Map<string, DieInspectionRecord>();
+
+  for (const inspection of [...existing, ...incoming]) {
+    merged.set(inspection.id, inspection);
+  }
+
+  return Array.from(merged.values());
 }
 
 function getFileExtension(file: File) {
@@ -128,18 +157,34 @@ function getParameterToneClass(
   return toneMaps[field].get(value.trim()) ?? "";
 }
 
-function ResultImage({
+const ResultImage = memo(function ResultImage({
   imageUrl,
+  isActive = true,
   className = ""
 }: {
   imageUrl?: string | null;
+  isActive?: boolean;
   className?: string;
 }) {
   if (imageUrl) {
     return (
-      <div className={["overflow-hidden rounded-md border border-[#d8d8d2] bg-[#f7f7f3] shadow-inner", className].join(" ")}>
+      <div
+        className={[
+          "overflow-hidden rounded-md border border-[#d8d8d2] bg-[#f7f7f3] shadow-inner",
+          isActive ? "" : "pointer-events-none absolute inset-0 opacity-0",
+          className
+        ].join(" ")}
+        aria-hidden={!isActive}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageUrl} alt="" className="h-full w-full object-contain" />
+        <img
+          src={imageUrl}
+          alt=""
+          className="h-full w-full object-contain"
+          decoding="async"
+          fetchPriority={isActive ? "high" : "low"}
+          draggable={false}
+        />
       </div>
     );
   }
@@ -149,241 +194,166 @@ function ResultImage({
       <span className="text-[18px]">+</span>
     </div>
   );
+});
+
+function ResultImageStack({
+  inspections,
+  activeIndex,
+  className = ""
+}: {
+  inspections: readonly DieInspectionRecord[];
+  activeIndex: number;
+  className?: string;
+}) {
+  if (inspections.length === 0) {
+    return <ResultImage className={className} />;
+  }
+
+  return (
+    <div className={["relative", className].join(" ")}>
+      {inspections.map((inspection, index) => (
+        <ResultImage
+          key={inspection.id}
+          imageUrl={inspection.imageUrl}
+          isActive={index === activeIndex}
+          className="h-full w-full"
+        />
+      ))}
+    </div>
+  );
 }
 
-function SampleTile({
+const GalleryTile = memo(function GalleryTile({
   sample,
-  imageUrl,
+  inspections,
+  imageIndex,
+  imageOrdinal,
+  imageCount,
+  uniformityValue,
   selected,
-  onSelect
+  onSelect,
+  onAddImages,
+  onUniformityChange,
+  onUniformityBlur
 }: {
   sample: ResultSample;
-  imageUrl?: string | null;
+  inspections: readonly DieInspectionRecord[];
+  imageIndex: number;
+  imageOrdinal: number;
+  imageCount: number;
+  uniformityValue: string;
   selected: boolean;
   onSelect: (sample: ResultSample) => void;
+  onAddImages: (sample: ResultSample) => void;
+  onUniformityChange: (sample: ResultSample, value: string) => void;
+  onUniformityBlur: (sample: ResultSample) => void;
 }) {
+  const handleImageKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === " ") {
+      event.preventDefault();
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (inspections.length === 0) {
+        onAddImages(sample);
+      } else {
+        onSelect(sample);
+      }
+    }
+  };
+
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(sample)}
+    <article
       className={[
-        "relative grid gap-1 rounded-lg border bg-white p-1.5 text-left transition-colors",
-        selected ? "border-[#111111] shadow-[0_0_0_1px_#111111]" : "border-[#e4e4df] hover:border-[#c8c8c0]"
+        "grid min-w-0 overflow-hidden rounded-lg border bg-white transition-colors",
+        selected ? "border-[#111111] shadow-[0_0_0_1px_#111111]" : "border-[#e4e4df]"
       ].join(" ")}
-      aria-pressed={selected}
-      aria-label={`Select ${sample.id} result sample`}
     >
-      <ResultImage imageUrl={imageUrl} className="h-[88px] w-full" />
-    </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (inspections.length === 0) {
+            onAddImages(sample);
+          } else {
+            onSelect(sample);
+          }
+        }}
+        onKeyDown={handleImageKeyDown}
+        className="block aspect-[4/3] min-h-0 bg-white p-1.5 text-left"
+        aria-pressed={selected}
+        aria-label={inspections.length === 0 ? `Add result images to ${sample.id}` : `Select ${sample.id} result sample`}
+      >
+        <ResultImageStack inspections={inspections} activeIndex={imageIndex} className="h-full w-full" />
+      </button>
+      <div className="grid gap-2 border-t border-[#eeeeea] px-2 py-2">
+        <div className="flex min-w-0 items-center justify-between gap-2 text-[12px] font-semibold">
+          <span className="truncate text-[#111111]">{recipeCode} {sample.id}</span>
+          <span className="shrink-0 text-[#777770]">{imageCount ? `${imageOrdinal} / ${imageCount}` : "0 / 0"}</span>
+        </div>
+        <label className="flex h-10 min-w-0 items-center rounded-md border border-[#deded8] bg-[#fbfbf8] px-2.5 shadow-[inset_0_1px_0_rgba(17,17,17,0.03)] transition-colors focus-within:border-[#111111] focus-within:bg-white">
+          <span className="select-none text-[11px] font-semibold uppercase tracking-[0.02em] text-[#777770]">Uniformity</span>
+          <span className="mx-2 h-4 w-px shrink-0 bg-[#d8d8d2]" aria-hidden="true" />
+          <input
+            type="text"
+            inputMode="decimal"
+            value={uniformityValue}
+            onChange={(event) => onUniformityChange(sample, event.target.value)}
+            onBlur={() => onUniformityBlur(sample)}
+            className="min-w-0 flex-1 bg-transparent text-right text-[18px] font-semibold tabular-nums text-[#111111] outline-none selection:bg-[#d8ecff]"
+            aria-label={`${sample.id} uniformity percentage`}
+          />
+          <span className="ml-1 select-none text-[15px] font-semibold text-[#777770]">%</span>
+        </label>
+      </div>
+    </article>
   );
-}
+});
 
-function ResultsGrid({
+function ResultsGalleryViewport({
+  tile,
   inspectionsBySample,
+  imageIndexBySample,
+  uniformityBySample,
+  row,
+  visibleSamples,
   selectedSample,
-  onSelectSample
-}: {
-  inspectionsBySample: SampleInspectionMap;
-  selectedSample: ResultSample;
-  onSelectSample: (sample: ResultSample) => void;
-}) {
-  return (
-    <section className="grid gap-6">
-      <div className="overflow-x-auto pb-1">
-        <div className="grid min-w-[1180px] gap-5">
-          <div className="grid grid-cols-[62px_repeat(15,minmax(56px,1fr))] gap-2 text-center text-[12px] font-semibold text-[#55554f]">
-            <span />
-            {chipColumns.map((column) => (
-              <span key={column}>{column}</span>
-            ))}
-          </div>
-          {chipRowSections.map((section) => {
-            const row = Number(section.id.replace("R", ""));
-            return (
-              <div key={row} className="grid grid-cols-[62px_repeat(15,minmax(56px,1fr))] gap-2">
-                <div className="pt-1">
-                  <p className="text-[16px] font-semibold text-[#111111]">{section.id}</p>
-                  <p className="text-[12px] font-semibold text-[#777770]">{section.label}</p>
-                  <p className="mt-3 text-[10px] font-semibold leading-4 text-[#777770]">
-                    Period {section.period}
-                    <br />
-                    Gap {section.gap}
-                    <br />
-                    {section.variant}
-                  </p>
-                </div>
-                {chipColumns.map((columnLabel) => {
-                  const column = Number(columnLabel.replace("C", ""));
-                  const sample = resultSamples.find((candidate) => candidate.row === row && candidate.column === column);
-                  if (!sample) return null;
-                  return (
-                    <SampleTile
-                      key={sample.id}
-                      sample={sample}
-                      imageUrl={inspectionsBySample[sample.id]?.[0]?.imageUrl}
-                      selected={sample.id === selectedSample.id}
-                      onSelect={onSelectSample}
-                    />
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ParameterContext({
-  tile,
-  selectedSample,
-  contextRow,
-  onContextRowChange
-}: {
-  tile: WaferStatusTileModel;
-  selectedSample: ResultSample;
-  contextRow: number;
-  onContextRowChange: (row: number) => void;
-}) {
-  const toneMaps = useMemo(() => buildDisplayToneMaps(tile), [tile]);
-  const [isExpanded, setIsExpanded] = useState(true);
-
-  return (
-    <section className="rounded-lg border border-[#e8e8e3] bg-white">
-      <div className={["flex flex-wrap items-center justify-between gap-3 px-4 py-3", isExpanded ? "border-b border-[#eeeeea]" : ""].join(" ")}>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsExpanded((current) => !current)}
-            className="grid h-7 w-7 place-items-center rounded-md text-[#55554f] hover:bg-[#f4f4f0] focus:outline-none focus:ring-2 focus:ring-[#111111]/20"
-            aria-expanded={isExpanded}
-            aria-label={isExpanded ? "Collapse parameter row" : "Expand parameter row"}
-          >
-            <ChevronRightIcon className={isExpanded ? "rotate-90" : ""} />
-          </button>
-          <h3 className="text-[14px] font-semibold text-[#111111]">Row {contextRow}</h3>
-        </div>
-        <select
-          aria-label="Parameter row"
-          value={contextRow}
-          onChange={(event) => onContextRowChange(Number(event.target.value))}
-          className="h-9 rounded-lg border border-[#e1e1dc] bg-white px-3 text-[13px] font-semibold text-[#44443f] outline-none hover:bg-[#fafafa] focus:border-[#111111]"
-        >
-          {chipRowSections.map((section) => {
-            const row = Number(section.id.replace("R", ""));
-            return (
-              <option key={section.id} value={row}>
-                Row {row}
-              </option>
-            );
-          })}
-        </select>
-      </div>
-      {isExpanded ? (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] table-fixed border-collapse text-left text-[12px]">
-            <thead>
-              <tr className="border-b border-[#eeeeea] text-[#777770]">
-                <th className="w-[150px] px-4 py-2 font-semibold">Parameter</th>
-                {chipColumns.map((columnLabel) => {
-                  const column = Number(columnLabel.replace("C", ""));
-                  return (
-                    <th
-                      key={columnLabel}
-                      className={[
-                        "px-2 py-2 text-center font-semibold",
-                        column === selectedSample.column ? "border-x border-t border-[#111111] text-[#111111]" : ""
-                      ].join(" ")}
-                    >
-                      {columnLabel}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {parameterRows.map((row) => (
-                <tr key={row.field} className="border-b border-[#eeeeea] last:border-b-0">
-                  <th className="px-4 py-2 text-[12px] font-semibold text-[#55554f]">{row.label}</th>
-                  {chipColumns.map((columnLabel) => {
-                    const column = Number(columnLabel.replace("C", ""));
-                    const value = getDisplayParameterValue(tile, contextRow, column, row.field);
-                    const toneClass = getParameterToneClass(toneMaps, row.field, value);
-                    return (
-                      <td
-                        key={`${row.field}-${columnLabel}`}
-                        className={[
-                          "px-2 py-2 text-center text-[12px] font-semibold text-[#4a483f]",
-                          toneClass,
-                          column === selectedSample.column ? "border-x border-[#111111] text-[#111111]" : ""
-                        ].join(" ")}
-                      >
-                        {value}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function SelectedSamplePanel({
-  tile,
-  selectedSample,
-  selectedInspections,
+  selectedImageIndex,
   selectedInspection,
-  selectedImageOrdinal,
   isImageBusy,
   imageError,
-  uniformityValue,
   isSavingUniformity,
   uniformityError,
-  notes,
-  draftNote,
-  isSavingNote,
-  noteError,
-  onDraftNoteChange,
-  onAddNote,
+  onSelectSample,
+  onAddImagesForSample,
   onFilesAdd,
   onDeleteImage,
-  onNavigateImage,
+  onNavigateWindow,
   onUniformityChange,
-  onUniformityBlur,
-  onNavigateSample
+  onUniformityBlur
 }: {
   tile: WaferStatusTileModel;
+  inspectionsBySample: SampleInspectionMap;
+  imageIndexBySample: Record<string, number>;
+  uniformityBySample: Record<string, string>;
+  row: number;
+  visibleSamples: readonly ResultSample[];
   selectedSample: ResultSample;
-  selectedInspections: readonly DieInspectionRecord[];
+  selectedImageIndex: number;
   selectedInspection: DieInspectionRecord | null;
-  selectedImageOrdinal: number;
   isImageBusy: boolean;
   imageError: string | null;
-  uniformityValue: string;
   isSavingUniformity: boolean;
   uniformityError: string | null;
-  notes: readonly SampleNote[];
-  draftNote: string;
-  isSavingNote: boolean;
-  noteError: string | null;
-  onDraftNoteChange: (value: string) => void;
-  onAddNote: () => void;
+  onSelectSample: (sample: ResultSample) => void;
+  onAddImagesForSample: (sample: ResultSample, openPicker: () => void) => void;
   onFilesAdd: (files: readonly File[]) => void;
   onDeleteImage: () => void;
-  onNavigateImage: (direction: -1 | 1) => void;
-  onUniformityChange: (value: string) => void;
-  onUniformityBlur: () => void;
-  onNavigateSample: (direction: -1 | 1) => void;
+  onNavigateWindow: (direction: -1 | 1) => void;
+  onUniformityChange: (sample: ResultSample, value: string) => void;
+  onUniformityBlur: (sample: ResultSample) => void;
 }) {
-  const sampleTitle = `${recipeCode} ${selectedSample.id}`;
-  const realImageCount = selectedInspections.length;
-  const displayImageCount = realImageCount;
-  const displayImageOrdinal = realImageCount ? selectedImageOrdinal : 0;
   const { getRootProps, getInputProps, open, isDragActive } = useDropzone({
     accept: {
       "image/png": [".png"],
@@ -403,172 +373,179 @@ function SelectedSamplePanel({
     }
 
     event.preventDefault();
+    event.stopPropagation();
     onFilesAdd(files);
   };
 
   return (
-    <aside className="grid content-start gap-4 rounded-lg border border-[#e8e8e3] bg-white p-4 xl:sticky xl:top-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-[20px] font-semibold text-[#111111]">{selectedSample.id}</h2>
-          <p className="mt-1 text-[13px] font-semibold text-[#777770]">{sampleTitle}</p>
+    <section className="grid gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[18px] font-semibold text-[#111111]">Row {row} result images</h2>
+          <p className="mt-1 text-[12px] font-semibold text-[#777770]">
+            {selectedSample.id} / image {selectedInspection ? selectedImageIndex + 1 : 0}
+          </p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-end gap-2 text-[12px] font-semibold text-[#55554f]">
           <button
             type="button"
-            onClick={() => onNavigateSample(-1)}
-            className="grid h-8 w-8 place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]"
-            aria-label="Previous sample"
+            onClick={() => onNavigateWindow(-1)}
+            className="grid h-9 w-9 place-items-center rounded-md border border-[#e1e1dc] bg-white hover:bg-[#fafafa]"
+            aria-label="Previous image window"
           >
             <ChevronLeftIcon />
           </button>
           <button
             type="button"
-            onClick={() => onNavigateSample(1)}
-            className="grid h-8 w-8 place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]"
-            aria-label="Next sample"
+            onClick={() => onNavigateWindow(1)}
+            className="grid h-9 w-9 place-items-center rounded-md border border-[#e1e1dc] bg-white hover:bg-[#fafafa]"
+            aria-label="Next image window"
           >
             <ChevronRightIcon />
           </button>
-        </div>
-      </div>
-
-      <div className="border-t border-[#eeeeea] pt-4">
-        <div className="mb-3 flex items-center justify-between text-[13px] font-semibold">
-          <span className="text-[#44443f]">Image</span>
-          <span className="text-[#777770]">
-            {displayImageCount ? `${displayImageOrdinal} of ${displayImageCount}` : "0 of 0"}
-          </span>
-        </div>
-        <div
-          {...getRootProps({
-            className: [
-              "relative rounded-lg border border-dashed p-2 outline-none transition-colors",
-              isDragActive ? "border-[#111111] bg-[#f7f7f3]" : "border-[#deded8] bg-white"
-            ].join(" "),
-            onPaste: handlePaste
-          })}
-          tabIndex={0}
-        >
-          <input {...getInputProps()} />
-          <ResultImage
-            imageUrl={selectedInspection?.imageUrl}
-            className="h-[210px] w-full"
-          />
-          {isDragActive ? (
-            <div className="absolute inset-x-4 bottom-4 rounded-md bg-white/90 px-3 py-2 text-center text-[12px] font-semibold text-[#55554f] shadow-sm">
-              Release to upload
-            </div>
-          ) : null}
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="grid h-8 w-8 place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa] disabled:opacity-40"
-              onClick={() => onNavigateImage(-1)}
-              disabled={realImageCount < 2}
-              aria-label="Previous image"
-            >
-              <ChevronLeftIcon />
-            </button>
-            <button
-              type="button"
-              className="grid h-8 w-8 place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa] disabled:opacity-40"
-              onClick={() => onNavigateImage(1)}
-              disabled={realImageCount < 2}
-              aria-label="Next image"
-            >
-              <ChevronRightIcon />
-            </button>
-          </div>
-          <div className="flex items-center gap-2 text-[12px] font-semibold text-[#55554f]">
-            <button
-              type="button"
-              className="rounded-md border border-[#e1e1dc] px-2 py-1 hover:bg-[#fafafa] disabled:opacity-40"
-              onClick={open}
-              disabled={isImageBusy}
-            >
-              {isImageBusy ? "Uploading..." : "Add images"}
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-[#e1e1dc] px-2 py-1 text-[#9b2727] hover:bg-[#fff0ef] disabled:text-[#aaa] disabled:hover:bg-transparent"
-              onClick={onDeleteImage}
-              disabled={!selectedInspection || isImageBusy}
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-        {imageError ? <p className="mt-2 text-[12px] font-semibold text-[#a33a2b]">{imageError}</p> : null}
-      </div>
-
-      <div className="border-t border-[#eeeeea] pt-4">
-        <label className="grid gap-2">
-          <span className="text-[14px] font-semibold text-[#111111]">Uniformity</span>
-          <span className="flex items-center rounded-lg border border-[#e1e1dc] bg-white px-3 focus-within:border-[#111111]">
-            <input
-              type="text"
-              inputMode="decimal"
-              value={uniformityValue}
-              onChange={(event) => onUniformityChange(event.target.value)}
-              onBlur={onUniformityBlur}
-              className="min-w-0 flex-1 bg-transparent py-3 text-[28px] font-semibold text-[#111111] outline-none"
-              aria-label="Uniformity percentage"
-            />
-            <span className="text-[22px] font-semibold text-[#777770]">%</span>
-          </span>
-        </label>
-        <p className={["mt-2 text-[12px] font-semibold", uniformityError ? "text-[#a33a2b]" : "text-[#777770]"].join(" ")}>
-          {uniformityError ?? (isSavingUniformity ? "Saving uniformity..." : "Saved")}
-        </p>
-      </div>
-
-      <div className="border-t border-[#eeeeea] pt-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-[14px] font-semibold text-[#111111]">Notes</h3>
-          <span className="text-[12px] font-semibold text-[#777770]">{notes.length} linked</span>
-        </div>
-        {notes.length ? (
-          <div className="mb-3 grid gap-2">
-            {notes.map((note) => (
-              <article key={note.id} className="rounded-lg border border-[#eeeeea] bg-[#fafafa] px-3 py-2">
-                <p className="text-[12px] font-semibold text-[#777770]">
-                  {note.author} / {new Date(note.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </p>
-                <p className="mt-1 text-[13px] leading-5 text-[#44443f]">{note.body}</p>
-              </article>
-            ))}
-          </div>
-        ) : null}
-        <textarea
-          value={draftNote}
-          onChange={(event) => onDraftNoteChange(event.target.value)}
-          placeholder={`Add a note linked to ${tile.dieLabel || tile.code} ${selectedSample.id} image ${displayImageOrdinal || 0}...`}
-          className="min-h-[86px] w-full resize-none rounded-lg border border-[#e1e1dc] bg-white px-3 py-2 text-[13px] leading-5 text-[#111111] outline-none focus:border-[#111111]"
-        />
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <span className={["text-[12px] font-semibold", noteError ? "text-[#a33a2b]" : "text-[#777770]"].join(" ")}>
-            {noteError ?? (isSavingNote ? "Saving sample note..." : "Saved to this image sample")}
-          </span>
           <button
             type="button"
-            onClick={onAddNote}
-            disabled={!draftNote.trim() || isSavingNote}
-            className="h-9 rounded-lg bg-[#111111] px-3 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={onDeleteImage}
+            disabled={!selectedInspection}
+            className="h-9 rounded-md border border-[#e1e1dc] bg-white px-3 text-[#9b2727] hover:bg-[#fff0ef] disabled:text-[#aaa] disabled:hover:bg-transparent"
           >
-            Add note
+            Delete
           </button>
         </div>
       </div>
-    </aside>
+      <div
+        {...getRootProps({
+          className: [
+            "relative grid gap-2 rounded-lg border border-[#e8e8e3] bg-white p-2 outline-none",
+            isDragActive ? "border-[#111111]" : ""
+          ].join(" "),
+          onPaste: handlePaste
+        })}
+        tabIndex={0}
+      >
+        <input {...getInputProps()} />
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {visibleSamples.map((sample) => {
+            const inspections = inspectionsBySample[sample.id] ?? [];
+            const imageIndex = Math.min(imageIndexBySample[sample.id] ?? 0, Math.max(inspections.length - 1, 0));
+            return (
+              <GalleryTile
+                key={sample.id}
+                sample={sample}
+                inspections={inspections}
+                imageIndex={imageIndex}
+                imageOrdinal={inspections.length ? imageIndex + 1 : 0}
+                imageCount={inspections.length}
+                uniformityValue={uniformityBySample[getSampleMetricKey(tile, sample)] ?? sample.uniformityPercent}
+                selected={sample.id === selectedSample.id}
+                onSelect={onSelectSample}
+                onAddImages={(nextSample) => onAddImagesForSample(nextSample, open)}
+                onUniformityChange={onUniformityChange}
+                onUniformityBlur={onUniformityBlur}
+              />
+            );
+          })}
+        </div>
+        {isDragActive ? (
+          <div className="pointer-events-none absolute inset-2 grid place-items-center rounded-md bg-white/80 text-[13px] font-semibold text-[#111111]">
+            Release to upload to {selectedSample.id}
+          </div>
+        ) : null}
+      </div>
+      {(imageError || uniformityError || isSavingUniformity) ? (
+        <p className={["text-[12px] font-semibold", imageError || uniformityError ? "text-[#a33a2b]" : "text-[#777770]"].join(" ")}>
+          {imageError ?? uniformityError ?? "Saving uniformity..."}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function ParameterContext({
+  tile,
+  selectedSample,
+  visibleSamples,
+  contextRow
+}: {
+  tile: WaferStatusTileModel;
+  selectedSample: ResultSample;
+  visibleSamples: readonly ResultSample[];
+  contextRow: number;
+}) {
+  const toneMaps = useMemo(() => buildDisplayToneMaps(tile), [tile]);
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  return (
+    <section className="rounded-lg border border-[#e8e8e3] bg-white">
+      <div className={["flex flex-wrap items-center justify-between gap-3 px-4 py-3", isExpanded ? "border-b border-[#eeeeea]" : ""].join(" ")}>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsExpanded((current) => !current)}
+            className="grid h-7 w-7 place-items-center rounded-md text-[#55554f] hover:bg-[#f4f4f0] focus:outline-none focus:ring-2 focus:ring-[#111111]/20"
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? "Collapse parameter row" : "Expand parameter row"}
+          >
+            <ChevronRightIcon className={isExpanded ? "rotate-90" : ""} />
+          </button>
+          <h3 className="text-[14px] font-semibold text-[#111111]">Row {contextRow}</h3>
+        </div>
+      </div>
+      {isExpanded ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] table-fixed border-collapse text-left text-[12px]">
+            <thead>
+              <tr className="border-b border-[#eeeeea] text-[#777770]">
+                <th className="w-[150px] px-4 py-2 font-semibold">Parameter</th>
+                {visibleSamples.map((sample) => {
+                  return (
+                    <th
+                      key={sample.id}
+                      className={[
+                        "px-2 py-2 text-center font-semibold",
+                        sample.column === selectedSample.column ? "border-x border-t border-[#111111] text-[#111111]" : ""
+                      ].join(" ")}
+                    >
+                      C{sample.column}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {parameterRows.map((row) => (
+                <tr key={row.field} className="border-b border-[#eeeeea] last:border-b-0">
+                  <th className="px-4 py-2 text-[12px] font-semibold text-[#55554f]">{row.label}</th>
+                  {visibleSamples.map((sample) => {
+                    const value = getDisplayParameterValue(tile, contextRow, sample.column, row.field);
+                    const toneClass = getParameterToneClass(toneMaps, row.field, value);
+                    return (
+                      <td
+                        key={`${row.field}-${sample.id}`}
+                        className={[
+                          "px-2 py-2 text-center text-[12px] font-semibold text-[#4a483f]",
+                          toneClass,
+                          sample.column === selectedSample.column ? "border-x border-[#111111] text-[#111111]" : ""
+                        ].join(" ")}
+                      >
+                        {value}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
 export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
   const [selectedSampleId, setSelectedSampleId] = useState("R1C12");
   const [contextRow, setContextRow] = useState(1);
+  const [galleryStartColumn, setGalleryStartColumn] = useState(() => getGalleryWindowStartForColumn(12));
   const [inspectionsBySample, setInspectionsBySample] = useState<SampleInspectionMap>({});
   const [selectedImageIndexBySample, setSelectedImageIndexBySample] = useState<Record<string, number>>({});
   const [isImageBusy, setIsImageBusy] = useState(false);
@@ -577,13 +554,16 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
   const [savedUniformityBySample, setSavedUniformityBySample] = useState<Record<string, string>>({});
   const [isSavingUniformity, setIsSavingUniformity] = useState(false);
   const [uniformityError, setUniformityError] = useState<string | null>(null);
-  const [draftNote, setDraftNote] = useState("");
-  const [notesBySample, setNotesBySample] = useState<Record<string, SampleNote[]>>({});
-  const [isSavingNote, setIsSavingNote] = useState(false);
-  const [noteError, setNoteError] = useState<string | null>(null);
+  const pendingDeletionRef = useRef<PendingDeletion | null>(null);
   const selectedSample = useMemo(
     () => resultSamples.find((sample) => sample.id === selectedSampleId) ?? resultSamples[0],
     [selectedSampleId]
+  );
+  const visibleSamples = useMemo(
+    () => resultSamples
+      .filter((sample) => sample.row === selectedSample.row)
+      .slice(galleryStartColumn - 1, galleryStartColumn - 1 + GALLERY_VISIBLE_COUNT),
+    [galleryStartColumn, selectedSample.row]
   );
   const dieCode = useMemo(() => getPersistenceDieCode(tile), [tile]);
   const selectedInspections = inspectionsBySample[selectedSample.id] ?? [];
@@ -592,15 +572,27 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     Math.max(selectedInspections.length - 1, 0)
   );
   const selectedInspection = selectedInspections[selectedImageIndex] ?? null;
-  const selectedImageOrdinal = selectedInspections.length ? selectedImageIndex + 1 : 0;
-  const selectedImageKey = selectedInspection ? `inspection-${selectedInspection.id}` : `image-${selectedImageOrdinal}`;
   const sampleMetricScopeKey = useMemo(() => getSampleMetricKey(tile, selectedSample), [selectedSample, tile]);
-  const sampleScopeKey = useMemo(
-    () => getSampleKey(tile, selectedSample, selectedImageKey),
-    [selectedImageKey, selectedSample, tile]
-  );
-  const selectedNotes = useMemo(() => notesBySample[sampleScopeKey] ?? [], [notesBySample, sampleScopeKey]);
-  const uniformityValue = uniformityBySample[sampleMetricScopeKey] ?? selectedSample.uniformityPercent;
+  const warmImageUrls = useMemo(() => {
+    const warmColumnStart = Math.max(1, galleryStartColumn - 1);
+    const warmColumnEnd = Math.min(chipColumns.length, galleryStartColumn + GALLERY_VISIBLE_COUNT);
+    const warmSampleIds = new Set(
+      resultSamples
+        .filter((sample) =>
+          sample.row === selectedSample.row &&
+          sample.column >= warmColumnStart &&
+          sample.column <= warmColumnEnd
+        )
+        .map((sample) => sample.id)
+    );
+
+    warmSampleIds.add(selectedSample.id);
+
+    return Array.from(warmSampleIds)
+      .flatMap((sampleId) => inspectionsBySample[sampleId] ?? [])
+      .map((inspection) => inspection.imageUrl)
+      .filter((imageUrl): imageUrl is string => Boolean(imageUrl));
+  }, [galleryStartColumn, inspectionsBySample, selectedSample]);
 
   useEffect(() => {
     if (sampleMetricScopeKey in uniformityBySample) {
@@ -657,7 +649,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
         const nextBySample: SampleInspectionMap = {};
         for (const inspection of result.data) {
           const key = getSampleInspectionKey(inspection.row, inspection.column);
-          nextBySample[key] = [...(nextBySample[key] ?? []), inspection];
+          nextBySample[key] = mergeUniqueInspections(nextBySample[key] ?? [], [inspection]);
         }
         setInspectionsBySample(nextBySample);
       } else {
@@ -671,10 +663,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
   }, [dieCode, tile.waferId]);
 
   useEffect(() => {
-    const warmedImages = Object.values(inspectionsBySample)
-      .flat()
-      .map((inspection) => inspection.imageUrl)
-      .filter((imageUrl): imageUrl is string => Boolean(imageUrl))
+    const warmedImages = warmImageUrls
       .map((imageUrl) => {
         const image = new window.Image();
         image.decoding = "async";
@@ -687,70 +676,83 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
         image.src = "";
       }
     };
-  }, [inspectionsBySample]);
+  }, [warmImageUrls]);
 
   const selectSample = useCallback((sample: ResultSample) => {
     setSelectedSampleId(sample.id);
     setContextRow(sample.row);
-    setDraftNote("");
-    setNoteError(null);
+    setGalleryStartColumn((current) => ensureColumnInGalleryWindow(current, sample.column));
     setImageError(null);
     setUniformityError(null);
   }, []);
 
-  const navigateSample = useCallback((direction: -1 | 1) => {
-    const currentIndex = resultSamples.findIndex((sample) => sample.id === selectedSampleId);
-    const nextIndex = (currentIndex + direction + resultSamples.length) % resultSamples.length;
-    selectSample(resultSamples[nextIndex]);
-  }, [selectSample, selectedSampleId]);
-
-  const addSampleNote = useCallback(async () => {
-    const body = draftNote.trim();
-    if (!body || isSavingNote) {
+  const selectOrCycleSample = useCallback((sample: ResultSample) => {
+    if (sample.id === selectedSample.id) {
+      const count = inspectionsBySample[sample.id]?.length ?? 0;
+      if (count > 1) {
+        setSelectedImageIndexBySample((current) => ({
+          ...current,
+          [sample.id]: ((current[sample.id] ?? 0) + 1) % count
+        }));
+      }
       return;
     }
 
-    const timestamp = new Date().toISOString();
-    const nextNotes = [
-      ...selectedNotes,
-      {
-        id: crypto.randomUUID(),
-        author: "You",
-        body: body.slice(0, 1600),
-        createdAt: timestamp
-      }
-    ];
-    const previousNotes = selectedNotes;
+    selectSample(sample);
+  }, [inspectionsBySample, selectSample, selectedSample.id]);
 
-    setDraftNote("");
-    setIsSavingNote(true);
-    setNoteError(null);
-    setNotesBySample((current) => ({
-      ...current,
-      [sampleScopeKey]: nextNotes
-    }));
+  const addImagesForSample = useCallback((sample: ResultSample, openPicker: () => void) => {
+    selectSample(sample);
+    window.setTimeout(openPicker, 0);
+  }, [selectSample]);
 
-    const result = await upsertTextSurface({
-      projectId: tile.projectId,
-      scopeType: RESULT_SAMPLE_SCOPE_TYPE,
-      scopeKey: sampleScopeKey,
-      fieldKey: RESULT_SAMPLE_NOTES_FIELD,
-      value: JSON.stringify(nextNotes)
-    });
+  const navigateSampleByKey = useCallback((key: string) => {
+    const rowCount = chipRowSections.length;
+    const columnCount = chipColumns.length;
+    const rowIndex = selectedSample.row - 1;
+    const columnIndex = selectedSample.column - 1;
 
-    setIsSavingNote(false);
-    if (!result.ok) {
-      setNotesBySample((current) => ({
-        ...current,
-        [sampleScopeKey]: previousNotes
-      }));
-      setNoteError(result.error);
+    if (key === "ArrowLeft" && columnIndex === 0) {
+      return;
     }
-  }, [draftNote, isSavingNote, sampleScopeKey, selectedNotes, tile.projectId]);
 
-  const saveUniformity = useCallback(async () => {
-    const value = uniformityValue.trim();
-    const savedValue = savedUniformityBySample[sampleMetricScopeKey] ?? selectedSample.uniformityPercent;
+    if (key === "ArrowRight" && columnIndex === columnCount - 1) {
+      return;
+    }
+
+    if (key === "ArrowUp" && rowIndex === 0) {
+      return;
+    }
+
+    if (key === "ArrowDown" && rowIndex === rowCount - 1) {
+      return;
+    }
+
+    const nextRowIndex =
+      key === "ArrowUp"
+        ? rowIndex - 1
+        : key === "ArrowDown"
+          ? rowIndex + 1
+          : rowIndex;
+    const nextColumnIndex =
+      key === "ArrowLeft"
+        ? columnIndex - 1
+        : key === "ArrowRight"
+          ? columnIndex + 1
+          : columnIndex;
+    const nextSample = resultSamples.find(
+      (sample) => sample.row === nextRowIndex + 1 && sample.column === nextColumnIndex + 1
+    );
+
+    if (nextSample) {
+      selectSample(nextSample);
+    }
+  }, [selectSample, selectedSample]);
+
+  const saveUniformity = useCallback(async (sample: ResultSample) => {
+    const scopeKey = getSampleMetricKey(tile, sample);
+    const value = (uniformityBySample[scopeKey] ?? sample.uniformityPercent).trim();
+    const savedValue = savedUniformityBySample[scopeKey] ?? sample.uniformityPercent;
     if (value === savedValue || isSavingUniformity) {
       return;
     }
@@ -761,7 +763,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     const result = await upsertTextSurface({
       projectId: tile.projectId,
       scopeType: RESULT_SAMPLE_SCOPE_TYPE,
-      scopeKey: sampleMetricScopeKey,
+      scopeKey,
       fieldKey: RESULT_SAMPLE_UNIFORMITY_FIELD,
       value
     });
@@ -770,22 +772,20 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     if (result.ok) {
       setUniformityBySample((current) => ({
         ...current,
-        [sampleMetricScopeKey]: result.data.value
+        [scopeKey]: result.data.value
       }));
       setSavedUniformityBySample((current) => ({
         ...current,
-        [sampleMetricScopeKey]: result.data.value
+        [scopeKey]: result.data.value
       }));
     } else {
       setUniformityError(result.error);
     }
   }, [
     isSavingUniformity,
-    sampleMetricScopeKey,
     savedUniformityBySample,
-    selectedSample.uniformityPercent,
-    tile.projectId,
-    uniformityValue
+    tile,
+    uniformityBySample
   ]);
 
   const uploadResultFiles = useCallback(async (files: readonly File[]) => {
@@ -868,37 +868,113 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
       if (uploaded.length > 0) {
         setInspectionsBySample((current) => {
           const existing = current[selectedSample.id] ?? [];
+          const merged = mergeUniqueInspections(existing, uploaded);
+          const lastUploadedId = uploaded.at(-1)?.id;
+          const nextIndex = lastUploadedId
+            ? Math.max(0, merged.findIndex((inspection) => inspection.id === lastUploadedId))
+            : Math.max(0, merged.length - 1);
+
+          setSelectedImageIndexBySample((imageIndexes) => ({
+            ...imageIndexes,
+            [selectedSample.id]: nextIndex
+          }));
+
           return {
             ...current,
-            [selectedSample.id]: [...existing, ...uploaded]
+            [selectedSample.id]: merged
           };
         });
-        setSelectedImageIndexBySample((current) => ({
-          ...current,
-          [selectedSample.id]: (inspectionsBySample[selectedSample.id]?.length ?? 0) + uploaded.length - 1
-        }));
       }
     } catch (error) {
       setImageError(error instanceof Error ? error.message : "Result image upload failed.");
     } finally {
       setIsImageBusy(false);
     }
-  }, [dieCode, inspectionsBySample, selectedSample, tile.projectId, tile.waferId]);
+  }, [dieCode, selectedSample, tile.projectId, tile.waferId]);
 
-  const deleteSelectedImage = useCallback(async () => {
-    if (!selectedInspection || isImageBusy) {
+  const restoreDeletedInspection = useCallback((deletion: PendingDeletion) => {
+    setInspectionsBySample((current) => {
+      const existing = current[deletion.sampleId] ?? [];
+      if (existing.some((inspection) => inspection.id === deletion.inspection.id)) {
+        return current;
+      }
+
+      const restored = [...existing];
+      restored.splice(Math.min(deletion.sampleIndex, restored.length), 0, deletion.inspection);
+
+      return {
+        ...current,
+        [deletion.sampleId]: restored
+      };
+    });
+    setSelectedSampleId(deletion.sampleId);
+    const restoredSample = resultSamples.find((sample) => sample.id === deletion.sampleId);
+    if (restoredSample) {
+      setContextRow(restoredSample.row);
+      setGalleryStartColumn((current) => ensureColumnInGalleryWindow(current, restoredSample.column));
+    }
+    setSelectedImageIndexBySample((current) => ({
+      ...current,
+      [deletion.sampleId]: deletion.imageIndex
+    }));
+  }, []);
+
+  const commitDeletionInBackground = useCallback((deletion: PendingDeletion, restoreOnFailure: boolean) => {
+    void deleteDieInspection({ inspectionId: deletion.inspection.id }).then((result) => {
+      if (!result.ok) {
+        setImageError(result.error);
+        if (restoreOnFailure) {
+          restoreDeletedInspection(deletion);
+        }
+      }
+    });
+  }, [restoreDeletedInspection]);
+
+  const undoLastDeletion = useCallback(() => {
+    const deletion = pendingDeletionRef.current;
+    if (!deletion) {
       return;
     }
 
-    setIsImageBusy(true);
+    window.clearTimeout(deletion.timeoutId);
+    pendingDeletionRef.current = null;
+    restoreDeletedInspection(deletion);
     setImageError(null);
+  }, [restoreDeletedInspection]);
 
-    const result = await deleteDieInspection({ inspectionId: selectedInspection.id });
-    if (!result.ok) {
-      setImageError(result.error);
-      setIsImageBusy(false);
+  const deleteSelectedImage = useCallback(() => {
+    if (!selectedInspection) {
       return;
     }
+
+    const previousDeletion = pendingDeletionRef.current;
+    if (previousDeletion) {
+      window.clearTimeout(previousDeletion.timeoutId);
+      pendingDeletionRef.current = null;
+      commitDeletionInBackground(previousDeletion, false);
+    }
+
+    const sampleId = selectedSample.id;
+    const sampleInspections = inspectionsBySample[sampleId] ?? [];
+    const sampleIndex = sampleInspections.findIndex((inspection) => inspection.id === selectedInspection.id);
+    const deletion: PendingDeletion = {
+      inspection: selectedInspection,
+      sampleId,
+      sampleIndex: Math.max(0, sampleIndex),
+      imageIndex: selectedImageIndex,
+      timeoutId: window.setTimeout(() => {
+        const pending = pendingDeletionRef.current;
+        if (!pending || pending.inspection.id !== selectedInspection.id) {
+          return;
+        }
+
+        pendingDeletionRef.current = null;
+        commitDeletionInBackground(pending, true);
+      }, DELETE_UNDO_DELAY_MS)
+    };
+
+    pendingDeletionRef.current = deletion;
+    setImageError(null);
 
     setInspectionsBySample((current) => {
       const remaining = (current[selectedSample.id] ?? []).filter((inspection) => inspection.id !== selectedInspection.id);
@@ -911,27 +987,32 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
       ...current,
       [selectedSample.id]: Math.max(0, selectedImageIndex - 1)
     }));
-    setIsImageBusy(false);
-  }, [isImageBusy, selectedImageIndex, selectedInspection, selectedSample.id]);
+  }, [
+    commitDeletionInBackground,
+    inspectionsBySample,
+    selectedImageIndex,
+    selectedInspection,
+    selectedSample.id
+  ]);
 
-  const navigateImage = useCallback((direction: -1 | 1) => {
-    const count = selectedInspections.length;
-    if (count < 2) {
-      return;
-    }
-
-    setSelectedImageIndexBySample((current) => ({
-      ...current,
-      [selectedSample.id]: ((current[selectedSample.id] ?? 0) + direction + count) % count
-    }));
-    setDraftNote("");
-    setNoteError(null);
-  }, [selectedInspections.length, selectedSample.id]);
+  useEffect(() => {
+    return () => {
+      const deletion = pendingDeletionRef.current;
+      if (deletion) {
+        window.clearTimeout(deletion.timeoutId);
+        commitDeletionInBackground(deletion, false);
+      }
+    };
+  }, [commitDeletionInBackground]);
 
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+
+      if (event.defaultPrevented) {
         return;
       }
 
@@ -948,67 +1029,81 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     return () => window.removeEventListener("paste", handlePaste);
   }, [uploadResultFiles]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+
+      const isCommandShortcut = event.metaKey || event.ctrlKey;
+      if (isCommandShortcut && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        undoLastDeletion();
+        return;
+      }
+
+      if (
+        isCommandShortcut &&
+        (event.key === "Backspace" || event.key === "Delete")
+      ) {
+        event.preventDefault();
+        deleteSelectedImage();
+        return;
+      }
+
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        return;
+      }
+
+      event.preventDefault();
+      navigateSampleByKey(event.key);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [deleteSelectedImage, navigateSampleByKey, undoLastDeletion]);
+
+  const navigateGalleryWindow = useCallback((direction: -1 | 1) => {
+    setGalleryStartColumn((current) => Math.min(maxGalleryStartColumn, Math.max(1, current + direction)));
+  }, []);
+
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="grid gap-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <h2 className="text-[18px] font-semibold text-[#111111]">Result images</h2>
-            <span className="text-[13px] font-semibold text-[#777770]">45 samples / grid review</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="button" className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#e1e1dc] bg-white px-3 text-[13px] font-semibold text-[#44443f] hover:bg-[#fafafa]">
-              <FilterIcon />
-              Filters
-            </button>
-            <button type="button" className="h-9 rounded-lg bg-[#111111] px-4 text-[13px] font-semibold text-white">
-              Export
-            </button>
-          </div>
-        </div>
-
-        <ResultsGrid
-          inspectionsBySample={inspectionsBySample}
-          selectedSample={selectedSample}
-          onSelectSample={selectSample}
-        />
-        <ParameterContext
-          tile={tile}
-          selectedSample={selectedSample}
-          contextRow={contextRow}
-          onContextRowChange={setContextRow}
-        />
-      </div>
-
-      <SelectedSamplePanel
+    <div className="grid gap-4">
+      <ResultsGalleryViewport
         tile={tile}
+        inspectionsBySample={inspectionsBySample}
+        imageIndexBySample={selectedImageIndexBySample}
+        uniformityBySample={uniformityBySample}
+        row={selectedSample.row}
+        visibleSamples={visibleSamples}
         selectedSample={selectedSample}
-        selectedInspections={selectedInspections}
+        selectedImageIndex={selectedImageIndex}
         selectedInspection={selectedInspection}
-        selectedImageOrdinal={selectedImageOrdinal}
         isImageBusy={isImageBusy}
         imageError={imageError}
-        uniformityValue={uniformityValue}
         isSavingUniformity={isSavingUniformity}
         uniformityError={uniformityError}
-        notes={selectedNotes}
-        draftNote={draftNote}
-        isSavingNote={isSavingNote}
-        noteError={noteError}
-        onDraftNoteChange={setDraftNote}
-        onAddNote={addSampleNote}
         onFilesAdd={(files) => void uploadResultFiles(files)}
         onDeleteImage={deleteSelectedImage}
-        onNavigateImage={navigateImage}
-        onUniformityChange={(value) => {
+        onNavigateWindow={navigateGalleryWindow}
+        onSelectSample={selectOrCycleSample}
+        onAddImagesForSample={addImagesForSample}
+        onUniformityChange={(sample, value) => {
+          const scopeKey = getSampleMetricKey(tile, sample);
           setUniformityError(null);
           setUniformityBySample((current) => ({
             ...current,
-            [sampleMetricScopeKey]: value
+            [scopeKey]: value
           }));
         }}
-        onUniformityBlur={() => void saveUniformity()}
-        onNavigateSample={navigateSample}
+        onUniformityBlur={(sample) => void saveUniformity(sample)}
+      />
+      <ParameterContext
+        tile={tile}
+        selectedSample={selectedSample}
+        visibleSamples={visibleSamples}
+        contextRow={contextRow}
       />
     </div>
   );

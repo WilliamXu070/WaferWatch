@@ -605,6 +605,146 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     session.
   - Screenshot: `/tmp/wafer-die-tabs-reordered.png`
 
+## Recent development note (2026-07-07 results gallery viewport)
+
+- Replaced the Results tab grid plus right selected-image rail with a full-width
+  gallery viewport that shows eight chip samples at once and keeps the parameter
+  context directly underneath.
+- Sample clicks now select a chip, or cycle through that chip's uploaded images
+  when it is already selected. Arrow keys walk through images first, then move to
+  the adjacent chip only at the image boundary.
+- Uniformity remains editable per sample, uploads still support add/delete plus
+  paste/drop images, and the bottom parameter table now follows the visible
+  gallery columns with the selected column highlighted.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-gallery-viewport-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    visual acceptance of the Results gallery still needs William's signed-in
+    browser session.
+
+## Recent development note (2026-07-07 results no-wrap navigation)
+
+- Removed wraparound behavior from the Results gallery. Arrow navigation now
+  stops at row and column boundaries, and selected-sample image clicks stop at
+  the last uploaded image instead of cycling back to the first.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-no-wrap-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    visual acceptance still needs William's signed-in browser session.
+
+## Recent development note (2026-07-07 results five-sample gallery)
+
+- Reduced the Results gallery viewport from eight visible samples to five visible
+  samples so each capture has more horizontal room.
+- Changed each capture well from a tall viewport-height slot to a 4:3 image well,
+  preserving `object-contain` while removing the large vertical blank bands.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-five-gallery-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    visual acceptance still needs William's signed-in browser session.
+
+## Recent development note (2026-07-07 results gallery hot-load)
+
+- Changed visible Results tiles to keep all uploaded images for that sample
+  mounted in a hidden stack, so advancing within a chip reveals a preloaded image
+  instead of swapping a fresh image source.
+- Narrowed image warming to the current five-sample viewport plus adjacent row
+  columns and the selected sample, matching the old inspection-viewer preload
+  approach without warming the whole board every time.
+- Arrow keys now move chip selection only. Image advancement is limited to an
+  explicit click or Return/Enter on the chip image; Space is suppressed so scroll
+  intent does not accidentally advance the gallery from a focused image button.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-gallery-hotload-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    visual acceptance still needs William's signed-in browser session.
+
+## Recent development note (2026-07-07 results gallery loop dedupe)
+
+- Restored loop-around for explicit image cycling inside one selected chip:
+  clicking or pressing Return on the selected result image now advances from the
+  last image back to the first.
+- Fixed duplicate single-image registration by stopping paste events from being
+  handled by both the gallery dropzone and the global paste listener, and by
+  de-duping inspection records by id when loading/appending results.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-gallery-loop-dedupe-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    upload/gallery acceptance still needs William's signed-in browser session.
+
+## Recent development note (2026-07-07 results optimistic delete undo)
+
+- Changed Results image delete to be optimistic: the selected image is removed
+  from the gallery immediately, then the server/storage delete is committed in
+  the background after a short undo window.
+- Added keyboard shortcuts for the Results gallery: Cmd/Ctrl+Delete or
+  Cmd/Ctrl+Backspace deletes the selected result image, and Cmd/Ctrl+Z restores
+  the last pending deletion before it is committed.
+- If a second image is deleted before the previous pending deletion is undone,
+  the previous deletion is committed in the background and the new deletion
+  becomes the undo target.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-optimistic-delete-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    delete/undo acceptance still needs William's signed-in browser session.
+
+## Recent development note (2026-07-07 results parameter row control removal)
+
+- Removed the Row dropdown from the Results parameter context header. The
+  parameter row now follows the selected gallery sample only.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-parameter-row-control-removed-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    visual acceptance still needs William's signed-in browser session.
+
+## Recent development note (2026-07-07 results plus upload)
+
+- Removed the Results toolbar `Add images` button. Empty result tiles now open
+  the image picker directly when the plus/image well is clicked or activated
+  with Return.
+- Populated image tiles keep the existing click-to-select/cycle behavior.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-plus-upload-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    plus-upload acceptance still needs William's signed-in browser session.
+
+## Recent development note (2026-07-07 results uniformity editor polish)
+
+- Restyled the per-tile Uniformity editor as one cohesive metric pill with a
+  muted label, divider, larger tabular numeric value, and non-selectable label
+  text to avoid the fragmented selected-text look.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-uniformity-editor-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    visual acceptance still needs William's signed-in browser session.
+
 ## Recent development note (2026-07-06 results review board)
 
 - Replaced the wafer die detail Results tab with an image-first result review
@@ -917,3 +1057,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright CLI screenshot of the unauthenticated route:
     `/tmp/waferwatch-results-status-icons-removed-auth-gated.png`
 - Authenticated visual inspection still needs a fresh signed-in browser session.
+
+## Recent development note (2026-07-06 results arrow navigation and rail fit)
+
+- Added Results keyboard navigation: ArrowLeft/ArrowRight/ArrowUp/ArrowDown
+  move the selected R/C sample in the result grid while focus is not inside an
+  input, textarea, select, or contenteditable surface.
+- Tightened the selected-image rail layout with min-width guards, truncation,
+  wrapping image controls, and a constrained right column so buttons and note
+  actions fit inside the panel.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-arrow-nav-rail-fit-auth-gated.png`
+- Authenticated keyboard/rail visual acceptance still needs a fresh signed-in
+  browser session.
