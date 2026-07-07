@@ -1074,3 +1074,97 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `/tmp/waferwatch-results-arrow-nav-rail-fit-auth-gated.png`
 - Authenticated keyboard/rail visual acceptance still needs a fresh signed-in
   browser session.
+## Recent development note (2026-07-06 fabrication parameters enter navigation)
+
+- Updated the Fabrication parameters matrix so pressing Enter inside an editable
+  parameter cell moves focus down one parameter row in the same chip column,
+  selecting the next value for immediate editing. The last parameter row advances
+  to the first parameter row of the next R section when available.
+- Existing Shift+Arrow rectangular selection behavior is unchanged.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - In-app browser route
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    had zero console errors.
+  - The available browser session rendered the unauthenticated backend empty
+    state, so authenticated Enter-key interaction was not browser-exercised.
+
+## Recent development note (2026-07-06 fabrication parameters notes row)
+
+- Added a `Notes` row to the bottom of each Fabrication parameters chip-row
+  matrix. Each chip note is an editable text cell stored through the existing
+  `description` field in `wafers.metadata.die_poling_parameters`.
+- Removed the old nonfunctional row-notes footer/button below each R section so
+  notes live directly inside the spreadsheet-style matrix.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Playwright at
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport.
+  - The route rendered the unauthenticated backend empty state with zero console
+    errors, so authenticated Notes-row editing was not browser-exercised.
+  - Screenshot: `/tmp/wafer-parameters-notes-row-auth-state.png`
+
+## Recent development note (2026-07-06 parameters tab side card removal)
+
+- Removed the Current step/notes side rail from the wafer die detail Parameters
+  tab so the tab shows only the Fabrication parameters matrix.
+- Overview and Process history still keep their current-step/timeline/note
+  context where applicable.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Playwright at
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport.
+  - The route rendered the unauthenticated backend empty state with zero console
+    errors, so authenticated Parameters-tab visual acceptance still needs an
+    existing signed-in browser session.
+
+## Recent development note (2026-07-06 parameters print layout)
+
+- Added print-specific layout support for the wafer die detail Parameters tab:
+  app chrome, breadcrumbs, action buttons, and tabs are hidden in print, while
+  the die title and Fabrication parameters matrix print on a landscape Letter
+  page with visible table borders and exact parameter tint colors.
+- Added semantic print hooks to the wireframe shell, die detail view, and
+  Parameters matrix so print behavior stays scoped to this surface.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Playwright route check at
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport and zero console errors.
+  - `npx playwright pdf --paper-format Letter --viewport-size=1400,900`
+    generated `/tmp/wafer-parameters-print-check.pdf`, rendered to
+    `/tmp/wafer-parameters-print-check.png`.
+  - The available browser session rendered the unauthenticated backend empty
+    state, so authenticated Parameters-tab print acceptance still needs an
+    existing signed-in browser session.
+
+## Recent development note (2026-07-06 parameters one-page print fit)
+
+- Tightened the Parameters-tab print stylesheet so the Fabrication parameters
+  matrix is more likely to fit on one landscape Letter page: smaller page
+  margins, compact die header, tighter recipe metadata, shorter table rows,
+  smaller print typography, and no forced whole-section page break behavior.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Playwright route check at
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with zero console errors.
+  - `npx playwright pdf --paper-format Letter --viewport-size=1400,900`
+    generated `/tmp/wafer-parameters-print-fit-one-page.pdf`; `pdfinfo`
+    reported `Pages: 1`, and the PDF was rendered to
+    `/tmp/wafer-parameters-print-fit-one-page.png`.
+  - The available browser session rendered the unauthenticated backend empty
+    state, so signed-in Parameters-matrix print acceptance still needs an
+    existing authenticated browser session.

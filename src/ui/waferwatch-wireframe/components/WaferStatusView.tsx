@@ -277,7 +277,7 @@ export function WaferStatusView({
 
   if (hasWafers && activeDetailTile) {
     return (
-      <div className="grid gap-5 bg-white p-6">
+      <div className="wafer-status-detail-page grid gap-5 bg-white p-6">
         <DieDetailView
           tile={activeDetailTile}
           onBack={() => setDetailTile(null)}
