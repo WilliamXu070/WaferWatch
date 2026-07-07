@@ -25,6 +25,7 @@ import {
   getNodeHeightForWaferCount
 } from "./process-flow/constants";
 import { getGraphBounds, getSnappedNodePosition, nodeContainsPoint } from "./process-flow/geometry";
+import { findEdgeSplitCandidate, splitEdgeWithNode } from "./process-flow/graphEdit";
 import {
   clampScale,
   getWaferChipLabel,
@@ -1412,9 +1413,15 @@ export function ProcessFlowDiagram({
     pushUndoSnapshot();
 
     const point = getScenePoint(event);
+    const splitCandidate = findEdgeSplitCandidate(point, edges, nodes);
+    const edgeToSplit =
+      splitCandidate && (splitCandidate.edge.id.startsWith(EDGE_ID_PREFIX) || (onDeleteTransitions && onCreateTransition))
+        ? splitCandidate.edge
+        : null;
     const canvasX = Math.max(24, Math.round(point.x - NODE_WIDTH / 2));
     const canvasY = Math.max(24, Math.round(point.y - NODE_HEIGHT / 2));
     const temporaryStepId = `${NODE_ID_PREFIX}${Math.random().toString(36).slice(2, 10)}`;
+    const splitEdges = edgeToSplit ? splitEdgeWithNode(edgeToSplit, temporaryStepId) : [];
     const fallbackNode: FlowNode = {
       id: temporaryStepId,
       label: "Untitled",
@@ -1432,8 +1439,38 @@ export function ProcessFlowDiagram({
     setRoleMenu(null);
     setSelectedWafer(null);
     setNodes((currentNodes) => [...currentNodes, fallbackNode]);
+    if (edgeToSplit) {
+      pendingTransitionCreateRef.current.delete(edgeToSplit.id);
+      setEdges((currentEdges) =>
+        normalizeFlowEdges([
+          ...currentEdges.filter((edge) => edge.id !== edgeToSplit.id),
+          ...splitEdges
+        ])
+      );
+      setSelectedEdgeId(null);
+      splitEdges.forEach((edge, index) => {
+        queueTransitionPersist(edge.id, {
+          id: edge.id,
+          fromStepId: edge.from,
+          toStepId: edge.to,
+          edgeType: edge.kind,
+          priority: edges.length * 10 + index
+        });
+      });
+
+      if (!edgeToSplit.id.startsWith(EDGE_ID_PREFIX) && onDeleteTransitions) {
+        startGraphTransition(() => {
+          void (async () => {
+            const result = await onDeleteTransitions({ transitionIds: [edgeToSplit.id] });
+            if (!result.ok && !isAlreadyDeletedTransitionError(result.error)) {
+              setMoveMessage(result.error);
+            }
+          })();
+        });
+      }
+    }
     setSelectedNodeIds(new Set([temporaryStepId]));
-    setMoveMessage("Added step locally.");
+    setMoveMessage(edgeToSplit ? "Inserted step into transition locally." : "Added step locally.");
     queueStepPersist(temporaryStepId, {
       canvasX,
       canvasY,

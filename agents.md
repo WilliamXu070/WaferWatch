@@ -1902,3 +1902,25 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   shell `curl` cannot connect and the in-app browser bridge still fails on
   sandbox cwd metadata. Manual MacBook acceptance should check Shift-drag on
   `http://localhost:3015/calendar`.
+
+## Recent development note (2026-07-07 process-flow edge insertion)
+
+- Diagnosed Process Flow insertion regression: double-click create only appended
+  isolated steps and never split the existing transition under the click point,
+  so inserting a step into `A -> B` left `A -> B` intact instead of producing
+  `A -> New -> B`.
+- Added edge hit detection/splitting helpers and wired `createNode` to replace
+  the clicked transition with two queued transitions. Persisted transitions are
+  deleted through the existing transition delete action; optimistic local
+  transitions are removed from the pending queue.
+- Removed duplicated visible step info by suppressing node subtitles that
+  normalize to the same text as the node title, e.g. `Poling` plus `poling`.
+- Added local ticket `docs/tickets/process-flow-edge-insert-regression.md` and
+  focused regression tests in `src/components/process-flow/graphEdit.test.ts`.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+- Browser automation was still unavailable from this shell, so manual acceptance
+  should double-click an existing connection in `http://localhost:3015/process-flow`
+  or `/wireframe/process-flow` and confirm the connection becomes
+  `source -> new step -> target`.

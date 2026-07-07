@@ -32,6 +32,21 @@ export function truncateLabel(value: string, maxLength: number) {
   return `${value.slice(0, maxLength - 3)}...`;
 }
 
+export function getVisibleNodeSubtitle(label: string, subLabel: string) {
+  const normalizedLabel = normalizeDisplayText(label);
+  const normalizedSubLabel = normalizeDisplayText(subLabel);
+
+  if (!normalizedSubLabel || normalizedSubLabel === normalizedLabel) {
+    return null;
+  }
+
+  return subLabel;
+}
+
+function normalizeDisplayText(value: string) {
+  return value.trim().toLowerCase().replace(/[\s_-]+/g, " ");
+}
+
 export function getWaferChipLabel(wafer: WaferPin) {
   return wafer.dieLabel?.trim() || wafer.waferCode;
 }
