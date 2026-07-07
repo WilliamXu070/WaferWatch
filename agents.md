@@ -1490,3 +1490,31 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     Sort by, Filters, or Add wafer text; Process Flow topbar had Add wafer and
     no Sort by or Filters; no horizontal overflow and no console errors.
   - Screenshot: `/tmp/waferwatch-topbar-process-flow-add-wafer.png`
+
+## Recent development note (2026-07-07 current process wafer intake)
+
+- Seeded the active `Saeed` process template to the current eight-step flow:
+  Dicing, Sample cleaning / EBL prep, Chrome deposition, EBL lithography, Pad
+  fabrication, PL2, Poling, and Inspection.
+- Added Process Flow-only wafer creation from the topbar. New wafers are inserted
+  at the first process step with queued/pending executions, and completion or
+  forward movement from any dicing-like step splits the parent wafer into A1-A8
+  child pieces for downstream steps.
+- Hid planned assignments with no executions from wafer/die status so empty
+  greyed-out placeholder tiles do not render.
+- Verified with:
+  - `npm run process:seed`
+  - `npm run process:verify`
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - In-app browser at
+    `http://localhost:3015/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    Add wafer appeared only on Process Flow, no legacy shell nodes, no console errors.
+  - In-app browser at
+    `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`:
+    Add wafer, Sort by, Filters, and planned grey placeholder text were absent,
+    no legacy shell nodes, and no console errors.
+- The browser session was not authenticated against Supabase, so live Add wafer
+  mutation and dicing split drag behavior still need William's signed-in browser
+  session for visual acceptance.

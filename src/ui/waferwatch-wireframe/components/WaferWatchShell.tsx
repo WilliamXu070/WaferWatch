@@ -10,16 +10,23 @@ export type UpdateProcessNameAction = (input: {
   name: string;
 }) => Promise<ActionResult<{ id: string; name: string; version: string }>>;
 
+export type CreateWaferAtProcessStartAction = (input: {
+  templateId: string;
+  waferCode: string;
+}) => Promise<ActionResult<unknown>>;
+
 export function WaferWatchShell({
   children,
   shell,
   navBasePath = "",
+  onCreateWaferAtProcessStart,
   onSignOut,
   onUpdateProcessName
 }: {
   children: ReactNode;
   shell: WireframeShellDto;
   navBasePath?: NavBasePath;
+  onCreateWaferAtProcessStart?: CreateWaferAtProcessStartAction;
   onSignOut?: () => void | Promise<void>;
   onUpdateProcessName?: UpdateProcessNameAction;
 }) {
@@ -31,7 +38,10 @@ export function WaferWatchShell({
         onUpdateProcessName={onUpdateProcessName}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <WireframeTopbar onSignOut={onSignOut} />
+        <WireframeTopbar
+          onCreateWaferAtProcessStart={onCreateWaferAtProcessStart}
+          onSignOut={onSignOut}
+        />
         <main className="wireframe-main min-h-0 flex-1 overflow-auto bg-white">{children}</main>
       </div>
     </div>

@@ -308,7 +308,12 @@ function mapWafersToStatusModel({
 
   for (const wafer of wafers) {
     const assignment = assignmentsByWaferId.get(wafer.id) ?? null;
-    const currentExecution = assignment ? pickCurrentStepExecution(executionsByAssignmentId.get(assignment.id) ?? []) : null;
+    const assignmentExecutions = assignment ? executionsByAssignmentId.get(assignment.id) ?? [] : [];
+    if (assignment?.status === "planned" && assignmentExecutions.length === 0) {
+      continue;
+    }
+
+    const currentExecution = assignment ? pickCurrentStepExecution(assignmentExecutions) : null;
     const currentStep = currentExecution ? stepsById.get(currentExecution.process_step_id) ?? null : null;
     const dieLabel = extractDieLabel(wafer.metadata);
     const mode = deriveWaferMode(wafer.metadata, dieLabel);

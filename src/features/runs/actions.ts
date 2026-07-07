@@ -12,9 +12,265 @@ import {
   reservationSchema,
   startStepSchema
 } from "@/features/runs/schemas";
-import type { Json, StepExecution } from "@/types/database";
+import type { Json, ProcessStep, StepExecution } from "@/types/database";
 
 const CURRENT_STEP_STATUSES = ["queued", "running", "blocked", "failed"] as const;
+const DIE_LABELS = Array.from({ length: 8 }, (_, index) => `A${index + 1}`);
+
+function toJsonRecord(value: Json): Record<string, Json | undefined> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function normalizeProcessText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function levenshteinDistance(a: string, b: string) {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j += 1) {
+    rows[0][j] = j;
+  }
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      rows[i][j] = Math.min(
+        rows[i - 1][j] + 1,
+        rows[i][j - 1] + 1,
+        rows[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+  }
+
+  return rows[a.length][b.length];
+}
+
+function isDicingLikeStep(step: Pick<ProcessStep, "name" | "slug" | "process_area" | "instructions">) {
+  const text = normalizeProcessText([
+    step.name,
+    step.slug,
+    step.process_area,
+    step.instructions ?? ""
+  ].join(" "));
+  const compact = text.replace(/\s+/g, "");
+
+  if (/(dicing|diced|dice|dicng|diciing|dicin|dicingg|singulation|singulate|sawing|sawcut|cutting)/.test(compact)) {
+    return true;
+  }
+
+  return text.split(/\s+/).some((token) =>
+    token.length >= 4 &&
+    ["dicing", "diced", "dice"].some((target) => levenshteinDistance(token, target) <= 2)
+  );
+}
+
+function getWaferFamily(waferCode: string, metadata: Json) {
+  const record = toJsonRecord(metadata);
+  const explicitFamily = record.wafer_family;
+  if (typeof explicitFamily === "string" && explicitFamily.trim()) {
+    return explicitFamily.trim().toUpperCase();
+  }
+
+  return waferCode.trim().toUpperCase();
+}
+
+async function splitWaferAfterDicing({
+  accountId,
+  assignmentId,
+  currentStep,
+  nextSteps,
+  now,
+  projectId,
+  supabase,
+  templateId,
+  wafer
+}: {
+  accountId: string;
+  assignmentId: string;
+  currentStep: Pick<ProcessStep, "id" | "name" | "slug" | "process_area" | "instructions">;
+  nextSteps: ProcessStep[];
+  now: string;
+  projectId: string;
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
+  templateId: string;
+  wafer: {
+    id: string;
+    wafer_code: string;
+    material_stack: string | null;
+    diameter_mm: number | null;
+    metadata: Json;
+  };
+}) {
+  const nextStep = nextSteps[0];
+  if (!nextStep) {
+    return;
+  }
+
+  const parentMetadata = toJsonRecord(wafer.metadata);
+  if (parentMetadata.dicing_completed_at || parentMetadata.diced_child_die_labels) {
+    return;
+  }
+
+  const family = getWaferFamily(wafer.wafer_code, wafer.metadata);
+  const childCodes = DIE_LABELS.map((dieLabel) => `${wafer.wafer_code}-${dieLabel}`);
+  const childRows = DIE_LABELS.map((dieLabel, index) => ({
+    project_id: projectId,
+    wafer_code: childCodes[index],
+    material_stack: wafer.material_stack,
+    diameter_mm: wafer.diameter_mm,
+    status: "queued" as const,
+    notes: `Diced piece ${dieLabel} from ${wafer.wafer_code}.`,
+    metadata: {
+      parent_wafer_id: wafer.id,
+      parent_wafer_code: wafer.wafer_code,
+      wafer_family: family,
+      wafer_display_mode: "diced",
+      current_die: dieLabel,
+      dicing_source_step_id: currentStep.id,
+      dicing_source_step_name: currentStep.name,
+      created_from: "dicing_completion"
+    }
+  }));
+
+  const { error: childUpsertError } = await supabase
+    .from("wafers")
+    .upsert(childRows, { onConflict: "project_id,wafer_code" });
+
+  if (childUpsertError) {
+    throw childUpsertError;
+  }
+
+  const { data: childWafers, error: childLookupError } = await supabase
+    .from("wafers")
+    .select("id, wafer_code")
+    .eq("project_id", projectId)
+    .in("wafer_code", childCodes);
+
+  if (childLookupError) {
+    throw childLookupError;
+  }
+
+  const childWafersByCode = new Map((childWafers ?? []).map((child) => [child.wafer_code, child]));
+  const childWaferIds = (childWafers ?? []).map((child) => child.id);
+  const { data: existingAssignments, error: existingAssignmentsError } = await supabase
+    .from("wafer_process_assignments")
+    .select("id, wafer_id")
+    .eq("template_id", templateId)
+    .in("wafer_id", childWaferIds);
+
+  if (existingAssignmentsError) {
+    throw existingAssignmentsError;
+  }
+
+  const assignedChildWaferIds = new Set((existingAssignments ?? []).map((assignment) => assignment.wafer_id));
+  const assignmentRows = childCodes
+    .map((code) => childWafersByCode.get(code))
+    .filter((child): child is NonNullable<typeof child> => Boolean(child))
+    .filter((child) => !assignedChildWaferIds.has(child.id))
+    .map((child) => ({
+      wafer_id: child.id,
+      template_id: templateId,
+      assigned_by: accountId,
+      status: "queued" as const,
+      assigned_at: now,
+      started_at: null,
+      completed_at: null
+    }));
+
+  if (assignmentRows.length > 0) {
+    const { error: assignmentInsertError } = await supabase
+      .from("wafer_process_assignments")
+      .insert(assignmentRows);
+
+    if (assignmentInsertError) {
+      throw assignmentInsertError;
+    }
+  }
+
+  const { data: childAssignments, error: childAssignmentLookupError } = await supabase
+    .from("wafer_process_assignments")
+    .select("id, wafer_id")
+    .eq("template_id", templateId)
+    .in("wafer_id", childWaferIds);
+
+  if (childAssignmentLookupError) {
+    throw childAssignmentLookupError;
+  }
+
+  const executionRows = (childAssignments ?? []).flatMap((assignment) =>
+    nextSteps.map((step, index) => ({
+      assignment_id: assignment.id,
+      wafer_id: assignment.wafer_id,
+      process_step_id: step.id,
+      status: index === 0 ? "queued" : "pending",
+      queue_started_at: index === 0 ? now : null,
+      metadata: {}
+    }))
+  );
+
+  if (executionRows.length > 0) {
+    const { error: executionUpsertError } = await supabase
+      .from("step_executions")
+      .upsert(executionRows, { onConflict: "assignment_id,process_step_id" });
+
+    if (executionUpsertError) {
+      throw executionUpsertError;
+    }
+  }
+
+  const childIdsByCode = childCodes
+    .map((code) => childWafersByCode.get(code)?.id)
+    .filter((id): id is string => Boolean(id));
+  const nextParentMetadata = {
+    ...parentMetadata,
+    wafer_display_mode: "undiced",
+    dicing_completed_at: now,
+    diced_child_wafer_ids: childIdsByCode,
+    diced_child_die_labels: DIE_LABELS
+  };
+
+  const { error: parentWaferUpdateError } = await supabase
+    .from("wafers")
+    .update({
+      status: "completed",
+      metadata: nextParentMetadata
+    })
+    .eq("id", wafer.id);
+
+  if (parentWaferUpdateError) {
+    throw parentWaferUpdateError;
+  }
+
+  const { error: parentAssignmentUpdateError } = await supabase
+    .from("wafer_process_assignments")
+    .update({
+      status: "completed",
+      completed_at: now
+    })
+    .eq("id", assignmentId);
+
+  if (parentAssignmentUpdateError) {
+    throw parentAssignmentUpdateError;
+  }
+
+  const { error: eventInsertError } = await supabase.from("process_events").insert({
+    project_id: projectId,
+    wafer_id: wafer.id,
+    actor_id: accountId,
+    event_type: "wafer_diced",
+    notes: `Created ${DIE_LABELS.length} die pieces from ${wafer.wafer_code}.`,
+    metadata: {
+      assignment_id: assignmentId,
+      dicing_step_id: currentStep.id,
+      next_step_id: nextStep.id,
+      child_wafer_ids: childIdsByCode,
+      die_labels: DIE_LABELS
+    }
+  });
+
+  if (eventInsertError) {
+    throw eventInsertError;
+  }
+}
 
 async function getStepExecutionContext(stepExecutionId: string) {
   const supabase = await createServerSupabaseClient();
@@ -114,6 +370,60 @@ export async function completeStepExecution(input: unknown) {
 
     if (error) {
       return fail(error.message);
+    }
+
+    const { data: currentStep, error: currentStepError } = await supabase
+      .from("process_steps")
+      .select("*")
+      .eq("id", context.process_step_id)
+      .single();
+
+    if (currentStepError) {
+      return fail(currentStepError.message);
+    }
+
+    if (isDicingLikeStep(currentStep)) {
+      const { data: followingSteps, error: followingStepsError } = await supabase
+        .from("process_steps")
+        .select("*")
+        .eq("template_id", currentStep.template_id)
+        .gt("step_order", currentStep.step_order)
+        .order("step_order", { ascending: true });
+
+      if (followingStepsError) {
+        return fail(followingStepsError.message);
+      }
+
+      try {
+        await splitWaferAfterDicing({
+          accountId: account.userId,
+          assignmentId: context.assignment_id,
+          currentStep,
+          nextSteps: followingSteps ?? [],
+          now,
+          projectId: wafer.project_id,
+          supabase,
+          templateId: currentStep.template_id,
+          wafer: {
+            id: wafer.id,
+            wafer_code: wafer.wafer_code,
+            material_stack: wafer.material_stack,
+            diameter_mm: wafer.diameter_mm,
+            metadata: wafer.metadata as Json
+          }
+        });
+      } catch (splitError) {
+        return fail(toErrorMessage(splitError));
+      }
+
+      revalidatePath("/", "layout");
+      revalidatePath("/process-flow");
+      revalidatePath("/wafer-status");
+      revalidatePath("/dashboard");
+      revalidatePath("/wireframe/process-flow");
+      revalidatePath("/wireframe/wafer-status");
+      revalidatePath("/wireframe/dashboard");
+      return ok(data);
     }
 
     const { data: nextStep } = await supabase
@@ -288,7 +598,7 @@ export async function moveWaferToProcessStep(input: unknown) {
     const currentStepResult = currentExecution
       ? await supabase
           .from("process_steps")
-          .select("id, step_order")
+          .select("*")
           .eq("id", currentExecution.process_step_id)
           .maybeSingle()
       : null;
@@ -345,6 +655,51 @@ export async function moveWaferToProcessStep(input: unknown) {
 
       if (completeSourceError) {
         return fail(completeSourceError.message);
+      }
+
+      if (currentStepResult?.data && isDicingLikeStep(currentStepResult.data)) {
+        const { data: followingSteps, error: followingStepsError } = await supabase
+          .from("process_steps")
+          .select("*")
+          .eq("template_id", assignment.template_id)
+          .gt("step_order", currentStepResult.data.step_order)
+          .order("step_order", { ascending: true });
+
+        if (followingStepsError) {
+          return fail(followingStepsError.message);
+        }
+
+        try {
+          await splitWaferAfterDicing({
+            accountId: account.userId,
+            assignmentId: parsed.assignmentId,
+            currentStep: currentStepResult.data,
+            nextSteps: followingSteps ?? [],
+            now,
+            projectId: wafer.project_id,
+            supabase,
+            templateId: assignment.template_id,
+            wafer: {
+              id: wafer.id,
+              wafer_code: wafer.wafer_code,
+              material_stack: wafer.material_stack,
+              diameter_mm: wafer.diameter_mm,
+              metadata: wafer.metadata as Json
+            }
+          });
+        } catch (splitError) {
+          return fail(toErrorMessage(splitError));
+        }
+
+        revalidatePath("/", "layout");
+        revalidatePath("/process-flow");
+        revalidatePath("/wafer-status");
+        revalidatePath("/dashboard");
+        revalidatePath("/wireframe/process-flow");
+        revalidatePath("/wireframe/wafer-status");
+        revalidatePath("/wireframe/dashboard");
+        revalidatePath(`/processes/${assignment.template_id}`);
+        return ok(currentExecution);
       }
     }
 

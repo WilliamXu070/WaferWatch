@@ -7,6 +7,7 @@ import { toErrorMessage } from "@/lib/errors";
 import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   processFlowStepCreateSchema,
+  processFlowWaferCreateSchema,
   processAssignmentSchema,
   processStepDeleteSchema,
   processStepCreateSchema,
@@ -128,6 +129,168 @@ function revalidateProcessFlow(templateId: string) {
   revalidatePath("/wireframe/wafer-status");
   revalidatePath("/wireframe/calendar");
   revalidatePath(`/processes/${templateId}`);
+}
+
+function getMetadataRecord(value: Json): Record<string, Json | undefined> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function deriveWaferFamily(waferCode: string) {
+  const leading = waferCode.trim().toUpperCase().match(/^[A-Z]+/)?.[0];
+  return leading || waferCode.trim().toUpperCase() || "WAFER";
+}
+
+async function getTemplateProjectForWaferCreate(templateId: string) {
+  const account = await requireAccount();
+  const supabase = await createServerSupabaseClient();
+  const { data: template, error: templateError } = await supabase
+    .from("process_templates")
+    .select("id, owner_project_id")
+    .eq("id", templateId)
+    .single();
+
+  if (templateError) {
+    throw templateError;
+  }
+
+  if (template.owner_project_id) {
+    await assertProjectAccess(template.owner_project_id, "write");
+    return { account, projectId: template.owner_project_id };
+  }
+
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (projectError) {
+    throw projectError;
+  }
+
+  if (project?.id) {
+    await assertProjectAccess(project.id, "write");
+    return { account, projectId: project.id };
+  }
+
+  const slug = `waferwatch-${account.userId.slice(0, 8)}`;
+  const { data: createdProject, error: createProjectError } = await supabase
+    .from("projects")
+    .insert({
+      slug,
+      name: "WaferWatch Workspace",
+      owner_id: account.userId,
+      visibility: "private",
+      status: "active"
+    })
+    .select("id")
+    .single();
+
+  if (createProjectError) {
+    throw createProjectError;
+  }
+
+  return { account, projectId: createdProject.id };
+}
+
+export async function createWaferAtProcessStart(input: unknown) {
+  try {
+    const parsed = processFlowWaferCreateSchema.parse(input);
+    const { account, projectId } = await getTemplateProjectForWaferCreate(parsed.templateId);
+    const supabase = await createServerSupabaseClient();
+
+    const { data: steps, error: stepsError } = await supabase
+      .from("process_steps")
+      .select("*")
+      .eq("template_id", parsed.templateId)
+      .order("step_order", { ascending: true });
+
+    if (stepsError) {
+      return fail(stepsError.message);
+    }
+
+    const sortedSteps = steps ?? [];
+    const startStep = sortedSteps[0];
+    if (!startStep) {
+      return fail("Create a start step before adding wafers.");
+    }
+
+    const waferCode = parsed.waferCode.trim().toUpperCase();
+    const now = new Date().toISOString();
+    const { data: wafer, error: waferError } = await supabase
+      .from("wafers")
+      .insert({
+        project_id: projectId,
+        wafer_code: waferCode,
+        status: "queued",
+        material_stack: null,
+        diameter_mm: 100,
+        notes: null,
+        metadata: {
+          created_by: account.userId,
+          created_from: "process_flow_add_wafer",
+          wafer_family: deriveWaferFamily(waferCode),
+          wafer_display_mode: "undiced"
+        }
+      })
+      .select("*")
+      .single();
+
+    if (waferError) {
+      return fail(waferError.message);
+    }
+
+    const { data: assignment, error: assignmentError } = await supabase
+      .from("wafer_process_assignments")
+      .insert({
+        wafer_id: wafer.id,
+        template_id: parsed.templateId,
+        assigned_by: account.userId,
+        status: "queued",
+        assigned_at: now,
+        started_at: null,
+        completed_at: null
+      })
+      .select("*")
+      .single();
+
+    if (assignmentError) {
+      return fail(assignmentError.message);
+    }
+
+    const executionRows = sortedSteps.map((step, index) => ({
+      assignment_id: assignment.id,
+      wafer_id: wafer.id,
+      process_step_id: step.id,
+      status: index === 0 ? "queued" : "pending",
+      queue_started_at: index === 0 ? now : null,
+      metadata: {}
+    }));
+    const { error: executionsError } = await supabase.from("step_executions").insert(executionRows);
+
+    if (executionsError) {
+      return fail(executionsError.message);
+    }
+
+    await supabase.from("process_events").insert({
+      project_id: projectId,
+      wafer_id: wafer.id,
+      actor_id: account.userId,
+      event_type: "wafer_created",
+      notes: "Created from Process Flow.",
+      metadata: {
+        assignment_id: assignment.id,
+        start_step_id: startStep.id,
+        wafer_metadata: getMetadataRecord(wafer.metadata as Json)
+      }
+    });
+
+    revalidateProcessFlow(parsed.templateId);
+    return ok({ wafer, assignment });
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
 }
 
 export async function createProcessTemplate(input: unknown) {

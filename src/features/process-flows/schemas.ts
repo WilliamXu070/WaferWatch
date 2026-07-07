@@ -19,6 +19,11 @@ export const processTemplateNameUpdateSchema = z.object({
   name: z.string().trim().min(2).max(180)
 });
 
+export const processFlowWaferCreateSchema = z.object({
+  templateId: uuidSchema,
+  waferCode: z.string().trim().min(1).max(80)
+});
+
 export const processStepCreateSchema = z.object({
   templateId: uuidSchema,
   stepOrder: z.number().int().positive(),
