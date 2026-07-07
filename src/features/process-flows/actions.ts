@@ -119,6 +119,10 @@ async function getNextStepOrder(templateId: string) {
 
 function revalidateProcessFlow(templateId: string) {
   revalidatePath("/", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/process-flow");
+  revalidatePath("/wafer-status");
+  revalidatePath("/calendar");
   revalidatePath("/wireframe/dashboard");
   revalidatePath("/wireframe/process-flow");
   revalidatePath("/wireframe/wafer-status");

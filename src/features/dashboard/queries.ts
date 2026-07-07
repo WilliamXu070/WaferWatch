@@ -188,19 +188,19 @@ const EMPTY_DASHBOARD_MODEL: DashboardModel = {
     footer: "0/0 steps complete"
   },
   stats: [
+      {
+        id: "active-wafers",
+        value: "0",
+        label: "Active wafers",
+        icon: "activity",
+        href: "/process-flow"
+      },
     {
-      id: "active-wafers",
-      value: "0",
-      label: "Active wafers",
-      icon: "activity",
-      href: "/wireframe/process-flow"
-    },
-    {
-      id: "blocked-failed",
-      value: "0",
-      label: "Blocked / failed",
-      icon: "warning",
-      href: "/wireframe/process-flow"
+        id: "blocked-failed",
+        value: "0",
+        label: "Blocked / failed",
+        icon: "warning",
+        href: "/process-flow"
     }
   ],
   columns: WORKFLOW_COLUMNS.map((column) => ({
@@ -726,14 +726,14 @@ export async function getWireframeDashboardModel(
         value: String(activeAssignments.length),
         label: "Active wafers",
         icon: "activity",
-        href: "/wireframe/process-flow"
+        href: "/process-flow"
       },
       {
         id: "blocked-failed",
         value: String(blockedFailedCount),
         label: "Blocked / failed",
         icon: "warning",
-        href: "/wireframe/process-flow"
+        href: "/process-flow"
       }
     ],
     columns: buildColumns({

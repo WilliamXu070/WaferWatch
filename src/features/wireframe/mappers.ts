@@ -331,21 +331,21 @@ export function mapProcessDashboardDataToWireframeDashboard(
         label: "Active wafers",
         value: String(source.activeWaferStates.length),
         tone: "active",
-        href: "/wireframe/process-flow"
+        href: "/process-flow"
       },
       {
         id: "blocked-failed",
         label: "Blocked / failed",
         value: String(blockedCount),
         tone: blockedCount > 0 ? "warning" : "neutral",
-        href: "/wireframe/process-flow"
+        href: "/process-flow"
       },
       {
         id: "completed",
         label: "Completed",
         value: String(completedCount),
         tone: "success",
-        href: "/wireframe/wafer-status"
+        href: "/wafer-status"
       }
     ],
     activity: {

@@ -11,5 +11,5 @@ export default async function BlankPage() {
     redirect("/");
   }
 
-  redirect("/processes");
+  redirect("/dashboard");
 }

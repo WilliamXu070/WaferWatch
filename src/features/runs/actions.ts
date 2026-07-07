@@ -428,7 +428,12 @@ export async function moveWaferToProcessStep(input: unknown) {
     }
 
     revalidatePath("/", "layout");
+    revalidatePath("/process-flow");
+    revalidatePath("/wafer-status");
+    revalidatePath("/dashboard");
     revalidatePath("/wireframe/process-flow");
+    revalidatePath("/wireframe/wafer-status");
+    revalidatePath("/wireframe/dashboard");
     revalidatePath(`/processes/${assignment.template_id}`);
     return ok(targetExecutionResult.data);
   } catch (error) {

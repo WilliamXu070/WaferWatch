@@ -6,7 +6,11 @@ import {
   UserIcon
 } from "../icons";
 
-export function WireframeTopbar() {
+export function WireframeTopbar({
+  onSignOut
+}: {
+  onSignOut?: () => void | Promise<void>;
+}) {
   return (
     <header className="wireframe-topbar flex items-center gap-4 border-b border-[#eeeeea] bg-white px-8 py-5">
       <div className="relative flex-1">
@@ -56,6 +60,16 @@ export function WireframeTopbar() {
           <PlusIcon />
           Add wafer
         </button>
+        {onSignOut ? (
+          <form action={onSignOut}>
+            <button
+              type="submit"
+              className="flex h-11 items-center rounded-xl border border-[#e4e4df] bg-white px-4 text-sm font-semibold text-[#44443f] transition-colors hover:bg-[#fafafa]"
+            >
+              Sign out
+            </button>
+          </form>
+        ) : null}
       </div>
     </header>
   );

@@ -1450,3 +1450,26 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Browser screenshot was unauthenticated and showed the backend-only empty guard,
   so authenticated rename/right-click/edge visual acceptance still needs an
   existing saved auth session.
+
+## Recent development note (2026-07-07 production wireframe promotion)
+
+- Promoted the backend-backed wireframe shell to production routes:
+  `/dashboard`, `/calendar`, `/process-flow`, and `/wafer-status`, while keeping
+  `/wireframe/*` as a preview alias.
+- Redirected signed-in entry, `/blank`, and legacy `/processes` routes into the
+  promoted app. The public auth form is now sign-in only with invite-only copy.
+- Removed public debug/auth inspection endpoints and production-gated local
+  `/auth/v1/*` mock routes so fake local auth helpers are not reachable in a
+  production runtime.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Browser route `http://127.0.0.1:3015/dashboard`, default 1280x720 viewport:
+    unauthenticated session redirected to `/`, the login form showed no sign-up
+    or create-account controls, no horizontal overflow, and no console errors.
+  - `curl` confirmed `/processes` returns `307` to `/dashboard`, and
+    `/api/env`, `/api/auth-check`, and `/api/debug/cookies` return `404`.
+  - Screenshot: `/tmp/waferwatch-prod-auth-gate.png`
+  - Authenticated production-shell interaction still needs William's signed-in
+    browser session or a fresh saved auth state.

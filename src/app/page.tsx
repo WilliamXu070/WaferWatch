@@ -15,7 +15,7 @@ export default async function HomePage({
   const params = await searchParams;
 
   if (!claimsError && Boolean(claimsData?.claims?.sub)) {
-    redirect("/processes");
+    redirect("/dashboard");
   }
 
   return (

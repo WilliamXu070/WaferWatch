@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+
   const authHeader = req.headers.get("authorization") ?? "";
 
   if (!authHeader.startsWith("Bearer ")) {

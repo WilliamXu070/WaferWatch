@@ -13,6 +13,10 @@ function pickAuthStorageKey() {
 }
 
 export async function POST() {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const response = NextResponse.json({ success: true });
   response.cookies.set(pickAuthStorageKey(), "", {
     maxAge: 0

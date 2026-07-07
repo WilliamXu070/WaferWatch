@@ -45,7 +45,7 @@ export async function signInWithPassword(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/processes");
+  redirect("/dashboard");
 }
 
 export type AuthFormState = {
@@ -87,7 +87,7 @@ export async function signInFormAction(
   }
 
   revalidatePath("/", "layout");
-  redirect("/processes");
+  redirect("/dashboard");
 }
 
 export async function signUpWithPassword(formData: FormData) {
@@ -102,7 +102,7 @@ export async function signUpWithPassword(formData: FormData) {
     });
 
   const supabase = await createServerSupabaseClient();
-  const emailRedirectTo = `${getAppUrl()}/auth/confirm?next=/processes`;
+  const emailRedirectTo = `${getAppUrl()}/auth/confirm?next=/dashboard`;
   const { error } = await supabase.auth.signUp({
     email: parsed.email,
     password: parsed.password,
@@ -143,7 +143,7 @@ export async function signUpFormAction(
   }
 
   const supabase = await createServerSupabaseClient();
-  const emailRedirectTo = `${getAppUrl()}/auth/confirm?next=/processes`;
+  const emailRedirectTo = `${getAppUrl()}/auth/confirm?next=/dashboard`;
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
@@ -165,7 +165,7 @@ export async function signUpFormAction(
   revalidatePath("/", "layout");
 
   if (data.session) {
-    redirect("/processes");
+    redirect("/dashboard");
   }
 
   return {

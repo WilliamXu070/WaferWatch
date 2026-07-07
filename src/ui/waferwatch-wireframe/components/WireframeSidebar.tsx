@@ -15,8 +15,9 @@ import {
   WaferStatusIcon
 } from "../icons";
 import {
-  mainNav,
-  processNav,
+  getMainNav,
+  getProcessNav,
+  type NavBasePath,
   wireframeBrand,
   type SidebarNavItem
 } from "../nav";
@@ -59,9 +60,11 @@ function hrefWithProcess(href: string, processId: string) {
 
 export function WireframeSidebar({
   shell,
+  navBasePath = "",
   onUpdateProcessName
 }: {
   shell: WireframeShellDto;
+  navBasePath?: NavBasePath;
   onUpdateProcessName?: UpdateProcessNameAction;
 }) {
   const router = useRouter();
@@ -69,6 +72,8 @@ export function WireframeSidebar({
   const searchParams = useSearchParams();
   const selectedProcessId = searchParams.get("processId");
   const currentProcess = shell.currentProcess;
+  const mainNav = getMainNav(navBasePath);
+  const processNav = getProcessNav(navBasePath);
 
   // expanded = sub-nav visible; toggled by single click
   const [expanded, setExpanded] = useState(false);

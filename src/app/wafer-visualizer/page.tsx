@@ -36,8 +36,8 @@ export default async function WaferVisualizerPage({
           <h1>Wafer visualizer</h1>
         </div>
         <div className="topbar-actions">
-          <Link href="/processes" className="button button-secondary">
-            Back to processes
+          <Link href="/dashboard" className="button button-secondary">
+            Back to dashboard
           </Link>
           <form action={signOut}>
             <button className="button button-secondary" type="submit">

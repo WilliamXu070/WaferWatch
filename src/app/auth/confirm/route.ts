@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type");
-  const next = searchParams.get("next") ?? "/processes";
+  const next = searchParams.get("next") ?? "/dashboard";
   const safeNext = next.startsWith("/") ? next : "/";
   const oauthError = searchParams.get("error") ?? searchParams.get("error_code");
   const oauthErrorDescription = searchParams.get("error_description");
