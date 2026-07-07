@@ -598,7 +598,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
       if (count > 1) {
         setSelectedImageIndexBySample((current) => ({
           ...current,
-          [sample.id]: ((current[sample.id] ?? 0) + 1) % count
+          [sample.id]: Math.min((current[sample.id] ?? 0) + 1, count - 1)
         }));
       }
       return;
@@ -629,17 +629,33 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
       return;
     }
 
+    if (key === "ArrowLeft" && columnIndex === 0) {
+      return;
+    }
+
+    if (key === "ArrowRight" && columnIndex === columnCount - 1) {
+      return;
+    }
+
+    if (key === "ArrowUp" && rowIndex === 0) {
+      return;
+    }
+
+    if (key === "ArrowDown" && rowIndex === rowCount - 1) {
+      return;
+    }
+
     const nextRowIndex =
       key === "ArrowUp"
-        ? (rowIndex - 1 + rowCount) % rowCount
+        ? rowIndex - 1
         : key === "ArrowDown"
-          ? (rowIndex + 1) % rowCount
+          ? rowIndex + 1
           : rowIndex;
     const nextColumnIndex =
       key === "ArrowLeft"
-        ? (columnIndex - 1 + columnCount) % columnCount
+        ? columnIndex - 1
         : key === "ArrowRight"
-          ? (columnIndex + 1) % columnCount
+          ? columnIndex + 1
           : columnIndex;
     const nextSample = resultSamples.find(
       (sample) => sample.row === nextRowIndex + 1 && sample.column === nextColumnIndex + 1
