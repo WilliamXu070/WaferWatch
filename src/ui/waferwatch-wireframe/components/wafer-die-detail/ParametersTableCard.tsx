@@ -2,9 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, KeyboardEvent, PointerEvent } from "react";
+import { upsertTextSurface } from "@/features/text-surfaces/actions";
 import { updateWaferDiePolingParameters } from "@/features/wafers/actions";
 import type { DiePolingParameterField, WaferStatusTileModel } from "../../types";
 import { DetailCard } from "./DetailCard";
+import {
+  getWaferDieStepNotesScopeKey,
+  isPolingStepName,
+  waferDieNotesSurface
+} from "./waferDieDetailData";
+import {
+  parsePersistedNotes,
+  type WaferDieNote
+} from "./WaferDieNotes";
 
 const recipeDetails = [
   ["Recipe", "TFA3 .1M 1R1"],
@@ -349,9 +359,67 @@ export function getDisplayParameterValue(
   return getSavedValue(tile, dieCode, row, column, field) ?? getDefaultValue(row, column, field);
 }
 
-export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function getPolingStep(tile?: WaferStatusTileModel) {
+  return tile?.processSteps?.find((step) => isPolingStepName(`${step.name} ${step.processArea}`)) ?? null;
+}
+
+function mergeParameterNotes({
+  existingNotes,
+  updates,
+  polingStepName
+}: {
+  existingNotes: readonly WaferDieNote[];
+  updates: Array<{ row: number; column: number; value: string }>;
+  polingStepName: string;
+}) {
+  const timestamp = nowIso();
+  const nonParameterNotes = existingNotes.filter((note) => !note.id.startsWith("parameter-note:"));
+  const parameterNotesById = new Map(
+    existingNotes
+      .filter((note) => note.id.startsWith("parameter-note:"))
+      .map((note) => [note.id, note])
+  );
+
+  for (const update of updates) {
+    const id = `parameter-note:R${update.row}:C${update.column}`;
+    const body = update.value.trim();
+    if (!body) {
+      parameterNotesById.delete(id);
+      continue;
+    }
+
+    const existing = parameterNotesById.get(id);
+    parameterNotesById.set(id, {
+      id,
+      author: existing?.author ?? "Parameters",
+      body,
+      processStepId: existing?.processStepId ?? null,
+      processStepName: polingStepName,
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp
+    });
+  }
+
+  return [...nonParameterNotes, ...parameterNotesById.values()];
+}
+
+export function ParametersTableCard({
+  tile,
+  onPolingNotesChange
+}: {
+  tile?: WaferStatusTileModel;
+  onPolingNotesChange?: (stepId: string, notes: WaferDieNote[]) => void;
+}) {
   const dieCode = useMemo(() => getPersistenceDieCode(tile), [tile]);
+  const polingStep = useMemo(() => getPolingStep(tile), [tile]);
   const canPersist = Boolean(tile?.waferId && dieCode);
+  const polingNotesRef = useRef<WaferDieNote[]>(
+    polingStep && tile ? parsePersistedNotes(tile.notesSurfaceValuesByStepId?.[polingStep.id]) ?? [] : []
+  );
   const [draftValues, setDraftValues] = useState<Record<ParameterCellKey, string>>({});
   const [savedOverrides, setSavedOverrides] = useState<Record<ParameterCellKey, string>>({});
   const [, setSaveState] = useState<SaveState>("idle");
@@ -436,13 +504,42 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
         return next;
       });
       setSaveState("saved");
+
+      const noteUpdates = updates
+        .filter((update) => update.field === "description")
+        .map((update) => ({ row: update.row, column: update.column, value: update.value }));
+
+      if (noteUpdates.length > 0 && tile && polingStep) {
+        const nextPolingNotes = mergeParameterNotes({
+          existingNotes: polingNotesRef.current,
+          updates: noteUpdates,
+          polingStepName: polingStep.name
+        }).map((note) => ({
+          ...note,
+          processStepId: polingStep.id,
+          processStepName: polingStep.name
+        }));
+
+        const notesResult = await upsertTextSurface({
+          projectId: tile.projectId,
+          scopeType: waferDieNotesSurface.scopeType,
+          scopeKey: getWaferDieStepNotesScopeKey(tile.waferId, tile.dieLabel || tile.code, polingStep.id),
+          fieldKey: waferDieNotesSurface.fieldKey,
+          value: JSON.stringify(nextPolingNotes)
+        });
+
+        if (notesResult.ok) {
+          polingNotesRef.current = nextPolingNotes;
+          onPolingNotesChange?.(polingStep.id, nextPolingNotes);
+        }
+      }
     } else {
       for (const update of updates) {
         pendingCellsRef.current.set(update.key, update.value);
       }
       setSaveState("error");
     }
-  }, [canPersist, dieCode, getPersistedOrDefaultValue, tile]);
+  }, [canPersist, dieCode, getPersistedOrDefaultValue, onPolingNotesChange, polingStep, tile]);
 
   const queueCellSaves = useCallback(
     (updates: CellUpdate[]) => {
@@ -799,6 +896,11 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
             </div>
           ))}
         </div>
+        {polingStep ? (
+          <p className="text-[12px] font-semibold text-[#777770]">
+            Notes row is linked to stage {polingStep.stepOrder}. {polingStep.name}.
+          </p>
+        ) : null}
 
         <div className="grid gap-8">
           {chipRowSections.map((section) => (

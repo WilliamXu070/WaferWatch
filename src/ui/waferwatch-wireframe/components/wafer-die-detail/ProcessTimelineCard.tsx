@@ -1,12 +1,11 @@
 import { CheckIcon } from "../../icons";
-import type { WaferStatusTileModel } from "../../types";
+import type { WaferStatusProcessStepModel, WaferStatusTileModel } from "../../types";
 import { DetailCard } from "./DetailCard";
-import { processTimeline } from "./waferDieDetailData";
 
 const keyParameterRows = [
   ["Current focus", "Uniformity review"],
   ["Best image", "Pending"],
-  ["Source step", "Fixture inspection"],
+  ["Source step", "Current process step"],
   ["Review state", "In progress"]
 ] as const;
 
@@ -40,10 +39,65 @@ function getTimelineAccent(tile: WaferStatusTileModel) {
   };
 }
 
+function getStepState(step: WaferStatusProcessStepModel, currentStepId: string | null | undefined) {
+  if (step.status === "completed" || step.status === "skipped") {
+    return "complete";
+  }
+
+  if (step.id === currentStepId || ["running", "queued", "blocked", "failed"].includes(step.status)) {
+    return "active";
+  }
+
+  return "pending";
+}
+
+function formatTimelineTime(step: WaferStatusProcessStepModel, state: "complete" | "active" | "pending") {
+  const timestamp = step.completedAt ?? step.startedAt ?? step.createdAt;
+  if (!timestamp) {
+    return state === "pending" ? "Pending" : "In progress";
+  }
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return state === "pending" ? "Pending" : "Saved";
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
 export function ProcessTimelineCard({ tile }: { tile: WaferStatusTileModel }) {
   const accent = getTimelineAccent(tile);
-  const activeIndex = processTimeline.findIndex((item) => item.state === "active");
-  const completedProgressHeight = activeIndex > 0 ? `${(activeIndex / Math.max(processTimeline.length - 1, 1)) * 100}%` : "0%";
+  const processSteps = tile.processSteps?.length ? tile.processSteps : [];
+  const timelineItems = processSteps.map((step, index) => {
+    const state = getStepState(step, tile.currentStepId);
+
+    return {
+      id: step.id,
+      step: index + 1,
+      title: step.name,
+      area: step.processArea,
+      time: formatTimelineTime(step, state),
+      state
+    };
+  });
+  const activeIndex = Math.max(
+    timelineItems.findIndex((item) => item.state === "active"),
+    timelineItems.findLastIndex((item) => item.state === "complete")
+  );
+  const completedProgressHeight = activeIndex > 0 ? `${(activeIndex / Math.max(timelineItems.length - 1, 1)) * 100}%` : "0%";
+  const currentStep = processSteps.find((step) => step.id === tile.currentStepId) ?? null;
+  const currentKeyParameterRows = keyParameterRows.map(([label, value]) => {
+    if (label === "Source step") {
+      return [label, currentStep?.name ?? tile.stepLabel] as const;
+    }
+
+    return [label, value] as const;
+  });
 
   return (
     <DetailCard title="Process timeline" className="lg:col-span-3">
@@ -55,9 +109,9 @@ export function ProcessTimelineCard({ tile }: { tile: WaferStatusTileModel }) {
             style={{ height: completedProgressHeight, backgroundColor: accent.line }}
             aria-hidden
           />
-          {processTimeline.map((item) => (
+          {timelineItems.map((item) => (
             <li
-              key={item.step}
+              key={item.id}
               className={[
                 "relative grid grid-cols-[28px_minmax(0,1fr)_18px] items-center gap-3 rounded-lg px-2 py-2"
               ].join(" ")}
@@ -80,7 +134,7 @@ export function ProcessTimelineCard({ tile }: { tile: WaferStatusTileModel }) {
                   className={["text-[12px] font-medium", item.state === "active" ? "" : "text-[#8a8a83]"].join(" ")}
                   style={item.state === "active" ? { color: accent.text } : undefined}
                 >
-                  {item.time}
+                  {item.area ? `${item.area} · ${item.time}` : item.time}
                 </span>
               </span>
               {item.state === "complete" ? (
@@ -99,7 +153,7 @@ export function ProcessTimelineCard({ tile }: { tile: WaferStatusTileModel }) {
         <div className="border-l border-[#eeeeea] pl-5">
           <h3 className="mb-4 text-[17px] font-semibold text-[#111111]">Key parameter information</h3>
           <dl className="grid max-w-[520px] gap-3 text-[14px]">
-            {keyParameterRows.map(([label, value]) => (
+            {currentKeyParameterRows.map(([label, value]) => (
               <div key={label} className="grid grid-cols-[150px_minmax(0,1fr)] gap-4 border-b border-[#eeeeea] pb-3">
                 <dt className="text-[#66665f]">{label}</dt>
                 <dd className="font-semibold text-[#111111]">{value}</dd>

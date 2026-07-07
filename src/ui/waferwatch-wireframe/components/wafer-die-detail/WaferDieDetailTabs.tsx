@@ -11,7 +11,9 @@ import { ParametersTableCard } from "./ParametersTableCard";
 import { ProcessTimelineCard } from "./ProcessTimelineCard";
 import { ResultsReviewBoard } from "./ResultsReviewBoard";
 import {
+  flattenStepNotes,
   getInitialWaferDieNotes,
+  getInitialWaferDieNotesByStep,
   NotesCard,
   WaferDieNotesDashboard,
   type WaferDieNote
@@ -61,10 +63,20 @@ function DieHistoryTab({
   );
 }
 
-function DieParametersTab({ tile }: { tile: WaferStatusTileModel }) {
+function DieParametersTab({
+  tile,
+  onPolingNotesChange
+}: {
+  tile: WaferStatusTileModel;
+  onPolingNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
+}) {
   return (
     <div className="grid gap-4">
-      <ParametersTableCard key={`parameters-${tile.id}`} tile={tile} />
+      <ParametersTableCard
+        key={`parameters-${tile.id}`}
+        tile={tile}
+        onPolingNotesChange={onPolingNotesChange}
+      />
     </div>
   );
 }
@@ -75,19 +87,19 @@ function DieResultsTab({ tile }: { tile: WaferStatusTileModel }) {
 
 function DieNotesTab({
   tile,
-  notes,
+  notesByStepId,
   onNotesChange
 }: {
   tile: WaferStatusTileModel;
-  notes: readonly WaferDieNote[];
-  onNotesChange: (notes: WaferDieNote[]) => void;
+  notesByStepId: Record<string, readonly WaferDieNote[]>;
+  onNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
 }) {
   return (
     <div className="grid gap-4">
       <WaferDieNotesDashboard
         key={tile.id}
         tile={tile}
-        notes={notes}
+        notesByStepId={notesByStepId}
         onNotesChange={onNotesChange}
       />
     </div>
@@ -103,11 +115,22 @@ export function WaferDieDetailTabs({
   tile: WaferStatusTileModel;
   onOpenNotes: () => void;
 }) {
-  const [notes, setNotes] = useState<WaferDieNote[]>(() => getInitialWaferDieNotes(tile));
+  const [notesByStepId, setNotesByStepId] = useState<Record<string, WaferDieNote[]>>(() =>
+    getInitialWaferDieNotesByStep(tile)
+  );
+  const notes = tile.processSteps?.length ? flattenStepNotes(notesByStepId) : getInitialWaferDieNotes(tile);
+  const setStepNotes = (stepId: string, notesForStep: WaferDieNote[]) => {
+    setNotesByStepId((current) => ({
+      ...current,
+      [stepId]: notesForStep
+    }));
+  };
 
   if (activeTab === "history") return <DieHistoryTab tile={tile} notes={notes} onOpenNotes={onOpenNotes} />;
-  if (activeTab === "parameters") return <DieParametersTab tile={tile} />;
+  if (activeTab === "parameters") return <DieParametersTab tile={tile} onPolingNotesChange={setStepNotes} />;
   if (activeTab === "results") return <DieResultsTab tile={tile} />;
-  if (activeTab === "notes") return <DieNotesTab tile={tile} notes={notes} onNotesChange={setNotes} />;
+  if (activeTab === "notes") {
+    return <DieNotesTab tile={tile} notesByStepId={notesByStepId} onNotesChange={setStepNotes} />;
+  }
   return <DieOverviewTab tile={tile} notes={notes} onOpenNotes={onOpenNotes} />;
 }

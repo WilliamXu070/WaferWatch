@@ -17,6 +17,14 @@ export function getWaferDieNotesScopeKey(waferId: string, dieLabel: string) {
   return `${waferId}:${dieLabel}`;
 }
 
+export function getWaferDieStepNotesScopeKey(waferId: string, dieLabel: string, stepId: string) {
+  return `${getWaferDieNotesScopeKey(waferId, dieLabel)}:step:${stepId}`;
+}
+
+export function isPolingStepName(stepName: string) {
+  return stepName.toLowerCase().includes("poling");
+}
+
 export const processTimeline = [
   { step: 1, title: "Wafer cleaning", time: "Jun 28, 9:10 AM", state: "complete" },
   { step: 2, title: "Lithography", time: "Jun 28, 11:05 AM", state: "complete" },

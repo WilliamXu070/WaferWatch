@@ -198,6 +198,18 @@ export type DiePolingCellValues = Partial<Record<DiePolingParameterField, string
 
 export type DiePolingRows = Record<string, Record<string, DiePolingCellValues>>;
 
+export type WaferStatusProcessStepModel = {
+  id: string;
+  name: string;
+  processArea: string;
+  stepOrder: number;
+  status: StepStatus | "pending";
+  executionId: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string | null;
+};
+
 export type WaferStatusTileModel = {
   id: string;
   projectId: string;
@@ -210,6 +222,10 @@ export type WaferStatusTileModel = {
   waferStateName: string;
   legacyNote?: string | null;
   notesSurfaceValue?: string | null;
+  notesSurfaceValuesByStepId?: Record<string, string | null>;
+  currentStepId?: string | null;
+  currentStepExecutionId?: string | null;
+  processSteps?: readonly WaferStatusProcessStepModel[];
   mode?: WaferDisplayMode;
   isUndiced?: boolean;
   isSelected?: boolean;

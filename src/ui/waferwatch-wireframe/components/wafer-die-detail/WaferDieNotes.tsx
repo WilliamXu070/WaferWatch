@@ -6,6 +6,7 @@ import type { WaferStatusTileModel } from "../../types";
 import { DetailCard } from "./DetailCard";
 import {
   getWaferDieNotesScopeKey,
+  getWaferDieStepNotesScopeKey,
   waferDieNotesSurface
 } from "./waferDieDetailData";
 
@@ -13,6 +14,8 @@ export type WaferDieNote = {
   id: string;
   author: string;
   body: string;
+  processStepId?: string | null;
+  processStepName?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -25,6 +28,7 @@ const notesSortOptions: Array<{ id: NotesSortOrder; label: string }> = [
   { id: "newest", label: "Newest first" },
   { id: "oldest", label: "Oldest first" }
 ];
+const EMPTY_NOTES: readonly WaferDieNote[] = [];
 
 function nowIso() {
   return new Date().toISOString();
@@ -69,12 +73,14 @@ function coerceNote(value: unknown): WaferDieNote | null {
     id: typeof note.id === "string" && note.id ? note.id : getFallbackNoteId(body, timestamp),
     author: typeof note.author === "string" && note.author.trim() ? note.author.trim() : "WaferWatch",
     body,
+    processStepId: typeof note.processStepId === "string" && note.processStepId ? note.processStepId : null,
+    processStepName: typeof note.processStepName === "string" && note.processStepName ? note.processStepName : null,
     createdAt: timestamp,
     updatedAt: typeof note.updatedAt === "string" && note.updatedAt ? note.updatedAt : timestamp
   };
 }
 
-function parsePersistedNotes(value: string | null | undefined) {
+export function parsePersistedNotes(value: string | null | undefined) {
   if (typeof value !== "string") {
     return null;
   }
@@ -114,6 +120,45 @@ export function getInitialWaferDieNotes(tile: WaferStatusTileModel): WaferDieNot
       updatedAt: "legacy"
     }
   ];
+}
+
+export function getInitialWaferDieNotesForStep(tile: WaferStatusTileModel, stepId: string): WaferDieNote[] {
+  const step = tile.processSteps?.find((candidate) => candidate.id === stepId);
+  const persistedNotes = parsePersistedNotes(tile.notesSurfaceValuesByStepId?.[stepId]);
+  if (persistedNotes) {
+    return persistedNotes.map((note) => ({
+      ...note,
+      processStepId: note.processStepId ?? stepId,
+      processStepName: note.processStepName ?? step?.name ?? null
+    }));
+  }
+
+  return [];
+}
+
+export function getInitialWaferDieNotesByStep(tile: WaferStatusTileModel): Record<string, WaferDieNote[]> {
+  const steps = tile.processSteps ?? [];
+  const notesByStepId = Object.fromEntries(
+    steps.map((step) => [step.id, getInitialWaferDieNotesForStep(tile, step.id)])
+  );
+
+  if (steps.length > 0) {
+    const firstStepId = tile.currentStepId ?? steps[0]?.id;
+    const legacyNotes = getInitialWaferDieNotes(tile).filter((note) => !note.processStepId);
+    if (firstStepId && legacyNotes.length > 0 && (notesByStepId[firstStepId]?.length ?? 0) === 0) {
+      notesByStepId[firstStepId] = legacyNotes.map((note) => ({
+        ...note,
+        processStepId: firstStepId,
+        processStepName: steps.find((step) => step.id === firstStepId)?.name ?? null
+      }));
+    }
+  }
+
+  return notesByStepId;
+}
+
+export function flattenStepNotes(notesByStepId: Record<string, readonly WaferDieNote[]>) {
+  return Object.values(notesByStepId).flat();
 }
 
 function NoteAuthorMark({ author }: { author: string }) {
@@ -184,13 +229,18 @@ export function NotesCard({
 
 export function WaferDieNotesDashboard({
   tile,
-  notes,
+  notesByStepId,
   onNotesChange
 }: {
   tile: WaferStatusTileModel;
-  notes: readonly WaferDieNote[];
-  onNotesChange: (notes: WaferDieNote[]) => void;
+  notesByStepId: Record<string, readonly WaferDieNote[]>;
+  onNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
 }) {
+  const processSteps = tile.processSteps?.length ? tile.processSteps : [];
+  const fallbackStepId = tile.currentStepId ?? processSteps[0]?.id ?? "die";
+  const [selectedStepId, setSelectedStepId] = useState(fallbackStepId);
+  const selectedStep = processSteps.find((step) => step.id === selectedStepId) ?? null;
+  const notes = notesByStepId[selectedStepId] ?? EMPTY_NOTES;
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -202,10 +252,12 @@ export function WaferDieNotesDashboard({
     () => ({
       projectId: tile.projectId,
       scopeType: waferDieNotesSurface.scopeType,
-      scopeKey: getWaferDieNotesScopeKey(tile.waferId, tile.dieLabel || tile.code),
+      scopeKey: selectedStep
+        ? getWaferDieStepNotesScopeKey(tile.waferId, tile.dieLabel || tile.code, selectedStep.id)
+        : getWaferDieNotesScopeKey(tile.waferId, tile.dieLabel || tile.code),
       fieldKey: waferDieNotesSurface.fieldKey
     }),
-    [tile.code, tile.dieLabel, tile.projectId, tile.waferId]
+    [selectedStep, tile.code, tile.dieLabel, tile.projectId, tile.waferId]
   );
   const visibleNotes = useMemo(
     () =>
@@ -218,7 +270,7 @@ export function WaferDieNotesDashboard({
 
   const persistNotes = useCallback(
     async (nextNotes: WaferDieNote[], previousNotes: readonly WaferDieNote[]) => {
-      onNotesChange(nextNotes);
+      onNotesChange(selectedStepId, nextNotes);
       setIsSaving(true);
       setError(null);
 
@@ -233,10 +285,10 @@ export function WaferDieNotesDashboard({
         return;
       }
 
-      onNotesChange([...previousNotes]);
+      onNotesChange(selectedStepId, [...previousNotes]);
       setError(result.error);
     },
-    [onNotesChange, textSurfaceIdentity]
+    [onNotesChange, selectedStepId, textSurfaceIdentity]
   );
 
   const addNote = async () => {
@@ -252,6 +304,8 @@ export function WaferDieNotesDashboard({
         id: crypto.randomUUID(),
         author: "You",
         body: body.slice(0, MAX_NOTE_LENGTH),
+        processStepId: selectedStep?.id ?? null,
+        processStepName: selectedStep?.name ?? null,
         createdAt: timestamp,
         updatedAt: timestamp
       }
@@ -307,7 +361,30 @@ export function WaferDieNotesDashboard({
     <DetailCard title="Notes" className="min-h-[520px]">
       <div className="grid gap-5">
         <div className="flex min-h-5 flex-wrap items-center justify-between gap-3 text-[12px] font-semibold">
-          <span className="text-[#777770]">{notes.length} {notes.length === 1 ? "note" : "notes"}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[#777770]">{notes.length} {notes.length === 1 ? "note" : "notes"}</span>
+            {processSteps.length ? (
+              <label className="inline-flex items-center gap-2 text-[#777770]">
+                Stage
+                <select
+                  value={selectedStepId}
+                  onChange={(event) => {
+                    setSelectedStepId(event.target.value);
+                    setEditingId(null);
+                    setEditValue("");
+                    setError(null);
+                  }}
+                  className="h-8 rounded-md border border-[#e1e1dc] bg-white px-2 text-[12px] font-semibold text-[#222222] outline-none focus:border-[#111111]"
+                >
+                  {processSteps.map((step, index) => (
+                    <option key={step.id} value={step.id}>
+                      {index + 1}. {step.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
           <div className="flex items-center gap-1 rounded-lg border border-[#e1e1dc] bg-white p-1">
             {notesSortOptions.map((option) => (
               <button

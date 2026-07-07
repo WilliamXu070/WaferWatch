@@ -1630,3 +1630,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     at `1440x1000`: unauthenticated guard rendered with zero console errors.
   - Direct TypeScript runtime check confirmed a diced queued tile opens and an
     undiced tile stays closed.
+
+## Recent development note (2026-07-07 step-scoped die notes)
+
+- Linked die detail Process timeline to the selected process template steps and
+  each die's step executions instead of the old mock timeline.
+- Changed die notes to persist per process step using `text_surfaces` keys scoped
+  as wafer/die/step, with a stage selector in the Notes tab that defaults to the
+  current step.
+- Linked parameter-table `Notes` row edits to the Poling step notes surface so
+  poling notes are stage-associated rather than unscoped die notes.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Browser route
+    `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    at `1440x1000`: unauthenticated guard rendered with zero current console
+    errors.
+- The browser session was unauthenticated, so signed-in stage-note mutation still
+  needs William's signed-in browser session for visual acceptance.
