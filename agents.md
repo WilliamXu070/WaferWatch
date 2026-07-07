@@ -605,6 +605,26 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     session.
   - Screenshot: `/tmp/wafer-die-tabs-reordered.png`
 
+## Recent development note (2026-07-07 results gallery viewport)
+
+- Replaced the Results tab grid plus right selected-image rail with a full-width
+  gallery viewport that shows eight chip samples at once and keeps the parameter
+  context directly underneath.
+- Sample clicks now select a chip, or cycle through that chip's uploaded images
+  when it is already selected. Arrow keys walk through images first, then move to
+  the adjacent chip only at the image boundary.
+- Uniformity remains editable per sample, uploads still support add/delete plus
+  paste/drop images, and the bottom parameter table now follows the visible
+  gallery columns with the selected column highlighted.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-gallery-viewport-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    visual acceptance of the Results gallery still needs William's signed-in
+    browser session.
+
 ## Recent development note (2026-07-06 results review board)
 
 - Replaced the wafer die detail Results tab with an image-first result review
