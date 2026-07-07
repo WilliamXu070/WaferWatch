@@ -23,6 +23,7 @@
     "wireframe:fixture:verify": "node --env-file=.env.local scripts/wireframe-fixture.mjs verify",
     "process:seed": "node --env-file=.env.local scripts/current-process-flow.mjs seed",
     "process:verify": "node --env-file=.env.local scripts/current-process-flow.mjs verify",
+    "process:clear-wafers": "node --env-file=.env.local scripts/current-process-flow.mjs clear-wafers",
     "deploy:preview": "npx --yes vercel",
     "deploy:prod": "npx --yes vercel --prod"
   },

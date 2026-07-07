@@ -1518,3 +1518,33 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - The browser session was not authenticated against Supabase, so live Add wafer
   mutation and dicing split drag behavior still need William's signed-in browser
   session for visual acceptance.
+
+## Recent development note (2026-07-07 process flow wafer toolbar cleanup)
+
+- Moved Add wafer out of the global topbar and into the Process Flow canvas
+  toolbar next to Center view and Organize.
+- Added visible process-step numbering on flow nodes and selected-wafer chip
+  state. Delete/Backspace now deletes the selected wafer/die assignment and
+  wafer row through a project-write-gated server action.
+- Removed the Process Flow `Backend only` badge and the
+  `active wafers loaded from Supabase` status line.
+- Added `npm run process:clear-wafers` and used it to clear current backend
+  wafer/assignment rows for the active `Saeed` process without changing the
+  eight-step process template.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run process:clear-wafers`
+  - `npm run process:verify`
+  - `curl -s http://localhost:3015/api/health`
+  - In-app browser at
+    `http://localhost:3015/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    topbar Add wafer absent, toolbar Add wafer present, no `Backend only`, no
+    `loaded from Supabase`, no legacy shell nodes, and no console errors.
+  - In-app browser at
+    `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`:
+    topbar Add wafer absent, Sort by and Filters absent, planned grey text
+    absent, no legacy shell nodes, and no console errors.
+- The browser session was unauthenticated, so numbered authenticated graph nodes
+  and keyboard Delete mutation still need William's signed-in browser session for
+  visual acceptance.

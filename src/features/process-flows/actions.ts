@@ -7,6 +7,7 @@ import { toErrorMessage } from "@/lib/errors";
 import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   processFlowStepCreateSchema,
+  processFlowWaferDeleteSchema,
   processFlowWaferCreateSchema,
   processAssignmentSchema,
   processStepDeleteSchema,
@@ -288,6 +289,45 @@ export async function createWaferAtProcessStart(input: unknown) {
 
     revalidateProcessFlow(parsed.templateId);
     return ok({ wafer, assignment });
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function deleteProcessFlowWafer(input: unknown) {
+  try {
+    await requireAccount();
+    const parsed = processFlowWaferDeleteSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data: assignment, error: assignmentError } = await supabase
+      .from("wafer_process_assignments")
+      .select("id, template_id, wafer_id, wafers(*)")
+      .eq("id", parsed.assignmentId)
+      .single();
+
+    if (assignmentError) {
+      return fail(assignmentError.message);
+    }
+
+    const wafer = Array.isArray(assignment.wafers) ? assignment.wafers[0] : assignment.wafers;
+    if (!wafer) {
+      return fail("The selected wafer no longer exists.");
+    }
+
+    await assertProjectAccess(wafer.project_id, "write");
+
+    const adminSupabase = createSupabaseAdminClient();
+    const { error: deleteError } = await adminSupabase
+      .from("wafers")
+      .delete()
+      .eq("id", assignment.wafer_id);
+
+    if (deleteError) {
+      return fail(deleteError.message);
+    }
+
+    revalidateProcessFlow(assignment.template_id);
+    return ok({ deleted: assignment.wafer_id });
   } catch (error) {
     return fail(toErrorMessage(error));
   }

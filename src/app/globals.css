@@ -772,9 +772,17 @@ textarea {
   color: var(--foreground);
 }
 
+.flow-node-order {
+  fill: var(--foreground);
+  font-size: 12px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+
 .flow-node--active .flow-node-title,
 .flow-node--active .flow-node-subtitle,
-.flow-node--active .flow-node-meta {
+.flow-node--active .flow-node-meta,
+.flow-node--active .flow-node-order {
   fill: #f5f7f1;
 }
 
@@ -834,6 +842,22 @@ textarea {
 
 .flow-wafer-chip:nth-child(4n) text {
   fill: #745522;
+}
+
+.flow-wafer-chip--selected rect,
+.flow-wafer-chip--selected:nth-child(2n) rect,
+.flow-wafer-chip--selected:nth-child(3n) rect,
+.flow-wafer-chip--selected:nth-child(4n) rect {
+  fill: #151512;
+  stroke: #151512;
+  stroke-width: 2;
+}
+
+.flow-wafer-chip--selected text,
+.flow-wafer-chip--selected:nth-child(2n) text,
+.flow-wafer-chip--selected:nth-child(3n) text,
+.flow-wafer-chip--selected:nth-child(4n) text {
+  fill: #f8fafc;
 }
 
 .flow-node--active .flow-wafer-chip rect {
@@ -2858,6 +2882,27 @@ textarea {
   color: #151512;
 }
 
+.wireframe-flow-surface .flow-map-actions .flow-add-wafer-button {
+  gap: 8px;
+  border-color: #151512;
+  background: #151512;
+  color: #f8fafc;
+  font-weight: 750;
+}
+
+.wireframe-flow-surface .flow-map-actions .flow-add-wafer-button:hover,
+.wireframe-flow-surface .flow-map-actions .flow-add-wafer-button:focus-visible {
+  border-color: #151512;
+  background: #050505;
+  color: #f8fafc;
+}
+
+.wireframe-flow-surface .flow-map-actions .flow-add-wafer-button:disabled {
+  border-color: #d1d5db;
+  background: #e5e7eb;
+  color: #8a8a83;
+}
+
 .wireframe-flow-surface .flow-icon-button {
   width: 44px;
   padding-right: 0;
@@ -2958,6 +3003,10 @@ textarea {
 .wireframe-flow-surface .flow-node-icon {
   color: #151512;
   stroke-width: 1.8;
+}
+
+.wireframe-flow-surface .flow-node-order {
+  fill: #151512;
 }
 
 .wireframe-flow-surface .flow-node--active .flow-node-icon {

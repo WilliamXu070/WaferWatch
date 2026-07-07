@@ -179,6 +179,15 @@ export type MoveWaferToProcessStepAction = (input: {
   completeSourceStep?: boolean;
 }) => Promise<ActionResult<unknown>>;
 
+export type CreateWaferAtProcessStartAction = (input: {
+  templateId: string;
+  waferCode: string;
+}) => Promise<ActionResult<unknown>>;
+
+export type DeleteProcessFlowWaferAction = (input: {
+  assignmentId: string;
+}) => Promise<ActionResult<unknown>>;
+
 export type CreateProcessFlowStepAction = (input: {
   templateId: string;
   name: string;

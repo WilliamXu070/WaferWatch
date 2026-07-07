@@ -103,7 +103,7 @@ const CANONICAL_STEPS = [
   }
 ];
 
-const COMMANDS = new Set(["seed", "verify"]);
+const COMMANDS = new Set(["seed", "verify", "clear-wafers"]);
 const command = process.argv[2] ?? "verify";
 
 if (!COMMANDS.has(command)) {
@@ -356,12 +356,59 @@ async function verify(supabase, template) {
   }
 }
 
+async function clearWafers(supabase, template) {
+  const { data: assignments, error: assignmentError } = await supabase
+    .from("wafer_process_assignments")
+    .select("wafer_id")
+    .eq("template_id", template.id);
+
+  if (assignmentError) {
+    throw assignmentError;
+  }
+
+  const waferIds = Array.from(new Set((assignments ?? []).map((assignment) => assignment.wafer_id)));
+  if (waferIds.length > 0) {
+    const { error: waferDeleteError } = await supabase
+      .from("wafers")
+      .delete()
+      .in("id", waferIds);
+
+    if (waferDeleteError) {
+      throw waferDeleteError;
+    }
+  }
+
+  const { count: remainingAssignments, error: remainingAssignmentsError } = await supabase
+    .from("wafer_process_assignments")
+    .select("id", { count: "exact", head: true })
+    .eq("template_id", template.id);
+
+  if (remainingAssignmentsError) {
+    throw remainingAssignmentsError;
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        template,
+        deletedWafers: waferIds.length,
+        remainingAssignments: remainingAssignments ?? 0
+      },
+      null,
+      2
+    )
+  );
+}
+
 const flags = parseFlags();
 const supabase = createSupabase();
 const template = await getTargetTemplate(supabase, flags);
 
 if (command === "seed") {
   await seed(supabase, template);
+} else if (command === "clear-wafers") {
+  await clearWafers(supabase, template);
 } else {
   await verify(supabase, template);
 }

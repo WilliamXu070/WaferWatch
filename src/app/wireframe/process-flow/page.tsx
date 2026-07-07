@@ -1,7 +1,9 @@
 import { moveWaferToProcessStep } from "@/features/runs/actions";
 import {
+  createWaferAtProcessStart,
   createProcessFlowStep,
   createProcessStepTransition,
+  deleteProcessFlowWafer,
   deleteProcessSteps,
   deleteProcessStepTransitions,
   updateProcessStepName,
@@ -179,7 +181,7 @@ export default async function ProcessFlowWireframePage({
     ? `${dashboardData.process.name}${dashboardData.process.version ? ` · ${dashboardData.process.version}` : ""}`
     : requestedProcessId ? "No active process" : "Select a process";
   const statusLabel = dashboardData
-    ? `${dashboardData.activeWaferStates.length} active wafer${dashboardData.activeWaferStates.length === 1 ? "" : "s"} loaded from Supabase`
+    ? undefined
     : requestedProcessId
       ? "No authenticated process template or wafer assignment data is available."
       : "Choose a process from the sidebar, then open Process Flow.";
@@ -201,12 +203,14 @@ export default async function ProcessFlowWireframePage({
       stats={toFlowStats(dashboardData, flowColumns)}
       processTemplateId={dashboardData?.process.id}
       onCreateStep={createProcessFlowStep}
+      onCreateWaferAtProcessStart={createWaferAtProcessStart}
       onUpdateStepPositions={updateProcessStepPositions}
       onUpdateStepName={updateProcessStepName}
       onUpdateStepNodeType={updateProcessStepNodeType}
       onCreateTransition={createProcessStepTransition}
       onDeleteSteps={deleteProcessSteps}
       onDeleteTransitions={deleteProcessStepTransitions}
+      onDeleteWafer={deleteProcessFlowWafer}
       onMoveWafer={moveWaferToProcessStep}
     />
   );

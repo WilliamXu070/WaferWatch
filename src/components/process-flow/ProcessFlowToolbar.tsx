@@ -8,8 +8,10 @@ type ProcessFlowToolbarProps = {
   onZoomIn: () => void;
   onCenterView: () => void;
   onOrganize: () => void;
+  onAddWafer?: () => void;
   onUndo: () => void;
   canUndo: boolean;
+  canAddWafer: boolean;
 };
 
 export function ProcessFlowToolbar({
@@ -20,8 +22,10 @@ export function ProcessFlowToolbar({
   onZoomIn,
   onCenterView,
   onOrganize,
+  onAddWafer,
   onUndo,
-  canUndo
+  canUndo,
+  canAddWafer
 }: ProcessFlowToolbarProps) {
   return (
     <div className="flow-map-toolbar" aria-label="Flow map controls">
@@ -56,6 +60,15 @@ export function ProcessFlowToolbar({
           disabled={nodesCount < 2 || isGraphPending}
         >
           Organize
+        </button>
+        <button
+          className="button button-secondary flow-fit-button flow-add-wafer-button"
+          type="button"
+          onClick={onAddWafer}
+          disabled={!canAddWafer || isGraphPending}
+        >
+          <span aria-hidden="true">+</span>
+          Add wafer
         </button>
       </div>
     </div>

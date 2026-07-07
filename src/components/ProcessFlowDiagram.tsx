@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { MouseEvent, PointerEvent } from "react";
+import { useRouter } from "next/navigation";
 import type { ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
 import { ProcessFlowToolbar } from "./process-flow/ProcessFlowToolbar";
@@ -33,8 +34,10 @@ import { autoLayoutNodes } from "./process-flow/layout";
 import { getInitialGraph } from "./process-flow/graphSeed";
 import type {
   ConnectionDraft,
+  CreateWaferAtProcessStartAction,
   CreateProcessFlowStepAction,
   CreateProcessStepTransitionAction,
+  DeleteProcessFlowWaferAction,
   DeleteProcessStepsAction,
   DeleteProcessTransitionsAction,
   DiagramStep,
@@ -140,26 +143,31 @@ export function ProcessFlowDiagram({
   transitions = [],
   processTemplateId,
   onCreateStep,
+  onCreateWaferAtProcessStart,
   onUpdateStepPositions,
   onUpdateStepName,
   onCreateTransition,
   onDeleteSteps,
   onDeleteTransitions,
+  onDeleteWafer,
   onMoveWafer
 }: {
   steps: DiagramStep[];
   transitions?: DiagramTransition[];
   processTemplateId?: string;
   onCreateStep?: CreateProcessFlowStepAction;
+  onCreateWaferAtProcessStart?: CreateWaferAtProcessStartAction;
   onUpdateStepPositions?: UpdateProcessStepPositionsAction;
   onUpdateStepName?: UpdateProcessStepNameAction;
   onUpdateStepNodeType?: UpdateProcessStepNodeTypeAction;
   onCreateTransition?: CreateProcessStepTransitionAction;
   onDeleteSteps?: DeleteProcessStepsAction;
   onDeleteTransitions?: DeleteProcessTransitionsAction;
+  onDeleteWafer?: DeleteProcessFlowWaferAction;
   onMoveWafer?: MoveWaferToProcessStepAction;
 }) {
 
+  const router = useRouter();
   const [scale, setScale] = useState(1);
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
@@ -175,6 +183,11 @@ export function ProcessFlowDiagram({
   const [isPanning, setIsPanning] = useState(false);
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [selectedWafer, setSelectedWafer] = useState<{
+    assignmentId: string;
+    nodeId: string;
+    label: string;
+  } | null>(null);
   const [undoStepsCount, setUndoStepsCount] = useState(0);
   const setMoveMessage = (msg: string | null) => { if (msg) console.warn("[ProcessFlow]", msg); };
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
@@ -182,6 +195,7 @@ export function ProcessFlowDiagram({
   const editingInputRef = useRef<HTMLInputElement | null>(null);
   const [isMovePending, startMoveTransition] = useTransition();
   const [isGraphPending, startGraphTransition] = useTransition();
+  const [isWaferMutationPending, startWaferMutationTransition] = useTransition();
   const scaleRef = useRef(1);
   const pinchBaseScaleRef = useRef(1);
   const pendingZoomAnchorRef = useRef<ZoomAnchor | null>(null);
@@ -224,6 +238,17 @@ export function ProcessFlowDiagram({
   const scaledWidth = Math.round(sceneBounds.width * s);
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const selectedWaferAssignmentId = useMemo(() => {
+    if (!selectedWafer) {
+      return null;
+    }
+
+    return nodes.some((node) =>
+      node.wafers.some((wafer) => wafer.assignmentId === selectedWafer.assignmentId)
+    )
+      ? selectedWafer.assignmentId
+      : null;
+  }, [nodes, selectedWafer]);
   const directedEdgeByNodePair = useMemo(() => {
     const map = new Map<string, FlowEdge>();
     for (const edge of edges) {
@@ -930,6 +955,90 @@ export function ProcessFlowDiagram({
     });
   };
 
+  const addWaferAtStart = useCallback(() => {
+    if (!processTemplateId || !onCreateWaferAtProcessStart || isWaferMutationPending) {
+      return;
+    }
+
+    const waferCode = window.prompt("Wafer code");
+    const trimmedWaferCode = waferCode?.trim();
+    if (!trimmedWaferCode) {
+      return;
+    }
+
+    setMoveMessage(`Adding ${trimmedWaferCode.trim().toUpperCase()}...`);
+    startWaferMutationTransition(() => {
+      void (async () => {
+        const result = await onCreateWaferAtProcessStart({
+          templateId: processTemplateId,
+          waferCode: trimmedWaferCode
+        });
+
+        if (!result.ok) {
+          setMoveMessage(result.error);
+          return;
+        }
+
+        setMoveMessage(`Added ${trimmedWaferCode.trim().toUpperCase()}.`);
+        router.refresh();
+      })();
+    });
+  }, [isWaferMutationPending, onCreateWaferAtProcessStart, processTemplateId, router]);
+
+  const selectWafer = useCallback((nodeId: string, wafer: WaferPin) => {
+    setSelectedNodeIds(new Set());
+    setSelectedEdgeId(null);
+    setRoleMenu(null);
+    setSelectedWafer({
+      assignmentId: wafer.assignmentId,
+      nodeId,
+      label: getWaferChipLabel(wafer)
+    });
+  }, []);
+
+  const deleteSelectedWafer = useCallback(() => {
+    if (!selectedWafer || isWaferMutationPending) {
+      return;
+    }
+
+    if (!onDeleteWafer) {
+      setMoveMessage("Wafer deletion is not available for this process view.");
+      return;
+    }
+
+    const wafer = selectedWafer;
+    const previousNodes = nodesRef.current;
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === wafer.nodeId
+          ? {
+              ...node,
+              wafers: node.wafers.filter((pin) => pin.assignmentId !== wafer.assignmentId),
+              height: getNodeHeightForWaferCount(node.wafers.filter((pin) => pin.assignmentId !== wafer.assignmentId).length)
+            }
+          : node
+      )
+    );
+    setSelectedWafer(null);
+    setMoveMessage(`Deleting ${wafer.label}...`);
+
+    startWaferMutationTransition(() => {
+      void (async () => {
+        const result = await onDeleteWafer({ assignmentId: wafer.assignmentId });
+
+        if (!result.ok) {
+          setNodes(previousNodes);
+          setSelectedWafer(wafer);
+          setMoveMessage(result.error);
+          return;
+        }
+
+        setMoveMessage(`Deleted ${wafer.label}.`);
+        router.refresh();
+      })();
+    });
+  }, [isWaferMutationPending, onDeleteWafer, router, selectedWafer]);
+
   const restoreFromSnapshot = useCallback((snapshot: GraphSnapshot) => {
     clearTimers();
     clearQueuedStepMaps();
@@ -1086,6 +1195,7 @@ export function ProcessFlowDiagram({
     setSnapGuides([]);
     setRoleMenu(null);
     setSelectedNodeIds(new Set());
+    setSelectedWafer(null);
     setMoveMessage(null);
     setEditingNode(null);
     clearQueuedStepMaps();
@@ -1131,6 +1241,7 @@ export function ProcessFlowDiagram({
 
     setRoleMenu(null);
     setSelectedNodeIds(new Set());
+    setSelectedWafer(null);
 
     const frame = frameRef.current;
     if (!frame) {
@@ -1195,6 +1306,7 @@ export function ProcessFlowDiagram({
     event.preventDefault();
     setRoleMenu(null);
     setSelectedEdgeId(null);
+    setSelectedWafer(null);
     const point = getScenePoint(event);
     const additive = event.shiftKey || event.metaKey || event.ctrlKey;
 
@@ -1294,6 +1406,7 @@ export function ProcessFlowDiagram({
     };
 
     setRoleMenu(null);
+    setSelectedWafer(null);
     setNodes((currentNodes) => [...currentNodes, fallbackNode]);
     setSelectedNodeIds(new Set([temporaryStepId]));
     setMoveMessage("Added step locally.");
@@ -1310,6 +1423,7 @@ export function ProcessFlowDiagram({
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
+    setSelectedWafer(null);
 
     const point = getScenePoint(event);
     setPendingConnectionStart({
@@ -1333,6 +1447,7 @@ export function ProcessFlowDiagram({
     if (event.metaKey || event.ctrlKey || event.shiftKey) {
       event.preventDefault();
       setRoleMenu(null);
+      setSelectedWafer(null);
       setSelectedNodeIds((current) => {
         const next = new Set(current);
         if (next.has(node.id)) {
@@ -1350,6 +1465,7 @@ export function ProcessFlowDiagram({
     }
 
     setSelectedNodeIds(new Set([node.id]));
+    setSelectedWafer(null);
     beginNodeDrag(event, node);
   };
 
@@ -1361,6 +1477,7 @@ export function ProcessFlowDiagram({
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
+    setSelectedWafer(null);
     const selectedIds = selectedNodeIds.has(node.id) ? selectedNodeIds : new Set([node.id]);
     setSelectedNodeIds(selectedIds);
 
@@ -1863,7 +1980,10 @@ export function ProcessFlowDiagram({
       }
 
       if (event.key === "Delete" || event.key === "Backspace") {
-        if (selectedEdgeId) {
+        if (selectedWafer) {
+          event.preventDefault();
+          deleteSelectedWafer();
+        } else if (selectedEdgeId) {
           event.preventDefault();
           deleteEdge(selectedEdgeId);
         } else if (selectedNodeIds.size > 0) {
@@ -1878,7 +1998,7 @@ export function ProcessFlowDiagram({
     return () => {
       window.removeEventListener("keydown", onGlobalKeyDown);
     };
-  }, [deleteEdge, deleteSelectedNodes, selectedEdgeId, selectedNodeIds, undoLastEdit]);
+  }, [deleteEdge, deleteSelectedNodes, deleteSelectedWafer, selectedEdgeId, selectedNodeIds, selectedWafer, undoLastEdit]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -2024,8 +2144,10 @@ export function ProcessFlowDiagram({
         onZoomIn={zoomIn}
         onCenterView={() => centerView()}
         onOrganize={organizeCanvas}
+        onAddWafer={addWaferAtStart}
         onUndo={undoLastEdit}
         canUndo={undoStepsCount > 0}
+        canAddWafer={Boolean(processTemplateId && onCreateWaferAtProcessStart)}
       />
       <ProcessFlowCanvas
         frameRef={frameRef}
@@ -2044,6 +2166,7 @@ export function ProcessFlowDiagram({
         edges={edges}
         selectedNodeIds={selectedNodeIds}
         selectedEdgeId={selectedEdgeId}
+        selectedWaferAssignmentId={selectedWaferAssignmentId}
         nodeDrag={nodeDrag}
         selectionRect={getSelectionRect()}
         editingNodeId={editingNodeId}
@@ -2071,6 +2194,7 @@ export function ProcessFlowDiagram({
           setRoleMenu(null);
           setSelectionBox(null);
           setSelectedNodeIds(new Set());
+          setSelectedWafer(null);
         }}
         onNodePointerDown={handleNodePointerDown}
         onNodePointerMove={updateNodeDrag}
@@ -2082,8 +2206,9 @@ export function ProcessFlowDiagram({
         onCommitLabel={commitNodeLabel}
         onCancelLabelEdit={cancelNodeLabelEdit}
         onBeginWaferDrag={beginWaferDrag}
+        onSelectWafer={selectWafer}
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}
-        onEdgeClick={(edgeId) => { setSelectedNodeIds(new Set()); setSelectedEdgeId(edgeId); }}
+        onEdgeClick={(edgeId) => { setSelectedNodeIds(new Set()); setSelectedWafer(null); setSelectedEdgeId(edgeId); }}
       />
     </section>
   );

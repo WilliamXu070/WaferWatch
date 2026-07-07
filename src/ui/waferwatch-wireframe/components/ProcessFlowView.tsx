@@ -43,7 +43,7 @@ type MoveWaferToProcessStepAction = (input: {
 
 type ProcessFlowViewProps = {
   processLabel: string;
-  statusLabel: string;
+  statusLabel?: string;
   emptyTitle?: string;
   emptyDescription?: string;
   steps: ProcessFlowStepModel[];
@@ -51,12 +51,14 @@ type ProcessFlowViewProps = {
   stats: readonly FlowStatModel[];
   processTemplateId?: string;
   onCreateStep?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateStep"];
+  onCreateWaferAtProcessStart?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateWaferAtProcessStart"];
   onUpdateStepPositions?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepPositions"];
   onUpdateStepName?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepName"];
   onUpdateStepNodeType?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepNodeType"];
   onCreateTransition?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateTransition"];
   onDeleteSteps?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteSteps"];
   onDeleteTransitions?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteTransitions"];
+  onDeleteWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteWafer"];
   onMoveWafer?: MoveWaferToProcessStepAction;
 };
 
@@ -70,12 +72,14 @@ export function ProcessFlowView({
   stats,
   processTemplateId,
   onCreateStep,
+  onCreateWaferAtProcessStart,
   onUpdateStepPositions,
   onUpdateStepName,
   onUpdateStepNodeType,
   onCreateTransition,
   onDeleteSteps,
   onDeleteTransitions,
+  onDeleteWafer,
   onMoveWafer
 }: ProcessFlowViewProps) {
   return (
@@ -89,11 +93,10 @@ export function ProcessFlowView({
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h1 className="text-xl font-semibold text-[#151512]">Process flow</h1>
-                <p className="mt-1 text-sm text-[#7b796f]">{statusLabel}</p>
+                {statusLabel ? (
+                  <p className="mt-1 text-sm text-[#7b796f]">{statusLabel}</p>
+                ) : null}
               </div>
-              <span className="rounded-lg border border-[#e5e5db] bg-[#fbfbf8] px-3 py-1.5 text-[12px] font-semibold text-[#6f6d66]">
-                Backend only
-              </span>
             </div>
           </div>
 
@@ -111,12 +114,14 @@ export function ProcessFlowView({
             transitions={transitions}
             processTemplateId={processTemplateId}
             onCreateStep={onCreateStep}
+            onCreateWaferAtProcessStart={onCreateWaferAtProcessStart}
             onUpdateStepPositions={onUpdateStepPositions}
             onUpdateStepName={onUpdateStepName}
             onUpdateStepNodeType={onUpdateStepNodeType}
             onCreateTransition={onCreateTransition}
             onDeleteSteps={onDeleteSteps}
             onDeleteTransitions={onDeleteTransitions}
+            onDeleteWafer={onDeleteWafer}
             onMoveWafer={onMoveWafer}
           />
         </div>

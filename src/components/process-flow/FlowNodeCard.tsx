@@ -20,6 +20,7 @@ type FlowNodeCardProps = {
   isConnecting: boolean;
   isDragging: boolean;
   isSelected: boolean;
+  selectedWaferAssignmentId: string | null;
   isEditing: boolean;
   editingNodeLabel: string;
   editingInputRef: RefObject<HTMLInputElement | null>;
@@ -33,6 +34,7 @@ type FlowNodeCardProps = {
   onCommitLabel: (nodeId: string, value: string) => void;
   onCancelLabelEdit: (nodeId: string) => void;
   onBeginWaferDrag: (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => void;
+  onSelectWafer: (nodeId: string, wafer: WaferPin) => void;
 };
 
 export function FlowNodeCard({
@@ -40,6 +42,7 @@ export function FlowNodeCard({
   isConnecting,
   isDragging,
   isSelected,
+  selectedWaferAssignmentId,
   isEditing,
   editingNodeLabel,
   editingInputRef,
@@ -52,7 +55,8 @@ export function FlowNodeCard({
   onEditingLabelChange,
   onCommitLabel,
   onCancelLabelEdit,
-  onBeginWaferDrag
+  onBeginWaferDrag,
+  onSelectWafer
 }: FlowNodeCardProps) {
   const active = hasActiveWafer(node);
 
@@ -75,6 +79,9 @@ export function FlowNodeCard({
       <title>{`${node.label} · ${node.subLabel}`}</title>
       <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" />
       <path className="flow-node-icon" d={getNodeIconPath(node.role)} />
+      <text x="31" y="35" className="flow-node-order">
+        {node.order}
+      </text>
       <g className="flow-node-port-hit">
         <circle cx={node.width - 24} cy="24" r="14" className="flow-node-port-target" />
         <circle cx={node.width - 24} cy="24" r="8" className="flow-node-port" />
@@ -134,7 +141,11 @@ export function FlowNodeCard({
             label={getWaferChipLabel(wafer)}
             x={(index % NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_X}
             y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
-            onPointerDown={(event) => onBeginWaferDrag(event, node, wafer)}
+            isSelected={selectedWaferAssignmentId === wafer.assignmentId}
+            onPointerDown={(event) => {
+              onSelectWafer(node.id, wafer);
+              onBeginWaferDrag(event, node, wafer);
+            }}
           />
         ))}
       </g>
@@ -161,6 +172,7 @@ function WaferChip({
   className = "",
   pointerEvents,
   opacity,
+  isSelected = false,
   onPointerDown
 }: {
   label: string;
@@ -169,11 +181,12 @@ function WaferChip({
   className?: string;
   pointerEvents?: "none";
   opacity?: string;
+  isSelected?: boolean;
   onPointerDown?: (event: PointerEvent<SVGGElement>) => void;
 }) {
   return (
     <g
-      className={`flow-wafer-chip ${className}`.trim()}
+      className={`flow-wafer-chip ${isSelected ? "flow-wafer-chip--selected" : ""} ${className}`.trim()}
       pointerEvents={pointerEvents}
       transform={`translate(${x} ${y})`}
       opacity={opacity}

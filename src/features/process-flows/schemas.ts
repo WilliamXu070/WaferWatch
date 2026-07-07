@@ -24,6 +24,10 @@ export const processFlowWaferCreateSchema = z.object({
   waferCode: z.string().trim().min(1).max(80)
 });
 
+export const processFlowWaferDeleteSchema = z.object({
+  assignmentId: uuidSchema
+});
+
 export const processStepCreateSchema = z.object({
   templateId: uuidSchema,
   stepOrder: z.number().int().positive(),

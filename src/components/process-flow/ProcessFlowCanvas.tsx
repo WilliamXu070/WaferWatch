@@ -31,6 +31,7 @@ type ProcessFlowCanvasProps = {
   edges: FlowEdge[];
   selectedNodeIds: Set<string>;
   selectedEdgeId: string | null;
+  selectedWaferAssignmentId: string | null;
   connectionNodeId: string | null;
   roleMenu: RoleMenu | null;
   roleMenuNode: FlowNode | null;
@@ -60,6 +61,7 @@ type ProcessFlowCanvasProps = {
   onCommitLabel: (nodeId: string, value: string) => void;
   onCancelLabelEdit: (nodeId: string) => void;
   onBeginWaferDrag: (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => void;
+  onSelectWafer: (nodeId: string, wafer: WaferPin) => void;
   onDeleteNodes: (nodeIds: string[]) => void;
   onEdgeClick: (edgeId: string) => void;
 };
@@ -80,6 +82,7 @@ export function ProcessFlowCanvas({
   edges,
   selectedNodeIds,
   selectedEdgeId,
+  selectedWaferAssignmentId,
   connectionNodeId,
   roleMenu,
   roleMenuNode,
@@ -109,6 +112,7 @@ export function ProcessFlowCanvas({
   onCommitLabel,
   onCancelLabelEdit,
   onBeginWaferDrag,
+  onSelectWafer,
   onDeleteNodes,
   onEdgeClick
 }: ProcessFlowCanvasProps) {
@@ -239,6 +243,7 @@ export function ProcessFlowCanvas({
             isConnecting={connectionNodeId === node.id}
             isDragging={nodeDrag?.nodeStartPositions.some((position) => position.nodeId === node.id) ?? false}
             isSelected={selectedNodeIds.has(node.id)}
+            selectedWaferAssignmentId={selectedWaferAssignmentId}
             isEditing={editingNodeId === node.id}
             editingNodeLabel={editingNodeLabel}
             editingInputRef={editingInputRef}
@@ -252,6 +257,7 @@ export function ProcessFlowCanvas({
             onCommitLabel={onCommitLabel}
             onCancelLabelEdit={onCancelLabelEdit}
             onBeginWaferDrag={onBeginWaferDrag}
+            onSelectWafer={onSelectWafer}
           />
         ))}
 
