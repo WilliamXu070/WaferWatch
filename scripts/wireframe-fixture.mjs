@@ -30,6 +30,17 @@ const FIXTURE = {
   endIso: "2026-07-06T16:00:00.000Z"
 };
 
+const START_DIE_FIXTURES = Array.from({ length: 8 }, (_, index) => {
+  const dieNumber = index + 1;
+  const suffix = String(dieNumber).padStart(2, "0");
+  return {
+    waferId: `11111111-1111-4111-8111-1111111114${suffix}`,
+    assignmentId: `11111111-1111-4111-8111-1111111115${suffix}`,
+    dieLabel: `A${dieNumber}`,
+    waferCode: `A${dieNumber}`
+  };
+});
+
 const STEPS = [
   {
     id: "11111111-1111-4111-8111-111111111201",
@@ -336,6 +347,12 @@ async function countRows(supabase, table, queryBuilder) {
 }
 
 async function fixtureCounts(supabase) {
+  const fixtureAssignmentIds = [
+    FIXTURE.alphaAssignmentId,
+    FIXTURE.betaAssignmentId,
+    ...START_DIE_FIXTURES.map((die) => die.assignmentId)
+  ];
+
   return {
     projects: await countRows(supabase, "projects", (query) => query.eq("id", FIXTURE.projectId)),
     projectMembers: await countRows(supabase, "project_members", (query) => query.eq("project_id", FIXTURE.projectId)),
@@ -345,7 +362,7 @@ async function fixtureCounts(supabase) {
     lots: await countRows(supabase, "wafer_lots", (query) => query.eq("id", FIXTURE.lotId)),
     wafers: await countRows(supabase, "wafers", (query) => query.eq("project_id", FIXTURE.projectId)),
     assignments: await countRows(supabase, "wafer_process_assignments", (query) =>
-      query.in("id", [FIXTURE.alphaAssignmentId, FIXTURE.betaAssignmentId])
+      query.in("id", fixtureAssignmentIds)
     ),
     executions: await countRows(supabase, "step_executions", (query) =>
       query.in("assignment_id", [FIXTURE.alphaAssignmentId, FIXTURE.betaAssignmentId])
@@ -378,6 +395,12 @@ async function globalCounts(supabase) {
 }
 
 async function clearFixture(supabase) {
+  const fixtureAssignmentIds = [
+    FIXTURE.alphaAssignmentId,
+    FIXTURE.betaAssignmentId,
+    ...START_DIE_FIXTURES.map((die) => die.assignmentId)
+  ];
+
   await assertOk(
     await supabase
       .from("process_calendar_event_people")
@@ -389,17 +412,11 @@ async function clearFixture(supabase) {
   await assertOk(await supabase.from("text_surfaces").delete().eq("project_id", FIXTURE.projectId), "delete text surfaces");
   await assertOk(await supabase.from("process_events").delete().eq("project_id", FIXTURE.projectId), "delete process events");
   await assertOk(
-    await supabase.from("step_executions").delete().in("assignment_id", [
-      FIXTURE.alphaAssignmentId,
-      FIXTURE.betaAssignmentId
-    ]),
+    await supabase.from("step_executions").delete().in("assignment_id", fixtureAssignmentIds),
     "delete step executions"
   );
   await assertOk(
-    await supabase.from("wafer_process_assignments").delete().in("id", [
-      FIXTURE.alphaAssignmentId,
-      FIXTURE.betaAssignmentId
-    ]),
+    await supabase.from("wafer_process_assignments").delete().in("id", fixtureAssignmentIds),
     "delete assignments"
   );
   await assertOk(await supabase.from("wafers").delete().eq("project_id", FIXTURE.projectId), "delete wafers");
@@ -543,6 +560,22 @@ async function seedFixture(supabase, flags) {
 
   await assertOk(
     await supabase.from("wafers").upsert([
+      ...START_DIE_FIXTURES.map((die) => ({
+        id: die.waferId,
+        project_id: FIXTURE.projectId,
+        lot_id: FIXTURE.lotId,
+        wafer_code: die.waferCode,
+        material_stack: "LN / SiO2",
+        diameter_mm: 100,
+        status: "planned",
+        notes: `Fixture die ${die.dieLabel} should render at the start step.`,
+        metadata: {
+          fixture: "wireframe",
+          wafer_family: "A",
+          wafer_display_mode: "diced",
+          current_die: die.dieLabel
+        }
+      })),
       {
         id: FIXTURE.alphaWaferId,
         project_id: FIXTURE.projectId,
@@ -580,6 +613,16 @@ async function seedFixture(supabase, flags) {
 
   await assertOk(
     await supabase.from("wafer_process_assignments").upsert([
+      ...START_DIE_FIXTURES.map((die, index) => ({
+        id: die.assignmentId,
+        wafer_id: die.waferId,
+        template_id: FIXTURE.templateId,
+        assigned_by: null,
+        status: "planned",
+        assigned_at: `2026-07-06T11:${String(10 + index).padStart(2, "0")}:00.000Z`,
+        started_at: null,
+        completed_at: null
+      })),
       {
         id: FIXTURE.alphaAssignmentId,
         wafer_id: FIXTURE.alphaWaferId,
@@ -616,6 +659,7 @@ async function seedFixture(supabase, flags) {
         starts_at: FIXTURE.startIso,
         ends_at: FIXTURE.endIso,
         process_step_id: STEPS[1].id,
+        process_step_name_snapshot: STEPS[1].name,
         manual_action: null,
         description: "Fixture scheduled poling block from Supabase."
       })
@@ -680,8 +724,8 @@ async function verifyFixture(supabase) {
     steps: 4,
     people: 1,
     lots: 1,
-    wafers: 2,
-    assignments: 2,
+    wafers: 10,
+    assignments: 10,
     executions: 8,
     calendarEvents: 1,
     textSurfaces: 1,
@@ -701,6 +745,31 @@ async function verifyFixture(supabase) {
 
   if (waferError) {
     throw new Error(`verify wafers: ${waferError.message}`);
+  }
+
+  const expectedStartDies = START_DIE_FIXTURES.map((die) => die.dieLabel);
+  const seededStartDies = new Set(
+    (wafers ?? [])
+      .map((wafer) => wafer.metadata?.current_die)
+      .filter((die) => typeof die === "string" && /^A[1-8]$/.test(die))
+  );
+  const missingStartDies = expectedStartDies.filter((die) => !seededStartDies.has(die));
+  if (missingStartDies.length > 0) {
+    throw new Error(`Expected fixture start dies ${expectedStartDies.join(", ")}, missing ${missingStartDies.join(", ")}`);
+  }
+
+  const { data: startAssignments, error: startAssignmentError } = await supabase
+    .from("wafer_process_assignments")
+    .select("id, status")
+    .in("id", START_DIE_FIXTURES.map((die) => die.assignmentId));
+
+  if (startAssignmentError) {
+    throw new Error(`verify start assignments: ${startAssignmentError.message}`);
+  }
+
+  const plannedStartAssignments = (startAssignments ?? []).filter((assignment) => assignment.status === "planned").length;
+  if (plannedStartAssignments !== START_DIE_FIXTURES.length) {
+    throw new Error(`Expected ${START_DIE_FIXTURES.length} planned A1-A8 start assignments, saw ${plannedStartAssignments}`);
   }
 
   const { data: executions, error: executionError } = await supabase
@@ -727,6 +796,7 @@ async function verifyFixture(supabase) {
       mode: wafer.metadata?.wafer_display_mode ?? null,
       die: wafer.metadata?.current_die ?? null
     })),
+    expectedStartDies,
     routeHints: {
       dashboard: "/wireframe/dashboard",
       calendar: `/wireframe/calendar?processId=${FIXTURE.templateId}`,

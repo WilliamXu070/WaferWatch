@@ -87,6 +87,29 @@ export type NodeDrag = {
   offsetY: number;
   startX: number;
   startY: number;
+  nodeStartPositions: Array<{
+    nodeId: string;
+    x: number;
+    y: number;
+  }>;
+};
+
+export type SelectionBox = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  additive: boolean;
+  hasMoved: boolean;
+  baseSelectedNodeIds: string[];
+};
+
+export type SelectionRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 export type WaferDrag = {

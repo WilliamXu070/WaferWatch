@@ -1,4 +1,4 @@
-import { NODE_WIDTH, NODE_HEIGHT, SCENE_HEIGHT, SCENE_WIDTH } from "./constants";
+import { NODE_WIDTH, SCENE_HEIGHT, SCENE_WIDTH, getNodeHeightForWaferCount } from "./constants";
 import { autoLayoutNodes } from "./layout";
 import { toFlowNodeRole } from "./labels";
 import type { DiagramStep, DiagramTransition, FlowEdge, FlowNode } from "./types";
@@ -13,7 +13,7 @@ export function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransi
       x: step.canvas_x ?? 0,
       y: step.canvas_y ?? 0,
       width: NODE_WIDTH,
-      height: NODE_HEIGHT,
+      height: getNodeHeightForWaferCount(step.wafers.length),
       role: toFlowNodeRole(step.node_type),
       order: index + 1
     }));
@@ -34,17 +34,4 @@ export function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransi
     nodes: hasMissingPositions ? autoLayoutNodes(nodes, edges, { x: SCENE_WIDTH / 2, y: SCENE_HEIGHT / 2 }) : nodes,
     edges
   };
-}
-
-export function getGraphSignature(steps: DiagramStep[], transitions: DiagramTransition[]) {
-  const stepSignature = [...steps]
-    .sort((a, b) => a.step_order - b.step_order)
-    .map((step) => `${step.id}:${step.step_order}:${step.name}:${step.process_area}:${step.node_type ?? "procedure"}:${step.canvas_x ?? "auto"}:${step.canvas_y ?? "auto"}:${step.wafers.length}`)
-    .join("|");
-  const transitionSignature = [...transitions]
-    .sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id))
-    .map((transition) => `${transition.id}:${transition.from_step_id}:${transition.to_step_id}:${transition.edge_type}`)
-    .join("|");
-
-  return `${stepSignature}::${transitionSignature}`;
 }

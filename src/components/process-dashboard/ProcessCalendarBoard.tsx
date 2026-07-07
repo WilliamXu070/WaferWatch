@@ -124,7 +124,9 @@ export function ProcessCalendarBoard({
         : "manual"
   );
   const [selectedStepId, setSelectedStepId] = useState(initialSelection?.process_step_id ?? steps[0]?.id ?? "");
-  const [manualAction, setManualAction] = useState(initialSelection?.manual_action ?? "");
+  const [manualAction, setManualAction] = useState(
+    initialSelection?.manual_action ?? (initialSelection?.process_step_id ? "" : initialSelection?.process_step_name_snapshot ?? "")
+  );
   const [description, setDescription] = useState(initialSelection?.description ?? "");
   const [selectedPersonIds, setSelectedPersonIds] = useState(
     initialSelection?.people.map((person) => person.id) ?? []
@@ -875,7 +877,7 @@ export function ProcessCalendarBoard({
 
     setActionMode(event.process_step_id ? "step" : "manual");
     setSelectedStepId(event.process_step_id ?? steps[0]?.id ?? "");
-    setManualAction(event.manual_action ?? "");
+    setManualAction(event.manual_action ?? (event.process_step_id ? "" : event.process_step_name_snapshot ?? ""));
     setDescription(event.description ?? "");
     setSelectedPersonIds(event.people.map((person) => person.id));
     selectedEventIdRef.current = event.id;
@@ -1247,6 +1249,10 @@ export function ProcessCalendarBoard({
     setSelectedPersonIds((current) => current.filter((id) => id !== personId));
   }
 
+  function selectedStepSnapshot() {
+    return actionMode === "step" && selectedStepId ? stepsById.get(selectedStepId) ?? null : null;
+  }
+
   function saveDraft() {
     if (!draft) {
       return;
@@ -1262,6 +1268,7 @@ export function ProcessCalendarBoard({
         starts_at: draft.startsAt.toISOString(),
         ends_at: draft.endsAt.toISOString(),
         process_step_id: actionMode === "step" && selectedStepId ? selectedStepId : null,
+        process_step_name_snapshot: selectedStepSnapshot(),
         manual_action: actionMode === "manual" ? manualAction.trim() || null : null,
         description: description.trim() || null,
         people: selectedPeopleForSave()
@@ -1310,6 +1317,7 @@ export function ProcessCalendarBoard({
       const updatedEvent: ProcessCalendarEventView = {
         ...selectedEvent,
         process_step_id: actionMode === "step" && selectedStepId ? selectedStepId : null,
+        process_step_name_snapshot: selectedStepSnapshot(),
         manual_action: actionMode === "manual" ? manualAction.trim() || null : null,
         description: description.trim() || null,
         people: selectedPeopleForSave()

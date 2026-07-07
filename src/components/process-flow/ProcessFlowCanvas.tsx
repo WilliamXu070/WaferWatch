@@ -7,9 +7,9 @@ import type {
   ConnectionDraft,
   FlowEdge,
   FlowNode,
-  FlowNodeRole,
   NodeDrag,
   RoleMenu,
+  SelectionRect,
   SnapGuide,
   WaferDrag,
   WaferPin
@@ -35,6 +35,7 @@ type ProcessFlowCanvasProps = {
   roleMenu: RoleMenu | null;
   roleMenuNode: FlowNode | null;
   nodeDrag: NodeDrag | null;
+  selectionRect: SelectionRect | null;
   editingNodeId: string | null;
   editingNodeLabel: string;
   editingInputRef: RefObject<HTMLInputElement | null>;
@@ -59,7 +60,6 @@ type ProcessFlowCanvasProps = {
   onCommitLabel: (nodeId: string, value: string) => void;
   onCancelLabelEdit: (nodeId: string) => void;
   onBeginWaferDrag: (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => void;
-  onSetNodeRole: (nodeId: string, role: FlowNodeRole) => void;
   onDeleteNodes: (nodeIds: string[]) => void;
   onEdgeClick: (edgeId: string) => void;
 };
@@ -84,6 +84,7 @@ export function ProcessFlowCanvas({
   roleMenu,
   roleMenuNode,
   nodeDrag,
+  selectionRect,
   editingNodeId,
   editingNodeLabel,
   editingInputRef,
@@ -108,7 +109,6 @@ export function ProcessFlowCanvas({
   onCommitLabel,
   onCancelLabelEdit,
   onBeginWaferDrag,
-  onSetNodeRole,
   onDeleteNodes,
   onEdgeClick
 }: ProcessFlowCanvasProps) {
@@ -156,6 +156,16 @@ export function ProcessFlowCanvas({
         </defs>
 
         <rect className="flow-map-hit-area" x="0" y="0" width={sceneWidth} height={sceneHeight} />
+
+        {selectionRect ? (
+          <rect
+            className="flow-selection-box"
+            x={selectionRect.x}
+            y={selectionRect.y}
+            width={selectionRect.width}
+            height={selectionRect.height}
+          />
+        ) : null}
 
         {snapGuides.map((guide) =>
           guide.orientation === "vertical" ? (
@@ -227,7 +237,7 @@ export function ProcessFlowCanvas({
             key={node.id}
             node={node}
             isConnecting={connectionNodeId === node.id}
-            isDragging={nodeDrag?.nodeId === node.id}
+            isDragging={nodeDrag?.nodeStartPositions.some((position) => position.nodeId === node.id) ?? false}
             isSelected={selectedNodeIds.has(node.id)}
             isEditing={editingNodeId === node.id}
             editingNodeLabel={editingNodeLabel}
@@ -253,17 +263,8 @@ export function ProcessFlowCanvas({
           className="flow-role-menu"
           style={{ left: `${roleMenu.paneX}px`, top: `${roleMenu.paneY}px` }}
           role="menu"
-          aria-label={`${roleMenuNode.label} role`}
+          aria-label={`${roleMenuNode.label} actions`}
         >
-          <button type="button" role="menuitem" onClick={() => onSetNodeRole(roleMenu.nodeId, "start")}>
-            Beginning step
-          </button>
-          <button type="button" role="menuitem" onClick={() => onSetNodeRole(roleMenu.nodeId, "end")}>
-            End step
-          </button>
-          <button type="button" role="menuitem" onClick={() => onSetNodeRole(roleMenu.nodeId, "normal")}>
-            Normal step
-          </button>
           <button
             type="button"
             role="menuitem"

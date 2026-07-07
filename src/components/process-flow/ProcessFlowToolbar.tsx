@@ -8,6 +8,8 @@ type ProcessFlowToolbarProps = {
   onZoomIn: () => void;
   onCenterView: () => void;
   onOrganize: () => void;
+  onUndo: () => void;
+  canUndo: boolean;
 };
 
 export function ProcessFlowToolbar({
@@ -17,11 +19,16 @@ export function ProcessFlowToolbar({
   onZoomOut,
   onZoomIn,
   onCenterView,
-  onOrganize
+  onOrganize,
+  onUndo,
+  canUndo
 }: ProcessFlowToolbarProps) {
   return (
     <div className="flow-map-toolbar" aria-label="Flow map controls">
       <div className="flow-map-actions" role="group" aria-label="Canvas controls">
+        <button className="button button-secondary flow-fit-button" type="button" onClick={onUndo} disabled={!canUndo || isGraphPending}>
+          Undo
+        </button>
         <button
           className="button button-secondary flow-icon-button"
           type="button"

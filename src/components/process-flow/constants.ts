@@ -23,8 +23,19 @@ export const LAYOUT_LOOP_RADIUS_X = 84;
 export const LAYOUT_LOOP_RADIUS_Y = 34;
 export const EDGE_CURVE_OFFSET = 16;
 export const EDGE_NODE_CLEARANCE = 4;
-export const MAX_NODE_CHIPS = 4;
 export const WAFER_CHIP_WIDTH = 46;
 export const WAFER_CHIP_HEIGHT = 26;
-export const WAFER_CHIP_GAP = 52;
+export const NODE_CHIP_COLUMNS = 4;
+export const WAFER_CHIP_GAP_X = 52;
+export const WAFER_CHIP_GAP_Y = 34;
 export const FIT_VIEW_PADDING = 96;
+
+export function getNodeHeightForWaferCount(waferCount: number) {
+  const chipRows = waferCount > 0 ? Math.ceil(waferCount / NODE_CHIP_COLUMNS) : 0;
+
+  if (chipRows <= 1) {
+    return NODE_HEIGHT;
+  }
+
+  return NODE_HEIGHT + (chipRows - 1) * WAFER_CHIP_GAP_Y;
+}

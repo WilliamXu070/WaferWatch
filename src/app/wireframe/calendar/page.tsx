@@ -33,6 +33,7 @@ type CalendarLoadResult =
           starts_at: string;
           ends_at: string;
           process_step_id: string | null;
+          process_step_name_snapshot: string | null;
           manual_action: string | null;
           description: string | null;
           people: { id: string; display_name: string }[];

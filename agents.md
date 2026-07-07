@@ -1208,3 +1208,225 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     populated graph visual acceptance was covered by the focused geometry test
     rather than authenticated route interaction.
   - Screenshot: `/tmp/waferwatch-process-flow-curved-arrow-routing-final.png`
+## Recent development note (2026-07-04 process flow local-first canvas)
+
+- Updated `/wireframe/process-flow` so background Supabase sync no longer reseeds,
+  recenters, or auto-organizes the active canvas after normal graph edits.
+- Replaced the broad graph-signature reset with first-load seeding plus local graph
+  merging that preserves node positions, zoom/pan, labels, roles, and wafer chips.
+- Removed routine `router.refresh()` calls after wafer moves, role changes, node
+  deletes, and edge deletes; wafer moves now update the local canvas immediately and
+  roll back only if persistence fails.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/waferwatch-process-flow-local-first.png`
+- Authenticated create/connect/wafer-move browser verification was not completed
+  because this worktree had no saved Playwright auth state. The route rendered on
+  the correct dev server; an existing topbar caret hydration warning remains.
+
+## Recent development note (2026-07-04 process flow multi-select drag)
+
+- Added drag-box marquee selection to `/wireframe/process-flow` so users can drag
+  across multiple process boxes and select them together.
+- Updated node dragging so moving one selected node moves the selected group while
+  preserving relative spacing and saving all changed node positions through the
+  existing debounced persistence queue.
+- Added Shift-click selection toggling in addition to Cmd/Ctrl-click. Shift-drag
+  still creates a transition once the pointer moves beyond the click threshold.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/waferwatch-process-flow-multiselect.png`
+- Authenticated drag-box/group-move browser verification was not completed from
+  Playwright because this worktree has no saved auth state. The route rendered on
+  the correct dev server; the existing topbar caret hydration warning remains.
+
+## Recent development note (2026-07-04 process flow undo snapshots)
+
+- Added graph-level undo support to `/wireframe/process-flow` via snapshot-based
+  local history (up to 30 steps). Undo restores nodes, edges, selection, viewport,
+  and zoom/pan, including deletions with connected edges and multi-step/connection
+  edits.
+- Added an Undo toolbar button and Cmd/Ctrl+Z keyboard shortcut (`Shift+Z` unaffected).
+- Added snapshot capture before local mutations: node create, inline rename, move,
+  role change, transition add, delete node(s), delete edge, and organize.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/process-flow-undo-implemented.png`
+- Browser verification is unauthenticated because no usable Playwright auth state is
+  available in this environment; route renders on the correct worktree server.
+
+## Recent development note (2026-07-04 process flow edge dedupe)
+
+- Fixed a process-flow undo/recovery regression where restored local graph state and
+  server/async transition updates could leave duplicate transition objects with the
+  same persisted id, producing React duplicate-key console errors in
+  `ProcessFlowCanvas`.
+- Added centralized edge normalization in `ProcessFlowDiagram` and routed snapshot,
+  server merge, create, delete, rollback, and transition-id replacement writes
+  through it. Edges are deduped by id first and then by from/to/kind, preferring
+  persisted edges over local optimistic duplicates.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/process-flow-edge-dedupe-fix.png`
+- Direct Playwright console-listener verification could not run because this
+  worktree has the Playwright CLI but not the `playwright`/`@playwright/test` Node
+  module available to scripts.
+
+## Recent development note (2026-07-04 process flow delete undo delete)
+
+- Fixed the `Delete -> Undo -> Delete` process-flow path for locally recovered
+  steps whose first delete already succeeded on Supabase.
+- The second delete now treats the server's "selected process steps no longer
+  exist" response as idempotent success, keeping the local recovered node removed
+  instead of rolling it back into the canvas. Real delete errors still roll back.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/process-flow-delete-undo-delete-fix.png`
+
+## Recent development note (2026-07-04 process flow undo merge guard)
+
+- Fixed a race where `Delete -> Undo` could restore a step locally, then a delayed
+  server graph merge from the original delete removed the recovered step again.
+- Undo now tracks node/edge ids that were actually recovered from a snapshot.
+  Same-template server merges preserve those recovered ids even when the latest
+  Supabase graph no longer contains them, so the active canvas stays UI-authoritative.
+- Recovered ids are cleared when the user deletes them again or when the graph is
+  reseeded for a different process/template. Recovered transitions also treat
+  already-deleted server responses as idempotent local success.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow /tmp/process-flow-undo-server-merge-guard.png`
+
+## Recent development note (2026-07-04 process flow A1-A8 start wafers)
+
+- Fixed process-flow data loading so active wafer/die assignments with no current
+  step execution fall back to the first/start process step instead of disappearing
+  from the canvas.
+- Updated the deterministic wireframe fixture to seed A1-A8 as planned assigned
+  die rows with no step executions, plus the existing alpha/beta fixture rows.
+  Fixture verification now asserts all A1-A8 rows exist.
+- Seeded and verified the fixture in Supabase. A1-A8 all mapped to
+  `Fixture intake` (`11111111-1111-4111-8111-111111111201`) through the start-step
+  fallback.
+- Verified with:
+  - `node --check scripts/wireframe-fixture.mjs`
+  - `npm run wireframe:fixture:seed`
+  - `npm run wireframe:fixture:verify`
+  - Direct Supabase mapping assertion for A1-A8 -> fixture start step
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-a1-a8-start-fixture.png`
+- Browser screenshot was unauthenticated and showed the backend-only empty guard;
+  no saved auth user was available to attach to the fixture project in this session.
+
+## Recent development note (2026-07-04 calendar step snapshots)
+
+- Linked calendar step selection to the current process-flow database steps while
+  preserving historical event labels through a persisted
+  `process_step_name_snapshot` column on `process_calendar_events`.
+- New/updated calendar events snapshot the selected process step name at schedule
+  time. Existing events display the snapshot first, so later process-step renames
+  do not rewrite old calendar labels.
+- Process-step deletion now nulls the live `process_step_id` reference but keeps
+  the snapshot label instead of converting old events to a generic "Removed
+  process step" action.
+- Applied migration `202607040001_calendar_step_snapshot.sql` to the linked
+  Supabase project and reseeded the deterministic wireframe fixture.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run db:push`
+  - `npm run wireframe:fixture:seed`
+  - `npm run wireframe:fixture:verify`
+  - Direct Supabase assertion: current step selector names changed after a
+    temporary step rename while the existing event snapshot stayed
+    `Fixture poling`; the step name was restored afterward.
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/calendar?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-calendar-step-snapshot.png`
+- Dev server is running on `http://localhost:3001`. Browser verification is
+  unauthenticated and shows the calendar guard because no saved auth user was
+  attached to the fixture project in this session.
+
+## Recent development note (2026-07-04 process flow wheel zoom)
+
+- Updated `/wireframe/process-flow` wheel behavior so normal vertical mouse wheel
+  input zooms the canvas at the cursor without requiring Ctrl/Cmd.
+- Mostly horizontal wheel input still pans sideways for trackpads.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-wheel-zoom.png`
+
+## Recent development note (2026-07-05 process flow trackpad pan)
+
+- Refined `/wireframe/process-flow` wheel behavior so coarse mouse wheel input
+  still zooms at the cursor, while precise pixel-delta trackpad scrolling pans the
+  2D canvas vertically/horizontally.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-trackpad-pan-mouse-zoom.png`
+
+## Recent development note (2026-07-05 process flow expanded wafer chips)
+
+- Removed the `+N` wafer overflow chip from process-flow nodes and render every
+  wafer/die chip in a fixed four-column grid.
+- Process-flow node height now expands from wafer count on initial graph load,
+  server graph merges, wafer drag/drop moves, and organize layout calculations.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-expanded-wafer-chips.png`
+- Browser screenshot was unauthenticated and showed the backend-only empty guard,
+  so authenticated seeded graph visual acceptance still needs an existing saved
+  auth session.
+
+## Recent development note (2026-07-05 process flow delete-only context menu)
+
+- Simplified the process-flow node right-click menu so it only offers step
+  deletion. Removed Beginning step, End step, and Normal step role actions from
+  the context menu path.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-delete-only-context-menu.png`
+- Browser screenshot was unauthenticated and showed the backend-only empty guard,
+  so authenticated right-click interaction still needs an existing saved auth
+  session.
+
+## Recent development note (2026-07-05 process flow edit polish and edge routing)
+
+- Tightened inline step rename editing so the input aligns with the normal title
+  text, uses the same title scale, and no longer covers the subtitle/meta area.
+- Added explicit blank-canvas/different-node click-away commit for rename edits
+  before canvas pointer handling prevents browser blur.
+- Updated start-step styling to a distinct green treatment in the wireframe
+  process-flow surface while preserving selected-state blue borders.
+- Reworked process-flow edge routing so reciprocal edges and direct edges that
+  intersect other node boxes try larger curved lanes and sample against node
+  bounds before choosing a path.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3001/api/health`
+  - `npx playwright screenshot --device="Desktop Chrome" http://localhost:3001/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103 /tmp/process-flow-rename-start-edge-routing.png`
+- Browser screenshot was unauthenticated and showed the backend-only empty guard,
+  so authenticated rename/right-click/edge visual acceptance still needs an
+  existing saved auth session.

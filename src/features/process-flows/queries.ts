@@ -299,6 +299,14 @@ function deriveStepStatusRank(status: StepStatus) {
   return 9;
 }
 
+function getFallbackStepStatus(status: WaferProcessAssignment["status"]): StepStatus | null {
+  if (status === "planned") return "pending";
+  if (status === "queued") return "queued";
+  if (status === "in_progress") return "running";
+  if (status === "on_hold") return "blocked";
+  return null;
+}
+
 function pickCurrentStepExecution(
   executions: ReadonlyArray<DashboardStepExecution>,
   stepOrderById: Map<string, number>
@@ -409,6 +417,7 @@ export async function getProcessDashboardData(
   const stepNameById = new Map(process.process_steps.map((step) => [step.id, step.name]));
   const stepAreaById = new Map(process.process_steps.map((step) => [step.id, step.process_area]));
   const sortedProcessSteps = [...process.process_steps].sort((a, b) => a.step_order - b.step_order);
+  const startStep = sortedProcessSteps[0] ?? null;
 
   const assignmentsResult = await supabase
     .from("wafer_process_assignments")
@@ -549,9 +558,10 @@ export async function getProcessDashboardData(
 
     const executions = stepExecutionsByAssignment.get(assignment.id) ?? [];
     const currentExecution = pickCurrentStepExecution(executions, stepOrderById);
+    const currentStepId = currentExecution?.process_step_id ?? startStep?.id ?? null;
     const currentStepOrder = currentExecution
       ? stepOrderById.get(currentExecution.process_step_id) ?? null
-      : null;
+      : startStep?.step_order ?? null;
     const nextStep = currentStepOrder === null
       ? null
       : sortedProcessSteps.find((step) => step.step_order > currentStepOrder) ?? null;
@@ -567,11 +577,15 @@ export async function getProcessDashboardData(
       waferCode: wafer.wafer_code,
       projectId: wafer.project_id,
       dieLabel: extractDieLabel(wafer.metadata as Json),
-      currentStepId: currentExecution?.process_step_id ?? null,
-      currentStepName: currentExecution ? stepNameById.get(currentExecution.process_step_id) ?? null : null,
+      currentStepId,
+      currentStepName: currentExecution
+        ? stepNameById.get(currentExecution.process_step_id) ?? null
+        : startStep?.name ?? null,
       currentStepOrder,
-      currentStepStatus: currentExecution ? currentExecution.status : null,
-      currentStepArea: currentExecution ? stepAreaById.get(currentExecution.process_step_id) ?? null : null,
+      currentStepStatus: currentExecution ? currentExecution.status : getFallbackStepStatus(assignment.status),
+      currentStepArea: currentExecution
+        ? stepAreaById.get(currentExecution.process_step_id) ?? null
+        : startStep?.process_area ?? null,
       currentToolId: currentExecution?.tool_id ?? null,
       nextStepName: nextStep?.name ?? null,
       currentHandlerName: handlerProfileId ? handlerNameById.get(handlerProfileId) ?? null : null,
