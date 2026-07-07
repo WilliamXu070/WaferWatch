@@ -1,5 +1,5 @@
 import { NODE_WIDTH, SCENE_HEIGHT, SCENE_WIDTH, getNodeHeightForWaferCount } from "./constants";
-import { autoLayoutNodes } from "./layout";
+import { applyGraphDisplayOrder, autoLayoutNodes } from "./layout";
 import { toFlowNodeRole } from "./labels";
 import type { DiagramStep, DiagramTransition, FlowEdge, FlowNode } from "./types";
 
@@ -30,8 +30,12 @@ export function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransi
   const edges = persistedEdges;
   const hasMissingPositions = sortedSteps.some((step) => step.canvas_x === null || step.canvas_x === undefined || step.canvas_y === null || step.canvas_y === undefined);
 
+  const displayOrderedNodes = applyGraphDisplayOrder(nodes, edges);
+
   return {
-    nodes: hasMissingPositions ? autoLayoutNodes(nodes, edges, { x: SCENE_WIDTH / 2, y: SCENE_HEIGHT / 2 }) : nodes,
+    nodes: hasMissingPositions
+      ? autoLayoutNodes(displayOrderedNodes, edges, { x: SCENE_WIDTH / 2, y: SCENE_HEIGHT / 2 })
+      : displayOrderedNodes,
     edges
   };
 }

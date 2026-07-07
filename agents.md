@@ -1924,3 +1924,26 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   should double-click an existing connection in `http://localhost:3015/process-flow`
   or `/wireframe/process-flow` and confirm the connection becomes
   `source -> new step -> target`.
+
+## Recent development note (2026-07-07 process-flow display order)
+
+- Fixed the remaining Process Flow insertion issue where a newly inserted middle
+  step kept its appended database order in the node badge, e.g. rendering
+  `1 -> 8 -> 2` after the edge was split.
+- Added graph-derived display ordering so node badge numbers are recomputed from
+  the current transition traversal during graph seed, live optimistic edits, and
+  auto-layout. This keeps editor numbering aligned to the visible path without
+  rewriting persisted `process_steps.step_order` used by other runtime fallbacks.
+- Added focused regression coverage for an inserted `Dicing -> EBL Prep ->
+  Chrome deposition` path where `EBL Prep` has persisted order `8` but displays
+  as step `2`.
+- Verified with:
+  - `npm run lint`
+  - `npm run build` (rerun with approved escalation after the sandbox blocked
+    Turbopack's internal port bind)
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright at `http://localhost:3015/wireframe/process-flow`, 390x844:
+    unauthenticated guard rendered with no console errors.
+- `http://localhost:3015/process-flow` redirected to `/` in Playwright because
+  the browser session was unauthenticated, so the exact signed-in numbered graph
+  still needs William's browser-session acceptance.

@@ -147,7 +147,17 @@ export function autoLayoutNodes(
 
   centerPositionedNodes(positioned, targetCenter);
 
-  return nodes.map((node) => positioned.get(node.id) ?? node);
+  return applyGraphDisplayOrder(nodes.map((node) => positioned.get(node.id) ?? node), edges);
+}
+
+export function applyGraphDisplayOrder(nodes: FlowNode[], edges: FlowEdge[]) {
+  const orderedIds = orderNodes(nodes, edges);
+  const orderById = new Map(orderedIds.map((id, index) => [id, index + 1]));
+
+  return nodes.map((node) => ({
+    ...node,
+    order: orderById.get(node.id) ?? node.order
+  }));
 }
 
 function orderNodes(nodes: FlowNode[], edges: FlowEdge[]) {

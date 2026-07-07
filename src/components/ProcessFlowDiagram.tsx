@@ -31,7 +31,7 @@ import {
   getWaferChipLabel,
   isTextInputTarget
 } from "./process-flow/labels";
-import { autoLayoutNodes } from "./process-flow/layout";
+import { applyGraphDisplayOrder, autoLayoutNodes } from "./process-flow/layout";
 import { getInitialGraph } from "./process-flow/graphSeed";
 import type {
   ConnectionDraft,
@@ -226,30 +226,32 @@ export function ProcessFlowDiagram({
   const graphSeedKey = processTemplateId ?? `unselected:${steps.map((step) => step.id).join("|")}`;
   const seededGraphKeyRef = useRef<string | null>(null);
 
+  const displayNodes = useMemo(() => applyGraphDisplayOrder(nodes, edges), [edges, nodes]);
+
   const sceneBounds = useMemo(() => {
-    const maxNodeX = nodes.length ? Math.max(...nodes.map((node) => node.x + node.width)) + 160 : SCENE_WIDTH;
-    const maxNodeY = nodes.length ? Math.max(...nodes.map((node) => node.y + node.height)) + 160 : SCENE_HEIGHT;
+    const maxNodeX = displayNodes.length ? Math.max(...displayNodes.map((node) => node.x + node.width)) + 160 : SCENE_WIDTH;
+    const maxNodeY = displayNodes.length ? Math.max(...displayNodes.map((node) => node.y + node.height)) + 160 : SCENE_HEIGHT;
     return {
       width: Math.max(SCENE_WIDTH, maxNodeX),
       height: Math.max(SCENE_HEIGHT, maxNodeY)
     };
-  }, [nodes]);
+  }, [displayNodes]);
 
   const s = clampScale(scale);
   const scaledWidth = Math.round(sceneBounds.width * s);
   const scaledHeight = Math.round(sceneBounds.height * s);
-  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const nodeById = useMemo(() => new Map(displayNodes.map((node) => [node.id, node])), [displayNodes]);
   const selectedWaferAssignmentId = useMemo(() => {
     if (!selectedWafer) {
       return null;
     }
 
-    return nodes.some((node) =>
+    return displayNodes.some((node) =>
       node.wafers.some((wafer) => wafer.assignmentId === selectedWafer.assignmentId)
     )
       ? selectedWafer.assignmentId
       : null;
-  }, [nodes, selectedWafer]);
+  }, [displayNodes, selectedWafer]);
   const directedEdgeByNodePair = useMemo(() => {
     const map = new Map<string, FlowEdge>();
     for (const edge of edges) {
@@ -288,8 +290,8 @@ export function ProcessFlowDiagram({
   const edgesRef = useRef<FlowEdge[]>([]);
 
   useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
+    nodesRef.current = displayNodes;
+  }, [displayNodes]);
 
   useEffect(() => {
     edgesRef.current = edges;
@@ -972,7 +974,7 @@ export function ProcessFlowDiagram({
     pushUndoSnapshot();
 
     const targetCenter = getCanvasSceneCenter();
-    const nextNodes = autoLayoutNodes(nodes, edges, targetCenter);
+    const nextNodes = autoLayoutNodes(displayNodes, edges, targetCenter);
     setNodes(nextNodes);
     setSelectedNodeIds(new Set());
     setRoleMenu(null);
@@ -1413,7 +1415,7 @@ export function ProcessFlowDiagram({
     pushUndoSnapshot();
 
     const point = getScenePoint(event);
-    const splitCandidate = findEdgeSplitCandidate(point, edges, nodes);
+    const splitCandidate = findEdgeSplitCandidate(point, edges, displayNodes);
     const edgeToSplit =
       splitCandidate && (splitCandidate.edge.id.startsWith(EDGE_ID_PREFIX) || (onDeleteTransitions && onCreateTransition))
         ? splitCandidate.edge
@@ -1432,7 +1434,7 @@ export function ProcessFlowDiagram({
       width: NODE_WIDTH,
       height: getNodeHeightForWaferCount(0),
       role: "normal",
-      order: nodes.length + 1,
+      order: displayNodes.length + 1,
       isOptimistic: true
     };
 
@@ -1903,7 +1905,7 @@ export function ProcessFlowDiagram({
     const point = getScenePoint(event);
     const finishedDraft = connectionDraft;
     const sourceNode = nodeById.get(finishedDraft.from);
-    const target = nodes.find((node) => node.id !== finishedDraft.from && nodeContainsPoint(node, point));
+    const target = displayNodes.find((node) => node.id !== finishedDraft.from && nodeContainsPoint(node, point));
     setConnectionDraft(null);
 
     if (!target || !sourceNode || !finishedDraft.hasMoved) {
@@ -2292,7 +2294,7 @@ export function ProcessFlowDiagram({
         sceneWidth={sceneBounds.width}
         sceneHeight={sceneBounds.height}
         snapGuides={snapGuides}
-        nodes={nodes}
+        nodes={displayNodes}
         nodeById={nodeById}
         connectionDraft={connectionDraft}
         connectionNodeId={connectionDraft?.from ?? null}

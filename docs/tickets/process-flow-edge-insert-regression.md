@@ -4,6 +4,8 @@ When a user creates a loop/connection in `/calendar`-adjacent Process Flow work 
 
 The visible step information can also repeat itself, for example showing a step named `Poling` with a `Poling` subtitle.
 
+After the transition split was added, inserted steps still displayed their persisted append order in the node badge, for example `1 -> 8 -> 2`, because the visible card number came from `process_steps.step_order` instead of the current graph path.
+
 ## Expected Behavior
 
 Creating a step on an existing connection should split the connection:
@@ -29,6 +31,7 @@ The node card should not repeat identical title/subtitle text.
 4. Queue persistence for the two new transitions, relying on existing optimistic-step ID remapping.
 5. Add a label helper that suppresses subtitle text when it duplicates the title.
 6. Add focused tests for edge hit detection/splitting and duplicate subtitle suppression.
+7. Recompute visible node badge order from the current graph traversal after seeding, insertion, and layout operations.
 
 ## Verification
 
@@ -47,13 +50,16 @@ Implementation:
 - Added `findEdgeSplitCandidate` and `splitEdgeWithNode`.
 - `createNode` now detects when the double-click point is on an existing edge, removes the old edge locally, queues/persists two replacement transitions, and deletes/cancels the replaced transition.
 - `FlowNodeCard` now suppresses subtitles that normalize to the same text as the title.
+- Node badge numbers are now derived from the visible transition graph, so a node inserted between `A -> B` displays as the next path step instead of its appended database order.
 - Added focused `.test.ts` regression coverage for edge detection/splitting and duplicate subtitle suppression.
 
 Verification completed:
 
 - `npm run lint`
-- `npm run build`
+- `npm run build` (required escalation outside the sandbox because Turbopack attempted an internal port bind and failed with `Operation not permitted` in the sandbox)
+- Browser route check at `http://localhost:3015/wireframe/process-flow` with a 390x844 viewport: unauthenticated guard rendered with no console errors.
+- `http://localhost:3015/process-flow` redirected to `/` in Playwright because the browser session was unauthenticated, so signed-in visual acceptance is still needed for the exact numbered graph.
 
 Remaining limitation:
 
-- Browser automation was not available from this shell, so the exact visual double-click workflow still needs manual acceptance on `http://localhost:3015/process-flow` or `/wireframe/process-flow`.
+- The exact signed-in double-click workflow still needs manual acceptance on `http://localhost:3015/process-flow` or `/wireframe/process-flow` with William's authenticated browser session.
