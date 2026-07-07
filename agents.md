@@ -820,3 +820,25 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The route rendered the unauthenticated backend empty state with zero console
     errors, so authenticated Parameters-tab visual acceptance still needs an
     existing signed-in browser session.
+
+## Recent development note (2026-07-06 parameters print layout)
+
+- Added print-specific layout support for the wafer die detail Parameters tab:
+  app chrome, breadcrumbs, action buttons, and tabs are hidden in print, while
+  the die title and Fabrication parameters matrix print on a landscape Letter
+  page with visible table borders and exact parameter tint colors.
+- Added semantic print hooks to the wireframe shell, die detail view, and
+  Parameters matrix so print behavior stays scoped to this surface.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Playwright route check at
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `1440x1000` viewport and zero console errors.
+  - `npx playwright pdf --paper-format Letter --viewport-size=1400,900`
+    generated `/tmp/wafer-parameters-print-check.pdf`, rendered to
+    `/tmp/wafer-parameters-print-check.png`.
+  - The available browser session rendered the unauthenticated backend empty
+    state, so authenticated Parameters-tab print acceptance still needs an
+    existing signed-in browser session.

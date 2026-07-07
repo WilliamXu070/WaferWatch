@@ -779,9 +779,9 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
   };
 
   return (
-    <DetailCard title="Fabrication parameters" className="lg:col-span-3">
-      <div className="grid gap-5" onCopy={handleCopy} onPaste={handlePaste}>
-        <div className="grid gap-y-4 border-y border-[#eeeeea] py-4 sm:grid-cols-2 lg:grid-cols-4">
+    <DetailCard title="Fabrication parameters" className="wafer-parameters-print-surface lg:col-span-3">
+      <div className="wafer-parameters-print-content grid gap-5" onCopy={handleCopy} onPaste={handlePaste}>
+        <div className="wafer-parameters-recipe-grid grid gap-y-4 border-y border-[#eeeeea] py-4 sm:grid-cols-2 lg:grid-cols-4">
           {recipeDetails.map(([label, value]) => (
             <div key={label} className="min-w-0 pr-5">
               <p className="text-[12px] font-semibold text-[#8a887b]">{label}</p>
@@ -792,7 +792,7 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
 
         <div className="grid gap-8">
           {chipRowSections.map((section) => (
-            <section key={section.id} className="grid gap-2">
+            <section key={section.id} className="wafer-parameters-section grid gap-2">
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div className="flex min-w-0 items-baseline gap-3">
                   <button
@@ -816,8 +816,8 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                 </div>
               </div>
 
-              <div className="overflow-hidden">
-                <table className="w-full table-fixed border-collapse text-left text-[12px]">
+              <div className="wafer-parameters-table-wrap overflow-hidden">
+                <table className="wafer-parameters-table w-full table-fixed border-collapse text-left text-[12px]">
                   <thead>
                     <tr className="border-b border-[#e7e7dc] text-[#8a887b]">
                       <th className="w-[132px] bg-white py-2 pr-3 font-semibold">
@@ -862,7 +862,7 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                               onPointerDown={(event) => handleCellPointerDown(event, cellKey)}
                               onPointerEnter={() => handleCellPointerEnter(cellKey)}
                               className={[
-                                "px-1 py-1.5 text-center transition-colors",
+                                "wafer-parameters-cell px-1 py-1.5 text-center transition-colors",
                                 toneClass,
                                 isCellSelected ? "bg-[#f5f5f0] shadow-[inset_0_0_0_1px_#dfdfd6]" : "",
                                 isActiveCell ? "bg-[#f1f1eb]" : ""
@@ -885,7 +885,7 @@ export function ParametersTableCard({ tile }: { tile?: WaferStatusTileModel }) {
                                   }
                                 }}
                                 className={[
-                                  "h-7 w-full rounded-sm border border-transparent bg-transparent px-0.5 text-center text-[13px] font-semibold outline-none transition-colors",
+                                  "wafer-parameters-input h-7 w-full rounded-sm border border-transparent bg-transparent px-0.5 text-center text-[13px] font-semibold outline-none transition-colors",
                                   "text-[#4a483f] hover:border-[#e1e1dc] hover:bg-[#fafafa] focus:border-[#c7c7bd] focus:bg-[#fbfbf8]",
                                   "disabled:cursor-not-allowed disabled:text-[#777770]",
                                   isNotesRow ? "px-1 text-left text-[12px] font-medium placeholder:text-[#aaa79b]" : "",

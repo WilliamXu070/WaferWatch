@@ -28,9 +28,9 @@ export function DieDetailView({
   const displayLabel = tile.dieLabel || tile.code;
 
   return (
-    <section className="grid gap-6 bg-white">
-      <div className="border-b border-[#eeeeea] bg-white pb-6">
-        <div className="mb-6 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-[#8a887b]">
+    <section className="wafer-die-detail-view grid gap-6 bg-white">
+      <div className="wafer-die-detail-header border-b border-[#eeeeea] bg-white pb-6">
+        <div className="wafer-die-detail-breadcrumb mb-6 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-[#8a887b]">
           <button type="button" onClick={onBack} className="hover:text-[#111111]">Wafers</button>
           <ChevronRightIcon />
           <span className="text-[#111111]">Die {displayLabel}</span>
@@ -53,7 +53,7 @@ export function DieDetailView({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="wafer-die-detail-actions flex items-center gap-2">
             <button type="button" className="h-10 rounded-lg border border-[#e2e2de] bg-white px-4 text-[14px] font-semibold text-[#44443f] hover:bg-[#fafafa]">
               Export report
             </button>
@@ -81,7 +81,7 @@ export function DieDetailView({
           </div>
         </div>
 
-        <div className="mt-7 border-b border-[#eeeeea]">
+        <div className="wafer-die-detail-tabs mt-7 border-b border-[#eeeeea]">
           <div className="flex overflow-x-auto bg-white">
             {dieDetailTabs.map((tab) => (
               <button

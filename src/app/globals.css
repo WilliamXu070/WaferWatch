@@ -2859,3 +2859,208 @@ textarea {
 .wireframe-flow-surface .flow-edge--draft {
   stroke: #94a3b8;
 }
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 0.35in;
+  }
+
+  html,
+  body {
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fdfdfb !important;
+  }
+
+  body,
+  .waferwatch-wireframe,
+  .waferwatch-wireframe * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .waferwatch-wireframe {
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fdfdfb !important;
+    color: #151512 !important;
+  }
+
+  .waferwatch-wireframe > div,
+  .waferwatch-wireframe .wireframe-main {
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fdfdfb !important;
+  }
+
+  .waferwatch-wireframe .wireframe-sidebar,
+  .waferwatch-wireframe .wireframe-topbar,
+  .waferwatch-wireframe .wafer-die-detail-breadcrumb,
+  .waferwatch-wireframe .wafer-die-detail-actions,
+  .waferwatch-wireframe .wafer-die-detail-tabs {
+    display: none !important;
+  }
+
+  .waferwatch-wireframe .wafer-status-detail-page {
+    display: block !important;
+    padding: 0 !important;
+    background: #fdfdfb !important;
+  }
+
+  .waferwatch-wireframe .wafer-die-detail-view {
+    display: block !important;
+    gap: 0 !important;
+    background: #fdfdfb !important;
+  }
+
+  .waferwatch-wireframe .wafer-die-detail-header {
+    margin: 0 0 10px !important;
+    padding: 0 0 10px !important;
+    border-bottom: 1px solid #d9d9d0 !important;
+    background: #fdfdfb !important;
+  }
+
+  .waferwatch-wireframe .wafer-die-detail-header h1 {
+    font-size: 20pt !important;
+    line-height: 1.1 !important;
+  }
+
+  .waferwatch-wireframe .wafer-die-detail-header span {
+    box-shadow: none !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-print-surface {
+    border: 0 !important;
+    padding: 0 !important;
+    background: #fdfdfb !important;
+    break-inside: auto;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-print-surface > div:first-child {
+    margin-bottom: 8px !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-print-surface h3 {
+    font-size: 13pt !important;
+    line-height: 1.2 !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-print-content {
+    display: block !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-recipe-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 4px 14px !important;
+    margin-bottom: 10px !important;
+    padding: 7px 0 !important;
+    border-top: 1px solid #ddddd5 !important;
+    border-bottom: 1px solid #ddddd5 !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-recipe-grid p {
+    margin: 0 !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    font-size: 7.5pt !important;
+    line-height: 1.2 !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-section {
+    display: block !important;
+    margin: 0 0 10px !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-section > div:first-child {
+    margin-bottom: 3px !important;
+    gap: 6px !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-section button {
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    color: #151512 !important;
+    box-shadow: none !important;
+    font-size: 9.5pt !important;
+    line-height: 1.2 !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-section p,
+  .waferwatch-wireframe .wafer-parameters-section span {
+    font-size: 7.5pt !important;
+    line-height: 1.2 !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-table-wrap {
+    overflow: visible !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 7.5pt !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-table th,
+  .waferwatch-wireframe .wafer-parameters-table td {
+    height: 0.24in !important;
+    padding: 2px 3px !important;
+    border: 1px solid #d7d7cf !important;
+    background-clip: padding-box !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-table th:first-child {
+    width: 0.9in !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-table thead th {
+    color: #151512 !important;
+    background: #f1f1ec !important;
+    font-size: 7pt !important;
+    line-height: 1.1 !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-table tbody th {
+    color: #24241f !important;
+    background: #f7f7f2 !important;
+    font-size: 7.5pt !important;
+    line-height: 1.1 !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-cell {
+    box-shadow: none !important;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-input {
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #151512 !important;
+    font-size: 7.5pt !important;
+    line-height: 1.15 !important;
+    text-align: center !important;
+    appearance: none;
+  }
+
+  .waferwatch-wireframe .wafer-parameters-input::placeholder {
+    color: transparent !important;
+  }
+}
