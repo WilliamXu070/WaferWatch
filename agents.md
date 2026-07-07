@@ -1473,3 +1473,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Screenshot: `/tmp/waferwatch-prod-auth-gate.png`
   - Authenticated production-shell interaction still needs William's signed-in
     browser session or a fresh saved auth state.
+
+## Recent development note (2026-07-07 topbar action cleanup)
+
+- Removed the nonfunctional Sort by and Filters controls from the WaferWatch
+  shell topbar.
+- Scoped the Add wafer button so it appears only on Process Flow routes
+  (`/process-flow` and `/wireframe/process-flow`); Dashboard and other shell
+  routes keep only the search field, Me control, and sign-out action.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Browser routes `http://127.0.0.1:3015/wireframe/dashboard` and
+    `http://127.0.0.1:3015/wireframe/process-flow`: Dashboard topbar had no
+    Sort by, Filters, or Add wafer text; Process Flow topbar had Add wafer and
+    no Sort by or Filters; no horizontal overflow and no console errors.
+  - Screenshot: `/tmp/waferwatch-topbar-process-flow-add-wafer.png`

@@ -1,8 +1,9 @@
+"use client";
+
+import { usePathname } from "next/navigation";
 import {
-  FilterIcon,
   PlusIcon,
   SearchIcon,
-  SortIcon,
   UserIcon
 } from "../icons";
 
@@ -11,6 +12,13 @@ export function WireframeTopbar({
 }: {
   onSignOut?: () => void | Promise<void>;
 }) {
+  const pathname = usePathname() ?? "";
+  const showAddWafer =
+    pathname === "/process-flow" ||
+    pathname.startsWith("/process-flow/") ||
+    pathname === "/wireframe/process-flow" ||
+    pathname.startsWith("/wireframe/process-flow/");
+
   return (
     <header className="wireframe-topbar flex items-center gap-4 border-b border-[#eeeeea] bg-white px-8 py-5">
       <div className="relative flex-1">
@@ -33,33 +41,21 @@ export function WireframeTopbar({
         <div className="flex h-11 items-center overflow-hidden rounded-xl border border-[#e4e4df] bg-white">
           <button
             type="button"
-            className="flex h-11 items-center gap-2 border-r border-[#eeeeea] px-4 text-sm font-medium text-[#44443f] transition-colors hover:bg-[#fafafa]"
-          >
-            <SortIcon />
-            Sort by
-          </button>
-          <button
-            type="button"
-            className="flex h-11 items-center gap-2 border-r border-[#eeeeea] px-4 text-sm font-medium text-[#44443f] transition-colors hover:bg-[#fafafa]"
-          >
-            <FilterIcon />
-            Filters
-          </button>
-          <button
-            type="button"
             className="flex h-11 items-center gap-2 px-4 text-sm font-medium text-[#44443f] transition-colors hover:bg-[#fafafa]"
           >
             <UserIcon />
             Me
           </button>
         </div>
-        <button
-          type="button"
-          className="flex h-11 items-center gap-2 rounded-xl bg-[#111111] px-5 text-sm font-semibold text-white transition-all hover:-translate-y-px hover:bg-black active:translate-y-0"
-        >
-          <PlusIcon />
-          Add wafer
-        </button>
+        {showAddWafer ? (
+          <button
+            type="button"
+            className="flex h-11 items-center gap-2 rounded-xl bg-[#111111] px-5 text-sm font-semibold text-white transition-all hover:-translate-y-px hover:bg-black active:translate-y-0"
+          >
+            <PlusIcon />
+            Add wafer
+          </button>
+        ) : null}
         {onSignOut ? (
           <form action={onSignOut}>
             <button
