@@ -153,7 +153,7 @@ async function validateProcessWafer(processTemplateId: string, waferId: string |
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("wafer_process_assignments")
-    .select("wafer_id, template_id")
+    .select("wafer_id, template_id, wafers(id, wafer_code)")
     .eq("template_id", processTemplateId)
     .eq("wafer_id", waferId)
     .maybeSingle();
@@ -166,7 +166,15 @@ async function validateProcessWafer(processTemplateId: string, waferId: string |
     throw new Error("Selected wafer is not assigned to this process.");
   }
 
-  return waferId;
+  const wafer = Array.isArray(data.wafers) ? data.wafers[0] : data.wafers;
+  if (!wafer?.id) {
+    throw new Error("Selected wafer could not be loaded.");
+  }
+
+  return {
+    id: wafer.id,
+    wafer_code: wafer.wafer_code
+  };
 }
 
 async function assertNoScheduleConflicts(input: {
@@ -261,7 +269,7 @@ export async function createProcessCalendarEvent(input: unknown) {
     const personIds = Array.from(new Set(parsed.personIds));
 
     const { account } = await assertProcessCalendarAccess(parsed.processTemplateId, "write");
-    const [people, processStep, waferId] = await Promise.all([
+    const [people, processStep, wafer] = await Promise.all([
       validatePeopleAreActive(personIds),
       validateProcessStep(parsed.processTemplateId, parsed.processStepId),
       validateProcessWafer(parsed.processTemplateId, parsed.waferId)
@@ -280,7 +288,7 @@ export async function createProcessCalendarEvent(input: unknown) {
       .from("process_calendar_events")
       .insert({
         process_template_id: parsed.processTemplateId,
-        wafer_id: waferId,
+        wafer_id: wafer?.id ?? null,
         location: parsed.location,
         starts_at: parsed.startsAt,
         ends_at: parsed.endsAt,
@@ -316,7 +324,7 @@ export async function createProcessCalendarEvent(input: unknown) {
     revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({
       ...event,
-      wafer: null,
+      wafer,
       people
     });
   } catch (error) {
@@ -458,7 +466,7 @@ export async function updateProcessCalendarEvent(input: unknown) {
 
     await assertProcessCalendarAccess(existingEvent.process_template_id, "write");
 
-    const [people, processStep, waferId] = await Promise.all([
+    const [people, processStep, wafer] = await Promise.all([
       validatePeopleAreActive(personIds),
       validateProcessStep(existingEvent.process_template_id, parsed.processStepId),
       validateProcessWafer(existingEvent.process_template_id, parsed.waferId)
@@ -479,7 +487,7 @@ export async function updateProcessCalendarEvent(input: unknown) {
       .from("process_calendar_events")
       .update({
         process_step_id: processStep?.id ?? null,
-        wafer_id: waferId,
+        wafer_id: wafer?.id ?? null,
         process_step_name_snapshot: processStep
           ? processStep.id === existingEvent.process_step_id
             ? existingEvent.process_step_name_snapshot ?? processStep.name
@@ -517,7 +525,7 @@ export async function updateProcessCalendarEvent(input: unknown) {
     revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({
       ...updatedEvent,
-      wafer: null,
+      wafer,
       people
     });
   } catch (error) {

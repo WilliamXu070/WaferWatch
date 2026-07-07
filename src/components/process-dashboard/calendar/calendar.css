@@ -1573,18 +1573,52 @@
   .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar,
   .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-header,
   .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-sidebar-header {
-    width: 96px !important;
+    width: 78px !important;
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-row {
-    min-height: 118px;
-    padding: 0 9px;
-    font-size: 11px;
-    line-height: 1.35 !important;
+    min-height: 88px;
+    padding: 0 7px;
+    font-size: 10px;
+    line-height: 1.25 !important;
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-scroll {
-    min-height: 420px;
+    min-height: 308px;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item {
+    min-height: 58px;
+    border-left-width: 3px !important;
+    border-radius: 7px;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content {
+    gap: 3px;
+    padding: 8px 10px;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-title-row {
+    gap: 6px;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-title-row strong {
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-person,
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-time {
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-badge {
+    display: none;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-resize {
+    width: 10px;
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-calendar-header [data-testid="dateHeader"],

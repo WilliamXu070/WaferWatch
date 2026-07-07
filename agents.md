@@ -1862,3 +1862,26 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   a network install that was rejected outside the sandbox. Signed-in iPhone
   visual acceptance still needs William's existing browser session or an
   explicitly approved Playwright install/run.
+
+## Recent development note (2026-07-07 calendar linked options and mobile density)
+
+- Fixed calendar create/update actions so selecting a process-assigned wafer
+  returns the linked wafer object to the client immediately instead of persisting
+  `wafer_id` while leaving `event.wafer` null until reload.
+- Kept calendar step selection tied to canonical `process_steps` from the active
+  process/template, with existing server validation still rejecting steps from a
+  different process.
+- Tightened the iPhone wireframe calendar density: site rail width, row height,
+  event height, event gap, text size, card padding, resize handles, and scroll
+  height were reduced so the step/wafer/person options area is reachable and
+  more events fit without the previous oversized site rows.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+- Restarted the requested dev server on `http://localhost:3015`; `lsof` confirmed
+  PID `51455` listening on port 3015.
+- Browser route verification was still blocked from this automation shell:
+  the in-app browser bridge returns `sandboxCwd must be an absolute file URI`,
+  and shell `curl` could not connect to the local listener even while `lsof`
+  showed Next listening. William's local browser should use
+  `http://localhost:3015/calendar` for final iPhone acceptance.

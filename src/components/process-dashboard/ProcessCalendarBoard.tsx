@@ -359,7 +359,7 @@ export function ProcessCalendarBoard({
           canMove: true,
           canChangeGroup: true,
           canResize: "both",
-          height: presentationMode === "wireframe" ? 84 : 30
+          height: presentationMode === "wireframe" ? (isCompactViewport ? 60 : 84) : 30
         };
       });
 
@@ -376,14 +376,14 @@ export function ProcessCalendarBoard({
           canMove: true,
           canChangeGroup: true,
           canResize: "both",
-          height: presentationMode === "wireframe" ? 84 : 30,
+          height: presentationMode === "wireframe" ? (isCompactViewport ? 60 : 84) : 30,
           isDraft: true
         });
       }
 
       return items;
     },
-    [draft, presentationMode, stepsById, visibleEvents]
+    [draft, isCompactViewport, presentationMode, stepsById, visibleEvents]
   );
 
   const personConflictById = useMemo(() => {
@@ -1514,10 +1514,10 @@ export function ProcessCalendarBoard({
           itemHeightRatio={0.76}
           itemRenderer={renderTimelineItem}
           itemTouchSendsClick
-          itemVerticalGap={presentationMode === "wireframe" ? 12 : 6}
+          itemVerticalGap={presentationMode === "wireframe" ? (isCompactViewport ? 6 : 12) : 6}
           items={timelineItems}
           keys={TIMELINE_KEYS}
-          lineHeight={presentationMode === "wireframe" ? (isCompactViewport ? 118 : 172) : 46}
+          lineHeight={presentationMode === "wireframe" ? (isCompactViewport ? 88 : 172) : 46}
           maxZoom={maxZoomMs}
           minZoom={MIN_ZOOM_MS}
           moveResizeValidator={moveResizeValidator}
@@ -1530,7 +1530,7 @@ export function ProcessCalendarBoard({
           onTimeChange={handleTimeChange}
           ref={setTimelineRef}
           selected={draft ? ["__draft-create__"] : selectedEventId ? [selectedEventId] : []}
-          sidebarWidth={presentationMode === "wireframe" ? (isCompactViewport ? 96 : 136) : 132}
+          sidebarWidth={presentationMode === "wireframe" ? (isCompactViewport ? 78 : 136) : 132}
           verticalLineClassNamesForTime={timelineVerticalLineClassNames}
           stackItems
           timeSteps={{ second: 1, minute: 15, hour: headerScale.hourStep, day: 1, month: 1, year: 1 }}
