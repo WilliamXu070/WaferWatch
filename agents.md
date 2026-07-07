@@ -1612,3 +1612,21 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `Backend only`, and no console errors.
 - The browser session was unauthenticated, so exact signed-in drag/drop visual
   acceptance still needs William's signed-in browser session.
+
+## Recent development note (2026-07-07 wafer die detail gate)
+
+- Fixed `/wireframe/wafer-status` tile clicks so newly diced die cards open the
+  die dashboard/detail view even when their current process step maps to the
+  generic queued status bucket. Undiced wafer cards remain selection-only.
+- Root cause: the detail-open guard rejected every `queued` tile, while current
+  steps like Chrome deposition and Sample cleaning / EBL prep do not map to the
+  older litho/etch/test status buckets.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Browser route
+    `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    at `1440x1000`: unauthenticated guard rendered with zero console errors.
+  - Direct TypeScript runtime check confirmed a diced queued tile opens and an
+    undiced tile stays closed.

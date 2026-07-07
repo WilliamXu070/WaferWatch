@@ -36,7 +36,7 @@ export function isUndicedMode(tile: WaferStatusTileModel) {
 }
 
 export function canOpenDieDetail(tile: WaferStatusTileModel) {
-  return !isUndicedMode(tile) && tile.status !== "queued";
+  return !isUndicedMode(tile);
 }
 
 function getDieCodeParts(tile: WaferStatusTileModel) {
