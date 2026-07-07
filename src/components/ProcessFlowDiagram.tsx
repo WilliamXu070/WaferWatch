@@ -47,6 +47,7 @@ import type {
   MoveWaferToProcessStepAction,
   NodeDrag,
   PanePoint,
+  PendingWaferMove,
   PersistedStepPayload,
   RoleMenu,
   ScenePoint,
@@ -109,6 +110,8 @@ export function ProcessFlowDiagram({
   const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
   const [nodeDrag, setNodeDrag] = useState<NodeDrag | null>(null);
   const [waferDrag, setWaferDrag] = useState<WaferDrag | null>(null);
+  const [pendingWaferMove, setPendingWaferMove] = useState<PendingWaferMove | null>(null);
+  const [pendingWaferMoveNote, setPendingWaferMoveNote] = useState("");
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
   const [isPanning, setIsPanning] = useState(false);
@@ -158,6 +161,13 @@ export function ProcessFlowDiagram({
   const scaledWidth = Math.round(sceneBounds.width * s);
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const directedEdgeByNodePair = useMemo(() => {
+    const map = new Map<string, FlowEdge>();
+    for (const edge of edges) {
+      map.set(`${edge.from}:${edge.to}`, edge);
+    }
+    return map;
+  }, [edges]);
   const nodesRef = useRef<FlowNode[]>([]);
   const edgesRef = useRef<FlowEdge[]>([]);
 
@@ -1157,27 +1167,71 @@ export function ProcessFlowDiagram({
     }
 
     const sourceNode = nodeById.get(finishedDrag.sourceStepId);
-    const completeSourceStep = Boolean(sourceNode && target.order > sourceNode.order);
+    if (!sourceNode) {
+      return;
+    }
 
+    const directedEdge = directedEdgeByNodePair.get(`${finishedDrag.sourceStepId}:${target.id}`);
+    if (!directedEdge) {
+      setMoveMessage(`No direct process path from ${sourceNode.label} to ${target.label}.`);
+      return;
+    }
+
+    setPendingWaferMove({
+      assignmentId: finishedDrag.assignmentId,
+      sourceStepId: finishedDrag.sourceStepId,
+      sourceLabel: sourceNode.label,
+      targetStepId: target.id,
+      targetLabel: target.label,
+      waferLabel: finishedDrag.waferLabel,
+      completeSourceStep: directedEdge.kind === "flow"
+    });
+    setPendingWaferMoveNote("");
+  };
+
+  const cancelPendingWaferMove = () => {
+    if (isMovePending) {
+      return;
+    }
+
+    setPendingWaferMove(null);
+    setPendingWaferMoveNote("");
+  };
+
+  const submitPendingWaferMove = () => {
+    if (!pendingWaferMove || !onMoveWafer || isMovePending) {
+      return;
+    }
+
+    const note = pendingWaferMoveNote.trim();
+    if (!note) {
+      setMoveMessage("Add a process note before moving this wafer.");
+      return;
+    }
+
+    const move = pendingWaferMove;
     setMoveMessage(
-      completeSourceStep
-        ? `Completing ${sourceNode?.label ?? "source step"} and moving ${finishedDrag.waferLabel} to ${target.label}...`
-        : `Moving ${finishedDrag.waferLabel} to ${target.label}...`
+      move.completeSourceStep
+        ? `Completing ${move.sourceLabel} and moving ${move.waferLabel} to ${move.targetLabel}...`
+        : `Moving ${move.waferLabel} to ${move.targetLabel}...`
     );
     startMoveTransition(() => {
       void (async () => {
         const result = await onMoveWafer({
-          assignmentId: finishedDrag.assignmentId,
-          targetStepId: target.id,
-          note: `Moved from process flow wireframe to ${target.label}.`,
-          completeSourceStep
+          assignmentId: move.assignmentId,
+          sourceStepId: move.sourceStepId,
+          targetStepId: move.targetStepId,
+          note,
+          completeSourceStep: move.completeSourceStep
         });
 
         if (result.ok) {
+          setPendingWaferMove(null);
+          setPendingWaferMoveNote("");
           setMoveMessage(
-            completeSourceStep
-              ? `Completed source step and moved ${finishedDrag.waferLabel} to ${target.label}.`
-              : `Moved ${finishedDrag.waferLabel} to ${target.label}.`
+            move.completeSourceStep
+              ? `Completed source step and moved ${move.waferLabel} to ${move.targetLabel}.`
+              : `Moved ${move.waferLabel} to ${move.targetLabel}.`
           );
           router.refresh();
           return;
@@ -1491,6 +1545,65 @@ export function ProcessFlowDiagram({
 
   return (
     <section className="flow-map-shell">
+      {pendingWaferMove ? (
+        <div className="flow-wafer-move-dialog-backdrop">
+          <section
+            aria-labelledby="flow-wafer-move-title"
+            aria-modal="true"
+            className="flow-wafer-move-dialog"
+            role="dialog"
+          >
+            <div className="flow-wafer-move-dialog__header">
+              <p className="eyebrow">Process note required</p>
+              <h2 id="flow-wafer-move-title">Move wafer</h2>
+              <p>
+                Add a note before moving {pendingWaferMove.waferLabel} from{" "}
+                {pendingWaferMove.sourceLabel} to {pendingWaferMove.targetLabel}.
+              </p>
+            </div>
+            <dl className="flow-wafer-move-dialog__path">
+              <div>
+                <dt>From</dt>
+                <dd>{pendingWaferMove.sourceLabel}</dd>
+              </div>
+              <div>
+                <dt>To</dt>
+                <dd>{pendingWaferMove.targetLabel}</dd>
+              </div>
+            </dl>
+            <label className="flow-wafer-move-dialog__field">
+              <span>Process note</span>
+              <textarea
+                autoFocus
+                disabled={isMovePending}
+                maxLength={4000}
+                onChange={(event) => setPendingWaferMoveNote(event.currentTarget.value)}
+                placeholder="What changed, what was observed, or why this wafer is moving now?"
+                rows={5}
+                value={pendingWaferMoveNote}
+              />
+            </label>
+            <div className="flow-wafer-move-dialog__actions">
+              <button
+                className="button ghost-button"
+                disabled={isMovePending}
+                onClick={cancelPendingWaferMove}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="button primary-button"
+                disabled={isMovePending || !pendingWaferMoveNote.trim()}
+                onClick={submitPendingWaferMove}
+                type="button"
+              >
+                {isMovePending ? "Moving..." : "Move wafer"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
       <ProcessFlowToolbar
         nodesCount={nodes.length}
         zoomPercent={Math.round(s * 100)}

@@ -240,6 +240,10 @@ export async function moveWaferToProcessStep(input: unknown) {
       return fail("The target step does not belong to this assignment process.");
     }
 
+    if (parsed.sourceStepId === parsed.targetStepId) {
+      return fail("Choose a different target step.");
+    }
+
     const { data: executions, error: executionsError } = await supabase
       .from("step_executions")
       .select("*")
@@ -255,6 +259,32 @@ export async function moveWaferToProcessStep(input: unknown) {
     const currentExecution = existingExecutions.find((execution) =>
       CURRENT_STEP_STATUSES.includes(execution.status as (typeof CURRENT_STEP_STATUSES)[number])
     );
+
+    if (!currentExecution) {
+      return fail("This wafer does not have an active source step to move from.");
+    }
+
+    if (currentExecution.process_step_id !== parsed.sourceStepId) {
+      return fail("This wafer is no longer at the source step. Refresh the process flow and try again.");
+    }
+
+    const { data: allowedTransition, error: transitionError } = await supabase
+      .from("process_step_transitions")
+      .select("id")
+      .eq("template_id", assignment.template_id)
+      .eq("from_step_id", parsed.sourceStepId)
+      .eq("to_step_id", parsed.targetStepId)
+      .limit(1)
+      .maybeSingle();
+
+    if (transitionError) {
+      return fail(transitionError.message);
+    }
+
+    if (!allowedTransition) {
+      return fail("This wafer can only move along a directly connected process path.");
+    }
+
     const currentStepResult = currentExecution
       ? await supabase
           .from("process_steps")

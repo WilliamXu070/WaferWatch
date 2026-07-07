@@ -22,8 +22,9 @@ export const blockStepSchema = z.object({
 
 export const moveWaferToProcessStepSchema = z.object({
   assignmentId: uuidSchema,
+  sourceStepId: uuidSchema,
   targetStepId: uuidSchema,
-  note: z.string().trim().max(4000).nullable().optional(),
+  note: z.string().trim().min(1).max(4000),
   completeSourceStep: z.boolean().default(false)
 });
 

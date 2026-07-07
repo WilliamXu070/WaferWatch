@@ -1,6 +1,9 @@
-import { EDGE_CURVE_OFFSET } from "./constants";
+import { EDGE_CURVE_OFFSET, EDGE_NODE_CLEARANCE } from "./constants";
 import { getClosestBoundaryPoints, getNodeBoundaryPoint, getNodeCenter, lineIntersectsNode } from "./geometry";
 import type { FlowEdge, FlowNode, ScenePoint } from "./types";
+
+const RETURN_EDGE_LANE_PADDING = 96;
+const RETURN_EDGE_SAMPLE_COUNT = 24;
 
 export function makeNodePath(edge: FlowEdge, from: FlowNode, to: FlowNode, edges: FlowEdge[], nodes: FlowNode[]) {
   const fromCenter = getNodeCenter(from);
@@ -68,6 +71,11 @@ function makeOffsetEdgePath(from: FlowNode, to: FlowNode, offset: number) {
 }
 
 function makeReturnEdgePath(from: FlowNode, to: FlowNode, nodes: FlowNode[]) {
+  const sideLanePath = makeSideLaneReturnPath(from, to, nodes);
+  if (sideLanePath) {
+    return sideLanePath;
+  }
+
   const fromCenter = getNodeCenter(from);
   const toCenter = getNodeCenter(to);
   const { fromPoint, toPoint } = getClosestBoundaryPoints(from, to);
@@ -90,22 +98,70 @@ function makeReturnEdgePath(from: FlowNode, to: FlowNode, nodes: FlowNode[]) {
       y: Math.round(toPoint.y + normalY * offset - dy * 0.18)
     };
 
-    if (!curveIntersectsAnyNode(from, to, control1, control2, nodes)) {
+    if (!curveIntersectsAnyNode(from, to, fromPoint, control1, control2, toPoint, nodes)) {
       return `M ${fromPoint.x} ${fromPoint.y} C ${control1.x} ${control1.y} ${control2.x} ${control2.y} ${toPoint.x} ${toPoint.y}`;
     }
   }
 
-  const fallbackOffset = offsets[0];
+  return makeWideFallbackReturnPath(from, to, nodes);
+}
+
+function makeSideLaneReturnPath(from: FlowNode, to: FlowNode, nodes: FlowNode[]) {
+  const fromCenter = getNodeCenter(from);
+  const toCenter = getNodeCenter(to);
+  const routeTop = Math.min(from.y, to.y) - RETURN_EDGE_LANE_PADDING;
+  const routeBottom = Math.max(from.y + from.height, to.y + to.height) + RETURN_EDGE_LANE_PADDING;
+  const routeNodes = nodes.filter((node) => node.y + node.height >= routeTop && node.y <= routeBottom);
+  const minLeft = Math.min(...routeNodes.map((node) => node.x));
+  const maxRight = Math.max(...routeNodes.map((node) => node.x + node.width));
+  const preferredSide = fromCenter.x <= toCenter.x ? -1 : 1;
+  const lanePadding = RETURN_EDGE_LANE_PADDING + EDGE_NODE_CLEARANCE;
+  const candidateLaneXs = [
+    preferredSide < 0 ? minLeft - lanePadding : maxRight + lanePadding,
+    preferredSide < 0 ? maxRight + lanePadding : minLeft - lanePadding,
+    minLeft - lanePadding * 1.75,
+    maxRight + lanePadding * 1.75
+  ];
+
+  for (const laneX of candidateLaneXs) {
+    const path = makeLanePath(from, to, laneX);
+    if (!curveIntersectsAnyNode(from, to, path.fromPoint, path.control1, path.control2, path.toPoint, nodes)) {
+      return formatCubicPath(path.fromPoint, path.control1, path.control2, path.toPoint);
+    }
+  }
+
+  return null;
+}
+
+function makeWideFallbackReturnPath(from: FlowNode, to: FlowNode, nodes: FlowNode[]) {
+  const minLeft = Math.min(...nodes.map((node) => node.x));
+  const maxRight = Math.max(...nodes.map((node) => node.x + node.width));
+  const fromCenter = getNodeCenter(from);
+  const toCenter = getNodeCenter(to);
+  const side = fromCenter.x <= toCenter.x ? -1 : 1;
+  const laneX = side < 0
+    ? minLeft - RETURN_EDGE_LANE_PADDING * 2.5
+    : maxRight + RETURN_EDGE_LANE_PADDING * 2.5;
+  const path = makeLanePath(from, to, laneX);
+
+  return formatCubicPath(path.fromPoint, path.control1, path.control2, path.toPoint);
+}
+
+function makeLanePath(from: FlowNode, to: FlowNode, laneX: number) {
+  const fromCenter = getNodeCenter(from);
+  const toCenter = getNodeCenter(to);
+  const fromPoint = getNodeBoundaryPoint(from, { x: laneX, y: fromCenter.y });
+  const toPoint = getNodeBoundaryPoint(to, { x: laneX, y: toCenter.y });
   const control1 = {
-    x: Math.round(fromPoint.x + normalX * fallbackOffset + dx * 0.18),
-    y: Math.round(fromPoint.y + normalY * fallbackOffset + dy * 0.18)
+    x: Math.round(laneX),
+    y: Math.round(fromPoint.y)
   };
   const control2 = {
-    x: Math.round(toPoint.x + normalX * fallbackOffset - dx * 0.18),
-    y: Math.round(toPoint.y + normalY * fallbackOffset - dy * 0.18)
+    x: Math.round(laneX),
+    y: Math.round(toPoint.y)
   };
 
-  return `M ${fromPoint.x} ${fromPoint.y} C ${control1.x} ${control1.y} ${control2.x} ${control2.y} ${toPoint.x} ${toPoint.y}`;
+  return { fromPoint, control1, control2, toPoint };
 }
 
 function controlLaneDistance(from: FlowNode, to: FlowNode) {
@@ -129,15 +185,16 @@ function edgeIntersectsAnyNode(from: FlowNode, to: FlowNode, nodes: FlowNode[]) 
 function curveIntersectsAnyNode(
   from: FlowNode,
   to: FlowNode,
+  fromPoint: ScenePoint,
   control1: ScenePoint,
   control2: ScenePoint,
+  toPoint: ScenePoint,
   nodes: FlowNode[]
 ) {
-  const { fromPoint, toPoint } = getClosestBoundaryPoints(from, to);
   let previous = fromPoint;
 
-  for (let step = 1; step <= 12; step += 1) {
-    const t = step / 12;
+  for (let step = 1; step <= RETURN_EDGE_SAMPLE_COUNT; step += 1) {
+    const t = step / RETURN_EDGE_SAMPLE_COUNT;
     const point = getCubicPoint(fromPoint, control1, control2, toPoint, t);
     const intersects = nodes.some((node) => {
       if (node.id === from.id || node.id === to.id) {
@@ -155,6 +212,10 @@ function curveIntersectsAnyNode(
   }
 
   return false;
+}
+
+function formatCubicPath(fromPoint: ScenePoint, control1: ScenePoint, control2: ScenePoint, toPoint: ScenePoint) {
+  return `M ${fromPoint.x} ${fromPoint.y} C ${control1.x} ${control1.y} ${control2.x} ${control2.y} ${toPoint.x} ${toPoint.y}`;
 }
 
 function getCubicPoint(start: ScenePoint, control1: ScenePoint, control2: ScenePoint, end: ScenePoint, t: number) {
