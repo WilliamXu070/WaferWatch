@@ -2863,7 +2863,7 @@ textarea {
 @media print {
   @page {
     size: landscape;
-    margin: 0.35in;
+    margin: 0.18in;
   }
 
   html,
@@ -2922,14 +2922,20 @@ textarea {
   }
 
   .waferwatch-wireframe .wafer-die-detail-header {
-    margin: 0 0 10px !important;
-    padding: 0 0 10px !important;
+    margin: 0 0 4px !important;
+    padding: 0 0 4px !important;
     border-bottom: 1px solid #d9d9d0 !important;
     background: #fdfdfb !important;
   }
 
   .waferwatch-wireframe .wafer-die-detail-header h1 {
-    font-size: 20pt !important;
+    font-size: 16pt !important;
+    line-height: 1.1 !important;
+  }
+
+  .waferwatch-wireframe .wafer-die-detail-header p,
+  .waferwatch-wireframe .wafer-die-detail-header span {
+    font-size: 7pt !important;
     line-height: 1.1 !important;
   }
 
@@ -2945,12 +2951,12 @@ textarea {
   }
 
   .waferwatch-wireframe .wafer-parameters-print-surface > div:first-child {
-    margin-bottom: 8px !important;
+    margin-bottom: 4px !important;
   }
 
   .waferwatch-wireframe .wafer-parameters-print-surface h3 {
-    font-size: 13pt !important;
-    line-height: 1.2 !important;
+    font-size: 10pt !important;
+    line-height: 1.1 !important;
   }
 
   .waferwatch-wireframe .wafer-parameters-print-content {
@@ -2960,9 +2966,9 @@ textarea {
   .waferwatch-wireframe .wafer-parameters-recipe-grid {
     display: grid !important;
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 4px 14px !important;
-    margin-bottom: 10px !important;
-    padding: 7px 0 !important;
+    gap: 2px 9px !important;
+    margin-bottom: 5px !important;
+    padding: 3px 0 !important;
     border-top: 1px solid #ddddd5 !important;
     border-bottom: 1px solid #ddddd5 !important;
   }
@@ -2972,20 +2978,20 @@ textarea {
     white-space: normal !important;
     overflow: visible !important;
     text-overflow: clip !important;
-    font-size: 7.5pt !important;
-    line-height: 1.2 !important;
+    font-size: 6.2pt !important;
+    line-height: 1.05 !important;
   }
 
   .waferwatch-wireframe .wafer-parameters-section {
     display: block !important;
-    margin: 0 0 10px !important;
-    break-inside: avoid;
-    page-break-inside: avoid;
+    margin: 0 0 4px !important;
+    break-inside: auto;
+    page-break-inside: auto;
   }
 
   .waferwatch-wireframe .wafer-parameters-section > div:first-child {
-    margin-bottom: 3px !important;
-    gap: 6px !important;
+    margin-bottom: 1px !important;
+    gap: 4px !important;
   }
 
   .waferwatch-wireframe .wafer-parameters-section button {
@@ -2994,14 +3000,14 @@ textarea {
     background: transparent !important;
     color: #151512 !important;
     box-shadow: none !important;
-    font-size: 9.5pt !important;
-    line-height: 1.2 !important;
+    font-size: 7.5pt !important;
+    line-height: 1.05 !important;
   }
 
   .waferwatch-wireframe .wafer-parameters-section p,
   .waferwatch-wireframe .wafer-parameters-section span {
-    font-size: 7.5pt !important;
-    line-height: 1.2 !important;
+    font-size: 6pt !important;
+    line-height: 1.05 !important;
   }
 
   .waferwatch-wireframe .wafer-parameters-table-wrap {
@@ -3012,33 +3018,33 @@ textarea {
     width: 100% !important;
     table-layout: fixed !important;
     border-collapse: collapse !important;
-    font-size: 7.5pt !important;
+    font-size: 6.4pt !important;
   }
 
   .waferwatch-wireframe .wafer-parameters-table th,
   .waferwatch-wireframe .wafer-parameters-table td {
-    height: 0.24in !important;
-    padding: 2px 3px !important;
+    height: 0.17in !important;
+    padding: 1px 2px !important;
     border: 1px solid #d7d7cf !important;
     background-clip: padding-box !important;
   }
 
   .waferwatch-wireframe .wafer-parameters-table th:first-child {
-    width: 0.9in !important;
+    width: 0.78in !important;
   }
 
   .waferwatch-wireframe .wafer-parameters-table thead th {
     color: #151512 !important;
     background: #f1f1ec !important;
-    font-size: 7pt !important;
+    font-size: 6.2pt !important;
     line-height: 1.1 !important;
   }
 
   .waferwatch-wireframe .wafer-parameters-table tbody th {
     color: #24241f !important;
     background: #f7f7f2 !important;
-    font-size: 7.5pt !important;
-    line-height: 1.1 !important;
+    font-size: 6.4pt !important;
+    line-height: 1.05 !important;
   }
 
   .waferwatch-wireframe .wafer-parameters-cell {
@@ -3054,8 +3060,8 @@ textarea {
     background: transparent !important;
     box-shadow: none !important;
     color: #151512 !important;
-    font-size: 7.5pt !important;
-    line-height: 1.15 !important;
+    font-size: 6.4pt !important;
+    line-height: 1.05 !important;
     text-align: center !important;
     appearance: none;
   }

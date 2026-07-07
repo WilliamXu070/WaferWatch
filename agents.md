@@ -842,3 +842,24 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The available browser session rendered the unauthenticated backend empty
     state, so authenticated Parameters-tab print acceptance still needs an
     existing signed-in browser session.
+
+## Recent development note (2026-07-06 parameters one-page print fit)
+
+- Tightened the Parameters-tab print stylesheet so the Fabrication parameters
+  matrix is more likely to fit on one landscape Letter page: smaller page
+  margins, compact die header, tighter recipe metadata, shorter table rows,
+  smaller print typography, and no forced whole-section page break behavior.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3011/api/health`
+  - Playwright route check at
+    `http://localhost:3011/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with zero console errors.
+  - `npx playwright pdf --paper-format Letter --viewport-size=1400,900`
+    generated `/tmp/wafer-parameters-print-fit-one-page.pdf`; `pdfinfo`
+    reported `Pages: 1`, and the PDF was rendered to
+    `/tmp/wafer-parameters-print-fit-one-page.png`.
+  - The available browser session rendered the unauthenticated backend empty
+    state, so signed-in Parameters-matrix print acceptance still needs an
+    existing authenticated browser session.
