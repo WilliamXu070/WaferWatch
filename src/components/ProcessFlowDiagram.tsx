@@ -960,18 +960,11 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    const waferCode = window.prompt("Wafer code");
-    const trimmedWaferCode = waferCode?.trim();
-    if (!trimmedWaferCode) {
-      return;
-    }
-
-    setMoveMessage(`Adding ${trimmedWaferCode.trim().toUpperCase()}...`);
+    setMoveMessage("Adding next wafer...");
     startWaferMutationTransition(() => {
       void (async () => {
         const result = await onCreateWaferAtProcessStart({
-          templateId: processTemplateId,
-          waferCode: trimmedWaferCode
+          templateId: processTemplateId
         });
 
         if (!result.ok) {
@@ -979,7 +972,7 @@ export function ProcessFlowDiagram({
           return;
         }
 
-        setMoveMessage(`Added ${trimmedWaferCode.trim().toUpperCase()}.`);
+        setMoveMessage("Added wafer.");
         router.refresh();
       })();
     });

@@ -28,6 +28,33 @@ type ProcessTemplateWriteContext = {
   owner_project_id: string | null;
 };
 
+const GREEK_WAFER_FAMILIES = [
+  "ALPHA",
+  "BETA",
+  "GAMMA",
+  "DELTA",
+  "EPSILON",
+  "ZETA",
+  "ETA",
+  "THETA",
+  "IOTA",
+  "KAPPA",
+  "LAMBDA",
+  "MU",
+  "NU",
+  "XI",
+  "OMICRON",
+  "PI",
+  "RHO",
+  "SIGMA",
+  "TAU",
+  "UPSILON",
+  "PHI",
+  "CHI",
+  "PSI",
+  "OMEGA"
+] as const;
+
 function slugifyStepName(name: string) {
   const slug = name
     .trim()
@@ -141,6 +168,32 @@ function deriveWaferFamily(waferCode: string) {
   return leading || waferCode.trim().toUpperCase() || "WAFER";
 }
 
+function getWaferBaseCode(waferCode: string) {
+  return waferCode.trim().toUpperCase().split("-")[0];
+}
+
+function getNextGreekWaferCode(existingWaferCodes: string[]) {
+  const existingBaseCodes = new Set(existingWaferCodes.map(getWaferBaseCode));
+  const existingExactCodes = new Set(existingWaferCodes.map((code) => code.trim().toUpperCase()));
+
+  for (const family of GREEK_WAFER_FAMILIES) {
+    if (!existingBaseCodes.has(family)) {
+      return family;
+    }
+  }
+
+  for (let cycle = 2; cycle < 1000; cycle += 1) {
+    for (const family of GREEK_WAFER_FAMILIES) {
+      const candidate = `${family}-${cycle}`;
+      if (!existingExactCodes.has(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return `WAFER-${Date.now()}`;
+}
+
 async function getTemplateProjectForWaferCreate(templateId: string) {
   const account = await requireAccount();
   const supabase = await createServerSupabaseClient();
@@ -217,7 +270,16 @@ export async function createWaferAtProcessStart(input: unknown) {
       return fail("Create a start step before adding wafers.");
     }
 
-    const waferCode = parsed.waferCode.trim().toUpperCase();
+    const { data: existingWafers, error: existingWafersError } = await supabase
+      .from("wafers")
+      .select("wafer_code")
+      .eq("project_id", projectId);
+
+    if (existingWafersError) {
+      return fail(existingWafersError.message);
+    }
+
+    const waferCode = getNextGreekWaferCode((existingWafers ?? []).map((wafer) => wafer.wafer_code));
     const now = new Date().toISOString();
     const { data: wafer, error: waferError } = await supabase
       .from("wafers")

@@ -1548,3 +1548,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - The browser session was unauthenticated, so numbered authenticated graph nodes
   and keyboard Delete mutation still need William's signed-in browser session for
   visual acceptance.
+
+## Recent development note (2026-07-07 automatic wafer naming)
+
+- Updated Process Flow Add wafer so it no longer prompts for a wafer name.
+  The server action now assigns the next Greek-family wafer code automatically:
+  ALPHA, BETA, GAMMA, through OMEGA, then cycles with numeric suffixes.
+- The generated name is chosen server-side from existing project wafer codes, so
+  client input cannot spoof the sequence and child die codes still reserve their
+  parent wafer family.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - In-app browser at
+    `http://localhost:3015/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    toolbar Add wafer present, topbar Add wafer absent, no `Wafer code` prompt
+    copy, no `Backend only`, and no console errors.
+- The browser session was unauthenticated, so live Add wafer mutation still needs
+  William's signed-in browser session for visual acceptance.
