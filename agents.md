@@ -1885,3 +1885,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   and shell `curl` could not connect to the local listener even while `lsof`
   showed Next listening. William's local browser should use
   `http://localhost:3015/calendar` for final iPhone acceptance.
+
+## Recent development note (2026-07-07 calendar Shift-drag regression fix)
+
+- Restored the desktop/MacBook Shift-drag calendar draft creation path that was
+  lost during the iPhone touch logic pass.
+- Reintroduced the draft selection preview state, Shift key tracking, and
+  pointermove/pointerup/Shift-release finalization while keeping the branch
+  explicitly excluded for `pointerType === "touch"` so iPhone double-tap and
+  touch panning remain separate.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+- Browser interaction verification remains blocked from this automation shell:
+  `lsof` shows the Next dev server listening on `http://localhost:3015`, but
+  shell `curl` cannot connect and the in-app browser bridge still fails on
+  sandbox cwd metadata. Manual MacBook acceptance should check Shift-drag on
+  `http://localhost:3015/calendar`.

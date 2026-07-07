@@ -79,6 +79,7 @@ import {
   intervalsOverlap,
   isBlankTimelineTarget,
   locationTone,
+  draftFromSelection,
   sortCalendarEvents,
   toDisplayName,
   toMoveWindow
@@ -87,6 +88,7 @@ import type {
   ActionMode,
   CalendarTimelineItem,
   CalendarTimelineRef,
+  DraftDragSelection,
   DraftEvent,
   MoveWindow,
   PendingTimelineMove,
@@ -132,6 +134,7 @@ export function ProcessCalendarBoard({
     initialSelection?.people.map((person) => person.id) ?? []
   );
   const [personQuery, setPersonQuery] = useState("");
+  const [draftDragSelection, setDraftDragSelection] = useState<DraftDragSelection | null>(null);
   const [filterPersonIds, setFilterPersonIds] = useState<string[]>([]);
   const [filterStageIds, setFilterStageIds] = useState<StageFilterId[]>([]);
   const [isFilterPanelExpanded, setIsFilterPanelExpanded] = useState(false);
@@ -139,6 +142,7 @@ export function ProcessCalendarBoard({
   const [isPending, startTransition] = useTransition();
   const timelineRef = useRef<CalendarTimelineRef>(null);
   const timelinePanelRef = useRef<HTMLDivElement>(null);
+  const draftDragSelectionRef = useRef<DraftDragSelection | null>(null);
   const timelinePanRef = useRef<TimelinePanState | null>(null);
   const undoStackRef = useRef<Array<{ eventId: string; previous: MoveWindow; next: MoveWindow }>>([]);
   const moveQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -149,6 +153,7 @@ export function ProcessCalendarBoard({
     updateScrollCanvas: (start: number, end: number) => void;
   } | null>(null);
   const isItemDragActiveRef = useRef(false);
+  const isShiftPressedRef = useRef(false);
   const selectedEventIdRef = useRef<string | null>(initialSelection?.id ?? null);
   const suppressedItemSelectionIdRef = useRef<string | null>(null);
   const ignoreStaleItemSelectionUntilRef = useRef(0);
@@ -184,6 +189,28 @@ export function ProcessCalendarBoard({
     mediaQuery.addEventListener("change", updateCompactViewport);
 
     return () => mediaQuery.removeEventListener("change", updateCompactViewport);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Shift") {
+        isShiftPressedRef.current = true;
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Shift") {
+        isShiftPressedRef.current = false;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
   }, []);
 
 
@@ -363,19 +390,28 @@ export function ProcessCalendarBoard({
         };
       });
 
-      if (draft) {
+      if (draft || draftDragSelection) {
+        const draftWindow = draftDragSelection
+          ? draftFromSelection(draftDragSelection, timelineStart, timelineEnd)
+          : draft;
+
+        if (!draftWindow) {
+          return items;
+        }
+
         items.push({
           id: "__draft-create__",
-          group: draft.location,
+          group: draftWindow.location,
           title: "New event",
-          peopleLabel: "Draft",
-          timeLabel: formatTimelineItemWindow(draft.startsAt, draft.endsAt, presentationMode),
-          toneClass: "ww-timeline-item--draft",
-          start_time: draft.startsAt.getTime(),
-          end_time: draft.endsAt.getTime(),
-          canMove: true,
-          canChangeGroup: true,
-          canResize: "both",
+          descriptionLabel: draftDragSelection ? "Release to place" : undefined,
+          peopleLabel: draftDragSelection ? "No one" : "Draft",
+          timeLabel: formatTimelineItemWindow(draftWindow.startsAt, draftWindow.endsAt, presentationMode),
+          toneClass: `ww-timeline-item--draft ${draftDragSelection ? "ww-timeline-item--draft-active" : ""}`,
+          start_time: draftWindow.startsAt.getTime(),
+          end_time: draftWindow.endsAt.getTime(),
+          canMove: !draftDragSelection,
+          canChangeGroup: !draftDragSelection,
+          canResize: draftDragSelection ? false : "both",
           height: presentationMode === "wireframe" ? (isCompactViewport ? 60 : 84) : 30,
           isDraft: true
         });
@@ -383,7 +419,7 @@ export function ProcessCalendarBoard({
 
       return items;
     },
-    [draft, isCompactViewport, presentationMode, stepsById, visibleEvents]
+    [draft, draftDragSelection, isCompactViewport, presentationMode, stepsById, timelineEnd, timelineStart, visibleEvents]
   );
 
   const personConflictById = useMemo(() => {
@@ -491,6 +527,23 @@ export function ProcessCalendarBoard({
   const setTimelineRef = useCallback((instance: CalendarTimelineRef | null) => {
     timelineRef.current = instance;
   }, []);
+
+  const setActiveDraftDrag = useCallback((selection: DraftDragSelection | null) => {
+    draftDragSelectionRef.current = selection;
+    setDraftDragSelection(selection);
+  }, []);
+
+  const finishDraftDrag = useCallback((event?: PointerEvent | KeyboardEvent) => {
+    const currentSelection = draftDragSelectionRef.current;
+    if (!currentSelection) {
+      return;
+    }
+
+    event?.preventDefault();
+    ignoreBlankCalendarClickUntilRef.current = Date.now() + 500;
+    setActiveDraftDrag(null);
+    openDraft(draftFromSelection(currentSelection, timelineStart, timelineEnd));
+  }, [openDraft, setActiveDraftDrag, timelineEnd, timelineStart]);
 
   const commitMove = useCallback((input: {
     eventId: string;
@@ -943,6 +996,31 @@ export function ProcessCalendarBoard({
       return;
     }
 
+    if (event.pointerType !== "touch" && (event.shiftKey || isShiftPressedRef.current)) {
+      const pointerTarget = getTimelinePointerTarget(event);
+      if (!pointerTarget) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const selection = {
+        pointerId: event.pointerId,
+        location: pointerTarget.location,
+        anchorTime: pointerTarget.time,
+        currentTime:
+          pointerTarget.time + MIN_EVENT_MS <= timelineEnd
+            ? pointerTarget.time + MIN_EVENT_MS
+            : Math.max(timelineStart, pointerTarget.time - MIN_EVENT_MS)
+      };
+
+      setDraft(null);
+      resetDraftForm();
+      setActiveDraftDrag(selection);
+      return;
+    }
+
     if (event.pointerType === "touch") {
       const now = Date.now();
       const lastTap = lastTimelineTouchTapRef.current;
@@ -1000,8 +1078,11 @@ export function ProcessCalendarBoard({
     clearSelectedEventFromBlankCanvas,
     getTimelinePointerTarget,
     openDraft,
+    resetDraftForm,
+    setActiveDraftDrag,
     startItemDragSelectionBlock,
-    timelineEnd
+    timelineEnd,
+    timelineStart
   ]);
 
   const handleTimelineClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
@@ -1375,7 +1456,64 @@ export function ProcessCalendarBoard({
     return () => window.removeEventListener("keydown", handleUndo);
   }, [commitMove]);
 
+  useEffect(() => {
+    if (!draftDragSelection) {
+      return;
+    }
 
+    const handlePointerMove = (event: PointerEvent) => {
+      const currentSelection = draftDragSelectionRef.current;
+      if (!currentSelection || event.pointerId !== currentSelection.pointerId) {
+        return;
+      }
+
+      if (!(event.shiftKey || isShiftPressedRef.current)) {
+        finishDraftDrag(event);
+        return;
+      }
+
+      event.preventDefault();
+      const pointerTarget = getTimelinePointerTarget(event);
+      if (!pointerTarget) {
+        return;
+      }
+
+      setActiveDraftDrag({
+        ...currentSelection,
+        location: pointerTarget.location,
+        currentTime: pointerTarget.time
+      });
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      const currentSelection = draftDragSelectionRef.current;
+      if (!currentSelection || event.pointerId !== currentSelection.pointerId) {
+        return;
+      }
+
+      finishDraftDrag(event);
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== "Shift") {
+        return;
+      }
+
+      finishDraftDrag(event);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", handlePointerUp, { passive: false });
+    window.addEventListener("pointercancel", handlePointerUp, { passive: false });
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [draftDragSelection, finishDraftDrag, getTimelinePointerTarget, setActiveDraftDrag]);
 
   useEffect(() => {
     if (timelinePanPointerId === null) {
