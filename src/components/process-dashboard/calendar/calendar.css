@@ -573,13 +573,13 @@
 /* Calendar wireframe week board. Scoped to the preview route only.     */
 /* ------------------------------------------------------------------ */
 .wireframe-calendar-surface .calendar-timeline-panel {
-  overscroll-behavior-x: none;
+  overscroll-behavior-x: contain;
   overscroll-behavior-y: auto;
-  touch-action: none;
+  touch-action: pan-x pan-y;
 }
 
 .wireframe-calendar-surface .calendar-timeline-panel * {
-  touch-action: none;
+  touch-action: pan-x pan-y;
 }
 
 .wireframe-calendar-surface .ww-process-timeline {
@@ -1149,14 +1149,15 @@
   border-radius: 0;
   background: #ffffff;
   box-shadow: none;
-  overflow: hidden;
-  overscroll-behavior-x: none;
+  overflow: auto;
+  overscroll-behavior-x: contain;
   overscroll-behavior-y: auto;
-  touch-action: none;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-panel * {
-  touch-action: none;
+  touch-action: pan-x pan-y;
 }
 
 .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-process-timeline {

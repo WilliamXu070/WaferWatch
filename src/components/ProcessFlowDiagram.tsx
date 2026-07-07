@@ -1315,6 +1315,10 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    if (event.pointerType === "touch") {
+      return;
+    }
+
     const target = event.target as EventTarget | null;
     const hasNodeTarget = target instanceof Element && target.closest(".flow-node") !== null;
     const hasEdgeTarget = target instanceof Element && target.closest(".flow-edge-group") !== null;
@@ -1486,6 +1490,9 @@ export function ProcessFlowDiagram({
 
     setSelectedNodeIds(new Set([node.id]));
     setSelectedWafer(null);
+    if (event.pointerType === "touch") {
+      return;
+    }
     beginNodeDrag(event, node);
   };
 
@@ -1638,6 +1645,10 @@ export function ProcessFlowDiagram({
 
   const beginWaferDrag = (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => {
     if (!onMoveWafer || event.button !== 0 || isMovePending) {
+      return;
+    }
+
+    if (event.pointerType === "touch") {
       return;
     }
 

@@ -671,6 +671,25 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright regression checks at `768x1024` and `1440x1000`.
   - Console error log was empty. Authenticated wafer/die data interactions were
     not exercised because the browser session was unauthenticated.
+
+## Recent development note (2026-07-07 cellphone touch scrolling)
+
+- Fixed phone touch movement after the cellphone shell pass. The mobile shell now
+  uses normal document scrolling instead of trapping all motion inside a fixed
+  `100svh` container.
+- Process Flow touch input no longer enters the desktop canvas selection, node
+  drag, or wafer drag handlers. Touch now pans the scrollable 2D canvas, while
+  mouse/keyboard editing remains unchanged.
+- Calendar wireframe timeline panels now allow native touch panning instead of
+  forcing `touch-action: none`.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright touch-emulation on `/wireframe/process-flow` at `390x844`: dragging
+    inside `.flow-map-frame` moved its scroll position from `0` to `521`.
+  - Playwright touch-emulation on `/wireframe/dashboard` at `390x844`: page drag
+    moved `window.scrollY` to `603`.
+  - Console error log was empty.
   - Playwright rendered the unauthenticated backend empty state, so authenticated
     visual acceptance still needs William's signed-in browser session.
 
