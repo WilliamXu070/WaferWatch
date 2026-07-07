@@ -232,6 +232,7 @@ const GalleryTile = memo(function GalleryTile({
   uniformityValue,
   selected,
   onSelect,
+  onAddImages,
   onUniformityChange,
   onUniformityBlur
 }: {
@@ -243,6 +244,7 @@ const GalleryTile = memo(function GalleryTile({
   uniformityValue: string;
   selected: boolean;
   onSelect: (sample: ResultSample) => void;
+  onAddImages: (sample: ResultSample) => void;
   onUniformityChange: (sample: ResultSample, value: string) => void;
   onUniformityBlur: (sample: ResultSample) => void;
 }) {
@@ -254,7 +256,11 @@ const GalleryTile = memo(function GalleryTile({
 
     if (event.key === "Enter") {
       event.preventDefault();
-      onSelect(sample);
+      if (inspections.length === 0) {
+        onAddImages(sample);
+      } else {
+        onSelect(sample);
+      }
     }
   };
 
@@ -267,11 +273,17 @@ const GalleryTile = memo(function GalleryTile({
     >
       <button
         type="button"
-        onClick={() => onSelect(sample)}
+        onClick={() => {
+          if (inspections.length === 0) {
+            onAddImages(sample);
+          } else {
+            onSelect(sample);
+          }
+        }}
         onKeyDown={handleImageKeyDown}
         className="block aspect-[4/3] min-h-0 bg-white p-1.5 text-left"
         aria-pressed={selected}
-        aria-label={`Select ${sample.id} result sample`}
+        aria-label={inspections.length === 0 ? `Add result images to ${sample.id}` : `Select ${sample.id} result sample`}
       >
         <ResultImageStack inspections={inspections} activeIndex={imageIndex} className="h-full w-full" />
       </button>
@@ -313,6 +325,7 @@ function ResultsGalleryViewport({
   isSavingUniformity,
   uniformityError,
   onSelectSample,
+  onAddImagesForSample,
   onFilesAdd,
   onDeleteImage,
   onNavigateWindow,
@@ -333,6 +346,7 @@ function ResultsGalleryViewport({
   isSavingUniformity: boolean;
   uniformityError: string | null;
   onSelectSample: (sample: ResultSample) => void;
+  onAddImagesForSample: (sample: ResultSample, openPicker: () => void) => void;
   onFilesAdd: (files: readonly File[]) => void;
   onDeleteImage: () => void;
   onNavigateWindow: (direction: -1 | 1) => void;
@@ -390,14 +404,6 @@ function ResultsGalleryViewport({
           </button>
           <button
             type="button"
-            onClick={open}
-            disabled={isImageBusy}
-            className="h-9 rounded-md border border-[#e1e1dc] bg-white px-3 hover:bg-[#fafafa] disabled:opacity-40"
-          >
-            {isImageBusy ? "Uploading..." : "Add images"}
-          </button>
-          <button
-            type="button"
             onClick={onDeleteImage}
             disabled={!selectedInspection}
             className="h-9 rounded-md border border-[#e1e1dc] bg-white px-3 text-[#9b2727] hover:bg-[#fff0ef] disabled:text-[#aaa] disabled:hover:bg-transparent"
@@ -432,6 +438,7 @@ function ResultsGalleryViewport({
                 uniformityValue={uniformityBySample[getSampleMetricKey(tile, sample)] ?? sample.uniformityPercent}
                 selected={sample.id === selectedSample.id}
                 onSelect={onSelectSample}
+                onAddImages={(nextSample) => onAddImagesForSample(nextSample, open)}
                 onUniformityChange={onUniformityChange}
                 onUniformityBlur={onUniformityBlur}
               />
@@ -692,6 +699,11 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
 
     selectSample(sample);
   }, [inspectionsBySample, selectSample, selectedSample.id]);
+
+  const addImagesForSample = useCallback((sample: ResultSample, openPicker: () => void) => {
+    selectSample(sample);
+    window.setTimeout(openPicker, 0);
+  }, [selectSample]);
 
   const navigateSampleByKey = useCallback((key: string) => {
     const rowCount = chipRowSections.length;
@@ -1075,6 +1087,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
         onDeleteImage={deleteSelectedImage}
         onNavigateWindow={navigateGalleryWindow}
         onSelectSample={selectOrCycleSample}
+        onAddImagesForSample={addImagesForSample}
         onUniformityChange={(sample, value) => {
           const scopeKey = getSampleMetricKey(tile, sample);
           setUniformityError(null);
