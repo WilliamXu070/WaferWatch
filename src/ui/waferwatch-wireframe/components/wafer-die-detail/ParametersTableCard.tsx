@@ -929,8 +929,8 @@ export function ParametersTableCard({
                 </div>
               </div>
 
-              <div className="wafer-parameters-table-wrap overflow-hidden">
-                <table className="wafer-parameters-table w-full table-fixed border-collapse text-left text-[12px]">
+              <div className="wafer-parameters-table-wrap overflow-x-auto">
+                <table className="wafer-parameters-table min-w-[980px] table-fixed border-collapse text-left text-[12px]">
                   <thead>
                     <tr className="border-b border-[#e7e7dc] text-[#8a887b]">
                       <th className="w-[132px] bg-white py-2 pr-3 font-semibold">

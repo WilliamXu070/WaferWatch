@@ -649,6 +649,28 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `npm run build`
   - `curl -s http://localhost:3012/api/health`
   - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-five-gallery-auth-gated.png`
+
+## Recent development note (2026-07-07 cellphone view)
+
+- Added a mobile WaferWatch shell for phone widths: compact topbar, slide-out
+  drawer, bottom primary navigation, safe-area viewport handling, and hidden
+  desktop sidebar/topbar below `768px`.
+- Tightened mobile layouts for dashboard, calendar, process flow, wafer status,
+  die detail headers/tabs, and parameter tables. Parameter tables now scroll
+  horizontally with a sticky first column instead of clipping.
+- Added explicit selected-wafer Process Flow actions so phone users can choose
+  next-step moves through the existing backend note dialog instead of relying
+  only on drag/drop.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright route checks at `390x844` for `/wireframe/dashboard`,
+    `/wireframe/calendar`, `/wireframe/process-flow`, and
+    `/wireframe/wafer-status`.
+  - Playwright regression checks at `768x1024` and `1440x1000`.
+  - Console error log was empty. Authenticated wafer/die data interactions were
+    not exercised because the browser session was unauthenticated.
   - Playwright rendered the unauthenticated backend empty state, so authenticated
     visual acceptance still needs William's signed-in browser session.
 

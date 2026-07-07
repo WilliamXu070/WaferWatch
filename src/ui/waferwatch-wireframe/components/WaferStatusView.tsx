@@ -179,7 +179,7 @@ function SelectedDiePanel({
   const displayLabel = getWaferDisplayLabel(selectedTile, isUndiced);
 
   return (
-    <aside className="sticky top-6 grid max-h-[calc(100svh-8rem)] gap-5 border-l border-[#eeeeea] bg-white pl-6">
+    <aside className="selected-die-panel grid gap-5 border-t border-[#eeeeea] bg-white pt-5 xl:sticky xl:top-6 xl:max-h-[calc(100svh-8rem)] xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[11px] font-semibold tracking-[0.08em] text-[#9b9b94]">
@@ -277,7 +277,7 @@ export function WaferStatusView({
 
   if (hasWafers && activeDetailTile) {
     return (
-      <div className="wafer-status-detail-page grid gap-5 bg-white p-6">
+    <div className="wafer-status-detail-page grid gap-5 bg-white p-4 md:p-6">
         <DieDetailView
           tile={activeDetailTile}
           onBack={() => setDetailTile(null)}
@@ -290,7 +290,7 @@ export function WaferStatusView({
   }
 
   return (
-    <div className="grid gap-6 bg-white p-6">
+    <div className="wafer-status-page grid gap-5 bg-white p-4 md:gap-6 md:p-6">
       {hasWafers ? (
         <section className="grid grid-cols-1 gap-x-8 gap-y-2 lg:grid-cols-4">
           {model.metrics.map((metric) => (

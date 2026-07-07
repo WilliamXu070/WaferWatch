@@ -156,8 +156,8 @@ export function CalendarView({ result }: CalendarViewProps) {
   const disabledState = isBackendReady ? null : getDisabledStateCopy(result);
 
   return (
-    <div className="flex flex-col gap-5 p-6">
-      <section className="wireframe-calendar-card rounded-3xl border border-[#e5e5db] bg-white">
+    <div className="flex flex-col gap-5 p-4 md:p-6">
+      <section className="wireframe-calendar-card rounded-2xl border border-[#e5e5db] bg-white md:rounded-3xl">
         <header className="wireframe-calendar-card__header">
           <div>
             <h1 className="text-xl font-semibold text-[#151512]">{CALENDAR_TITLE}</h1>

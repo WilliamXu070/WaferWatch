@@ -256,6 +256,33 @@ export function ProcessFlowDiagram({
     }
     return map;
   }, [edges]);
+  const selectedWaferSourceNode = useMemo(() => {
+    if (!selectedWafer) {
+      return null;
+    }
+
+    return nodeById.get(selectedWafer.nodeId) ?? null;
+  }, [nodeById, selectedWafer]);
+  const selectedWaferMoveTargets = useMemo(() => {
+    if (!selectedWaferSourceNode) {
+      return [];
+    }
+
+    return edges
+      .filter((edge) => edge.from === selectedWaferSourceNode.id)
+      .map((edge) => {
+        const targetNode = nodeById.get(edge.to);
+        if (!targetNode || targetNode.role !== "normal") {
+          return null;
+        }
+
+        return {
+          edge,
+          node: targetNode
+        };
+      })
+      .filter((target): target is { edge: FlowEdge; node: FlowNode } => Boolean(target));
+  }, [edges, nodeById, selectedWaferSourceNode]);
   const nodesRef = useRef<FlowNode[]>([]);
   const edgesRef = useRef<FlowEdge[]>([]);
 
@@ -1749,6 +1776,23 @@ export function ProcessFlowDiagram({
     });
   };
 
+  const beginSelectedWaferMove = (target: { edge: FlowEdge; node: FlowNode }) => {
+    if (!selectedWafer || !selectedWaferSourceNode || !onMoveWafer || isMovePending) {
+      return;
+    }
+
+    setPendingWaferMove({
+      assignmentId: selectedWafer.assignmentId,
+      sourceStepId: selectedWaferSourceNode.id,
+      sourceLabel: selectedWaferSourceNode.label,
+      targetStepId: target.node.id,
+      targetLabel: target.node.label,
+      waferLabel: selectedWafer.label,
+      completeSourceStep: target.edge.kind === "flow"
+    });
+    setPendingWaferMoveNote("");
+  };
+
   const updateConnection = (event: PointerEvent<SVGSVGElement>) => {
     if (updateCanvasSelection(event)) {
       return;
@@ -2142,6 +2186,40 @@ export function ProcessFlowDiagram({
         canUndo={undoStepsCount > 0}
         canAddWafer={Boolean(processTemplateId && onCreateWaferAtProcessStart)}
       />
+      {selectedWafer ? (
+        <div className="flow-selected-wafer-actions" aria-label={`${selectedWafer.label} actions`}>
+          <div className="flow-selected-wafer-actions__summary">
+            <span>Selected wafer</span>
+            <strong>{selectedWafer.label}</strong>
+            {selectedWaferSourceNode ? <em>{selectedWaferSourceNode.label}</em> : null}
+          </div>
+          <div className="flow-selected-wafer-actions__buttons">
+            {selectedWaferMoveTargets.length > 0 ? (
+              selectedWaferMoveTargets.map((target) => (
+                <button
+                  key={target.edge.id}
+                  type="button"
+                  className="button button-secondary flow-selected-wafer-actions__move"
+                  onClick={() => beginSelectedWaferMove(target)}
+                  disabled={!onMoveWafer || isMovePending}
+                >
+                  Move to {target.node.label}
+                </button>
+              ))
+            ) : (
+              <span className="flow-selected-wafer-actions__empty">No direct next step</span>
+            )}
+            <button
+              type="button"
+              className="button button-danger flow-selected-wafer-actions__delete"
+              onClick={deleteSelectedWafer}
+              disabled={!onDeleteWafer || isWaferMutationPending}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ) : null}
       <ProcessFlowCanvas
         frameRef={frameRef}
         svgRef={svgRef}

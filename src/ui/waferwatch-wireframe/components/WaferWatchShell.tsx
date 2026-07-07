@@ -3,6 +3,7 @@ import type { ActionResult } from "@/lib/action-result";
 import type { WireframeShellDto } from "@/features/wireframe/types";
 import type { NavBasePath } from "../nav";
 import { WireframeSidebar } from "./WireframeSidebar";
+import { WireframeMobileChrome } from "./WireframeMobileChrome";
 import { WireframeTopbar } from "./WireframeTopbar";
 
 export type UpdateProcessNameAction = (input: {
@@ -35,6 +36,12 @@ export function WaferWatchShell({
 }) {
   return (
     <div className="waferwatch-wireframe flex h-[100svh] w-full overflow-hidden bg-white text-[#151512]">
+      <WireframeMobileChrome
+        shell={shell}
+        navBasePath={navBasePath}
+        onSignOut={onSignOut}
+        onCreateProcess={onCreateProcess}
+      />
       <WireframeSidebar
         shell={shell}
         navBasePath={navBasePath}

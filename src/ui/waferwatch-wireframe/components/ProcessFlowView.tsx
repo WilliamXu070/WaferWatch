@@ -83,10 +83,10 @@ export function ProcessFlowView({
   onMoveWafer
 }: ProcessFlowViewProps) {
   return (
-    <div className="flex flex-col gap-5 p-6">
-      <section className="rounded-3xl border border-[#e5e5db] bg-[#fafaf4] p-3">
+    <div className="process-flow-view flex flex-col gap-4 p-4 md:gap-5 md:p-6">
+      <section className="rounded-2xl border border-[#e5e5db] bg-[#fafaf4] p-2 md:rounded-3xl md:p-3">
         <div className="wireframe-flow-surface overflow-hidden rounded-2xl bg-white">
-          <div className="flex flex-col gap-1 border-b border-[#eeeee4] px-6 py-5">
+          <div className="flex flex-col gap-1 border-b border-[#eeeee4] px-4 py-4 md:px-6 md:py-5">
             <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#8a887f]">
               {processLabel}
             </p>

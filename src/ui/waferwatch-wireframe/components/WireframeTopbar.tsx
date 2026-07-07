@@ -11,7 +11,7 @@ export function WireframeTopbar({
   onSignOut?: () => void | Promise<void>;
 }) {
   return (
-    <header className="wireframe-topbar flex items-center gap-4 border-b border-[#eeeeea] bg-white px-8 py-5">
+    <header className="wireframe-topbar hidden items-center gap-4 border-b border-[#eeeeea] bg-white px-8 py-5 md:flex">
       <div className="relative flex-1">
         <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#8a8a83]">
           <SearchIcon />

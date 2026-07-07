@@ -3049,6 +3049,343 @@ textarea {
   stroke: #94a3b8;
 }
 
+.flow-selected-wafer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid #e5e7eb;
+  background: #ffffff;
+  padding: 14px 24px;
+}
+
+.flow-selected-wafer-actions__summary {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.flow-selected-wafer-actions__summary span,
+.flow-selected-wafer-actions__summary em,
+.flow-selected-wafer-actions__empty {
+  color: #6b7280;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.flow-selected-wafer-actions__summary strong {
+  color: #151512;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.flow-selected-wafer-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.flow-selected-wafer-actions__move,
+.flow-selected-wafer-actions__delete {
+  min-height: 40px;
+  border-radius: 9px;
+  padding-right: 14px;
+  padding-left: 14px;
+}
+
+.wafer-parameters-table-wrap {
+  -webkit-overflow-scrolling: touch;
+}
+
+.wafer-parameters-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  box-shadow: 1px 0 0 #e7e7dc;
+}
+
+@media (max-width: 767px) {
+  .waferwatch-wireframe {
+    display: block;
+    min-height: 100svh;
+    overflow: hidden;
+  }
+
+  .waferwatch-wireframe > .flex.min-w-0.flex-1.flex-col {
+    min-height: 100svh;
+  }
+
+  .waferwatch-wireframe .wireframe-main {
+    height: 100svh;
+    padding-top: calc(58px + env(safe-area-inset-top));
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+    overflow-x: hidden;
+  }
+
+  .wireframe-mobile-topbar {
+    position: fixed;
+    z-index: 120;
+    top: 0;
+    right: 0;
+    left: 0;
+    display: flex;
+    min-height: calc(58px + env(safe-area-inset-top));
+    align-items: end;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid #e9e9df;
+    background: #ffffff;
+    padding: env(safe-area-inset-top) 12px 10px;
+  }
+
+  .wireframe-mobile-brand {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+    color: #151512;
+    font-size: 16px;
+    font-weight: 750;
+    text-decoration: none;
+  }
+
+  .wireframe-mobile-brand span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .wireframe-mobile-icon-button {
+    display: grid;
+    min-height: 44px;
+    min-width: 44px;
+    place-items: center;
+    border: 1px solid #e4e4df;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #151512;
+  }
+
+  .wireframe-mobile-bottom-nav {
+    position: fixed;
+    z-index: 120;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    border-top: 1px solid #e9e9df;
+    background: #ffffff;
+    padding: 8px 8px max(8px, env(safe-area-inset-bottom));
+  }
+
+  .wireframe-mobile-bottom-nav__item {
+    display: grid;
+    min-height: 52px;
+    place-items: center;
+    gap: 3px;
+    border-radius: 12px;
+    color: #6b6a5f;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none;
+  }
+
+  .wireframe-mobile-bottom-nav__item svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .wireframe-mobile-bottom-nav__item.is-active {
+    background: #f0f1f3;
+    color: #151512;
+  }
+
+  .wireframe-mobile-bottom-nav__item.is-disabled {
+    color: #b0afa8;
+  }
+
+  .wireframe-mobile-drawer {
+    position: fixed;
+    z-index: 160;
+    inset: 0;
+  }
+
+  .wireframe-mobile-drawer__scrim {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgba(15, 15, 12, 0.26);
+  }
+
+  .wireframe-mobile-drawer__panel {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(336px, calc(100vw - 28px));
+    overflow-y: auto;
+    border-right: 1px solid #e9e9df;
+    background: #ffffff;
+    padding: calc(16px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom));
+    box-shadow: 24px 0 48px rgba(15, 15, 12, 0.16);
+  }
+
+  .waferwatch-wireframe .wireframe-flow-surface .flow-map-toolbar {
+    position: sticky;
+    z-index: 5;
+    top: 0;
+    min-height: 0;
+    padding: 10px;
+  }
+
+  .waferwatch-wireframe .wireframe-flow-surface .flow-map-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .waferwatch-wireframe .wireframe-flow-surface .flow-map-actions .button {
+    min-height: 44px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .waferwatch-wireframe .wireframe-flow-surface .flow-map-frame {
+    height: min(560px, calc(100svh - 265px));
+    min-height: 420px;
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+    overflow: auto;
+    touch-action: none;
+  }
+
+  .flow-selected-wafer-actions {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .flow-selected-wafer-actions__buttons {
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .flow-selected-wafer-actions__buttons > * {
+    flex: 0 0 auto;
+  }
+
+  .wafer-status-page section[aria-label],
+  .wafer-status-page .selected-die-panel {
+    min-width: 0;
+  }
+
+  .wafer-status-page [class*="grid-cols-[minmax(76px"] {
+    grid-template-columns: minmax(0, 1fr) minmax(104px, 0.9fr);
+  }
+
+  .selected-die-panel {
+    min-width: 0;
+  }
+
+  .selected-die-panel h2 {
+    font-size: 24px;
+  }
+
+  .selected-die-panel > div:nth-child(2) {
+    min-height: 240px;
+  }
+
+  .wafer-die-detail-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .wafer-die-detail-actions button:first-child {
+    flex: 1 1 160px;
+  }
+
+  .wafer-die-detail-tabs {
+    margin-right: -16px;
+    margin-left: -16px;
+    padding-left: 16px;
+  }
+
+  .wafer-die-detail-tabs button {
+    height: 50px;
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .wafer-parameters-recipe-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wafer-parameters-table-wrap {
+    margin-right: -16px;
+    margin-left: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .wireframe-calendar-surface {
+    overflow-x: hidden;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card__header {
+    min-height: 0;
+    padding: 18px 16px;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card__controls,
+  .waferwatch-wireframe .wireframe-calendar-card__range {
+    width: 100%;
+  }
+
+  .waferwatch-wireframe .wireframe-calendar-card__range span {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-panel {
+    overflow-x: auto;
+    touch-action: pan-x pan-y;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-panel * {
+    touch-action: pan-x pan-y;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar,
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-header,
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-sidebar-header {
+    width: 104px !important;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-row {
+    min-height: 132px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe.calendar-inspector--active {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+}
+
 @media print {
   @page {
     size: landscape;

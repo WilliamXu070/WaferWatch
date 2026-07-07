@@ -20,6 +20,7 @@ import {
   LayoutGrid,
   Layers3,
   ListFilter,
+  Menu,
   Plus,
   Radar,
   Repeat2,
@@ -30,7 +31,8 @@ import {
   Target,
   TowerControl,
   TriangleAlert,
-  UserRound
+  UserRound,
+  X
 } from "lucide-react";
 
 type IconProps = SVGProps<SVGSVGElement>;
@@ -69,6 +71,8 @@ export const SortIcon = makeIcon(ListFilter, 16);
 export const FilterIcon = makeIcon(SlidersHorizontal, 16);
 export const UserIcon = makeIcon(UserRound, 16);
 export const PlusIcon = makeIcon(Plus, 16);
+export const MenuIcon = makeIcon(Menu, 18);
+export const CloseIcon = makeIcon(X, 18);
 export const GridIcon = makeIcon(LayoutGrid, 18);
 export const CalendarIcon = makeIcon(CalendarDays, 18);
 export const FlowIcon = makeIcon(GitBranch, 18);
