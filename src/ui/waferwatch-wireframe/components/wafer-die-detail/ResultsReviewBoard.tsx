@@ -292,18 +292,19 @@ const GalleryTile = memo(function GalleryTile({
           <span className="truncate text-[#111111]">{recipeCode} {sample.id}</span>
           <span className="shrink-0 text-[#777770]">{imageCount ? `${imageOrdinal} / ${imageCount}` : "0 / 0"}</span>
         </div>
-        <label className="flex min-w-0 items-center gap-1 rounded-md border border-[#e1e1dc] bg-white px-2 focus-within:border-[#111111]">
-          <span className="text-[11px] font-semibold text-[#777770]">Uniformity</span>
+        <label className="flex h-10 min-w-0 items-center rounded-md border border-[#deded8] bg-[#fbfbf8] px-2.5 shadow-[inset_0_1px_0_rgba(17,17,17,0.03)] transition-colors focus-within:border-[#111111] focus-within:bg-white">
+          <span className="select-none text-[11px] font-semibold uppercase tracking-[0.02em] text-[#777770]">Uniformity</span>
+          <span className="mx-2 h-4 w-px shrink-0 bg-[#d8d8d2]" aria-hidden="true" />
           <input
             type="text"
             inputMode="decimal"
             value={uniformityValue}
             onChange={(event) => onUniformityChange(sample, event.target.value)}
             onBlur={() => onUniformityBlur(sample)}
-            className="min-w-0 flex-1 bg-transparent py-1 text-right text-[13px] font-semibold text-[#111111] outline-none"
+            className="min-w-0 flex-1 bg-transparent text-right text-[18px] font-semibold tabular-nums text-[#111111] outline-none selection:bg-[#d8ecff]"
             aria-label={`${sample.id} uniformity percentage`}
           />
-          <span className="text-[12px] font-semibold text-[#777770]">%</span>
+          <span className="ml-1 select-none text-[15px] font-semibold text-[#777770]">%</span>
         </label>
       </div>
     </article>
