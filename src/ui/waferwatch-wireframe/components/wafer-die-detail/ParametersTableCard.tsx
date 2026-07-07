@@ -102,6 +102,7 @@ export const parameterTonePalettes: Record<VisibleParameterField, readonly strin
 };
 
 const emptyNotes = Array.from({ length: 15 }, () => "");
+const emptyParameterValues = Array.from({ length: 15 }, () => "");
 
 export const chipRowSections = [
   {
@@ -112,11 +113,11 @@ export const chipRowSections = [
     variant: "sharp-sharp LN 0.5 micron",
     note: "Ramp check pending before poling.",
     values: {
-      voltage: ["520", "520", "520", "520", "510", "510", "510", "510", "500", "500", "500", "500", "490", "490", "490"],
-      width: ["10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10"],
-      pulseCount: ["5", "10", "15", "20", "25", "30", "35", "40", "5", "10", "15", "20", "25", "30", "35"],
-      postPulseVoltage: ["300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300"],
-      postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"],
+      voltage: emptyParameterValues,
+      width: emptyParameterValues,
+      pulseCount: emptyParameterValues,
+      postPulseVoltage: emptyParameterValues,
+      postPulseWidth: emptyParameterValues,
       description: emptyNotes
     }
   },
@@ -128,11 +129,11 @@ export const chipRowSections = [
     variant: "sharp-sharp LN 0.5 micron",
     note: "R2C7 selected for measurement review.",
     values: {
-      voltage: ["510", "510", "510", "510", "510", "510", "510", "510", "500", "500", "500", "500", "500", "500", "500"],
-      width: ["10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10"],
-      pulseCount: ["5", "10", "15", "20", "25", "30", "35", "40", "5", "10", "15", "20", "25", "30", "35"],
-      postPulseVoltage: ["300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300"],
-      postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"],
+      voltage: emptyParameterValues,
+      width: emptyParameterValues,
+      pulseCount: emptyParameterValues,
+      postPulseVoltage: emptyParameterValues,
+      postPulseWidth: emptyParameterValues,
       description: emptyNotes
     }
   },
@@ -144,11 +145,11 @@ export const chipRowSections = [
     variant: "sharp-sharp LN 0.5 micron",
     note: "No row notes yet.",
     values: {
-      voltage: ["500", "500", "500", "500", "490", "490", "490", "490", "480", "480", "480", "480", "470", "470", "470"],
-      width: ["10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10", "10"],
-      pulseCount: ["5", "10", "15", "20", "25", "30", "35", "40", "5", "10", "15", "20", "25", "30", "35"],
-      postPulseVoltage: ["300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300", "300"],
-      postPulseWidth: ["250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250", "250"],
+      voltage: emptyParameterValues,
+      width: emptyParameterValues,
+      pulseCount: emptyParameterValues,
+      postPulseVoltage: emptyParameterValues,
+      postPulseWidth: emptyParameterValues,
       description: emptyNotes
     }
   }

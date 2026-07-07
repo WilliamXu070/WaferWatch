@@ -1650,3 +1650,32 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     errors.
 - The browser session was unauthenticated, so signed-in stage-note mutation still
   needs William's signed-in browser session for visual acceptance.
+
+## Recent development note (2026-07-07 process creation, all-stage notes, calendar wafer links)
+
+- Added a sidebar `New process` action in the wireframe shell. Any signed-in
+  account can create and name a new process template; project-scoped creation
+  still respects project write access when a project is supplied.
+- Changed die Notes tab from a single stage dropdown to an all-stage view. Every
+  process step is visible even when empty, and each stage has its own add-note
+  composer persisted to the step-scoped `text_surfaces` key.
+- Blanked the default parameter grid seed values so new die parameter tables
+  start empty unless values have been saved.
+- Added backend calendar wafer linkage with `process_calendar_events.wafer_id`,
+  migration `202607070001_calendar_event_wafer_link.sql`, calendar event wafer
+  selector, server-side process-wafer validation, hydrated wafer labels, and
+  timeline display of linked wafer context.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run db:push`
+  - `curl -s http://localhost:3015/api/health`
+  - Browser routes
+    `http://localhost:3015/wireframe/calendar?processId=11111111-1111-4111-8111-111111111103`
+    and
+    `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    at `1440x1000`: unauthenticated guard states rendered with zero current
+    console errors.
+- The browser session was unauthenticated, so signed-in process creation,
+  all-stage note mutation, and calendar wafer selection still need William's
+  signed-in browser session for visual acceptance.

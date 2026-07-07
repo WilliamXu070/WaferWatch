@@ -104,6 +104,7 @@ export function ProcessCalendarBoard({
   calendarStartDate,
   days,
   steps,
+  wafers = [],
   people,
   initialEvents,
   initialVisibleStartDate = calendarStartDate,
@@ -124,6 +125,7 @@ export function ProcessCalendarBoard({
         : "manual"
   );
   const [selectedStepId, setSelectedStepId] = useState(initialSelection?.process_step_id ?? steps[0]?.id ?? "");
+  const [selectedWaferId, setSelectedWaferId] = useState(initialSelection?.wafer_id ?? "");
   const [manualAction, setManualAction] = useState(
     initialSelection?.manual_action ?? (initialSelection?.process_step_id ? "" : initialSelection?.process_step_name_snapshot ?? "")
   );
@@ -337,8 +339,11 @@ export function ProcessCalendarBoard({
       const items: CalendarTimelineItem[] = visibleEvents.map((event) => {
         const label = eventLabel(event, stepsById);
         const displayTitle = getWireframeEventTitle(event, label, presentationMode);
-        const descriptionLabel =
-          event.description && event.description !== displayTitle ? event.description : undefined;
+        const waferLabel = event.wafer?.wafer_code ?? null;
+        const descriptionLabel = [
+          waferLabel ? `Wafer ${waferLabel}` : null,
+          event.description && event.description !== displayTitle ? event.description : null
+        ].filter(Boolean).join(" · ") || undefined;
         const startsAt = new Date(event.starts_at);
         const endsAt = new Date(event.ends_at);
         const peopleLabel = event.people
@@ -447,6 +452,7 @@ export function ProcessCalendarBoard({
     setError(null);
     setActionMode(steps.length ? "step" : "manual");
     setSelectedStepId(steps[0]?.id ?? "");
+    setSelectedWaferId("");
     setManualAction("");
     setDescription("");
     setSelectedPersonIds([]);
@@ -867,6 +873,7 @@ export function ProcessCalendarBoard({
       setSelectedEventId(null);
       setActionMode(steps.length ? "step" : "manual");
       setSelectedStepId(steps[0]?.id ?? "");
+      setSelectedWaferId("");
       setManualAction("");
       setDescription("");
       setSelectedPersonIds([]);
@@ -877,6 +884,7 @@ export function ProcessCalendarBoard({
 
     setActionMode(event.process_step_id ? "step" : "manual");
     setSelectedStepId(event.process_step_id ?? steps[0]?.id ?? "");
+    setSelectedWaferId(event.wafer_id ?? "");
     setManualAction(event.manual_action ?? (event.process_step_id ? "" : event.process_step_name_snapshot ?? ""));
     setDescription(event.description ?? "");
     setSelectedPersonIds(event.people.map((person) => person.id));
@@ -1268,6 +1276,8 @@ export function ProcessCalendarBoard({
         starts_at: draft.startsAt.toISOString(),
         ends_at: draft.endsAt.toISOString(),
         process_step_id: actionMode === "step" && selectedStepId ? selectedStepId : null,
+        wafer_id: selectedWaferId || null,
+        wafer: wafers.find((wafer) => wafer.id === selectedWaferId) ?? null,
         process_step_name_snapshot: selectedStepSnapshot(),
         manual_action: actionMode === "manual" ? manualAction.trim() || null : null,
         description: description.trim() || null,
@@ -1288,6 +1298,7 @@ export function ProcessCalendarBoard({
         startsAt: draft.startsAt.toISOString(),
         endsAt: draft.endsAt.toISOString(),
         processStepId: actionMode === "step" ? selectedStepId : null,
+        waferId: selectedWaferId || null,
         manualAction: actionMode === "manual" ? manualAction : null,
         description,
         personIds: selectedPersonIds
@@ -1317,6 +1328,8 @@ export function ProcessCalendarBoard({
       const updatedEvent: ProcessCalendarEventView = {
         ...selectedEvent,
         process_step_id: actionMode === "step" && selectedStepId ? selectedStepId : null,
+        wafer_id: selectedWaferId || null,
+        wafer: wafers.find((wafer) => wafer.id === selectedWaferId) ?? null,
         process_step_name_snapshot: selectedStepSnapshot(),
         manual_action: actionMode === "manual" ? manualAction.trim() || null : null,
         description: description.trim() || null,
@@ -1336,6 +1349,7 @@ export function ProcessCalendarBoard({
       const result = await updateProcessCalendarEvent({
         eventId: selectedEvent.id,
         processStepId: actionMode === "step" ? selectedStepId : null,
+        waferId: selectedWaferId || null,
         manualAction: actionMode === "manual" ? manualAction : null,
         description,
         personIds: selectedPersonIds
@@ -1672,7 +1686,9 @@ export function ProcessCalendarBoard({
           selectedEvent={selectedEvent}
           selectedPeople={selectedPeople}
           selectedStepId={selectedStepId}
+          selectedWaferId={selectedWaferId}
           steps={steps}
+          wafers={wafers}
           stepsById={stepsById}
           onActionModeChange={setActionMode}
           onAddPerson={addPerson}
@@ -1685,6 +1701,7 @@ export function ProcessCalendarBoard({
           onSaveDraft={saveDraft}
           onSaveSelectedEvent={saveSelectedEvent}
           onSelectedStepIdChange={setSelectedStepId}
+          onSelectedWaferIdChange={setSelectedWaferId}
         />
       </aside>
     </div>

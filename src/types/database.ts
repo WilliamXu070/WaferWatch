@@ -216,6 +216,7 @@ export type ProcessPerson = {
 export type ProcessCalendarEvent = {
   id: string;
   process_template_id: string;
+  wafer_id: string | null;
   location: string;
   starts_at: string;
   ends_at: string;

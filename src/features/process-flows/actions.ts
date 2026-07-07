@@ -397,7 +397,7 @@ export async function deleteProcessFlowWafer(input: unknown) {
 
 export async function createProcessTemplate(input: unknown) {
   try {
-    const account = await requireProcessManager();
+    const account = await requireAccount();
     const parsed = processTemplateCreateSchema.parse(input);
 
     if (parsed.ownerProjectId) {

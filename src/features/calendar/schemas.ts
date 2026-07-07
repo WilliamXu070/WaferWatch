@@ -6,6 +6,7 @@ export const processCalendarLocationSchema = z.enum(["McMaster", "Waterloo", "To
 export const processCalendarEventCreateSchema = z
   .object({
     processTemplateId: uuidSchema,
+    waferId: uuidSchema.nullable().optional(),
     location: processCalendarLocationSchema,
     startsAt: z.string().datetime(),
     endsAt: z.string().datetime(),
@@ -73,6 +74,7 @@ export const processCalendarEventMoveSchema = z
 export const processCalendarEventUpdateSchema = z
   .object({
     eventId: uuidSchema,
+    waferId: uuidSchema.nullable().optional(),
     processStepId: uuidSchema.nullable().optional(),
     manualAction: z.string().trim().max(160).nullable().optional(),
     description: z.string().trim().max(1200).nullable().optional(),

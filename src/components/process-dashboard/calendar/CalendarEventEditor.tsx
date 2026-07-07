@@ -4,7 +4,7 @@ import type {
 } from "@/features/calendar/queries";
 import { formatCompactDateTime, formatWindow } from "./date-helpers";
 import { eventLabel } from "./event-helpers";
-import type { ActionMode, DraftEvent, ProcessStepOption } from "./types";
+import type { ActionMode, DraftEvent, ProcessCalendarWaferOption, ProcessStepOption } from "./types";
 
 type PersonSuggestion = {
   person: ProcessCalendarPersonOption;
@@ -23,7 +23,9 @@ type CalendarEventEditorProps = {
   selectedEvent: ProcessCalendarEventView | null;
   selectedPeople: ProcessCalendarPersonOption[];
   selectedStepId: string;
+  selectedWaferId: string;
   steps: ProcessStepOption[];
+  wafers: ProcessCalendarWaferOption[];
   stepsById: Map<string, string>;
   onActionModeChange: (mode: ActionMode) => void;
   onAddPerson: (person: ProcessCalendarPersonOption) => void;
@@ -36,6 +38,7 @@ type CalendarEventEditorProps = {
   onSaveDraft: () => void;
   onSaveSelectedEvent: () => void;
   onSelectedStepIdChange: (stepId: string) => void;
+  onSelectedWaferIdChange: (waferId: string) => void;
 };
 
 function EventFields({
@@ -46,14 +49,17 @@ function EventFields({
   personQuery,
   selectedPeople,
   selectedStepId,
+  selectedWaferId,
   steps,
+  wafers,
   onActionModeChange,
   onAddPerson,
   onDescriptionChange,
   onManualActionChange,
   onPersonQueryChange,
   onRemovePerson,
-  onSelectedStepIdChange
+  onSelectedStepIdChange,
+  onSelectedWaferIdChange
 }: Omit<
   CalendarEventEditorProps,
   | "draft"
@@ -101,6 +107,21 @@ function EventFields({
           />
         </label>
       ) : null}
+
+      <label className="field">
+        <span>Wafer / die</span>
+        <select
+          value={selectedWaferId}
+          onChange={(event) => onSelectedWaferIdChange(event.target.value)}
+        >
+          <option value="">No wafer linked</option>
+          {wafers.map((wafer) => (
+            <option key={wafer.id} value={wafer.id}>
+              {wafer.wafer_code}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <div className="field">
         <span>People</span>

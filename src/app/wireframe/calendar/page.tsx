@@ -25,6 +25,7 @@ type CalendarLoadResult =
           version: string;
         };
         steps: { id: string; name: string }[];
+        wafers: { id: string; wafer_code: string }[];
         people: { id: string; display_name: string }[];
         initialEvents: Array<{
           id: string;
@@ -36,6 +37,8 @@ type CalendarLoadResult =
           process_step_name_snapshot: string | null;
           manual_action: string | null;
           description: string | null;
+          wafer_id: string | null;
+          wafer: { id: string; wafer_code: string } | null;
           people: { id: string; display_name: string }[];
         }>;
         initialStartDate: string;
@@ -86,6 +89,20 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
     queryStart.toISOString(),
     queryEnd.toISOString()
   );
+  const wafersResult = await supabase
+    .from("wafer_process_assignments")
+    .select("wafers(id, wafer_code)")
+    .eq("template_id", process.id)
+    .in("status", ["planned", "queued", "in_progress", "on_hold"])
+    .order("assigned_at", { ascending: false });
+
+  if (wafersResult.error) {
+    throw wafersResult.error;
+  }
+
+  const wafers = (wafersResult.data ?? [])
+    .map((row) => Array.isArray(row.wafers) ? row.wafers[0] : row.wafers)
+    .filter((wafer): wafer is { id: string; wafer_code: string } => Boolean(wafer?.id));
 
   return {
     status: "ready",
@@ -99,9 +116,12 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
         .slice()
         .sort((a, b) => a.step_order - b.step_order)
         .map((step) => ({ id: step.id, name: step.name })),
+      wafers,
       people: schedule.people,
       initialEvents: schedule.events.map((event) => ({
         ...event,
+        wafer_id: event.wafer_id ?? null,
+        wafer: event.wafer ?? null,
         location: toCalendarLocation(event.location)
       })),
       initialStartDate: getMondayWeekStart(new Date()).toISOString().slice(0, 10)

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { WireframeShellDto } from "@/features/wireframe/types";
-import type { UpdateProcessNameAction } from "./WaferWatchShell";
+import type { CreateProcessAction, UpdateProcessNameAction } from "./WaferWatchShell";
 import {
   CalendarIcon,
   ChevronRightIcon,
@@ -61,11 +61,13 @@ function hrefWithProcess(href: string, processId: string) {
 export function WireframeSidebar({
   shell,
   navBasePath = "",
-  onUpdateProcessName
+  onUpdateProcessName,
+  onCreateProcess
 }: {
   shell: WireframeShellDto;
   navBasePath?: NavBasePath;
   onUpdateProcessName?: UpdateProcessNameAction;
+  onCreateProcess?: CreateProcessAction;
 }) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
@@ -88,6 +90,7 @@ export function WireframeSidebar({
   const [isEditing, setIsEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState(currentProcess?.name ?? "");
   const [, startRename] = useTransition();
+  const [, startCreate] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const startEditing = () => {
@@ -132,6 +135,25 @@ export function WireframeSidebar({
     startEditing();
   };
 
+  const handleCreateProcess = () => {
+    if (!onCreateProcess) return;
+    const name = window.prompt("Process name");
+    const nextName = name?.trim();
+    if (!nextName || nextName.length < 2) return;
+
+    startCreate(() => {
+      void onCreateProcess({
+        name: nextName,
+        version: "1.0",
+        isActive: true
+      }).then((res) => {
+        if (!res.ok) return;
+        router.refresh();
+        router.push(hrefWithProcess(`${navBasePath}/process-flow`, res.data.id));
+      });
+    });
+  };
+
   return (
     <aside className="wireframe-sidebar flex h-full w-[264px] shrink-0 flex-col border-r border-[#e9e9df] bg-white px-4 py-5">
       <div className="flex items-center gap-2.5 px-2">
@@ -161,6 +183,15 @@ export function WireframeSidebar({
         <p className="px-3 pb-1 text-[11px] font-semibold tracking-[0.06em] text-[#98968a]">
           Current process
         </p>
+        {onCreateProcess ? (
+          <button
+            type="button"
+            onClick={handleCreateProcess}
+            className="mb-2 flex w-full items-center justify-center rounded-xl border border-[#e1e1dc] bg-white px-3 py-2 text-[13px] font-semibold text-[#151512] transition-colors hover:bg-[#f8f9fb]"
+          >
+            New process
+          </button>
+        ) : null}
         <div
           className={[
             "rounded-xl px-3 py-2.5 text-sm transition-all",

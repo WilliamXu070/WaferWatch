@@ -33,6 +33,7 @@ type CalendarViewProps = {
         data: {
           process: CalendarProcess;
           steps: readonly ProcessStepOption[];
+          wafers: readonly { id: string; wafer_code: string }[];
           people: readonly CalendarPersonModel[];
           initialEvents: readonly CalendarEventModel[];
           initialStartDate: string;
@@ -141,6 +142,7 @@ export function CalendarView({ result }: CalendarViewProps) {
   const isBackendReady = result.status === "ready";
   const calendarData = isBackendReady ? result.data : null;
   const resolvedSteps = useMemo(() => (calendarData ? [...calendarData.steps] : []), [calendarData]);
+  const resolvedWafers = useMemo(() => (calendarData ? [...calendarData.wafers] : []), [calendarData]);
   const resolvedPeople = useMemo(() => (calendarData ? [...calendarData.people] : []), [calendarData]);
   const resolvedEvents = useMemo(() => (calendarData ? [...calendarData.initialEvents] : []), [calendarData]);
 
@@ -200,6 +202,7 @@ export function CalendarView({ result }: CalendarViewProps) {
                 calendarStartDate={calendarWindowRange.startDate}
                 days={calendarWindowRange.days}
                 steps={resolvedSteps}
+                wafers={resolvedWafers}
                 people={resolvedPeople}
                 initialEvents={resolvedEvents}
                 initialVisibleStartDate={calendarData.initialStartDate}

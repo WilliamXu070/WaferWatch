@@ -11,6 +11,7 @@ export type ProcessCalendarEventView = Pick<
   ProcessCalendarEvent,
   | "id"
   | "process_template_id"
+  | "wafer_id"
   | "location"
   | "starts_at"
   | "ends_at"
@@ -19,6 +20,7 @@ export type ProcessCalendarEventView = Pick<
   | "manual_action"
   | "description"
 > & {
+  wafer: { id: string; wafer_code: string } | null;
   people: ProcessCalendarPersonOption[];
 };
 
@@ -63,7 +65,7 @@ export async function getProcessCalendarSchedule(
     supabase
       .from("process_calendar_events")
       .select(
-        "id, process_template_id, location, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description"
+        "id, process_template_id, wafer_id, location, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description"
       )
       .eq("process_template_id", processTemplateId)
       .lt("starts_at", toIso)
@@ -96,11 +98,12 @@ export async function getProcessCalendarSchedule(
   if (linksResult.error) {
     if (isMissingCalendarTableError(linksResult.error)) {
       return {
-        people,
-        events: events.map((event) => ({
-          ...event,
-          people: []
-        }))
+          people,
+          events: events.map((event) => ({
+            ...event,
+            wafer: null,
+            people: []
+          }))
       };
     }
 
@@ -108,6 +111,21 @@ export async function getProcessCalendarSchedule(
   }
 
   const peopleById = new Map(people.map((person) => [person.id, person]));
+  const waferIds = Array.from(
+    new Set(events.map((event) => event.wafer_id).filter((id): id is string => Boolean(id)))
+  );
+  const wafersResult = await (waferIds.length
+    ? supabase
+        .from("wafers")
+        .select("id, wafer_code")
+        .in("id", waferIds)
+    : Promise.resolve({ data: [], error: null } as const));
+
+  if (wafersResult.error) {
+    throw wafersResult.error;
+  }
+
+  const wafersById = new Map((wafersResult.data ?? []).map((wafer) => [wafer.id, wafer]));
   const personIdsByEventId = new Map<string, string[]>();
 
   for (const link of linksResult.data ?? []) {
@@ -123,6 +141,7 @@ export async function getProcessCalendarSchedule(
     people,
     events: events.map((event) => ({
       ...event,
+      wafer: event.wafer_id ? wafersById.get(event.wafer_id) ?? null : null,
       people: (personIdsByEventId.get(event.id) ?? [])
         .map((personId) => peopleById.get(personId))
         .filter((person): person is ProcessCalendarPersonOption => Boolean(person))

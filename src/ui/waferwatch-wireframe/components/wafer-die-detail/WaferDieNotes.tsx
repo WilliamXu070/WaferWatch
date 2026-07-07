@@ -237,45 +237,38 @@ export function WaferDieNotesDashboard({
   onNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
 }) {
   const processSteps = tile.processSteps?.length ? tile.processSteps : [];
-  const fallbackStepId = tile.currentStepId ?? processSteps[0]?.id ?? "die";
-  const [selectedStepId, setSelectedStepId] = useState(fallbackStepId);
-  const selectedStep = processSteps.find((step) => step.id === selectedStepId) ?? null;
-  const notes = notesByStepId[selectedStepId] ?? EMPTY_NOTES;
-  const [draft, setDraft] = useState("");
+  const stageRows = processSteps.length
+    ? processSteps
+    : [{ id: "die", name: "Die notes", stepOrder: 1 }];
+  const totalNotes = stageRows.reduce((total, step) => total + (notesByStepId[step.id]?.length ?? 0), 0);
+  const [draftByStepId, setDraftByStepId] = useState<Record<string, string>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [sortOrder, setSortOrder] = useState<NotesSortOrder>("oldest");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const textSurfaceIdentity = useMemo(
-    () => ({
+
+  const textSurfaceIdentityForStep = useCallback(
+    (stepId: string) => ({
       projectId: tile.projectId,
       scopeType: waferDieNotesSurface.scopeType,
-      scopeKey: selectedStep
-        ? getWaferDieStepNotesScopeKey(tile.waferId, tile.dieLabel || tile.code, selectedStep.id)
+      scopeKey: stepId !== "die"
+        ? getWaferDieStepNotesScopeKey(tile.waferId, tile.dieLabel || tile.code, stepId)
         : getWaferDieNotesScopeKey(tile.waferId, tile.dieLabel || tile.code),
       fieldKey: waferDieNotesSurface.fieldKey
     }),
-    [selectedStep, tile.code, tile.dieLabel, tile.projectId, tile.waferId]
-  );
-  const visibleNotes = useMemo(
-    () =>
-      [...notes].sort((first, second) => {
-        const difference = getNoteTimeValue(first) - getNoteTimeValue(second);
-        return sortOrder === "oldest" ? difference : -difference;
-      }),
-    [notes, sortOrder]
+    [tile.code, tile.dieLabel, tile.projectId, tile.waferId]
   );
 
   const persistNotes = useCallback(
-    async (nextNotes: WaferDieNote[], previousNotes: readonly WaferDieNote[]) => {
-      onNotesChange(selectedStepId, nextNotes);
+    async (stepId: string, nextNotes: WaferDieNote[], previousNotes: readonly WaferDieNote[]) => {
+      onNotesChange(stepId, nextNotes);
       setIsSaving(true);
       setError(null);
 
       const result = await upsertTextSurface({
-        ...textSurfaceIdentity,
+        ...textSurfaceIdentityForStep(stepId),
         value: JSON.stringify(nextNotes)
       });
 
@@ -285,18 +278,20 @@ export function WaferDieNotesDashboard({
         return;
       }
 
-      onNotesChange(selectedStepId, [...previousNotes]);
+      onNotesChange(stepId, [...previousNotes]);
       setError(result.error);
     },
-    [onNotesChange, selectedStepId, textSurfaceIdentity]
+    [onNotesChange, textSurfaceIdentityForStep]
   );
 
-  const addNote = async () => {
+  const addNote = async (stepId: string, stepName: string) => {
+    const draft = draftByStepId[stepId] ?? "";
     const body = draft.trim();
     if (!body || isSaving) {
       return;
     }
 
+    const notes = notesByStepId[stepId] ?? EMPTY_NOTES;
     const timestamp = nowIso();
     const nextNotes = [
       ...notes,
@@ -304,15 +299,15 @@ export function WaferDieNotesDashboard({
         id: crypto.randomUUID(),
         author: "You",
         body: body.slice(0, MAX_NOTE_LENGTH),
-        processStepId: selectedStep?.id ?? null,
-        processStepName: selectedStep?.name ?? null,
+        processStepId: stepId === "die" ? null : stepId,
+        processStepName: stepId === "die" ? null : stepName,
         createdAt: timestamp,
         updatedAt: timestamp
       }
     ];
 
-    setDraft("");
-    await persistNotes(nextNotes, notes);
+    setDraftByStepId((current) => ({ ...current, [stepId]: "" }));
+    await persistNotes(stepId, nextNotes, notes);
   };
 
   const startEditing = (note: WaferDieNote) => {
@@ -321,12 +316,13 @@ export function WaferDieNotesDashboard({
     setError(null);
   };
 
-  const saveEdit = async (noteId: string) => {
+  const saveEdit = async (stepId: string, noteId: string) => {
     const body = editValue.trim();
     if (!body || isSaving) {
       return;
     }
 
+    const notes = notesByStepId[stepId] ?? EMPTY_NOTES;
     const nextNotes = notes.map((note) =>
       note.id === noteId
         ? {
@@ -340,51 +336,29 @@ export function WaferDieNotesDashboard({
 
     setEditingId(null);
     setEditValue("");
-    await persistNotes(nextNotes, notes);
+    await persistNotes(stepId, nextNotes, notes);
   };
 
-  const deleteNote = async (noteId: string) => {
+  const deleteNote = async (stepId: string, noteId: string) => {
     if (isSaving) {
       return;
     }
 
+    const notes = notesByStepId[stepId] ?? EMPTY_NOTES;
     const nextNotes = notes.filter((note) => note.id !== noteId);
     if (editingId === noteId) {
       setEditingId(null);
       setEditValue("");
     }
 
-    await persistNotes(nextNotes, notes);
+    await persistNotes(stepId, nextNotes, notes);
   };
 
   return (
     <DetailCard title="Notes" className="min-h-[520px]">
       <div className="grid gap-5">
         <div className="flex min-h-5 flex-wrap items-center justify-between gap-3 text-[12px] font-semibold">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[#777770]">{notes.length} {notes.length === 1 ? "note" : "notes"}</span>
-            {processSteps.length ? (
-              <label className="inline-flex items-center gap-2 text-[#777770]">
-                Stage
-                <select
-                  value={selectedStepId}
-                  onChange={(event) => {
-                    setSelectedStepId(event.target.value);
-                    setEditingId(null);
-                    setEditValue("");
-                    setError(null);
-                  }}
-                  className="h-8 rounded-md border border-[#e1e1dc] bg-white px-2 text-[12px] font-semibold text-[#222222] outline-none focus:border-[#111111]"
-                >
-                  {processSteps.map((step, index) => (
-                    <option key={step.id} value={step.id}>
-                      {index + 1}. {step.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-          </div>
+          <span className="text-[#777770]">{totalNotes} {totalNotes === 1 ? "note" : "notes"} across all stages</span>
           <div className="flex items-center gap-1 rounded-lg border border-[#e1e1dc] bg-white p-1">
             {notesSortOptions.map((option) => (
               <button
@@ -408,10 +382,29 @@ export function WaferDieNotesDashboard({
           </span>
         </div>
 
-        {notes.length ? (
-          <div className="grid gap-1">
-            {visibleNotes.map((note) => (
-              <article key={note.id} className="border-b border-[#eeeeea] py-5">
+        <div className="grid gap-4">
+          {stageRows.map((step, index) => {
+            const notes = notesByStepId[step.id] ?? EMPTY_NOTES;
+            const visibleNotes = [...notes].sort((first, second) => {
+              const difference = getNoteTimeValue(first) - getNoteTimeValue(second);
+              return sortOrder === "oldest" ? difference : -difference;
+            });
+            const draft = draftByStepId[step.id] ?? "";
+
+            return (
+              <section key={step.id} className="rounded-lg border border-[#e6e6e0] bg-white p-4">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-[15px] font-semibold text-[#111111]">
+                    {index + 1}. {step.name}
+                  </h3>
+                  <span className="text-[12px] font-semibold text-[#777770]">
+                    {notes.length} {notes.length === 1 ? "note" : "notes"}
+                  </span>
+                </div>
+                {visibleNotes.length ? (
+                  <div className="grid gap-1">
+                    {visibleNotes.map((note) => (
+                      <article key={note.id} className="border-b border-[#eeeeea] py-4 last:border-b-0">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <NoteAuthorMark author={note.author} />
@@ -445,7 +438,7 @@ export function WaferDieNotesDashboard({
                     )}
                     <button
                       type="button"
-                      onClick={() => void deleteNote(note.id)}
+                      onClick={() => void deleteNote(step.id, note.id)}
                       disabled={isSaving}
                       className="h-8 rounded-md border border-[#e1e1dc] bg-white px-3 text-[12px] font-semibold text-[#8a3b30] hover:bg-[#fff7f4] disabled:opacity-50"
                     >
@@ -464,7 +457,7 @@ export function WaferDieNotesDashboard({
                     <div className="flex items-center justify-end gap-2">
                       <button
                         type="button"
-                        onClick={() => void saveEdit(note.id)}
+                        onClick={() => void saveEdit(step.id, note.id)}
                         disabled={!editValue.trim() || isSaving}
                         className="h-9 rounded-lg bg-[#111111] px-4 text-[13px] font-semibold text-white hover:bg-[#333333] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
                       >
@@ -475,33 +468,39 @@ export function WaferDieNotesDashboard({
                 ) : (
                   <p className="whitespace-pre-wrap text-[14px] leading-6 text-[#44443f]">{note.body}</p>
                 )}
-              </article>
-            ))}
-          </div>
-        ) : (
-          <EmptyNotesState />
-        )}
-
-        <div className="rounded-lg border border-[#e6e6e0] bg-white p-4">
-          <textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value.slice(0, MAX_NOTE_LENGTH))}
-            placeholder="Write a note..."
-            className="min-h-[112px] w-full resize-y border-0 bg-transparent text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94]"
-          />
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#eeeeea] pt-3">
-            <p className="text-[12px] font-medium text-[#8a8a83]">
-              {draft.length}/{MAX_NOTE_LENGTH}
-            </p>
-            <button
-              type="button"
-              onClick={addNote}
-              disabled={!draft.trim() || isSaving}
-              className="h-10 rounded-lg bg-[#111111] px-4 text-[14px] font-semibold text-white hover:bg-[#333333] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
-            >
-              Add note
-            </button>
-          </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyNotesState />
+                )}
+                <div className="mt-3 border-t border-[#eeeeea] pt-3">
+                  <textarea
+                    value={draft}
+                    onChange={(event) => setDraftByStepId((current) => ({
+                      ...current,
+                      [step.id]: event.target.value.slice(0, MAX_NOTE_LENGTH)
+                    }))}
+                    placeholder={`Write a note for ${step.name}...`}
+                    className="min-h-[88px] w-full resize-y border-0 bg-transparent text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94]"
+                  />
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#eeeeea] pt-3">
+                    <p className="text-[12px] font-medium text-[#8a8a83]">
+                      {draft.length}/{MAX_NOTE_LENGTH}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void addNote(step.id, step.name)}
+                      disabled={!draft.trim() || isSaving}
+                      className="h-10 rounded-lg bg-[#111111] px-4 text-[14px] font-semibold text-white hover:bg-[#333333] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
+                    >
+                      Add note to stage
+                    </button>
+                  </div>
+                </div>
+              </section>
+            );
+          })}
         </div>
       </div>
     </DetailCard>

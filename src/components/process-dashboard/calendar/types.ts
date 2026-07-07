@@ -11,6 +11,11 @@ export type ProcessStepOption = {
   name: string;
 };
 
+export type ProcessCalendarWaferOption = {
+  id: string;
+  wafer_code: string;
+};
+
 export type DraftEvent = {
   location: ProcessCalendarLocation;
   startsAt: Date;
@@ -92,6 +97,7 @@ export type ProcessCalendarBoardProps = {
   calendarStartDate: string;
   days: number;
   steps: ProcessStepOption[];
+  wafers?: ProcessCalendarWaferOption[];
   people: ProcessCalendarPersonOption[];
   initialEvents: ProcessCalendarEventView[];
   initialVisibleStartDate?: string;
