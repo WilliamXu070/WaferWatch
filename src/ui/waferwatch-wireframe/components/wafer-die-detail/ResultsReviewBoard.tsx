@@ -457,14 +457,12 @@ function ParameterContext({
   tile,
   selectedSample,
   visibleSamples,
-  contextRow,
-  onContextRowChange
+  contextRow
 }: {
   tile: WaferStatusTileModel;
   selectedSample: ResultSample;
   visibleSamples: readonly ResultSample[];
   contextRow: number;
-  onContextRowChange: (row: number) => void;
 }) {
   const toneMaps = useMemo(() => buildDisplayToneMaps(tile), [tile]);
   const [isExpanded, setIsExpanded] = useState(true);
@@ -484,21 +482,6 @@ function ParameterContext({
           </button>
           <h3 className="text-[14px] font-semibold text-[#111111]">Row {contextRow}</h3>
         </div>
-        <select
-          aria-label="Parameter row"
-          value={contextRow}
-          onChange={(event) => onContextRowChange(Number(event.target.value))}
-          className="h-9 rounded-lg border border-[#e1e1dc] bg-white px-3 text-[13px] font-semibold text-[#44443f] outline-none hover:bg-[#fafafa] focus:border-[#111111]"
-        >
-          {chipRowSections.map((section) => {
-            const row = Number(section.id.replace("R", ""));
-            return (
-              <option key={section.id} value={row}>
-                Row {row}
-              </option>
-            );
-          })}
-        </select>
       </div>
       {isExpanded ? (
         <div className="overflow-x-auto">
@@ -1072,15 +1055,6 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     setGalleryStartColumn((current) => Math.min(maxGalleryStartColumn, Math.max(1, current + direction)));
   }, []);
 
-  const handleContextRowChange = useCallback((row: number) => {
-    const nextSample = resultSamples.find((sample) => sample.row === row && sample.column === selectedSample.column);
-    if (nextSample) {
-      selectSample(nextSample);
-    } else {
-      setContextRow(row);
-    }
-  }, [selectSample, selectedSample.column]);
-
   return (
     <div className="grid gap-4">
       <ResultsGalleryViewport
@@ -1116,7 +1090,6 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
         selectedSample={selectedSample}
         visibleSamples={visibleSamples}
         contextRow={contextRow}
-        onContextRowChange={handleContextRowChange}
       />
     </div>
   );

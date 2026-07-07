@@ -706,6 +706,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright rendered the unauthenticated backend empty state, so authenticated
     delete/undo acceptance still needs William's signed-in browser session.
 
+## Recent development note (2026-07-07 results parameter row control removal)
+
+- Removed the Row dropdown from the Results parameter context header. The
+  parameter row now follows the selected gallery sample only.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-parameter-row-control-removed-auth-gated.png`
+  - Playwright rendered the unauthenticated backend empty state, so authenticated
+    visual acceptance still needs William's signed-in browser session.
+
 ## Recent development note (2026-07-06 results review board)
 
 - Replaced the wafer die detail Results tab with an image-first result review
