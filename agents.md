@@ -917,3 +917,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright CLI screenshot of the unauthenticated route:
     `/tmp/waferwatch-results-status-icons-removed-auth-gated.png`
 - Authenticated visual inspection still needs a fresh signed-in browser session.
+
+## Recent development note (2026-07-06 results arrow navigation and rail fit)
+
+- Added Results keyboard navigation: ArrowLeft/ArrowRight/ArrowUp/ArrowDown
+  move the selected R/C sample in the result grid while focus is not inside an
+  input, textarea, select, or contenteditable surface.
+- Tightened the selected-image rail layout with min-width guards, truncation,
+  wrapping image controls, and a constrained right column so buttons and note
+  actions fit inside the panel.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3012/api/health`
+  - Playwright CLI screenshot of the unauthenticated route:
+    `/tmp/waferwatch-results-arrow-nav-rail-fit-auth-gated.png`
+- Authenticated keyboard/rail visual acceptance still needs a fresh signed-in
+  browser session.

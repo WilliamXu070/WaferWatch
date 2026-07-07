@@ -407,13 +407,13 @@ function SelectedSamplePanel({
   };
 
   return (
-    <aside className="grid content-start gap-4 rounded-lg border border-[#e8e8e3] bg-white p-4 xl:sticky xl:top-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-[20px] font-semibold text-[#111111]">{selectedSample.id}</h2>
-          <p className="mt-1 text-[13px] font-semibold text-[#777770]">{sampleTitle}</p>
+    <aside className="grid min-w-0 content-start gap-4 overflow-hidden rounded-lg border border-[#e8e8e3] bg-white p-4 xl:sticky xl:top-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="truncate text-[20px] font-semibold text-[#111111]">{selectedSample.id}</h2>
+          <p className="mt-1 truncate text-[13px] font-semibold text-[#777770]">{sampleTitle}</p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={() => onNavigateSample(-1)}
@@ -461,8 +461,8 @@ function SelectedSamplePanel({
             </div>
           ) : null}
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
               className="grid h-8 w-8 place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa] disabled:opacity-40"
@@ -482,10 +482,10 @@ function SelectedSamplePanel({
               <ChevronRightIcon />
             </button>
           </div>
-          <div className="flex items-center gap-2 text-[12px] font-semibold text-[#55554f]">
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 text-[12px] font-semibold text-[#55554f]">
             <button
               type="button"
-              className="rounded-md border border-[#e1e1dc] px-2 py-1 hover:bg-[#fafafa] disabled:opacity-40"
+              className="h-8 rounded-md border border-[#e1e1dc] px-2.5 hover:bg-[#fafafa] disabled:opacity-40"
               onClick={open}
               disabled={isImageBusy}
             >
@@ -493,7 +493,7 @@ function SelectedSamplePanel({
             </button>
             <button
               type="button"
-              className="rounded-md border border-[#e1e1dc] px-2 py-1 text-[#9b2727] hover:bg-[#fff0ef] disabled:text-[#aaa] disabled:hover:bg-transparent"
+              className="h-8 rounded-md border border-[#e1e1dc] px-2.5 text-[#9b2727] hover:bg-[#fff0ef] disabled:text-[#aaa] disabled:hover:bg-transparent"
               onClick={onDeleteImage}
               disabled={!selectedInspection || isImageBusy}
             >
@@ -507,7 +507,7 @@ function SelectedSamplePanel({
       <div className="border-t border-[#eeeeea] pt-4">
         <label className="grid gap-2">
           <span className="text-[14px] font-semibold text-[#111111]">Uniformity</span>
-          <span className="flex items-center rounded-lg border border-[#e1e1dc] bg-white px-3 focus-within:border-[#111111]">
+          <span className="flex min-w-0 items-center rounded-lg border border-[#e1e1dc] bg-white px-3 focus-within:border-[#111111]">
             <input
               type="text"
               inputMode="decimal"
@@ -548,15 +548,15 @@ function SelectedSamplePanel({
           placeholder={`Add a note linked to ${tile.dieLabel || tile.code} ${selectedSample.id} image ${displayImageOrdinal || 0}...`}
           className="min-h-[86px] w-full resize-none rounded-lg border border-[#e1e1dc] bg-white px-3 py-2 text-[13px] leading-5 text-[#111111] outline-none focus:border-[#111111]"
         />
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <span className={["text-[12px] font-semibold", noteError ? "text-[#a33a2b]" : "text-[#777770]"].join(" ")}>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <span className={["min-w-0 text-[12px] font-semibold", noteError ? "text-[#a33a2b]" : "text-[#777770]"].join(" ")}>
             {noteError ?? (isSavingNote ? "Saving sample note..." : "Saved to this image sample")}
           </span>
           <button
             type="button"
             onClick={onAddNote}
             disabled={!draftNote.trim() || isSavingNote}
-            className="h-9 rounded-lg bg-[#111111] px-3 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="ml-auto h-9 shrink-0 rounded-lg bg-[#111111] px-3 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             Add note
           </button>
@@ -703,6 +703,32 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     const nextIndex = (currentIndex + direction + resultSamples.length) % resultSamples.length;
     selectSample(resultSamples[nextIndex]);
   }, [selectSample, selectedSampleId]);
+
+  const navigateSampleByKey = useCallback((key: string) => {
+    const rowCount = chipRowSections.length;
+    const columnCount = chipColumns.length;
+    const rowIndex = selectedSample.row - 1;
+    const columnIndex = selectedSample.column - 1;
+    const nextRowIndex =
+      key === "ArrowUp"
+        ? (rowIndex - 1 + rowCount) % rowCount
+        : key === "ArrowDown"
+          ? (rowIndex + 1) % rowCount
+          : rowIndex;
+    const nextColumnIndex =
+      key === "ArrowLeft"
+        ? (columnIndex - 1 + columnCount) % columnCount
+        : key === "ArrowRight"
+          ? (columnIndex + 1) % columnCount
+          : columnIndex;
+    const nextSample = resultSamples.find(
+      (sample) => sample.row === nextRowIndex + 1 && sample.column === nextColumnIndex + 1
+    );
+
+    if (nextSample) {
+      selectSample(nextSample);
+    }
+  }, [selectSample, selectedSample]);
 
   const addSampleNote = useCallback(async () => {
     const body = draftNote.trim();
@@ -948,8 +974,27 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     return () => window.removeEventListener("paste", handlePaste);
   }, [uploadResultFiles]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+
+      event.preventDefault();
+      navigateSampleByKey(event.key);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [navigateSampleByKey]);
+
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]">
       <div className="grid gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
