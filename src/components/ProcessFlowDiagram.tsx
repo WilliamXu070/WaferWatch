@@ -91,6 +91,15 @@ type GraphSnapshot = {
   scrollTop: number;
 };
 
+type CreatedWaferPayload = {
+  wafer?: {
+    wafer_code?: string | null;
+  } | null;
+  assignment?: {
+    id?: string | null;
+  } | null;
+};
+
 const MAX_UNDO_STACK = 30;
 
 function getEdgeConnectionKey(edge: FlowEdge) {
@@ -324,6 +333,12 @@ export function ProcessFlowDiagram({
       window.clearTimeout(pendingNameTimerRef.current);
     }
   }, []);
+
+  const scheduleBackgroundRefresh = useCallback(() => {
+    window.setTimeout(() => {
+      router.refresh();
+    }, 250);
+  }, [router]);
 
   const setEditingNode = (nodeId: string | null) => {
     setEditingNodeId(nodeId);
@@ -963,7 +978,32 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    setMoveMessage("Adding next wafer...");
+    const startNode = displayNodes.find((node) => node.role === "start") ?? displayNodes[0];
+    if (!startNode) {
+      setMoveMessage("Create a start step before adding wafers.");
+      return;
+    }
+
+    const temporaryAssignmentId = `local-wafer-${Math.random().toString(36).slice(2, 10)}`;
+    const optimisticWafer: WaferPin = {
+      assignmentId: temporaryAssignmentId,
+      waferCode: "Adding...",
+      dieLabel: null,
+      currentStepStatus: "queued"
+    };
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === startNode.id
+          ? {
+              ...node,
+              wafers: [...node.wafers, optimisticWafer],
+              height: getNodeHeightForWaferCount(node.wafers.length + 1)
+            }
+          : node
+      )
+    );
+    setMoveMessage("Adding wafer in background...");
     startWaferMutationTransition(() => {
       void (async () => {
         const result = await onCreateWaferAtProcessStart({
@@ -971,15 +1011,59 @@ export function ProcessFlowDiagram({
         });
 
         if (!result.ok) {
+          setNodes((currentNodes) =>
+            currentNodes.map((node) =>
+              node.id === startNode.id
+                ? {
+                    ...node,
+                    wafers: node.wafers.filter((wafer) => wafer.assignmentId !== temporaryAssignmentId),
+                    height: getNodeHeightForWaferCount(
+                      node.wafers.filter((wafer) => wafer.assignmentId !== temporaryAssignmentId).length
+                    )
+                  }
+                : node
+            )
+          );
           setMoveMessage(result.error);
           return;
         }
 
+        const payload = result.data as CreatedWaferPayload;
+        const assignmentId = payload.assignment?.id;
+        const waferCode = payload.wafer?.wafer_code;
+
+        if (assignmentId && waferCode) {
+          setNodes((currentNodes) =>
+            currentNodes.map((node) =>
+              node.id === startNode.id
+                ? {
+                    ...node,
+                    wafers: node.wafers.map((wafer) =>
+                      wafer.assignmentId === temporaryAssignmentId
+                        ? {
+                            ...wafer,
+                            assignmentId,
+                            waferCode
+                          }
+                        : wafer
+                    )
+                  }
+                : node
+            )
+          );
+        }
+
         setMoveMessage("Added wafer.");
-        router.refresh();
+        scheduleBackgroundRefresh();
       })();
     });
-  }, [isWaferMutationPending, onCreateWaferAtProcessStart, processTemplateId, router]);
+  }, [
+    displayNodes,
+    isWaferMutationPending,
+    onCreateWaferAtProcessStart,
+    processTemplateId,
+    scheduleBackgroundRefresh
+  ]);
 
   const selectWafer = useCallback((nodeId: string, wafer: WaferPin) => {
     setSelectedNodeIds(new Set());
@@ -1030,10 +1114,10 @@ export function ProcessFlowDiagram({
         }
 
         setMoveMessage(`Deleted ${wafer.label}.`);
-        router.refresh();
+        scheduleBackgroundRefresh();
       })();
     });
-  }, [isWaferMutationPending, onDeleteWafer, router, selectedWafer]);
+  }, [isWaferMutationPending, onDeleteWafer, scheduleBackgroundRefresh, selectedWafer]);
 
   const restoreFromSnapshot = useCallback((snapshot: GraphSnapshot) => {
     clearTimers();
@@ -1783,11 +1867,52 @@ export function ProcessFlowDiagram({
     }
 
     const move = pendingWaferMove;
-    setMoveMessage(
-      move.completeSourceStep
-        ? `Completing ${move.sourceLabel} and moving ${move.waferLabel} to ${move.targetLabel}...`
-        : `Moving ${move.waferLabel} to ${move.targetLabel}...`
+    const previousNodes = nodesRef.current;
+    const movingWafer =
+      previousNodes
+        .find((node) => node.id === move.sourceStepId)
+        ?.wafers.find((wafer) => wafer.assignmentId === move.assignmentId) ?? null;
+    const optimisticWafer: WaferPin = movingWafer ?? {
+      assignmentId: move.assignmentId,
+      waferCode: move.waferLabel,
+      dieLabel: null,
+      currentStepStatus: "queued"
+    };
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => {
+        if (node.id === move.sourceStepId) {
+          const nextWafers = node.wafers.filter((wafer) => wafer.assignmentId !== move.assignmentId);
+          return {
+            ...node,
+            wafers: nextWafers,
+            height: getNodeHeightForWaferCount(nextWafers.length)
+          };
+        }
+
+        if (node.id === move.targetStepId) {
+          const nextWafers: WaferPin[] = [
+            ...node.wafers.filter((wafer) => wafer.assignmentId !== move.assignmentId),
+            {
+              ...optimisticWafer,
+              currentStepStatus: "queued" as const
+            }
+          ];
+          return {
+            ...node,
+            wafers: nextWafers,
+            height: getNodeHeightForWaferCount(nextWafers.length)
+          };
+        }
+
+        return node;
+      })
     );
+    setSelectedWafer(null);
+    setPendingWaferMove(null);
+    setPendingWaferMoveNote("");
+    setMoveMessage(`Moving ${move.waferLabel} to ${move.targetLabel} in background...`);
+
     startMoveTransition(() => {
       void (async () => {
         const result = await onMoveWafer({
@@ -1799,16 +1924,18 @@ export function ProcessFlowDiagram({
         });
 
         if (result.ok) {
-          setPendingWaferMove(null);
-          setPendingWaferMoveNote("");
           setMoveMessage(
             move.completeSourceStep
               ? `Completed source step and moved ${move.waferLabel} to ${move.targetLabel}.`
               : `Moved ${move.waferLabel} to ${move.targetLabel}.`
           );
+          scheduleBackgroundRefresh();
           return;
         }
 
+        setNodes(previousNodes);
+        setPendingWaferMove(move);
+        setPendingWaferMoveNote(note);
         setMoveMessage(result.error);
       })();
     });

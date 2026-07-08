@@ -2071,3 +2071,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
     dispatched click/double-click on `.flow-wafer-chip`; `.flow-node-title-input`
     remained `0` before and after, with no console errors.
+
+## Recent development note (2026-07-08 process-flow background wafer mutations)
+
+- Made Process Flow wafer add, delete, and move paths local-first so the canvas
+  updates before the server round trip completes.
+- Adding a wafer now inserts an optimistic queued wafer on the start node
+  immediately, then replaces it with the persisted assignment/wafer code in the
+  background or removes it on failure.
+- Moving a wafer now closes the move dialog and shifts the wafer chip to the
+  target node immediately, then persists in the background and rolls back on
+  failure.
+- Deleting a wafer remains optimistic and now schedules a delayed background
+  refresh instead of forcing an immediate full refresh after success.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright at
+    `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    route loaded with no console errors.
