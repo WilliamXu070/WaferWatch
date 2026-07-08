@@ -14,7 +14,7 @@ import {
 } from "@/features/runs/schemas";
 import type { Json, ProcessStep, ProcessStepTransition, StepExecution } from "@/types/database";
 
-const CURRENT_STEP_STATUSES = ["queued", "running", "blocked", "failed"] as const;
+const CURRENT_STEP_STATUSES = ["pending", "queued", "running", "blocked", "failed"] as const;
 const DIE_COUNT = 8;
 
 function toJsonRecord(value: Json): Record<string, Json | undefined> {
@@ -721,7 +721,7 @@ export async function moveWaferToProcessStep(input: unknown) {
       parsed.completeSourceStep &&
       currentExecution &&
       currentExecution.process_step_id !== parsed.targetStepId &&
-      (currentExecution.status === "queued" || currentExecution.status === "running") &&
+      CURRENT_STEP_STATUSES.includes(currentExecution.status as (typeof CURRENT_STEP_STATUSES)[number]) &&
       currentStepResult?.data &&
       allowedTransition.edge_type === "flow"
     );

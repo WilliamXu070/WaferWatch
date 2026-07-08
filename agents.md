@@ -2090,3 +2090,24 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright at
     `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
     route loaded with no console errors.
+
+## Recent development note (2026-07-08 wafer-status timeline flow order)
+
+- Updated the wafer/die status timeline loader so process steps are ordered from
+  `process_step_transitions` with the shared occurrence-order helper instead of
+  stale `process_steps.step_order` sorting.
+- The status timeline now picks the strongest execution row per step and derives
+  current step from flow occurrence, so inserted/reconnected flow steps render in
+  the same order as Process Flow.
+- Earlier pending/missing timeline rows are shown as completed once the current
+  step has advanced past them, repairing stale first-step displays after movement.
+- Fixed first-step movement completion by treating a pending source execution as
+  a valid current source when moving along a direct flow transition.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright screenshot at
+    `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
+    The current browser session rendered the authenticated empty state, so live
+    populated timeline acceptance still needs a process with visible wafer data.

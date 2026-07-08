@@ -1,7 +1,16 @@
 import "server-only";
 
+import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { Json, FabricationStatus, ProcessStep, StepExecution, StepStatus, WaferProcessAssignment } from "@/types/database";
+import type {
+  Json,
+  FabricationStatus,
+  ProcessStep,
+  ProcessStepTransition,
+  StepExecution,
+  StepStatus,
+  WaferProcessAssignment
+} from "@/types/database";
 import type {
   DiePolingRows,
   WaferDisplayMode,
@@ -49,7 +58,8 @@ type WaferStatusExecutionRow = Pick<
   "id" | "assignment_id" | "process_step_id" | "status" | "created_at" | "started_at" | "completed_at"
 >;
 
-type WaferStatusStepRow = Pick<ProcessStep, "id" | "template_id" | "name" | "process_area" | "step_order">;
+type WaferStatusStepRow = Pick<ProcessStep, "id" | "template_id" | "name" | "process_area" | "step_order" | "node_type">;
+type WaferStatusTransitionRow = Pick<ProcessStepTransition, "from_step_id" | "to_step_id" | "edge_type" | "priority" | "created_at">;
 
 const ACTIVE_ASSIGNMENT_STATUSES: FabricationStatus[] = ["planned", "queued", "in_progress", "on_hold"];
 const DIE_POLING_PARAMETERS_KEY = "die_poling_parameters";
@@ -173,13 +183,22 @@ function deriveStepStatusRank(status: StepStatus) {
   return 9;
 }
 
-function pickCurrentStepExecution(executions: ReadonlyArray<WaferStatusExecutionRow>) {
+function pickCurrentStepExecution(
+  executions: ReadonlyArray<WaferStatusExecutionRow>,
+  stepOccurrenceById: Map<string, number>
+) {
   const prioritized = executions
     .filter((execution) => ["running", "blocked", "failed", "queued", "pending"].includes(execution.status))
     .sort((a, b) => {
       const statusRank = deriveStepStatusRank(a.status) - deriveStepStatusRank(b.status);
       if (statusRank !== 0) {
         return statusRank;
+      }
+
+      const orderA = stepOccurrenceById.get(a.process_step_id) ?? Number.MAX_SAFE_INTEGER;
+      const orderB = stepOccurrenceById.get(b.process_step_id) ?? Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) {
+        return orderA - orderB;
       }
 
       return new Date(b.started_at ?? b.created_at).getTime() - new Date(a.started_at ?? a.created_at).getTime();
@@ -192,10 +211,31 @@ function pickCurrentStepExecution(executions: ReadonlyArray<WaferStatusExecution
   return executions
     .filter((execution) => execution.status === "completed" || execution.status === "skipped")
     .sort((a, b) => {
-      const timeA = new Date(a.completed_at ?? a.started_at ?? a.created_at).getTime();
-      const timeB = new Date(b.completed_at ?? b.started_at ?? b.created_at).getTime();
-      return timeB - timeA;
+      const orderA = stepOccurrenceById.get(a.process_step_id) ?? Number.MIN_SAFE_INTEGER;
+      const orderB = stepOccurrenceById.get(b.process_step_id) ?? Number.MIN_SAFE_INTEGER;
+      if (orderA !== orderB) {
+        return orderB - orderA;
+      }
+
+      return compareExecutionRecency(b, a);
     })[0];
+}
+
+function compareExecutionRecency(a: WaferStatusExecutionRow, b: WaferStatusExecutionRow) {
+  const timeA = new Date(a.completed_at ?? a.started_at ?? a.created_at).getTime();
+  const timeB = new Date(b.completed_at ?? b.started_at ?? b.created_at).getTime();
+  return timeA - timeB;
+}
+
+function pickStepTimelineExecution(executions: ReadonlyArray<WaferStatusExecutionRow>) {
+  return [...executions].sort((a, b) => {
+    const rankDelta = deriveStepStatusRank(a.status) - deriveStepStatusRank(b.status);
+    if (rankDelta !== 0) {
+      return rankDelta;
+    }
+
+    return compareExecutionRecency(b, a);
+  })[0] ?? null;
 }
 
 function mapTileStatus({
@@ -297,6 +337,7 @@ function mapWafersToStatusModel({
   executionsByAssignmentId,
   stepsById,
   processSteps,
+  stepOccurrenceById,
   textSurfacesByKey
 }: {
   wafers: WaferStatusWaferRow[];
@@ -304,6 +345,7 @@ function mapWafersToStatusModel({
   executionsByAssignmentId: Map<string, WaferStatusExecutionRow[]>;
   stepsById: Map<string, WaferStatusStepRow>;
   processSteps: WaferStatusStepRow[];
+  stepOccurrenceById: Map<string, number>;
   textSurfacesByKey: Map<string, WaferStatusTextSurfaceRow>;
 }): WaferStatusModel {
   const familyBuckets = new Map<string, { wafers: WaferStatusWaferRow[]; tiles: WaferStatusTileModel[] }>();
@@ -316,11 +358,17 @@ function mapWafersToStatusModel({
       continue;
     }
 
-    const currentExecution = assignment ? pickCurrentStepExecution(assignmentExecutions) : null;
+    const currentExecution = assignment ? pickCurrentStepExecution(assignmentExecutions, stepOccurrenceById) : null;
     const currentStep = currentExecution ? stepsById.get(currentExecution.process_step_id) ?? null : null;
-    const executionsByStepId = new Map(
-      assignmentExecutions.map((execution) => [execution.process_step_id, execution])
-    );
+    const executionsByStepId = new Map<string, WaferStatusExecutionRow>();
+    for (const step of processSteps) {
+      const execution = pickStepTimelineExecution(
+        assignmentExecutions.filter((candidate) => candidate.process_step_id === step.id)
+      );
+      if (execution) {
+        executionsByStepId.set(step.id, execution);
+      }
+    }
     const dieLabel = extractDieLabel(wafer.metadata);
     const mode = deriveWaferMode(wafer.metadata, dieLabel);
     const family = deriveFamily(wafer.wafer_code, wafer.metadata);
@@ -349,6 +397,7 @@ function mapWafersToStatusModel({
       currentStep,
       currentStepStatus: currentExecution?.status ?? null
     });
+    const currentStepOccurrence = currentStep ? stepOccurrenceById.get(currentStep.id) ?? null : null;
     const tile: WaferStatusTileModel = {
       id: wafer.id,
       projectId: wafer.project_id,
@@ -364,15 +413,22 @@ function mapWafersToStatusModel({
       notesSurfaceValuesByStepId,
       currentStepId: currentStep?.id ?? null,
       currentStepExecutionId: currentExecution?.id ?? null,
-      processSteps: processSteps.map((step) => {
+      processSteps: processSteps.map((step, index) => {
         const execution = executionsByStepId.get(step.id) ?? null;
+        const timelineStatus: StepStatus =
+          currentStepOccurrence !== null &&
+          index < currentStepOccurrence &&
+          execution?.status !== "completed" &&
+          execution?.status !== "skipped"
+            ? "completed"
+            : execution?.status ?? "pending";
 
         return {
           id: step.id,
           name: step.name,
           processArea: step.process_area,
-          stepOrder: step.step_order,
-          status: execution?.status ?? "pending",
+          stepOrder: index + 1,
+          status: timelineStatus,
           executionId: execution?.id ?? null,
           startedAt: execution?.started_at ?? null,
           completedAt: execution?.completed_at ?? null,
@@ -544,13 +600,13 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   const stepsResult = processTemplateId
     ? await supabase
         .from("process_steps")
-        .select("id, template_id, name, process_area, step_order")
+        .select("id, template_id, name, process_area, step_order, node_type")
         .eq("template_id", processTemplateId)
         .order("step_order", { ascending: true })
     : executionStepIds.length
       ? await supabase
           .from("process_steps")
-          .select("id, template_id, name, process_area, step_order")
+          .select("id, template_id, name, process_area, step_order, node_type")
           .in("id", executionStepIds)
           .order("step_order", { ascending: true })
       : ({ data: [], error: null } as const);
@@ -559,10 +615,32 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     throw stepsResult.error;
   }
 
-  const stepsById = new Map(
-    ((stepsResult.data ?? []) as WaferStatusStepRow[]).map((step) => [step.id, step])
-  );
-  const processSteps = [...stepsById.values()].sort((a, b) => a.step_order - b.step_order);
+  const stepRows = (stepsResult.data ?? []) as WaferStatusStepRow[];
+  const templateIds = Array.from(new Set(stepRows.map((step) => step.template_id)));
+  const transitionsResult = processTemplateId
+    ? await supabase
+        .from("process_step_transitions")
+        .select("from_step_id, to_step_id, edge_type, priority, created_at")
+        .eq("template_id", processTemplateId)
+        .order("priority", { ascending: true })
+        .order("created_at", { ascending: true })
+    : templateIds.length
+      ? await supabase
+          .from("process_step_transitions")
+          .select("from_step_id, to_step_id, edge_type, priority, created_at")
+          .in("template_id", templateIds)
+          .order("priority", { ascending: true })
+          .order("created_at", { ascending: true })
+      : ({ data: [], error: null } as const);
+
+  if (transitionsResult.error) {
+    throw transitionsResult.error;
+  }
+
+  const transitionRows = (transitionsResult.data ?? []) as WaferStatusTransitionRow[];
+  const stepsById = new Map(stepRows.map((step) => [step.id, step]));
+  const processSteps = orderProcessStepsByOccurrence(stepRows, transitionRows);
+  const stepOccurrenceById = new Map(processSteps.map((step, index) => [step.id, index]));
 
   return mapWafersToStatusModel({
     wafers,
@@ -570,6 +648,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     executionsByAssignmentId,
     stepsById,
     processSteps,
+    stepOccurrenceById,
     textSurfacesByKey
   });
 }

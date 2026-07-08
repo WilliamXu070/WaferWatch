@@ -54,6 +54,10 @@ function getStepState(step: WaferStatusProcessStepModel, currentStepId: string |
 function formatTimelineTime(step: WaferStatusProcessStepModel, state: "complete" | "active" | "pending") {
   const timestamp = step.completedAt ?? step.startedAt ?? step.createdAt;
   if (!timestamp) {
+    if (state === "complete") {
+      return "Complete";
+    }
+
     return state === "pending" ? "Pending" : "In progress";
   }
 
