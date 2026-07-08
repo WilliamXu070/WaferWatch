@@ -2195,3 +2195,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
     The CLI browser rendered the auth-gated empty state, so exact signed-in note
     acceptance still needs a live authenticated browser session.
+
+## Recent development note (2026-07-08 wafer-status notes redesign)
+
+- Refactored only the wafer/die Notes tab UI into a two-column workflow:
+  process timeline selector on the left, selected-step notes feed on the right,
+  filter pills, sort select, attachment rows, and a bottom composer bound to the
+  selected process step.
+- Preserved existing note persistence, edit/delete behavior, attachment upload,
+  attachment registration, and signed download logic. No backend/schema changes.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright screenshot at
+    `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
+    The CLI browser rendered the login screen, so visual acceptance of the
+    signed-in Notes tab still needs a live authenticated browser session.

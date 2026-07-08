@@ -9,6 +9,11 @@ import { isGeneratedDicedPieceNote } from "@/features/runs/dicingNoteTransfer";
 import { upsertTextSurface } from "@/features/text-surfaces/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
+import {
+  CheckIcon,
+  DotsIcon,
+  StepFileIcon
+} from "../../icons";
 import { DetailCard } from "./DetailCard";
 import {
   getWaferDieNotesScopeKey,
@@ -328,6 +333,76 @@ export function NotesCard({
   );
 }
 
+type NotesFilter = "all" | "issues" | "pinned" | "attachments";
+
+const noteFilters: Array<{ id: NotesFilter; label: string }> = [
+  { id: "all", label: "All notes" },
+  { id: "issues", label: "Open issues" },
+  { id: "pinned", label: "Pinned" },
+  { id: "attachments", label: "With attachments" }
+];
+
+function isOpenIssueNote(note: WaferDieNote) {
+  return /\b(issue|blocked|fail|failed|risk|chipping|investigating|urgent|problem)\b/i.test(note.body);
+}
+
+function isPinnedNote(note: WaferDieNote) {
+  const pinned = (note as WaferDieNote & { pinned?: unknown }).pinned;
+  return pinned === true || note.id.startsWith("pinned:");
+}
+
+function filterNotes(notes: readonly WaferDieNote[], filter: NotesFilter) {
+  if (filter === "issues") {
+    return notes.filter(isOpenIssueNote);
+  }
+
+  if (filter === "pinned") {
+    return notes.filter(isPinnedNote);
+  }
+
+  if (filter === "attachments") {
+    return notes.filter((note) => (note.attachments?.length ?? 0) > 0);
+  }
+
+  return [...notes];
+}
+
+function getStepStatusLabel(step: {
+  id: string;
+  name: string;
+  status?: string;
+  processArea?: string;
+  completedAt?: string | null;
+  startedAt?: string | null;
+  createdAt?: string | null;
+}) {
+  const state = step.status === "completed" || step.status === "skipped"
+    ? "Complete"
+    : step.status === "running" || step.status === "queued" || step.status === "blocked" || step.status === "failed"
+      ? formatTimelineTimestamp(step.startedAt ?? step.createdAt) ?? "Active"
+      : "Pending";
+
+  return step.processArea ? `${step.processArea} · ${state}` : state;
+}
+
+function formatTimelineTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
 export function WaferDieNotesDashboard({
   tile,
   notesByStepId,
@@ -342,6 +417,12 @@ export function WaferDieNotesDashboard({
     ? processSteps
     : [{ id: "die", name: "Die notes", stepOrder: 1 }];
   const totalNotes = stageRows.reduce((total, step) => total + (notesByStepId[step.id]?.length ?? 0), 0);
+  const [selectedStepId, setSelectedStepId] = useState(() =>
+    tile.currentStepId && stageRows.some((step) => step.id === tile.currentStepId)
+      ? tile.currentStepId
+      : stageRows.find((step) => (notesByStepId[step.id]?.length ?? 0) > 0)?.id ?? stageRows[0]?.id ?? "die"
+  );
+  const [activeFilter, setActiveFilter] = useState<NotesFilter>("all");
   const [draftByStepId, setDraftByStepId] = useState<Record<string, string>>({});
   const [draftFilesByStepId, setDraftFilesByStepId] = useState<Record<string, File[]>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -564,67 +645,175 @@ export function WaferDieNotesDashboard({
     await persistNotes(stepId, nextNotes, notes);
   };
 
+  const selectedStep = stageRows.find((step) => step.id === selectedStepId) ?? stageRows[0];
+  const selectedNotes = selectedStep ? notesByStepId[selectedStep.id] ?? EMPTY_NOTES : EMPTY_NOTES;
+  const visibleNotes = filterNotes(selectedNotes, activeFilter).sort((first, second) => {
+    const difference = getNoteTimeValue(first) - getNoteTimeValue(second);
+    return sortOrder === "oldest" ? difference : -difference;
+  });
+  const allNotes = stageRows.flatMap((step) => notesByStepId[step.id] ?? EMPTY_NOTES);
+  const filterCounts: Record<NotesFilter, number> = {
+    all: totalNotes,
+    issues: allNotes.filter(isOpenIssueNote).length,
+    pinned: allNotes.filter(isPinnedNote).length,
+    attachments: allNotes.filter((note) => (note.attachments?.length ?? 0) > 0).length
+  };
+  const selectedDraft = selectedStep ? draftByStepId[selectedStep.id] ?? "" : "";
+  const selectedDraftFiles = selectedStep ? draftFilesByStepId[selectedStep.id] ?? [] : [];
+  const selectedStepExecutionId =
+    selectedStep &&
+    "executionId" in selectedStep &&
+    typeof selectedStep.executionId === "string"
+      ? selectedStep.executionId
+      : null;
+
   return (
-    <DetailCard title="Notes" className="min-h-[520px]">
-      <div className="grid gap-5">
-        <div className="flex min-h-5 flex-wrap items-center justify-between gap-3 text-[12px] font-semibold">
-          <span className="text-[#777770]">{totalNotes} {totalNotes === 1 ? "note" : "notes"} across all stages</span>
-          <div className="flex items-center gap-1 rounded-lg border border-[#e1e1dc] bg-white p-1">
-            {notesSortOptions.map((option) => (
+    <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <DetailCard title="Process timeline" className="min-h-[520px]">
+        <ol className="grid gap-1">
+          {stageRows.map((step, index) => {
+            const isSelected = step.id === selectedStep?.id;
+            const stepNotes = notesByStepId[step.id] ?? EMPTY_NOTES;
+            const isComplete = "status" in step && (step.status === "completed" || step.status === "skipped");
+            const isActive = "status" in step && ["running", "queued", "blocked", "failed"].includes(step.status);
+
+            return (
+              <li key={step.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStepId(step.id)}
+                  className={[
+                    "grid w-full grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-3 text-left transition-colors",
+                    isSelected
+                      ? "border-[#8db5ff] bg-[#f4f8ff]"
+                      : "border-transparent bg-transparent hover:border-[#e3e3dd] hover:bg-[#fafafa]"
+                  ].join(" ")}
+                  aria-pressed={isSelected}
+                >
+                  <span
+                    className={[
+                      "grid h-7 w-7 place-items-center rounded-full border text-[12px] font-semibold",
+                      isSelected
+                        ? "border-[#3c75f6] bg-[#3c75f6] text-white"
+                        : isComplete
+                          ? "border-[#111111] bg-[#111111] text-white"
+                          : "border-[#d9d9d2] bg-white text-[#777770]"
+                    ].join(" ")}
+                  >
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[14px] font-semibold text-[#111111]">{step.name}</span>
+                    <span className={["block truncate text-[12px] font-medium", isSelected ? "text-[#3167df]" : "text-[#777770]"].join(" ")}>
+                      {getStepStatusLabel(step)}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    {stepNotes.length ? (
+                      <span className="rounded-full bg-[#efefea] px-2 py-1 text-[11px] font-semibold text-[#66665f]">
+                        {stepNotes.length}
+                      </span>
+                    ) : null}
+                    {isComplete ? (
+                      <span className="grid h-5 w-5 place-items-center rounded-full bg-[#111111] text-[11px] font-semibold text-white">
+                        <CheckIcon />
+                      </span>
+                    ) : isActive ? (
+                      <span className="h-2 w-2 rounded-full bg-[#2d74f0]" aria-hidden />
+                    ) : null}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </DetailCard>
+
+      <section className="overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eeeeea] px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {noteFilters.map((filter) => (
               <button
-                key={option.id}
+                key={filter.id}
                 type="button"
-                onClick={() => setSortOrder(option.id)}
+                onClick={() => setActiveFilter(filter.id)}
                 className={[
-                  "h-7 rounded-md px-3 text-[12px] font-semibold",
-                  sortOrder === option.id
-                    ? "bg-[#111111] text-white"
-                    : "text-[#66665f] hover:bg-[#fafafa]"
+                  "inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold",
+                  activeFilter === filter.id
+                    ? "border-[#8db5ff] bg-[#f5f8ff] text-[#111111]"
+                    : "border-[#e6e6e0] bg-white text-[#44443f] hover:bg-[#fafafa]"
                 ].join(" ")}
-                aria-pressed={sortOrder === option.id}
+                aria-pressed={activeFilter === filter.id}
               >
-                {option.label}
+                {filter.label}
+                <span className={activeFilter === filter.id ? "text-[#2d74f0]" : "text-[#777770]"}>
+                  {filterCounts[filter.id]}
+                </span>
               </button>
             ))}
           </div>
-          <span className={error ? "text-[#a33a2b]" : "text-[#777770]"}>
-            {error ?? (isSaving ? "Saving..." : savedAt ? `Saved ${formatNoteTime(savedAt)}` : "")}
-          </span>
+          <div className="flex items-center gap-2 text-[12px] font-semibold text-[#66665f]">
+            <span className={error ? "text-[#a33a2b]" : "text-[#777770]"}>
+              {error ?? (isSaving ? "Saving..." : savedAt ? `Saved ${formatNoteTime(savedAt)}` : "")}
+            </span>
+            <label className="flex items-center gap-2">
+              Sort:
+              <select
+                value={sortOrder}
+                onChange={(event) => setSortOrder(event.target.value as NotesSortOrder)}
+                className="h-8 rounded-md border border-[#e1e1dc] bg-white px-2 text-[12px] font-semibold text-[#44443f] outline-none focus:border-[#111111]"
+              >
+                {notesSortOptions.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
 
-        <div className="grid gap-4">
-          {stageRows.map((step, index) => {
-            const notes = notesByStepId[step.id] ?? EMPTY_NOTES;
-            const visibleNotes = [...notes].sort((first, second) => {
-              const difference = getNoteTimeValue(first) - getNoteTimeValue(second);
-              return sortOrder === "oldest" ? difference : -difference;
-            });
-            const draft = draftByStepId[step.id] ?? "";
-            const draftFiles = draftFilesByStepId[step.id] ?? [];
-            const stepExecutionId = "executionId" in step ? step.executionId : null;
+        <div className="border-b border-[#eeeeea] px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#1fa69a]" aria-hidden />
+              <h3 className="truncate text-[15px] font-semibold text-[#111111]">{selectedStep?.name ?? "Notes"}</h3>
+              <span className="text-[13px] font-semibold text-[#8a8a83]">
+                {selectedNotes.length} {selectedNotes.length === 1 ? "note" : "notes"}
+              </span>
+            </div>
+                  <button
+                    type="button"
+                    className="grid h-9 w-9 place-items-center rounded-lg border border-[#e6e6e0] bg-white text-[16px] font-semibold text-[#66665f] hover:bg-[#fafafa]"
+                    title="More note actions"
+                  >
+                    <DotsIcon />
+                  </button>
+          </div>
+        </div>
 
-            return (
-              <section key={step.id} className="rounded-lg border border-[#e6e6e0] bg-white p-4">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="text-[15px] font-semibold text-[#111111]">
-                    {index + 1}. {step.name}
-                  </h3>
-                  <span className="text-[12px] font-semibold text-[#777770]">
-                    {notes.length} {notes.length === 1 ? "note" : "notes"}
-                  </span>
-                </div>
-                {visibleNotes.length ? (
-                  <div className="grid gap-1">
-                    {visibleNotes.map((note) => (
-                      <article key={note.id} className="border-b border-[#eeeeea] py-4 last:border-b-0">
+        <div className="grid max-h-[540px] min-h-[300px] gap-3 overflow-y-auto bg-[#fbfbf8] p-3">
+          {visibleNotes.length ? (
+            visibleNotes.map((note) => (
+              <article key={note.id} className="rounded-lg border border-[#e6e6e0] bg-white p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex min-w-0 items-start gap-3">
                     <NoteAuthorMark author={note.author} />
                     <div className="min-w-0">
-                      <strong className="block text-[14px] text-[#111111]">{note.author}</strong>
-                      <span className="text-[13px] font-medium text-[#8a8a83]">
-                        {formatNoteTime(note.updatedAt)}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isPinnedNote(note) ? (
+                          <span className="rounded-full bg-[#eef4ff] px-2 py-0.5 text-[11px] font-semibold text-[#2d74f0]">
+                            Pinned
+                          </span>
+                        ) : null}
+                        {isOpenIssueNote(note) ? (
+                          <span className="rounded-full bg-[#fff2e8] px-2 py-0.5 text-[11px] font-semibold text-[#a84d1d]">
+                            Open issue
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <strong className="text-[14px] text-[#111111]">{note.author}</strong>
+                        <span className="text-[13px] font-medium text-[#8a8a83]">{formatNoteTime(note.updatedAt)}</span>
+                      </div>
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -650,8 +839,8 @@ export function WaferDieNotesDashboard({
                     )}
                     <button
                       type="button"
-                      onClick={() => void deleteNote(step.id, note.id)}
-                      disabled={isSaving}
+                      onClick={() => selectedStep ? void deleteNote(selectedStep.id, note.id) : undefined}
+                      disabled={isSaving || !selectedStep}
                       className="h-8 rounded-md border border-[#e1e1dc] bg-white px-3 text-[12px] font-semibold text-[#8a3b30] hover:bg-[#fff7f4] disabled:opacity-50"
                     >
                       Delete
@@ -669,8 +858,8 @@ export function WaferDieNotesDashboard({
                     <div className="flex items-center justify-end gap-2">
                       <button
                         type="button"
-                        onClick={() => void saveEdit(step.id, note.id)}
-                        disabled={!editValue.trim() || isSaving}
+                        onClick={() => selectedStep ? void saveEdit(selectedStep.id, note.id) : undefined}
+                        disabled={!editValue.trim() || isSaving || !selectedStep}
                         className="h-9 rounded-lg bg-[#111111] px-4 text-[13px] font-semibold text-white hover:bg-[#333333] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
                       >
                         Save edit
@@ -678,106 +867,139 @@ export function WaferDieNotesDashboard({
                     </div>
                   </div>
                 ) : (
-                  <p className="whitespace-pre-wrap text-[14px] leading-6 text-[#44443f]">{note.body}</p>
+                  <p className="max-w-[75ch] whitespace-pre-wrap text-[14px] leading-6 text-[#44443f]">{note.body}</p>
                 )}
+
                 {note.attachments?.length ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 grid max-w-[560px] gap-2">
                     {note.attachments.map((attachment) => (
                       <button
                         key={attachment.id}
                         type="button"
                         onClick={() => void openAttachment(attachment)}
                         disabled={openingAttachmentId === attachment.id}
-                        className="inline-flex h-8 max-w-full items-center gap-2 rounded-md border border-[#e1e1dc] bg-[#fafafa] px-3 text-[12px] font-semibold text-[#44443f] hover:bg-white disabled:opacity-60"
+                        className="grid h-9 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-[#e1e1dc] bg-[#fafafa] px-3 text-left text-[12px] font-semibold text-[#44443f] hover:bg-white disabled:opacity-60"
                         title={attachment.fileName}
                       >
-                        <span className="max-w-[220px] truncate">{attachment.fileName}</span>
+                        <StepFileIcon className="text-[#777770]" />
+                        <span className="truncate">{attachment.fileName}</span>
                         <span className="text-[#8a8a83]">{formatFileSize(attachment.sizeBytes)}</span>
                       </button>
                     ))}
                   </div>
                 ) : null}
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyNotesState />
-                )}
-                <div className="mt-3 border-t border-[#eeeeea] pt-3">
-                  <textarea
-                    value={draft}
-                    onChange={(event) => setDraftByStepId((current) => ({
-                      ...current,
-                      [step.id]: event.target.value.slice(0, MAX_NOTE_LENGTH)
-                    }))}
-                    placeholder={`Write a note for ${step.name}...`}
-                    className="min-h-[88px] w-full resize-y border-0 bg-transparent text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94]"
-                  />
-                  {draftFiles.length ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {draftFiles.map((file) => (
-                        <span
-                          key={`${file.name}:${file.size}:${file.lastModified}`}
-                          className="inline-flex h-8 max-w-full items-center gap-2 rounded-md border border-[#e1e1dc] bg-[#fafafa] px-3 text-[12px] font-semibold text-[#44443f]"
-                        >
-                          <span className="max-w-[220px] truncate">{file.name}</span>
-                          <span className="text-[#8a8a83]">{formatFileSize(file.size)}</span>
-                          <button
-                            type="button"
-                            onClick={() => setDraftFilesByStepId((current) => ({
-                              ...current,
-                              [step.id]: (current[step.id] ?? []).filter((candidate) => candidate !== file)
-                            }))}
-                            className="text-[#8a3b30]"
-                          >
-                            Remove
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#eeeeea] pt-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <p className="text-[12px] font-medium text-[#8a8a83]">
-                        {draft.length}/{MAX_NOTE_LENGTH}
-                      </p>
-                      <label className="inline-flex h-9 cursor-pointer items-center rounded-lg border border-[#e1e1dc] bg-white px-3 text-[12px] font-semibold text-[#55554f] hover:bg-[#fafafa]">
-                        Attach files
-                        <input
-                          type="file"
-                          multiple
-                          accept={NOTE_ATTACHMENT_ACCEPT}
-                          className="sr-only"
-                          disabled={isSaving}
-                          onChange={(event) => {
-                            const selectedFiles = Array.from(event.currentTarget.files ?? []);
-                            event.currentTarget.value = "";
-                            setDraftFilesByStepId((current) => {
-                              const existing = current[step.id] ?? [];
-                              return {
-                                ...current,
-                                [step.id]: [...existing, ...selectedFiles].slice(0, MAX_ATTACHMENTS_PER_NOTE)
-                              };
-                            });
-                          }}
-                        />
-                      </label>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void addNote(step.id, step.name, stepExecutionId)}
-                      disabled={!draft.trim() || isSaving}
-                      className="h-10 rounded-lg bg-[#111111] px-4 text-[14px] font-semibold text-white hover:bg-[#333333] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
-                    >
-                      Add note to stage
-                    </button>
-                  </div>
-                </div>
-              </section>
-            );
-          })}
+              </article>
+            ))
+          ) : (
+            <EmptyNotesState />
+          )}
         </div>
-      </div>
-    </DetailCard>
+
+        <div className="border-t border-[#e6e6e0] bg-white p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-[#66665f]">
+            <span>Add note to</span>
+            <select
+              value={selectedStep?.id ?? ""}
+              onChange={(event) => setSelectedStepId(event.target.value)}
+              className="h-9 rounded-lg border border-[#e1e1dc] bg-white px-3 text-[13px] font-semibold text-[#111111] outline-none focus:border-[#111111]"
+            >
+              {stageRows.map((step) => (
+                <option key={step.id} value={step.id}>{step.name}</option>
+              ))}
+            </select>
+          </div>
+          <textarea
+            value={selectedDraft}
+            onChange={(event) => selectedStep && setDraftByStepId((current) => ({
+              ...current,
+              [selectedStep.id]: event.target.value.slice(0, MAX_NOTE_LENGTH)
+            }))}
+            placeholder="Write a note... Use @ to mention teammates"
+            className="min-h-[88px] w-full resize-y rounded-lg border border-[#e6e6e0] bg-[#fbfbf8] px-3 py-3 text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94] focus:border-[#111111]"
+          />
+          {selectedDraftFiles.length ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {selectedDraftFiles.map((file) => (
+                <span
+                  key={`${file.name}:${file.size}:${file.lastModified}`}
+                  className="inline-flex h-8 max-w-full items-center gap-2 rounded-md border border-[#e1e1dc] bg-[#fafafa] px-3 text-[12px] font-semibold text-[#44443f]"
+                >
+                  <span className="max-w-[220px] truncate">{file.name}</span>
+                  <span className="text-[#8a8a83]">{formatFileSize(file.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => selectedStep && setDraftFilesByStepId((current) => ({
+                      ...current,
+                      [selectedStep.id]: (current[selectedStep.id] ?? []).filter((candidate) => candidate !== file)
+                    }))}
+                    className="text-[#8a3b30]"
+                  >
+                    Remove
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="mr-1 text-[12px] font-medium text-[#8a8a83]">
+                {selectedDraft.length}/{MAX_NOTE_LENGTH}
+              </p>
+              <label className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[13px] font-semibold text-[#55554f] hover:bg-[#fafafa]" title="Attach files">
+                <StepFileIcon />
+                <input
+                  type="file"
+                  multiple
+                  accept={NOTE_ATTACHMENT_ACCEPT}
+                  className="sr-only"
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    if (!selectedStep) {
+                      return;
+                    }
+
+                    const selectedFiles = Array.from(event.currentTarget.files ?? []);
+                    event.currentTarget.value = "";
+                    setDraftFilesByStepId((current) => {
+                      const existing = current[selectedStep.id] ?? [];
+                      return {
+                        ...current,
+                        [selectedStep.id]: [...existing, ...selectedFiles].slice(0, MAX_ATTACHMENTS_PER_NOTE)
+                      };
+                    });
+                  }}
+                />
+              </label>
+              <button type="button" className="grid h-9 w-9 place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[13px] font-semibold text-[#777770]" title="Mention">
+                @
+              </button>
+              <button type="button" className="grid h-9 w-9 place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[13px] font-semibold text-[#777770]" title="Tag">
+                #
+              </button>
+              <button type="button" className="grid h-9 w-9 place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[13px] font-semibold text-[#777770]" title="Notify">
+                !
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => selectedStep && setDraftByStepId((current) => ({ ...current, [selectedStep.id]: "" }))}
+                className="h-10 rounded-lg border border-transparent px-4 text-[14px] font-semibold text-[#55554f] hover:bg-[#fafafa]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => selectedStep ? void addNote(selectedStep.id, selectedStep.name, selectedStepExecutionId) : undefined}
+                disabled={!selectedDraft.trim() || isSaving || !selectedStep}
+                className="h-10 rounded-lg bg-[#2d74f0] px-5 text-[14px] font-semibold text-white hover:bg-[#1f60d1] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
+              >
+                Add note
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
