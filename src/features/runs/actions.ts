@@ -12,10 +12,10 @@ import {
   reservationSchema,
   startStepSchema
 } from "@/features/runs/schemas";
-import type { Json, ProcessStep, StepExecution } from "@/types/database";
+import type { Json, ProcessStep, ProcessStepTransition, StepExecution } from "@/types/database";
 
 const CURRENT_STEP_STATUSES = ["queued", "running", "blocked", "failed"] as const;
-const DIE_LABELS = Array.from({ length: 8 }, (_, index) => `A${index + 1}`);
+const DIE_COUNT = 8;
 
 function toJsonRecord(value: Json): Record<string, Json | undefined> {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -72,6 +72,114 @@ function getWaferFamily(waferCode: string, metadata: Json) {
   return waferCode.trim().toUpperCase();
 }
 
+function getDieLabelPrefix(waferCode: string, metadata: Json) {
+  const family = getWaferFamily(waferCode, metadata);
+  const prefix = family.match(/[A-Z]/)?.[0] ?? waferCode.trim().toUpperCase().match(/[A-Z]/)?.[0];
+  return prefix ?? "D";
+}
+
+function getDieLabels(waferCode: string, metadata: Json) {
+  const prefix = getDieLabelPrefix(waferCode, metadata);
+  return Array.from({ length: DIE_COUNT }, (_, index) => `${prefix}${index + 1}`);
+}
+
+function compareFlowSteps(a: ProcessStep, b: ProcessStep) {
+  const orderDelta = a.step_order - b.step_order;
+  if (orderDelta !== 0) {
+    return orderDelta;
+  }
+
+  return a.name.localeCompare(b.name);
+}
+
+async function getFollowingFlowSteps({
+  fallbackAfterStepOrder,
+  sourceStepId,
+  supabase,
+  targetStepId,
+  templateId
+}: {
+  fallbackAfterStepOrder: number;
+  sourceStepId: string;
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
+  targetStepId?: string;
+  templateId: string;
+}) {
+  const [stepsResult, transitionsResult] = await Promise.all([
+    supabase
+      .from("process_steps")
+      .select("*")
+      .eq("template_id", templateId)
+      .order("step_order", { ascending: true }),
+    supabase
+      .from("process_step_transitions")
+      .select("*")
+      .eq("template_id", templateId)
+      .eq("edge_type", "flow")
+      .order("priority", { ascending: true })
+      .order("created_at", { ascending: true })
+  ]);
+
+  if (stepsResult.error) {
+    throw stepsResult.error;
+  }
+
+  if (transitionsResult.error) {
+    throw transitionsResult.error;
+  }
+
+  const steps = (stepsResult.data ?? []) as ProcessStep[];
+  const transitions = (transitionsResult.data ?? []) as ProcessStepTransition[];
+  const stepById = new Map(steps.map((step) => [step.id, step]));
+  const outgoingByStepId = new Map<string, ProcessStepTransition[]>();
+
+  for (const transition of transitions) {
+    const current = outgoingByStepId.get(transition.from_step_id);
+    if (current) {
+      current.push(transition);
+    } else {
+      outgoingByStepId.set(transition.from_step_id, [transition]);
+    }
+  }
+
+  const orderedSteps: ProcessStep[] = [];
+  const visited = new Set<string>();
+
+  const visit = (stepId: string) => {
+    if (visited.has(stepId)) {
+      return;
+    }
+
+    const step = stepById.get(stepId);
+    if (!step) {
+      return;
+    }
+
+    visited.add(stepId);
+    orderedSteps.push(step);
+
+    for (const transition of outgoingByStepId.get(stepId) ?? []) {
+      visit(transition.to_step_id);
+    }
+  };
+
+  if (targetStepId) {
+    visit(targetStepId);
+  } else {
+    for (const transition of outgoingByStepId.get(sourceStepId) ?? []) {
+      visit(transition.to_step_id);
+    }
+  }
+
+  if (orderedSteps.length > 0) {
+    return orderedSteps;
+  }
+
+  return steps
+    .filter((step) => step.step_order > fallbackAfterStepOrder)
+    .sort(compareFlowSteps);
+}
+
 async function splitWaferAfterDicing({
   accountId,
   assignmentId,
@@ -116,8 +224,9 @@ async function splitWaferAfterDicing({
   }
 
   const family = getWaferFamily(wafer.wafer_code, wafer.metadata);
-  const childCodes = DIE_LABELS.map((dieLabel) => `${wafer.wafer_code}-${dieLabel}`);
-  const childRows = DIE_LABELS.map((dieLabel, index) => ({
+  const dieLabels = getDieLabels(wafer.wafer_code, wafer.metadata);
+  const childCodes = dieLabels.map((dieLabel) => `${wafer.wafer_code}-${dieLabel}`);
+  const childRows = dieLabels.map((dieLabel, index) => ({
     project_id: projectId,
     wafer_code: childCodes[index],
     material_stack: wafer.material_stack,
@@ -230,7 +339,7 @@ async function splitWaferAfterDicing({
     wafer_display_mode: "undiced",
     dicing_completed_at: now,
     diced_child_wafer_ids: childIdsByCode,
-    diced_child_die_labels: DIE_LABELS
+    diced_child_die_labels: dieLabels
   };
 
   const { error: parentWaferUpdateError } = await supabase
@@ -262,13 +371,13 @@ async function splitWaferAfterDicing({
     wafer_id: wafer.id,
     actor_id: accountId,
     event_type: "wafer_diced",
-    notes: `Created ${DIE_LABELS.length} die pieces from ${wafer.wafer_code}.`,
+    notes: `Created ${dieLabels.length} die pieces from ${wafer.wafer_code}.`,
     metadata: {
       assignment_id: assignmentId,
       dicing_step_id: currentStep.id,
       next_step_id: nextStep.id,
       child_wafer_ids: childIdsByCode,
-      die_labels: DIE_LABELS
+      die_labels: dieLabels
     }
   });
 
@@ -388,23 +497,19 @@ export async function completeStepExecution(input: unknown) {
     }
 
     if (isDicingLikeStep(currentStep)) {
-      const { data: followingSteps, error: followingStepsError } = await supabase
-        .from("process_steps")
-        .select("*")
-        .eq("template_id", currentStep.template_id)
-        .gt("step_order", currentStep.step_order)
-        .order("step_order", { ascending: true });
-
-      if (followingStepsError) {
-        return fail(followingStepsError.message);
-      }
-
       try {
+        const followingSteps = await getFollowingFlowSteps({
+          fallbackAfterStepOrder: currentStep.step_order,
+          sourceStepId: currentStep.id,
+          supabase,
+          templateId: currentStep.template_id
+        });
+
         await splitWaferAfterDicing({
           accountId: account.userId,
           assignmentId: context.assignment_id,
           currentStep,
-          nextSteps: followingSteps ?? [],
+          nextSteps: followingSteps,
           now,
           projectId: wafer.project_id,
           supabase,
@@ -585,7 +690,7 @@ export async function moveWaferToProcessStep(input: unknown) {
 
     const { data: allowedTransition, error: transitionError } = await supabase
       .from("process_step_transitions")
-      .select("id")
+      .select("id, edge_type")
       .eq("template_id", assignment.template_id)
       .eq("from_step_id", parsed.sourceStepId)
       .eq("to_step_id", parsed.targetStepId)
@@ -618,7 +723,7 @@ export async function moveWaferToProcessStep(input: unknown) {
       currentExecution.process_step_id !== parsed.targetStepId &&
       (currentExecution.status === "queued" || currentExecution.status === "running") &&
       currentStepResult?.data &&
-      targetStep.step_order > currentStepResult.data.step_order
+      allowedTransition.edge_type === "flow"
     );
 
     const activeExecutionIds = existingExecutions
@@ -663,23 +768,20 @@ export async function moveWaferToProcessStep(input: unknown) {
       }
 
       if (currentStepResult?.data && isDicingLikeStep(currentStepResult.data)) {
-        const { data: followingSteps, error: followingStepsError } = await supabase
-          .from("process_steps")
-          .select("*")
-          .eq("template_id", assignment.template_id)
-          .gt("step_order", currentStepResult.data.step_order)
-          .order("step_order", { ascending: true });
-
-        if (followingStepsError) {
-          return fail(followingStepsError.message);
-        }
-
         try {
+          const followingSteps = await getFollowingFlowSteps({
+            fallbackAfterStepOrder: currentStepResult.data.step_order,
+            sourceStepId: currentStepResult.data.id,
+            supabase,
+            targetStepId: parsed.targetStepId,
+            templateId: assignment.template_id
+          });
+
           await splitWaferAfterDicing({
             accountId: account.userId,
             assignmentId: parsed.assignmentId,
             currentStep: currentStepResult.data,
-            nextSteps: followingSteps ?? [],
+            nextSteps: followingSteps,
             now,
             projectId: wafer.project_id,
             supabase,

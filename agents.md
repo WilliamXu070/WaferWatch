@@ -2024,3 +2024,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     ordered selected process steps by graph occurrence (`Dicing`, `Testing`,
     `EBL Prep`, `Chrome deposition`, `EBL lithography`, ...), with no console
     errors.
+
+## Recent development note (2026-07-08 flow movement and die labels)
+
+- Fixed wafer movement out of dicing-like steps so child die execution creation
+  follows the actual `process_step_transitions` flow path instead of selecting
+  every later `step_order` row, which could make moves appear to default to
+  `Chrome deposition`.
+- `moveWaferToProcessStep` now treats the direct transition edge type as the
+  source-of-truth for completing the source step, rather than comparing
+  `step_order`.
+- Diced child labels are now generated from the wafer family prefix, e.g.
+  `B1`-`B8` for Beta and `E1`-`E8` for Epsilon, instead of always using
+  `A1`-`A8`.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright at
+    `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    route loaded with no console errors.
