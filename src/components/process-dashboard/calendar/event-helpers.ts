@@ -19,12 +19,12 @@ export function toDisplayName(value: string) {
 }
 
 export function eventLabel(event: ProcessCalendarEventView, stepsById: Map<string, string>) {
-  if (event.process_step_name_snapshot?.trim()) {
-    return event.process_step_name_snapshot;
+  if (event.process_step_id) {
+    return stepsById.get(event.process_step_id) ?? event.process_step_name_snapshot ?? "Process step";
   }
 
-  if (event.process_step_id) {
-    return stepsById.get(event.process_step_id) ?? "Process step";
+  if (event.process_step_name_snapshot?.trim()) {
+    return event.process_step_name_snapshot;
   }
 
   return event.manual_action ?? "Manual action";

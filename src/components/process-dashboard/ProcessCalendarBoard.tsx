@@ -93,18 +93,24 @@ import type {
   MoveWindow,
   PendingTimelineMove,
   ProcessCalendarBoardProps,
+  ProcessCalendarWaferOption,
+  ProcessStepOption,
   StageFilterId,
   TimelineLocationGroup,
   TimelinePanState
 } from "./calendar/types";
 
+type CalendarOptionPayload = {
+  steps?: ProcessStepOption[];
+  wafers?: ProcessCalendarWaferOption[];
+};
 
 export function ProcessCalendarBoard({
   processTemplateId,
   calendarStartDate,
   days,
-  steps,
-  wafers = [],
+  steps: initialSteps,
+  wafers: initialWafers = [],
   people,
   initialEvents,
   initialVisibleStartDate = calendarStartDate,
@@ -112,6 +118,8 @@ export function ProcessCalendarBoard({
   presentationMode = "default"
 }: ProcessCalendarBoardProps) {
   const [events, setEvents] = useState(initialEvents);
+  const [liveSteps, setLiveSteps] = useState<ProcessStepOption[]>(() => [...initialSteps]);
+  const [liveWafers, setLiveWafers] = useState<ProcessCalendarWaferOption[]>(() => [...initialWafers]);
   const initialSelection = presentationMode === "wireframe" ? null : initialEvents[0] ?? null;
   const [draft, setDraft] = useState<DraftEvent | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(initialSelection?.id ?? null);
@@ -120,11 +128,11 @@ export function ProcessCalendarBoard({
       ? initialSelection.process_step_id
         ? "step"
         : "manual"
-      : steps.length
+      : initialSteps.length
         ? "step"
         : "manual"
   );
-  const [selectedStepId, setSelectedStepId] = useState(initialSelection?.process_step_id ?? steps[0]?.id ?? "");
+  const [selectedStepId, setSelectedStepId] = useState(initialSelection?.process_step_id ?? initialSteps[0]?.id ?? "");
   const [selectedWaferId, setSelectedWaferId] = useState(initialSelection?.wafer_id ?? "");
   const [manualAction, setManualAction] = useState(
     initialSelection?.manual_action ?? (initialSelection?.process_step_id ? "" : initialSelection?.process_step_name_snapshot ?? "")
@@ -164,6 +172,59 @@ export function ProcessCalendarBoard({
   const [timelinePanPointerId, setTimelinePanPointerId] = useState<number | null>(null);
   const [isTimelinePanning, setIsTimelinePanning] = useState(false);
   const [isCompactViewport, setIsCompactViewport] = useState(false);
+
+  const refreshCalendarOptions = useCallback(async () => {
+    if (persistenceMode === "local") {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/processes/${processTemplateId}/calendar/options`, {
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      const payload = (await response.json()) as CalendarOptionPayload & { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to load process calendar options.");
+      }
+
+      const nextSteps = Array.isArray(payload.steps) ? payload.steps : [];
+      const nextWafers = Array.isArray(payload.wafers) ? payload.wafers : [];
+      const nextStepIds = new Set(nextSteps.map((step) => step.id));
+      const nextWaferIds = new Set(nextWafers.map((wafer) => wafer.id));
+
+      setLiveSteps(nextSteps);
+      setLiveWafers(nextWafers);
+      setSelectedStepId((current) => (current && nextStepIds.has(current) ? current : nextSteps[0]?.id ?? ""));
+      setSelectedWaferId((current) => (current && !nextWaferIds.has(current) ? "" : current));
+      setActionMode((current) => (current === "step" && nextSteps.length === 0 ? "manual" : current));
+    } catch {
+      // Keep the last known options usable if a background refresh fails.
+    }
+  }, [persistenceMode, processTemplateId]);
+
+  useEffect(() => {
+    const refreshTimer = window.setTimeout(() => {
+      void refreshCalendarOptions();
+    }, 0);
+
+    return () => window.clearTimeout(refreshTimer);
+  }, [refreshCalendarOptions]);
+
+  useEffect(() => {
+    const refreshOnFocus = () => {
+      void refreshCalendarOptions();
+    };
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
+
+    return () => {
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+    };
+  }, [refreshCalendarOptions]);
 
   const startDate = useMemo(() => new Date(`${calendarStartDate}T00:00:00`), [calendarStartDate]);
   const timelineStart = useMemo(() => buildDateAtMinute(startDate, START_MINUTE).getTime(), [startDate]);
@@ -283,7 +344,7 @@ export function ProcessCalendarBoard({
     []
   );
 
-  const stepsById = useMemo(() => new Map(steps.map((step) => [step.id, step.name])), [steps]);
+  const stepsById = useMemo(() => new Map(liveSteps.map((step) => [step.id, step.name])), [liveSteps]);
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
   const eventById = useMemo(() => new Map(events.map((event) => [event.id, event])), [events]);
   const selectedPeopleForSave = useCallback(
@@ -295,10 +356,10 @@ export function ProcessCalendarBoard({
   );
   const stageFilterOptions = useMemo(
     () => [
-      ...steps.map((step) => ({ id: step.id as StageFilterId, name: step.name })),
+      ...liveSteps.map((step) => ({ id: step.id as StageFilterId, name: step.name })),
       { id: MANUAL_STAGE_FILTER_ID as StageFilterId, name: "Manual" }
     ],
-    [steps]
+    [liveSteps]
   );
   const stageFilterOptionsById = useMemo(
     () => new Map(stageFilterOptions.map((stage) => [stage.id, stage.name])),
@@ -467,19 +528,20 @@ export function ProcessCalendarBoard({
   const resetDraftForm = useCallback(() => {
     setSelectedEventId(null);
     setError(null);
-    setActionMode(steps.length ? "step" : "manual");
-    setSelectedStepId(steps[0]?.id ?? "");
+    setActionMode(liveSteps.length ? "step" : "manual");
+    setSelectedStepId(liveSteps[0]?.id ?? "");
     setSelectedWaferId("");
     setManualAction("");
     setDescription("");
     setSelectedPersonIds(people[0]?.id ? [people[0].id] : []);
     setPersonQuery("");
-  }, [people, steps]);
+  }, [liveSteps, people]);
 
   const openDraft = useCallback((nextDraft: DraftEvent) => {
+    void refreshCalendarOptions();
     resetDraftForm();
     setDraft(nextDraft);
-  }, [resetDraftForm]);
+  }, [refreshCalendarOptions, resetDraftForm]);
 
   const getTimelinePointerTarget = useCallback((event: PointerEvent | ReactPointerEvent | ReactMouseEvent) => {
     const timeline = timelineRef.current;
@@ -886,11 +948,13 @@ export function ProcessCalendarBoard({
   }, [getTimelinePointerTarget, openDraft, timelineEnd]);
 
   const syncSelectionForm = useCallback((event: ProcessCalendarEventView | null) => {
+    void refreshCalendarOptions();
+
     if (!event) {
       selectedEventIdRef.current = null;
       setSelectedEventId(null);
-      setActionMode(steps.length ? "step" : "manual");
-      setSelectedStepId(steps[0]?.id ?? "");
+      setActionMode(liveSteps.length ? "step" : "manual");
+      setSelectedStepId(liveSteps[0]?.id ?? "");
       setSelectedWaferId("");
       setManualAction("");
       setDescription("");
@@ -901,7 +965,7 @@ export function ProcessCalendarBoard({
     }
 
     setActionMode(event.process_step_id ? "step" : "manual");
-    setSelectedStepId(event.process_step_id ?? steps[0]?.id ?? "");
+    setSelectedStepId(event.process_step_id ?? liveSteps[0]?.id ?? "");
     setSelectedWaferId(event.wafer_id ?? "");
     setManualAction(event.manual_action ?? (event.process_step_id ? "" : event.process_step_name_snapshot ?? ""));
     setDescription(event.description ?? "");
@@ -910,7 +974,7 @@ export function ProcessCalendarBoard({
     setSelectedEventId(event.id);
     setError(null);
     setDraft(null);
-  }, [steps]);
+  }, [liveSteps, refreshCalendarOptions]);
 
   const clearSelectedEvent = useCallback(() => {
     syncSelectionForm(null);
@@ -1329,7 +1393,7 @@ export function ProcessCalendarBoard({
         ends_at: draft.endsAt.toISOString(),
         process_step_id: actionMode === "step" && selectedStepId ? selectedStepId : null,
         wafer_id: selectedWaferId || null,
-        wafer: wafers.find((wafer) => wafer.id === selectedWaferId) ?? null,
+        wafer: liveWafers.find((wafer) => wafer.id === selectedWaferId) ?? null,
         process_step_name_snapshot: selectedStepSnapshot(),
         manual_action: actionMode === "manual" ? manualAction.trim() || null : null,
         description: description.trim() || null,
@@ -1381,7 +1445,7 @@ export function ProcessCalendarBoard({
         ...selectedEvent,
         process_step_id: actionMode === "step" && selectedStepId ? selectedStepId : null,
         wafer_id: selectedWaferId || null,
-        wafer: wafers.find((wafer) => wafer.id === selectedWaferId) ?? null,
+        wafer: liveWafers.find((wafer) => wafer.id === selectedWaferId) ?? null,
         process_step_name_snapshot: selectedStepSnapshot(),
         manual_action: actionMode === "manual" ? manualAction.trim() || null : null,
         description: description.trim() || null,
@@ -1766,8 +1830,8 @@ export function ProcessCalendarBoard({
           selectedPeople={selectedPeople}
           selectedStepId={selectedStepId}
           selectedWaferId={selectedWaferId}
-          steps={steps}
-          wafers={wafers}
+          steps={liveSteps}
+          wafers={liveWafers}
           stepsById={stepsById}
           onActionModeChange={setActionMode}
           onAddPerson={addPerson}

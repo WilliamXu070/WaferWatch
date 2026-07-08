@@ -1961,3 +1961,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `curl -s http://localhost:3015/api/health`
   - Playwright at `http://localhost:3015/wireframe/process-flow`, 390x844:
     route loaded with no console errors.
+
+## Recent development note (2026-07-08 calendar process-step options)
+
+- Fixed calendar event editing so Step / action options are not treated as
+  static page-load data. The calendar now refreshes current process-flow step
+  options and active wafer options from Supabase through
+  `/api/processes/[processId]/calendar/options` on mount, focus, and when opening
+  or syncing the event editor.
+- Linked historical calendar event labels now prefer the current process step
+  name from the live process-flow option map when `process_step_id` is still
+  present, falling back to the stored snapshot only for unlinked/deleted steps.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright at `http://localhost:3015/calendar`, 390x844: opened the New
+    event editor, confirmed the Step / action dropdown contained UUID-backed
+    current process steps (`Wafer intake and inspection`, `Solvent clean`,
+    `Step 3`) plus `New action`, and confirmed no console errors.
