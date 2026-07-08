@@ -220,6 +220,13 @@ function WaferChip({
       opacity={opacity}
       style={{ touchAction: "none" }}
       onPointerDown={onPointerDown}
+      onClick={(event) => {
+        event.stopPropagation();
+      }}
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
     >
       <rect x="0" y="0" width={WAFER_CHIP_WIDTH} height={WAFER_CHIP_HEIGHT} rx="7" style={{ touchAction: "none" }} />
       <text

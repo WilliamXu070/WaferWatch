@@ -2058,3 +2058,16 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
     route loaded with no console errors and
     `.flow-selected-wafer-actions` count was `0`.
+
+## Recent development note (2026-07-08 wafer chip double-click guard)
+
+- Prevented wafer/die chip double-clicks in Process Flow from bubbling to the
+  parent node double-click handler, so selecting or double-clicking a wafer no
+  longer opens the step-name editor.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright at
+    `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    dispatched click/double-click on `.flow-wafer-chip`; `.flow-node-title-input`
+    remained `0` before and after, with no console errors.
