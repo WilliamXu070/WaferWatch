@@ -76,7 +76,7 @@ function WaferTile({
       aria-pressed={selected}
       onClick={onSelect}
       className={[
-        "relative grid min-h-[118px] grid-cols-[minmax(76px,0.9fr)_minmax(104px,1.1fr)] gap-4 rounded-lg border bg-white p-4 text-left transition-all",
+        "wafer-status-tile relative grid min-h-[118px] grid-cols-[minmax(76px,0.9fr)_minmax(104px,1.1fr)] gap-4 rounded-lg border bg-white p-4 text-left transition-all",
         selected
           ? "border-[#111111] shadow-[0_0_0_1px_rgba(17,17,17,0.16)]"
           : "border-[#e7e7e2] hover:border-[#b9b9b0] hover:bg-[#fcfcfb]"
@@ -125,7 +125,7 @@ function FamilySection({
   const familyMuted = family.status === "setup";
 
   return (
-    <section className="border-b border-[#e7e7e2] bg-white">
+    <section className="wafer-status-family border-b border-[#e7e7e2] bg-white">
       <button
         type="button"
         aria-expanded={open}
@@ -153,7 +153,7 @@ function FamilySection({
       </button>
 
       {open ? (
-        <div className="grid grid-cols-1 gap-3 pb-5 md:grid-cols-2 xl:grid-cols-4">
+        <div className="wafer-status-family__tiles grid grid-cols-1 gap-3 pb-5 md:grid-cols-2 xl:grid-cols-4">
           {family.tiles.map((tile) => (
             <WaferTile
               key={tile.id}
@@ -295,7 +295,7 @@ export function WaferStatusView({
   return (
     <div className="wafer-status-page grid gap-5 bg-white p-4 md:gap-6 md:p-6">
       {hasWafers ? (
-        <section className="grid grid-cols-1 gap-x-8 gap-y-2 lg:grid-cols-4">
+        <section className="wafer-status-metrics grid grid-cols-1 gap-x-8 gap-y-2 lg:grid-cols-4">
           {model.metrics.map((metric) => (
             <MetricTile key={metric.id} metric={metric} />
           ))}
@@ -303,8 +303,8 @@ export function WaferStatusView({
       ) : null}
 
       {hasWafers ? (
-        <section className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="grid min-w-0 gap-5">
+        <section className="wafer-status-main-grid grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="wafer-status-family-list grid min-w-0 gap-5">
             {model.families.map((family) => (
               <FamilySection
                 key={family.id}

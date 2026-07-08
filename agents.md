@@ -2294,3 +2294,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     with a `390x844` iPhone-sized viewport: signed in as the seeded admin,
     selected a process step, dispatched a touch blank-canvas pointer on visible
     canvas space, and confirmed `.flow-node--selected` changed from `1` to `0`.
+
+## Recent development note (2026-07-08 wafer status mobile breakpoint)
+
+- Added explicit wafer-status mobile class hooks and breakpoint styling so phone
+  layouts use denser metric rows, compact wafer tiles, shorter selected-wafer
+  previews, and contained die-detail tabs.
+- Fixed the die detail mobile overflow where the detail view expanded past the
+  390px viewport and the tab rail pushed the page wider than the screen.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright MCP at `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with a `390x844` viewport: list view had 9 wafer tiles and no document
+    horizontal overflow; die detail view kept the document width at 390px while
+    the tabs stayed contained as an internal horizontal scroller.
