@@ -2316,12 +2316,13 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - Removed the temporary `Export report` and overflow menu controls from the
   wafer/die detail header, leaving only previous/next die navigation.
 - Made the detail tab strip responsive for narrow inspection widths: it compresses
-  into five equal columns between tablet and desktop widths, then switches to a
-  contained horizontal scroller on phone widths.
+  into one row when labels fit, then wraps onto additional rows instead of
+  clipping when browser zoom or narrow inspection panes reduce available width.
 - Verified with:
   - `npm run lint`
   - `npm run build`
   - Playwright MCP at `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`:
     at `390x844`, no document overflow, no `Export report`, no More actions
-    button, and only internal tab scrolling; at `820x700`, no document overflow,
-    grid tabs fit without clipped labels.
+    button, and tabs wrapped without clipped labels; at `520x700`, `Process
+    history` wrapped to its own row instead of cutting off; at `820x700`, all
+    tabs fit on one row without clipped labels.

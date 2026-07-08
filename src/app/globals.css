@@ -3103,6 +3103,8 @@ textarea {
 .wafer-die-detail-tabs__list {
   min-width: 0;
   max-width: 100%;
+  flex-wrap: wrap;
+  overflow-x: visible;
   scrollbar-width: none;
 }
 
@@ -3111,6 +3113,8 @@ textarea {
 }
 
 .wafer-die-detail-tabs__button {
+  flex: 1 1 128px;
+  min-width: max-content;
   white-space: nowrap;
 }
 
@@ -3123,13 +3127,14 @@ textarea {
 
 @media (max-width: 1120px) and (min-width: 768px) {
   .wafer-die-detail-tabs__list {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    overflow-x: hidden;
+    display: flex;
+    flex-wrap: wrap;
+    overflow-x: visible;
   }
 
   .wafer-die-detail-tabs__button {
-    min-width: 0;
+    flex: 1 1 88px;
+    min-width: max-content;
     height: 50px;
     padding-right: 8px;
     padding-left: 8px;
@@ -3517,17 +3522,18 @@ textarea {
     margin-right: -12px;
     margin-left: -12px;
     padding-left: 12px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .wafer-die-detail-tabs__list {
     max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
+    flex-wrap: wrap;
+    overflow-x: visible;
   }
 
   .wafer-die-detail-tabs__button {
+    flex: 1 1 112px;
+    min-width: max-content;
     height: 50px;
     padding-right: 14px;
     padding-left: 14px;
