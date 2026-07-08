@@ -12,9 +12,9 @@ import {
   reservationSchema,
   startStepSchema
 } from "@/features/runs/schemas";
+import { CURRENT_STEP_STATUSES, getSourceStepExecution } from "@/features/runs/stepExecutionSelection";
 import type { Json, ProcessStep, ProcessStepTransition, StepExecution } from "@/types/database";
 
-const CURRENT_STEP_STATUSES = ["pending", "queued", "running", "blocked", "failed"] as const;
 const DIE_COUNT = 8;
 
 function toJsonRecord(value: Json): Record<string, Json | undefined> {
@@ -676,9 +676,7 @@ export async function moveWaferToProcessStep(input: unknown) {
     const now = new Date().toISOString();
     const existingExecutions = (executions ?? []) as StepExecution[];
     const targetExecution = existingExecutions.find((execution) => execution.process_step_id === parsed.targetStepId);
-    const currentExecution = existingExecutions.find((execution) =>
-      CURRENT_STEP_STATUSES.includes(execution.status as (typeof CURRENT_STEP_STATUSES)[number])
-    );
+    const currentExecution = getSourceStepExecution(existingExecutions, parsed.sourceStepId);
 
     if (!currentExecution) {
       return fail("This wafer does not have an active source step to move from.");

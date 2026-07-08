@@ -2111,3 +2111,21 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
     The current browser session rendered the authenticated empty state, so live
     populated timeline acceptance still needs a process with visible wafer data.
+
+## Recent development note (2026-07-08 process-flow move dialog regression)
+
+- Fixed a regression where pressing `Move wafer` could restore the move dialog
+  repeatedly after the server action selected an unrelated pending execution row
+  instead of the dialog's source step.
+- Extracted source-step execution selection into a focused helper and covered the
+  pending-row hijack case with `src/features/runs/stepExecutionSelection.test.ts`.
+- Ticket: `docs/tickets/process-flow-move-dialog-regression.md`.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `node --test src/features/runs/stepExecutionSelection.test.ts`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright screenshot at
+    `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`.
+    The CLI browser was unauthenticated, so signed-in drag/drop acceptance still
+    needs a live authenticated browser session.
