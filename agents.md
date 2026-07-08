@@ -2326,3 +2326,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     button, and tabs wrapped without clipped labels; at `520x700`, `Process
     history` wrapped to its own row instead of cutting off; at `820x700`, all
     tabs fit on one row without clipped labels.
+
+## Recent development note (2026-07-08 results image responsive sizing)
+
+- Updated the wafer/die Results gallery so visible sample count responds to
+  viewport width instead of always forcing five samples.
+- Result image wells now record each loaded inspection image's natural dimensions
+  and use that aspect ratio for the active image frame, with bounded fallbacks for
+  very tall or very wide captures.
+- Fixed Results-specific mobile grid sizing by forcing gallery wrappers to use
+  `minmax(0, 1fr)` tracks, so phone layouts no longer clip an oversized internal
+  gallery column.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright MCP at `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    on the Results tab: `390x844` showed one 348px sample card with no document
+    overflow, `820x700` showed three samples, and `1200x900` showed four samples.

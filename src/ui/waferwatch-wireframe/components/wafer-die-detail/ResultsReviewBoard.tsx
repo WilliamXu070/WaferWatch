@@ -43,6 +43,7 @@ type ResultSample = {
 };
 
 type SampleInspectionMap = Record<string, DieInspectionRecord[]>;
+type ImageSizeMap = Record<string, { width: number; height: number }>;
 
 type PendingDeletion = {
   inspection: DieInspectionRecord;
@@ -56,9 +57,8 @@ const RESULT_SAMPLE_SCOPE_TYPE = "wireframe:result_sample";
 const RESULT_SAMPLE_UNIFORMITY_FIELD = "uniformity_percent";
 const INSPECTION_BUCKET = "wafer-process-files";
 const recipeCode = "TFA3.1M1R1";
-const GALLERY_VISIBLE_COUNT = 5;
+const MAX_GALLERY_VISIBLE_COUNT = 5;
 const DELETE_UNDO_DELAY_MS = 3500;
-const maxGalleryStartColumn = Math.max(1, chipColumns.length - GALLERY_VISIBLE_COUNT + 1);
 
 function buildSamples() {
   return chipRowSections.flatMap((section) => {
@@ -78,20 +78,50 @@ function buildSamples() {
 
 const resultSamples = buildSamples();
 
-function getGalleryWindowStartForColumn(column: number) {
-  return Math.min(maxGalleryStartColumn, Math.max(1, column - Math.floor(GALLERY_VISIBLE_COUNT / 2)));
+function getMaxGalleryStartColumn(visibleCount: number) {
+  return Math.max(1, chipColumns.length - visibleCount + 1);
 }
 
-function ensureColumnInGalleryWindow(currentStart: number, column: number) {
+function getResponsiveGalleryVisibleCount(width: number) {
+  if (width < 560) return 1;
+  if (width < 820) return 2;
+  if (width < 1080) return 3;
+  if (width < 1320) return 4;
+  return MAX_GALLERY_VISIBLE_COUNT;
+}
+
+function getGalleryWindowStartForColumn(column: number, visibleCount: number) {
+  const maxGalleryStartColumn = getMaxGalleryStartColumn(visibleCount);
+  return Math.min(maxGalleryStartColumn, Math.max(1, column - Math.floor(visibleCount / 2)));
+}
+
+function ensureColumnInGalleryWindow(currentStart: number, column: number, visibleCount: number) {
   if (column < currentStart) {
     return column;
   }
 
-  if (column >= currentStart + GALLERY_VISIBLE_COUNT) {
-    return Math.min(maxGalleryStartColumn, column - GALLERY_VISIBLE_COUNT + 1);
+  if (column >= currentStart + visibleCount) {
+    return Math.min(getMaxGalleryStartColumn(visibleCount), column - visibleCount + 1);
   }
 
   return currentStart;
+}
+
+function getImageAspectRatio(size: { width: number; height: number } | undefined) {
+  if (!size || size.width <= 0 || size.height <= 0) {
+    return "4 / 3";
+  }
+
+  const ratio = size.width / size.height;
+  if (ratio < 0.62) {
+    return "3 / 4";
+  }
+
+  if (ratio > 1.9) {
+    return "16 / 9";
+  }
+
+  return `${size.width} / ${size.height}`;
 }
 
 function getSampleMetricKey(tile: WaferStatusTileModel, sample: ResultSample) {
@@ -158,13 +188,17 @@ function getParameterToneClass(
 }
 
 const ResultImage = memo(function ResultImage({
+  inspectionId,
   imageUrl,
   isActive = true,
-  className = ""
+  className = "",
+  onImageSize
 }: {
+  inspectionId?: string;
   imageUrl?: string | null;
   isActive?: boolean;
   className?: string;
+  onImageSize?: (inspectionId: string, size: { width: number; height: number }) => void;
 }) {
   if (imageUrl) {
     return (
@@ -184,6 +218,19 @@ const ResultImage = memo(function ResultImage({
           decoding="async"
           fetchPriority={isActive ? "high" : "low"}
           draggable={false}
+          onLoad={(event) => {
+            if (!inspectionId || !onImageSize) {
+              return;
+            }
+
+            const image = event.currentTarget;
+            if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+              onImageSize(inspectionId, {
+                width: image.naturalWidth,
+                height: image.naturalHeight
+              });
+            }
+          }}
         />
       </div>
     );
@@ -199,24 +246,37 @@ const ResultImage = memo(function ResultImage({
 function ResultImageStack({
   inspections,
   activeIndex,
-  className = ""
+  imageSizes,
+  className = "",
+  onImageSize
 }: {
   inspections: readonly DieInspectionRecord[];
   activeIndex: number;
+  imageSizes: ImageSizeMap;
   className?: string;
+  onImageSize: (inspectionId: string, size: { width: number; height: number }) => void;
 }) {
   if (inspections.length === 0) {
-    return <ResultImage className={className} />;
+    return (
+      <div className={className} style={{ aspectRatio: "4 / 3" }}>
+        <ResultImage className="h-full w-full" />
+      </div>
+    );
   }
 
+  const activeInspection = inspections[activeIndex] ?? inspections[0];
+  const aspectRatio = getImageAspectRatio(activeInspection ? imageSizes[activeInspection.id] : undefined);
+
   return (
-    <div className={["relative", className].join(" ")}>
+    <div className={["relative", className].join(" ")} style={{ aspectRatio }}>
       {inspections.map((inspection, index) => (
         <ResultImage
           key={inspection.id}
+          inspectionId={inspection.id}
           imageUrl={inspection.imageUrl}
           isActive={index === activeIndex}
           className="h-full w-full"
+          onImageSize={onImageSize}
         />
       ))}
     </div>
@@ -232,8 +292,10 @@ const GalleryTile = memo(function GalleryTile({
   uniformityValue,
   selected,
   canEdit,
+  imageSizes,
   onSelect,
   onAddImages,
+  onImageSize,
   onUniformityChange,
   onUniformityBlur
 }: {
@@ -245,8 +307,10 @@ const GalleryTile = memo(function GalleryTile({
   uniformityValue: string;
   selected: boolean;
   canEdit: boolean;
+  imageSizes: ImageSizeMap;
   onSelect: (sample: ResultSample) => void;
   onAddImages: (sample: ResultSample) => void;
+  onImageSize: (inspectionId: string, size: { width: number; height: number }) => void;
   onUniformityChange: (sample: ResultSample, value: string) => void;
   onUniformityBlur: (sample: ResultSample) => void;
 }) {
@@ -271,7 +335,7 @@ const GalleryTile = memo(function GalleryTile({
   return (
     <article
       className={[
-        "grid min-w-0 overflow-hidden rounded-lg border bg-white transition-colors",
+        "grid w-full max-w-full min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden rounded-lg border bg-white transition-colors",
         selected ? "border-[#111111] shadow-[0_0_0_1px_#111111]" : "border-[#e4e4df]"
       ].join(" ")}
     >
@@ -287,11 +351,17 @@ const GalleryTile = memo(function GalleryTile({
           }
         }}
         onKeyDown={handleImageKeyDown}
-        className="block aspect-[4/3] min-h-0 bg-white p-1.5 text-left"
+        className="block min-h-0 bg-white p-1.5 text-left"
         aria-pressed={selected}
         aria-label={inspections.length === 0 ? `Add result images to ${sample.id}` : `Select ${sample.id} result sample`}
       >
-        <ResultImageStack inspections={inspections} activeIndex={imageIndex} className="h-full w-full" />
+        <ResultImageStack
+          inspections={inspections}
+          activeIndex={imageIndex}
+          imageSizes={imageSizes}
+          className="w-full"
+          onImageSize={onImageSize}
+        />
       </button>
       <div className="grid gap-2 border-t border-[#eeeeea] px-2 py-2">
         <div className="flex min-w-0 items-center justify-between gap-2 text-[12px] font-semibold">
@@ -322,6 +392,7 @@ function ResultsGalleryViewport({
   tile,
   inspectionsBySample,
   imageIndexBySample,
+  imageSizes,
   uniformityBySample,
   row,
   visibleSamples,
@@ -335,6 +406,7 @@ function ResultsGalleryViewport({
   uniformityError,
   onSelectSample,
   onAddImagesForSample,
+  onImageSize,
   onFilesAdd,
   onDeleteImage,
   onNavigateWindow,
@@ -344,6 +416,7 @@ function ResultsGalleryViewport({
   tile: WaferStatusTileModel;
   inspectionsBySample: SampleInspectionMap;
   imageIndexBySample: Record<string, number>;
+  imageSizes: ImageSizeMap;
   uniformityBySample: Record<string, string>;
   row: number;
   visibleSamples: readonly ResultSample[];
@@ -357,6 +430,7 @@ function ResultsGalleryViewport({
   uniformityError: string | null;
   onSelectSample: (sample: ResultSample) => void;
   onAddImagesForSample: (sample: ResultSample, openPicker: () => void) => void;
+  onImageSize: (inspectionId: string, size: { width: number; height: number }) => void;
   onFilesAdd: (files: readonly File[]) => void;
   onDeleteImage: () => void;
   onNavigateWindow: (direction: -1 | 1) => void;
@@ -387,7 +461,7 @@ function ResultsGalleryViewport({
   };
 
   return (
-    <section className="grid gap-3">
+    <section className="grid w-full max-w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-[18px] font-semibold text-[#111111]">Row {row} result images</h2>
@@ -425,7 +499,8 @@ function ResultsGalleryViewport({
       <div
         {...getRootProps({
           className: [
-            "relative grid gap-2 rounded-lg border border-[#e8e8e3] bg-white p-2 outline-none",
+            "relative grid grid-cols-[minmax(0,1fr)] gap-2 rounded-lg border border-[#e8e8e3] bg-white p-2 outline-none",
+            "w-full max-w-full min-w-0",
             isDragActive ? "border-[#111111]" : ""
           ].join(" "),
           onPaste: handlePaste
@@ -433,7 +508,7 @@ function ResultsGalleryViewport({
         tabIndex={0}
       >
         <input {...getInputProps()} />
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="grid w-full max-w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {visibleSamples.map((sample) => {
             const inspections = inspectionsBySample[sample.id] ?? [];
             const imageIndex = Math.min(imageIndexBySample[sample.id] ?? 0, Math.max(inspections.length - 1, 0));
@@ -448,8 +523,10 @@ function ResultsGalleryViewport({
                 uniformityValue={uniformityBySample[getSampleMetricKey(tile, sample)] ?? sample.uniformityPercent}
                 selected={sample.id === selectedSample.id}
                 canEdit={canEdit}
+                imageSizes={imageSizes}
                 onSelect={onSelectSample}
                 onAddImages={(nextSample) => onAddImagesForSample(nextSample, open)}
+                onImageSize={onImageSize}
                 onUniformityChange={onUniformityChange}
                 onUniformityBlur={onUniformityBlur}
               />
@@ -555,9 +632,11 @@ function ParameterContext({
 export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatusTileModel; canEdit?: boolean }) {
   const [selectedSampleId, setSelectedSampleId] = useState("R1C12");
   const [contextRow, setContextRow] = useState(1);
-  const [galleryStartColumn, setGalleryStartColumn] = useState(() => getGalleryWindowStartForColumn(12));
+  const [galleryVisibleCount, setGalleryVisibleCount] = useState(MAX_GALLERY_VISIBLE_COUNT);
+  const [galleryStartColumn, setGalleryStartColumn] = useState(() => getGalleryWindowStartForColumn(12, MAX_GALLERY_VISIBLE_COUNT));
   const [inspectionsBySample, setInspectionsBySample] = useState<SampleInspectionMap>({});
   const [selectedImageIndexBySample, setSelectedImageIndexBySample] = useState<Record<string, number>>({});
+  const [imageSizes, setImageSizes] = useState<ImageSizeMap>({});
   const [isImageBusy, setIsImageBusy] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [uniformityBySample, setUniformityBySample] = useState<Record<string, string>>({});
@@ -572,8 +651,8 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
   const visibleSamples = useMemo(
     () => resultSamples
       .filter((sample) => sample.row === selectedSample.row)
-      .slice(galleryStartColumn - 1, galleryStartColumn - 1 + GALLERY_VISIBLE_COUNT),
-    [galleryStartColumn, selectedSample.row]
+      .slice(galleryStartColumn - 1, galleryStartColumn - 1 + galleryVisibleCount),
+    [galleryStartColumn, galleryVisibleCount, selectedSample.row]
   );
   const dieCode = useMemo(() => getPersistenceDieCode(tile), [tile]);
   const selectedInspections = inspectionsBySample[selectedSample.id] ?? [];
@@ -585,7 +664,7 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
   const sampleMetricScopeKey = useMemo(() => getSampleMetricKey(tile, selectedSample), [selectedSample, tile]);
   const warmImageUrls = useMemo(() => {
     const warmColumnStart = Math.max(1, galleryStartColumn - 1);
-    const warmColumnEnd = Math.min(chipColumns.length, galleryStartColumn + GALLERY_VISIBLE_COUNT);
+    const warmColumnEnd = Math.min(chipColumns.length, galleryStartColumn + galleryVisibleCount);
     const warmSampleIds = new Set(
       resultSamples
         .filter((sample) =>
@@ -602,7 +681,22 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
       .flatMap((sampleId) => inspectionsBySample[sampleId] ?? [])
       .map((inspection) => inspection.imageUrl)
       .filter((imageUrl): imageUrl is string => Boolean(imageUrl));
-  }, [galleryStartColumn, inspectionsBySample, selectedSample]);
+  }, [galleryStartColumn, galleryVisibleCount, inspectionsBySample, selectedSample]);
+
+  useEffect(() => {
+    const syncVisibleCount = () => {
+      const nextVisibleCount = getResponsiveGalleryVisibleCount(window.innerWidth);
+      setGalleryVisibleCount(nextVisibleCount);
+      setGalleryStartColumn((current) => {
+        const clampedStart = Math.min(getMaxGalleryStartColumn(nextVisibleCount), current);
+        return ensureColumnInGalleryWindow(clampedStart, selectedSample.column, nextVisibleCount);
+      });
+    };
+
+    syncVisibleCount();
+    window.addEventListener("resize", syncVisibleCount);
+    return () => window.removeEventListener("resize", syncVisibleCount);
+  }, [selectedSample.column]);
 
   useEffect(() => {
     if (sampleMetricScopeKey in uniformityBySample) {
@@ -691,10 +785,10 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
   const selectSample = useCallback((sample: ResultSample) => {
     setSelectedSampleId(sample.id);
     setContextRow(sample.row);
-    setGalleryStartColumn((current) => ensureColumnInGalleryWindow(current, sample.column));
+    setGalleryStartColumn((current) => ensureColumnInGalleryWindow(current, sample.column, galleryVisibleCount));
     setImageError(null);
     setUniformityError(null);
-  }, []);
+  }, [galleryVisibleCount]);
 
   const selectOrCycleSample = useCallback((sample: ResultSample) => {
     if (sample.id === selectedSample.id) {
@@ -932,13 +1026,13 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
     const restoredSample = resultSamples.find((sample) => sample.id === deletion.sampleId);
     if (restoredSample) {
       setContextRow(restoredSample.row);
-      setGalleryStartColumn((current) => ensureColumnInGalleryWindow(current, restoredSample.column));
+      setGalleryStartColumn((current) => ensureColumnInGalleryWindow(current, restoredSample.column, galleryVisibleCount));
     }
     setSelectedImageIndexBySample((current) => ({
       ...current,
       [deletion.sampleId]: deletion.imageIndex
     }));
-  }, []);
+  }, [galleryVisibleCount]);
 
   const commitDeletionInBackground = useCallback((deletion: PendingDeletion, restoreOnFailure: boolean) => {
     void deleteDieInspection({ inspectionId: deletion.inspection.id }).then((result) => {
@@ -1088,15 +1182,30 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
   }, [canEdit, deleteSelectedImage, navigateSampleByKey, undoLastDeletion]);
 
   const navigateGalleryWindow = useCallback((direction: -1 | 1) => {
-    setGalleryStartColumn((current) => Math.min(maxGalleryStartColumn, Math.max(1, current + direction)));
+    setGalleryStartColumn((current) => Math.min(getMaxGalleryStartColumn(galleryVisibleCount), Math.max(1, current + direction)));
+  }, [galleryVisibleCount]);
+
+  const updateImageSize = useCallback((inspectionId: string, size: { width: number; height: number }) => {
+    setImageSizes((current) => {
+      const existing = current[inspectionId];
+      if (existing?.width === size.width && existing.height === size.height) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [inspectionId]: size
+      };
+    });
   }, []);
 
   return (
-    <div className="grid gap-4">
+    <div className="grid w-full max-w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
       <ResultsGalleryViewport
         tile={tile}
         inspectionsBySample={inspectionsBySample}
         imageIndexBySample={selectedImageIndexBySample}
+        imageSizes={imageSizes}
         uniformityBySample={uniformityBySample}
         row={selectedSample.row}
         visibleSamples={visibleSamples}
@@ -1113,6 +1222,7 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
         onNavigateWindow={navigateGalleryWindow}
         onSelectSample={selectOrCycleSample}
         onAddImagesForSample={addImagesForSample}
+        onImageSize={updateImageSize}
         onUniformityChange={(sample, value) => {
           const scopeKey = getSampleMetricKey(tile, sample);
           setUniformityError(null);
