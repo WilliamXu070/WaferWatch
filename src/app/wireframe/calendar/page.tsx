@@ -1,6 +1,7 @@
 import { CalendarView } from "@/ui/waferwatch-wireframe";
 import { getProcessCalendarSchedule, type ProcessCalendarLocation } from "@/features/calendar/queries";
 import { getProcessTemplate, listProcessTemplates } from "@/features/process-flows/queries";
+import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const metadata = {
@@ -118,9 +119,7 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
         name: process.name,
         version: process.version
       },
-      steps: process.process_steps
-        .slice()
-        .sort((a, b) => a.step_order - b.step_order)
+      steps: orderProcessStepsByOccurrence(process.process_steps, process.process_step_transitions)
         .map((step) => ({ id: step.id, name: step.name })),
       wafers,
       people: schedule.people,

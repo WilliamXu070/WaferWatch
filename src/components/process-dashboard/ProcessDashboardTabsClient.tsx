@@ -9,6 +9,7 @@ import type {
   ProcessCalendarPersonOption
 } from "@/features/calendar/queries";
 import type { ProcessTemplateWithSteps } from "@/features/process-flows/queries";
+import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import type { StepStatus } from "@/types/database";
 
 type DiagramStep = {
@@ -176,9 +177,7 @@ export function ProcessDashboardTabsClient({
               processTemplateId={process.id}
               calendarStartDate={new Date(calendarRange.startDate).toISOString().slice(0, 10)}
               days={getWeekdayCount(calendarRange.startDate, calendarRange.endDate)}
-              steps={process.process_steps
-                .slice()
-                .sort((a, b) => a.step_order - b.step_order)
+              steps={orderProcessStepsByOccurrence(process.process_steps, process.process_step_transitions)
                 .map((step) => ({ id: step.id, name: step.name }))}
               people={calendarDataPeople}
               initialEvents={calendarDataEvents}

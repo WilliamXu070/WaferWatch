@@ -2004,3 +2004,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     the selected process flow steps (`Dicing`, `Chrome deposition`,
     `EBL lithography`, `Pad fabrication`, `PL2`, `Poling`, `Inspection`,
     `EBL Prep`) plus `New action`, with no console errors.
+
+## Recent development note (2026-07-08 calendar step occurrence order)
+
+- Updated calendar/viewer step option ordering to follow process-flow transition
+  occurrence instead of stale `step_order`/name ordering.
+- Added shared `orderProcessStepsByOccurrence` logic that walks non-return
+  process step transitions from start/root nodes and falls back to `step_order`
+  only for disconnected steps.
+- Applied the occurrence order to the wireframe calendar page, the live
+  `/api/processes/[processId]/calendar/options` endpoint, and the process
+  dashboard calendar tab.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright at
+    `http://localhost:3015/calendar?processId=11111111-1111-4111-8111-111111111103`,
+    390x844: opened New event and confirmed the Step / action dropdown now
+    ordered selected process steps by graph occurrence (`Dicing`, `Testing`,
+    `EBL Prep`, `Chrome deposition`, `EBL lithography`, ...), with no console
+    errors.
