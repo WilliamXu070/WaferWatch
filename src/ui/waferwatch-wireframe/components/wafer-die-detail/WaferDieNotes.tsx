@@ -733,7 +733,6 @@ export function WaferDieNotesDashboard({
           />
           {timelineItems.map(({ step, index, state }) => {
             const isSelected = step.id === selectedStep?.id;
-            const stepNotes = notesByStepId[step.id] ?? EMPTY_NOTES;
 
             return (
               <li key={step.id}>
@@ -741,8 +740,8 @@ export function WaferDieNotesDashboard({
                   type="button"
                   onClick={() => setSelectedStepId(step.id)}
                   className={[
-                    "relative grid w-full grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left transition-colors",
-                    isSelected ? "shadow-[inset_0_0_0_1px_rgba(50,107,152,0.28)]" : "hover:bg-[#fafafa]"
+                    "relative grid w-full grid-cols-[28px_minmax(0,1fr)_18px] items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors",
+                    isSelected ? "" : "hover:bg-[#fafafa]"
                   ].join(" ")}
                   style={isSelected || state === "active" ? { backgroundColor: timelineAccent.activeBackground } : undefined}
                   aria-pressed={isSelected}
@@ -752,37 +751,30 @@ export function WaferDieNotesDashboard({
                       "relative z-20 grid h-5 w-5 place-items-center rounded-full border text-[11px] font-semibold",
                       state === "pending"
                         ? "border-[#d7d7d0] bg-white text-[#8a8a83]"
-                        : "border-[#d9d9d2] bg-white text-[#777770]"
+                        : "text-white"
                     ].join(" ")}
-                    style={state === "pending" ? undefined : { backgroundColor: timelineAccent.fill, borderColor: timelineAccent.fill, color: "#ffffff" }}
+                    style={state === "pending" ? undefined : { backgroundColor: timelineAccent.fill, borderColor: timelineAccent.fill }}
                   >
                     {index + 1}
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-[14px] font-semibold text-[#111111]">{step.name}</span>
+                    <strong className="block truncate text-[14px] text-[#151512]">{step.name}</strong>
                     <span
-                      className={["block truncate text-[12px] font-medium", isSelected || state === "active" ? "" : "text-[#8a8a83]"].join(" ")}
+                      className={["text-[12px] font-medium", isSelected || state === "active" ? "" : "text-[#8a8a83]"].join(" ")}
                       style={isSelected || state === "active" ? { color: timelineAccent.text } : undefined}
                     >
                       {getStepStatusLabel(step)}
                     </span>
                   </span>
-                  <span className="flex items-center gap-2">
-                    {stepNotes.length ? (
-                      <span className="rounded-full bg-[#efefea] px-2 py-1 text-[11px] font-semibold text-[#66665f]">
-                        {stepNotes.length}
-                      </span>
-                    ) : null}
-                    {state === "complete" ? (
-                      <span
-                        className="grid h-4 w-4 place-items-center rounded-full text-white"
-                        style={{ backgroundColor: timelineAccent.fill }}
-                        aria-hidden
-                      >
-                        <CheckIcon />
-                      </span>
-                    ) : null}
-                  </span>
+                  {state === "complete" ? (
+                    <span
+                      className="grid h-4 w-4 place-items-center rounded-full text-white"
+                      style={{ backgroundColor: timelineAccent.fill }}
+                      aria-hidden
+                    >
+                      <CheckIcon />
+                    </span>
+                  ) : null}
                 </button>
               </li>
             );
