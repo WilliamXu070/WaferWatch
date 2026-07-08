@@ -2280,3 +2280,17 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
     Login/signup was visually verified; authenticated role-specific UI still
     needs a signed-in browser session for visual acceptance.
+
+## Recent development note (2026-07-08 process flow mobile deselect)
+
+- Fixed the mobile process-flow canvas so tapping empty canvas space clears the
+  currently selected step. Touch input still skips desktop drag-selection, but
+  now runs the same blank-canvas deselect state cleanup used by mouse input.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright MCP at `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    with a `390x844` iPhone-sized viewport: signed in as the seeded admin,
+    selected a process step, dispatched a touch blank-canvas pointer on visible
+    canvas space, and confirmed `.flow-node--selected` changed from `1` to `0`.

@@ -1391,10 +1391,6 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    if (event.pointerType === "touch") {
-      return;
-    }
-
     const target = event.target as EventTarget | null;
     const hasNodeTarget = target instanceof Element && target.closest(".flow-node") !== null;
     const hasEdgeTarget = target instanceof Element && target.closest(".flow-edge-group") !== null;
@@ -1403,10 +1399,16 @@ export function ProcessFlowDiagram({
     }
 
     commitActiveNodeLabel();
-    event.preventDefault();
     setRoleMenu(null);
     setSelectedEdgeId(null);
     setSelectedWafer(null);
+
+    if (event.pointerType === "touch") {
+      setSelectedNodeIds(new Set());
+      return;
+    }
+
+    event.preventDefault();
     const point = getScenePoint(event);
     const additive = event.shiftKey || event.metaKey || event.ctrlKey;
 
