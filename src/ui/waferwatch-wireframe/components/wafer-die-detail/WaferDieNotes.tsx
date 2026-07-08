@@ -896,25 +896,13 @@ export function WaferDieNotesDashboard({
         </div>
 
         <div className="border-t border-[#e6e6e0] bg-white p-3">
-          <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-[#66665f]">
-            <span>Add note to</span>
-            <select
-              value={selectedStep?.id ?? ""}
-              onChange={(event) => setSelectedStepId(event.target.value)}
-              className="h-9 rounded-lg border border-[#e1e1dc] bg-white px-3 text-[13px] font-semibold text-[#111111] outline-none focus:border-[#111111]"
-            >
-              {stageRows.map((step) => (
-                <option key={step.id} value={step.id}>{step.name}</option>
-              ))}
-            </select>
-          </div>
           <textarea
             value={selectedDraft}
             onChange={(event) => selectedStep && setDraftByStepId((current) => ({
               ...current,
               [selectedStep.id]: event.target.value.slice(0, MAX_NOTE_LENGTH)
             }))}
-            placeholder="Write a note... Use @ to mention teammates"
+            placeholder={selectedStep ? `Write a note for ${selectedStep.name}...` : "Write a note..."}
             className="min-h-[88px] w-full resize-y rounded-lg border border-[#e6e6e0] bg-[#fbfbf8] px-3 py-3 text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94] focus:border-[#111111]"
           />
           {selectedDraftFiles.length ? (
@@ -970,15 +958,6 @@ export function WaferDieNotesDashboard({
                   }}
                 />
               </label>
-              <button type="button" className="grid h-9 w-9 place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[13px] font-semibold text-[#777770]" title="Mention">
-                @
-              </button>
-              <button type="button" className="grid h-9 w-9 place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[13px] font-semibold text-[#777770]" title="Tag">
-                #
-              </button>
-              <button type="button" className="grid h-9 w-9 place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[13px] font-semibold text-[#777770]" title="Notify">
-                !
-              </button>
             </div>
             <div className="flex items-center gap-2">
               <button

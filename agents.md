@@ -2212,3 +2212,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
     The CLI browser rendered the login screen, so visual acceptance of the
     signed-in Notes tab still needs a live authenticated browser session.
+
+## Recent development note (2026-07-08 notes composer cleanup)
+
+- Removed the redundant "Add note to" composer selector from the wafer/die Notes
+  tab and removed the placeholder `@`, `#`, and `!` composer buttons.
+- The composer now stays bound to the selected process timeline step and keeps
+  file attachment plus add/cancel behavior unchanged.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright screenshot at
+    `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
+    The CLI browser rendered the login screen, so visual acceptance of the
+    signed-in Notes tab still needs a live authenticated browser session.
