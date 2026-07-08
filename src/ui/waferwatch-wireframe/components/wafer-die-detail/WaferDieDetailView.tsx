@@ -5,8 +5,7 @@ import type { WaferStatusTileModel } from "../../types";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
-  ClockIcon,
-  DotsIcon
+  ClockIcon
 } from "../../icons";
 import { dieDetailTabs, type DieDetailTab } from "./waferDieDetailData";
 import { WaferDieDetailTabs } from "./WaferDieDetailTabs";
@@ -56,12 +55,6 @@ export function DieDetailView({
           </div>
 
           <div className="wafer-die-detail-actions flex flex-wrap items-center gap-2">
-            <button type="button" className="h-10 rounded-lg border border-[#e2e2de] bg-white px-4 text-[14px] font-semibold text-[#44443f] hover:bg-[#fafafa]">
-              Export report
-            </button>
-            <button type="button" className="grid h-10 w-12 place-items-center rounded-lg border border-[#e2e2de] bg-white text-[#44443f] hover:bg-[#fafafa]" aria-label="More actions">
-              <DotsIcon />
-            </button>
             <button
               type="button"
               disabled={!canNavigateBack}
@@ -84,14 +77,14 @@ export function DieDetailView({
         </div>
 
         <div className="wafer-die-detail-tabs mt-5 border-b border-[#eeeeea] md:mt-7">
-          <div className="flex overflow-x-auto bg-white">
+          <div className="wafer-die-detail-tabs__list flex overflow-x-auto bg-white">
             {dieDetailTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={[
-                  "relative flex h-14 shrink-0 items-center px-6 text-[14px] font-semibold",
+                  "wafer-die-detail-tabs__button relative flex h-14 shrink-0 items-center justify-center px-6 text-[14px] font-semibold",
                   activeTab === tab.id ? "text-[#111111]" : "text-[#66665f] hover:bg-[#fafafa]"
                 ].join(" ")}
               >

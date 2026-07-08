@@ -2310,3 +2310,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     with a `390x844` viewport: list view had 9 wafer tiles and no document
     horizontal overflow; die detail view kept the document width at 390px while
     the tabs stayed contained as an internal horizontal scroller.
+
+## Recent development note (2026-07-08 wafer status detail actions and tabs)
+
+- Removed the temporary `Export report` and overflow menu controls from the
+  wafer/die detail header, leaving only previous/next die navigation.
+- Made the detail tab strip responsive for narrow inspection widths: it compresses
+  into five equal columns between tablet and desktop widths, then switches to a
+  contained horizontal scroller on phone widths.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright MCP at `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`:
+    at `390x844`, no document overflow, no `Export report`, no More actions
+    button, and only internal tab scrolling; at `820x700`, no document overflow,
+    grid tabs fit without clipped labels.
