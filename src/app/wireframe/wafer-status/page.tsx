@@ -2,6 +2,7 @@ import {
   getEmptyWaferStatusModel,
   getWaferStatusModel
 } from "@/features/wafers/queries";
+import { canEditProject, getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { WaferStatusView } from "@/ui/waferwatch-wireframe";
 
@@ -29,6 +30,7 @@ export default async function WireframeWaferStatusPage({
     return (
       <WaferStatusView
         model={getEmptyWaferStatusModel()}
+        canEdit={false}
         emptyTitle="No process selected"
         emptyDescription="Select a process first. Wafer / die status stays hidden until a process and this sub-view are selected."
       />
@@ -42,6 +44,7 @@ export default async function WireframeWaferStatusPage({
     return (
       <WaferStatusView
         model={getEmptyWaferStatusModel()}
+        canEdit={false}
         emptyTitle="No wafer status data"
         emptyDescription="Sign in with access to wafer records. No wireframe fallback data is injected."
       />
@@ -49,6 +52,18 @@ export default async function WireframeWaferStatusPage({
   }
 
   const model = await getWaferStatusModel(requestedProcessId);
+  const account = await getCurrentAccount();
+  const projectIds = Array.from(
+    new Set(
+      model.families
+        .flatMap((family) => family.tiles)
+        .map((tile) => tile.projectId)
+    )
+  );
+  const canEdit = account
+    ? account.profile.role === "admin" ||
+      (projectIds.length > 0 && (await Promise.all(projectIds.map((projectId) => canEditProject(projectId)))).every(Boolean))
+    : false;
 
-  return <WaferStatusView model={model} />;
+  return <WaferStatusView model={model} canEdit={canEdit} />;
 }

@@ -115,7 +115,8 @@ export function ProcessCalendarBoard({
   initialEvents,
   initialVisibleStartDate = calendarStartDate,
   persistenceMode = "server",
-  presentationMode = "default"
+  presentationMode = "default",
+  canEdit = true
 }: ProcessCalendarBoardProps) {
   const [events, setEvents] = useState(initialEvents);
   const [liveSteps, setLiveSteps] = useState<ProcessStepOption[]>(() => [...initialSteps]);
@@ -444,14 +445,14 @@ export function ProcessCalendarBoard({
               : eventTone(label, presentationMode),
           start_time: startsAt.getTime(),
           end_time: endsAt.getTime(),
-          canMove: true,
-          canChangeGroup: true,
-          canResize: "both",
+          canMove: canEdit,
+          canChangeGroup: canEdit,
+          canResize: canEdit ? "both" : false,
           height: presentationMode === "wireframe" ? (isCompactViewport ? 60 : 84) : 30
         };
       });
 
-      if (draft || draftDragSelection) {
+      if (canEdit && (draft || draftDragSelection)) {
         const draftWindow = draftDragSelection
           ? draftFromSelection(draftDragSelection, timelineStart, timelineEnd)
           : draft;
@@ -480,7 +481,7 @@ export function ProcessCalendarBoard({
 
       return items;
     },
-    [draft, draftDragSelection, isCompactViewport, presentationMode, stepsById, timelineEnd, timelineStart, visibleEvents]
+    [canEdit, draft, draftDragSelection, isCompactViewport, presentationMode, stepsById, timelineEnd, timelineStart, visibleEvents]
   );
 
   const personConflictById = useMemo(() => {
@@ -538,10 +539,14 @@ export function ProcessCalendarBoard({
   }, [liveSteps, people]);
 
   const openDraft = useCallback((nextDraft: DraftEvent) => {
+    if (!canEdit) {
+      return;
+    }
+
     void refreshCalendarOptions();
     resetDraftForm();
     setDraft(nextDraft);
-  }, [refreshCalendarOptions, resetDraftForm]);
+  }, [canEdit, refreshCalendarOptions, resetDraftForm]);
 
   const getTimelinePointerTarget = useCallback((event: PointerEvent | ReactPointerEvent | ReactMouseEvent) => {
     const timeline = timelineRef.current;
@@ -797,6 +802,10 @@ export function ProcessCalendarBoard({
 
   const handleItemMove = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onItemMove"]>>(
     (itemId, dragTime, newGroupOrder) => {
+      if (!canEdit) {
+        return;
+      }
+
       startItemDragSelectionBlock();
 
       const eventId = String(itemId);
@@ -837,7 +846,7 @@ export function ProcessCalendarBoard({
         }
       );
     },
-    [draft, eventById, groups, startItemDragSelectionBlock, stageItemMove]
+    [canEdit, draft, eventById, groups, startItemDragSelectionBlock, stageItemMove]
   );
 
   useEffect(() => {
@@ -859,6 +868,10 @@ export function ProcessCalendarBoard({
 
   const handleItemResize = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["onItemResize"]>>(
     (itemId, resizeTime, edge) => {
+      if (!canEdit) {
+        return;
+      }
+
       startItemDragSelectionBlock();
 
       const eventId = String(itemId);
@@ -911,10 +924,14 @@ export function ProcessCalendarBoard({
         }
       );
   },
-    [draft, eventById, stageItemMove, startItemDragSelectionBlock]
+    [canEdit, draft, eventById, stageItemMove, startItemDragSelectionBlock]
   );
 
   const openDefaultDraft = useCallback(() => {
+    if (!canEdit) {
+      return;
+    }
+
     const start = clamp(
       snapTime(effectiveVisibleRange.start + 2 * 60 * 60 * 1000),
       timelineStart,
@@ -927,9 +944,13 @@ export function ProcessCalendarBoard({
       startsAt: new Date(start),
       endsAt: new Date(end)
     });
-  }, [effectiveVisibleRange.start, groups, openDraft, timelineEnd, timelineStart]);
+  }, [canEdit, effectiveVisibleRange.start, groups, openDraft, timelineEnd, timelineStart]);
 
   const handleTimelineDoubleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!canEdit) {
+      return;
+    }
+
     if (!isBlankTimelineTarget(event.target)) {
       return;
     }
@@ -945,7 +966,7 @@ export function ProcessCalendarBoard({
     const startsAt = new Date(pointerTarget.time);
     const endsAt = new Date(Math.min(pointerTarget.time + DEFAULT_EVENT_MS, timelineEnd));
     openDraft({ location: pointerTarget.location, startsAt, endsAt });
-  }, [getTimelinePointerTarget, openDraft, timelineEnd]);
+  }, [canEdit, getTimelinePointerTarget, openDraft, timelineEnd]);
 
   const syncSelectionForm = useCallback((event: ProcessCalendarEventView | null) => {
     void refreshCalendarOptions();
@@ -1060,7 +1081,7 @@ export function ProcessCalendarBoard({
       return;
     }
 
-    if (event.pointerType !== "touch" && (event.shiftKey || isShiftPressedRef.current)) {
+    if (canEdit && event.pointerType !== "touch" && (event.shiftKey || isShiftPressedRef.current)) {
       const pointerTarget = getTimelinePointerTarget(event);
       if (!pointerTarget) {
         return;
@@ -1085,7 +1106,7 @@ export function ProcessCalendarBoard({
       return;
     }
 
-    if (event.pointerType === "touch") {
+    if (canEdit && event.pointerType === "touch") {
       const now = Date.now();
       const lastTap = lastTimelineTouchTapRef.current;
       const tapDistance = lastTap
@@ -1145,6 +1166,7 @@ export function ProcessCalendarBoard({
     resetDraftForm,
     setActiveDraftDrag,
     startItemDragSelectionBlock,
+    canEdit,
     timelineEnd,
     timelineStart
   ]);
@@ -1698,15 +1720,17 @@ export function ProcessCalendarBoard({
               {formatDateTime(new Date(effectiveVisibleRange.end))}
             </p>
           </div>
-          <button type="button" className="button button-primary calendar-new-event-button" onClick={openDefaultDraft}>
-            New event
-          </button>
+          {canEdit ? (
+            <button type="button" className="button button-primary calendar-new-event-button" onClick={openDefaultDraft}>
+              New event
+            </button>
+          ) : null}
         </div>
 
         <Timeline<CalendarTimelineItem, TimelineLocationGroup>
-          canChangeGroup
-          canMove
-          canResize="both"
+          canChangeGroup={canEdit}
+          canMove={canEdit}
+          canResize={canEdit ? "both" : false}
           className="ww-process-timeline"
           clickTolerance={5}
           defaultTimeEnd={timelineEnd}
@@ -1817,9 +1841,10 @@ export function ProcessCalendarBoard({
           onStageFilterChange={setFilterStageIds}
         />
 
-        <CalendarEventEditor
-          actionMode={actionMode}
-          description={description}
+          <CalendarEventEditor
+            actionMode={actionMode}
+            canEdit={canEdit}
+            description={description}
           draft={draft}
           error={error}
           filteredPeople={filteredPeople}

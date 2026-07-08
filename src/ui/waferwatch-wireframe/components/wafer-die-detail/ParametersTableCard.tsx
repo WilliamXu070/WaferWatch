@@ -410,14 +410,16 @@ function mergeParameterNotes({
 
 export function ParametersTableCard({
   tile,
+  canEdit = true,
   onPolingNotesChange
 }: {
   tile?: WaferStatusTileModel;
+  canEdit?: boolean;
   onPolingNotesChange?: (stepId: string, notes: WaferDieNote[]) => void;
 }) {
   const dieCode = useMemo(() => getPersistenceDieCode(tile), [tile]);
   const polingStep = useMemo(() => getPolingStep(tile), [tile]);
-  const canPersist = Boolean(tile?.waferId && dieCode);
+  const canPersist = Boolean(canEdit && tile?.waferId && dieCode);
   const polingNotesRef = useRef<WaferDieNote[]>(
     polingStep && tile ? parsePersistedNotes(tile.notesSurfaceValuesByStepId?.[polingStep.id]) ?? [] : []
   );

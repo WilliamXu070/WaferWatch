@@ -13,12 +13,14 @@ import { WaferDieDetailTabs } from "./WaferDieDetailTabs";
 
 export function DieDetailView({
   tile,
+  canEdit,
   onBack,
   onNavigate,
   canNavigateBack,
   canNavigateForward
 }: {
   tile: WaferStatusTileModel;
+  canEdit: boolean;
   onBack: () => void;
   onNavigate: (direction: -1 | 1) => void;
   canNavigateBack: boolean;
@@ -107,6 +109,7 @@ export function DieDetailView({
         key={`${tile.id}:${tile.notesSurfaceValue ?? ""}:${tile.legacyNote ?? ""}`}
         activeTab={activeTab}
         tile={tile}
+        canEdit={canEdit}
         onOpenNotes={() => setActiveTab("notes")}
       />
     </section>

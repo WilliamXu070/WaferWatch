@@ -65,9 +65,11 @@ function DieHistoryTab({
 
 function DieParametersTab({
   tile,
+  canEdit,
   onPolingNotesChange
 }: {
   tile: WaferStatusTileModel;
+  canEdit: boolean;
   onPolingNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
 }) {
   return (
@@ -75,22 +77,25 @@ function DieParametersTab({
       <ParametersTableCard
         key={`parameters-${tile.id}`}
         tile={tile}
+        canEdit={canEdit}
         onPolingNotesChange={onPolingNotesChange}
       />
     </div>
   );
 }
 
-function DieResultsTab({ tile }: { tile: WaferStatusTileModel }) {
-  return <ResultsReviewBoard tile={tile} />;
+function DieResultsTab({ tile, canEdit }: { tile: WaferStatusTileModel; canEdit: boolean }) {
+  return <ResultsReviewBoard tile={tile} canEdit={canEdit} />;
 }
 
 function DieNotesTab({
   tile,
+  canEdit,
   notesByStepId,
   onNotesChange
 }: {
   tile: WaferStatusTileModel;
+  canEdit: boolean;
   notesByStepId: Record<string, readonly WaferDieNote[]>;
   onNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
 }) {
@@ -99,6 +104,7 @@ function DieNotesTab({
       <WaferDieNotesDashboard
         key={tile.id}
         tile={tile}
+        canEdit={canEdit}
         notesByStepId={notesByStepId}
         onNotesChange={onNotesChange}
       />
@@ -109,10 +115,12 @@ function DieNotesTab({
 export function WaferDieDetailTabs({
   activeTab,
   tile,
+  canEdit,
   onOpenNotes
 }: {
   activeTab: DieDetailTab;
   tile: WaferStatusTileModel;
+  canEdit: boolean;
   onOpenNotes: () => void;
 }) {
   const [notesByStepId, setNotesByStepId] = useState<Record<string, WaferDieNote[]>>(() =>
@@ -127,10 +135,10 @@ export function WaferDieDetailTabs({
   };
 
   if (activeTab === "history") return <DieHistoryTab tile={tile} notes={notes} onOpenNotes={onOpenNotes} />;
-  if (activeTab === "parameters") return <DieParametersTab tile={tile} onPolingNotesChange={setStepNotes} />;
-  if (activeTab === "results") return <DieResultsTab tile={tile} />;
+  if (activeTab === "parameters") return <DieParametersTab tile={tile} canEdit={canEdit} onPolingNotesChange={setStepNotes} />;
+  if (activeTab === "results") return <DieResultsTab tile={tile} canEdit={canEdit} />;
   if (activeTab === "notes") {
-    return <DieNotesTab tile={tile} notesByStepId={notesByStepId} onNotesChange={setStepNotes} />;
+    return <DieNotesTab tile={tile} canEdit={canEdit} notesByStepId={notesByStepId} onNotesChange={setStepNotes} />;
   }
   return <DieOverviewTab tile={tile} notes={notes} onOpenNotes={onOpenNotes} />;
 }

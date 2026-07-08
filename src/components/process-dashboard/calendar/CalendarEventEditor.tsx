@@ -13,6 +13,7 @@ type PersonSuggestion = {
 
 type CalendarEventEditorProps = {
   actionMode: ActionMode;
+  canEdit: boolean;
   description: string;
   draft: DraftEvent | null;
   error: string | null;
@@ -43,6 +44,7 @@ type CalendarEventEditorProps = {
 
 function EventFields({
   actionMode,
+  canEdit,
   description,
   filteredPeople,
   manualAction,
@@ -78,6 +80,7 @@ function EventFields({
         <span>Step / action</span>
         <select
           value={actionMode === "step" ? selectedStepId : "__manual"}
+          disabled={!canEdit}
           onChange={(event) => {
             if (event.target.value === "__manual") {
               onActionModeChange("manual");
@@ -102,6 +105,7 @@ function EventFields({
           <span>New action</span>
           <input
             value={manualAction}
+            disabled={!canEdit}
             onChange={(event) => onManualActionChange(event.target.value)}
             placeholder="Poling"
           />
@@ -112,6 +116,7 @@ function EventFields({
         <span>Wafer / die</span>
         <select
           value={selectedWaferId}
+          disabled={!canEdit}
           onChange={(event) => onSelectedWaferIdChange(event.target.value)}
         >
           <option value="">No wafer linked</option>
@@ -128,13 +133,14 @@ function EventFields({
         <div className="person-picker">
           <div className="person-chips">
             {selectedPeople.map((person) => (
-              <button key={person.id} type="button" onClick={() => onRemovePerson(person.id)}>
+              <button key={person.id} type="button" disabled={!canEdit} onClick={() => onRemovePerson(person.id)}>
                 {person.display_name}
               </button>
             ))}
           </div>
           <input
             value={personQuery}
+            disabled={!canEdit}
             onChange={(event) => onPersonQueryChange(event.target.value)}
             onKeyDown={(event) => {
               const firstAvailablePerson = filteredPeople.find((entry) => !entry.conflictReason)?.person;
@@ -150,7 +156,7 @@ function EventFields({
             <div className="person-suggestions">
               {filteredPeople.map(({ person, conflictReason }) => (
                 <button
-                  disabled={Boolean(conflictReason)}
+                  disabled={!canEdit || Boolean(conflictReason)}
                   key={person.id}
                   type="button"
                   title={conflictReason ?? undefined}
@@ -169,6 +175,7 @@ function EventFields({
         <span>Additional information</span>
         <textarea
           value={description}
+          disabled={!canEdit}
           onChange={(event) => onDescriptionChange(event.target.value)}
           rows={4}
           placeholder="Notes, sample set, handoff details"
@@ -180,6 +187,7 @@ function EventFields({
 
 export function CalendarEventEditor(props: CalendarEventEditorProps) {
   const {
+    canEdit,
     draft,
     error,
     isPending,
@@ -192,7 +200,7 @@ export function CalendarEventEditor(props: CalendarEventEditorProps) {
     ...fieldProps
   } = props;
 
-  if (draft) {
+  if (draft && canEdit) {
     return (
       <>
         <div className="calendar-inspector-header">
@@ -201,12 +209,12 @@ export function CalendarEventEditor(props: CalendarEventEditorProps) {
           <p className="muted">{formatWindow(draft.startsAt, draft.endsAt)}</p>
         </div>
 
-        <EventFields {...fieldProps} />
+        <EventFields canEdit={canEdit} {...fieldProps} />
 
         {error ? <p className="form-error">{error}</p> : null}
 
         <div className="calendar-inspector-actions">
-          <button className="button button-primary" disabled={isPending} type="button" onClick={onSaveDraft}>
+          <button className="button button-primary" disabled={isPending || !canEdit} type="button" onClick={onSaveDraft}>
             Save event
           </button>
           <button className="button" type="button" onClick={onCancelDraft}>
@@ -228,17 +236,19 @@ export function CalendarEventEditor(props: CalendarEventEditorProps) {
           </p>
         </div>
 
-        <EventFields {...fieldProps} />
+        <EventFields canEdit={canEdit} {...fieldProps} />
 
         {error ? <p className="form-error">{error}</p> : null}
 
         <div className="calendar-inspector-actions">
-          <button className="button button-primary" disabled={isPending} type="button" onClick={onSaveSelectedEvent}>
+          <button className="button button-primary" disabled={isPending || !canEdit} type="button" onClick={onSaveSelectedEvent}>
             Save event
           </button>
-          <button className="button" type="button" onClick={() => onResetSelectedEvent(selectedEvent)}>
-            Cancel
-          </button>
+          {canEdit ? (
+            <button className="button" type="button" onClick={() => onResetSelectedEvent(selectedEvent)}>
+              Cancel
+            </button>
+          ) : null}
         </div>
       </>
     );

@@ -36,6 +36,7 @@ type CalendarViewProps = {
           people: readonly CalendarPersonModel[];
           initialEvents: readonly CalendarEventModel[];
           initialStartDate: string;
+          canEdit: boolean;
         };
       }
     | { status: "unauthenticated" }
@@ -246,6 +247,7 @@ export function CalendarView({ result }: CalendarViewProps) {
                 initialEvents={resolvedEvents}
                 initialVisibleStartDate={visibleStartDate}
                 presentationMode="wireframe"
+                canEdit={calendarData.canEdit}
               />
             </>
           ) : (

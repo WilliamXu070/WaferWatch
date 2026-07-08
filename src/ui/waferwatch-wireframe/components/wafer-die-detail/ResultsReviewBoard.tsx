@@ -231,6 +231,7 @@ const GalleryTile = memo(function GalleryTile({
   imageCount,
   uniformityValue,
   selected,
+  canEdit,
   onSelect,
   onAddImages,
   onUniformityChange,
@@ -243,6 +244,7 @@ const GalleryTile = memo(function GalleryTile({
   imageCount: number;
   uniformityValue: string;
   selected: boolean;
+  canEdit: boolean;
   onSelect: (sample: ResultSample) => void;
   onAddImages: (sample: ResultSample) => void;
   onUniformityChange: (sample: ResultSample, value: string) => void;
@@ -257,7 +259,9 @@ const GalleryTile = memo(function GalleryTile({
     if (event.key === "Enter") {
       event.preventDefault();
       if (inspections.length === 0) {
-        onAddImages(sample);
+        if (canEdit) {
+          onAddImages(sample);
+        }
       } else {
         onSelect(sample);
       }
@@ -275,7 +279,9 @@ const GalleryTile = memo(function GalleryTile({
         type="button"
         onClick={() => {
           if (inspections.length === 0) {
-            onAddImages(sample);
+            if (canEdit) {
+              onAddImages(sample);
+            }
           } else {
             onSelect(sample);
           }
@@ -299,9 +305,10 @@ const GalleryTile = memo(function GalleryTile({
             type="text"
             inputMode="decimal"
             value={uniformityValue}
+            disabled={!canEdit}
             onChange={(event) => onUniformityChange(sample, event.target.value)}
             onBlur={() => onUniformityBlur(sample)}
-            className="min-w-0 flex-1 bg-transparent text-right text-[18px] font-semibold tabular-nums text-[#111111] outline-none selection:bg-[#d8ecff]"
+            className="min-w-0 flex-1 bg-transparent text-right text-[18px] font-semibold tabular-nums text-[#111111] outline-none selection:bg-[#d8ecff] disabled:text-[#777770]"
             aria-label={`${sample.id} uniformity percentage`}
           />
           <span className="ml-1 select-none text-[15px] font-semibold text-[#777770]">%</span>
@@ -321,6 +328,7 @@ function ResultsGalleryViewport({
   selectedSample,
   selectedImageIndex,
   selectedInspection,
+  canEdit,
   isImageBusy,
   imageError,
   isSavingUniformity,
@@ -342,6 +350,7 @@ function ResultsGalleryViewport({
   selectedSample: ResultSample;
   selectedImageIndex: number;
   selectedInspection: DieInspectionRecord | null;
+  canEdit: boolean;
   isImageBusy: boolean;
   imageError: string | null;
   isSavingUniformity: boolean;
@@ -362,13 +371,13 @@ function ResultsGalleryViewport({
     multiple: true,
     noClick: true,
     noKeyboard: true,
-    disabled: isImageBusy,
+    disabled: isImageBusy || !canEdit,
     onDrop: (acceptedFiles) => onFilesAdd(acceptedFiles)
   });
 
   const handlePaste = (event: ReactClipboardEvent<HTMLElement>) => {
     const files = getClipboardImageFiles(event);
-    if (files.length === 0) {
+    if (!canEdit || files.length === 0) {
       return;
     }
 
@@ -406,7 +415,7 @@ function ResultsGalleryViewport({
           <button
             type="button"
             onClick={onDeleteImage}
-            disabled={!selectedInspection}
+            disabled={!canEdit || !selectedInspection}
             className="h-9 rounded-md border border-[#e1e1dc] bg-white px-3 text-[#9b2727] hover:bg-[#fff0ef] disabled:text-[#aaa] disabled:hover:bg-transparent"
           >
             Delete
@@ -438,6 +447,7 @@ function ResultsGalleryViewport({
                 imageCount={inspections.length}
                 uniformityValue={uniformityBySample[getSampleMetricKey(tile, sample)] ?? sample.uniformityPercent}
                 selected={sample.id === selectedSample.id}
+                canEdit={canEdit}
                 onSelect={onSelectSample}
                 onAddImages={(nextSample) => onAddImagesForSample(nextSample, open)}
                 onUniformityChange={onUniformityChange}
@@ -542,7 +552,7 @@ function ParameterContext({
   );
 }
 
-export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
+export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatusTileModel; canEdit?: boolean }) {
   const [selectedSampleId, setSelectedSampleId] = useState("R1C12");
   const [contextRow, setContextRow] = useState(1);
   const [galleryStartColumn, setGalleryStartColumn] = useState(() => getGalleryWindowStartForColumn(12));
@@ -703,8 +713,10 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
 
   const addImagesForSample = useCallback((sample: ResultSample, openPicker: () => void) => {
     selectSample(sample);
-    window.setTimeout(openPicker, 0);
-  }, [selectSample]);
+    if (canEdit) {
+      window.setTimeout(openPicker, 0);
+    }
+  }, [canEdit, selectSample]);
 
   const navigateSampleByKey = useCallback((key: string) => {
     const rowCount = chipRowSections.length;
@@ -750,6 +762,10 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
   }, [selectSample, selectedSample]);
 
   const saveUniformity = useCallback(async (sample: ResultSample) => {
+    if (!canEdit) {
+      return;
+    }
+
     const scopeKey = getSampleMetricKey(tile, sample);
     const value = (uniformityBySample[scopeKey] ?? sample.uniformityPercent).trim();
     const savedValue = savedUniformityBySample[scopeKey] ?? sample.uniformityPercent;
@@ -783,12 +799,17 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     }
   }, [
     isSavingUniformity,
+    canEdit,
     savedUniformityBySample,
     tile,
     uniformityBySample
   ]);
 
   const uploadResultFiles = useCallback(async (files: readonly File[]) => {
+    if (!canEdit) {
+      return;
+    }
+
     if (!tile.projectId || !tile.waferId || !dieCode) {
       setImageError("Select a persisted wafer die before attaching result images.");
       return;
@@ -890,7 +911,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
     } finally {
       setIsImageBusy(false);
     }
-  }, [dieCode, selectedSample, tile.projectId, tile.waferId]);
+  }, [canEdit, dieCode, selectedSample, tile.projectId, tile.waferId]);
 
   const restoreDeletedInspection = useCallback((deletion: PendingDeletion) => {
     setInspectionsBySample((current) => {
@@ -943,7 +964,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
   }, [restoreDeletedInspection]);
 
   const deleteSelectedImage = useCallback(() => {
-    if (!selectedInspection) {
+    if (!canEdit || !selectedInspection) {
       return;
     }
 
@@ -988,6 +1009,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
       [selectedSample.id]: Math.max(0, selectedImageIndex - 1)
     }));
   }, [
+    canEdit,
     commitDeletionInBackground,
     inspectionsBySample,
     selectedImageIndex,
@@ -1017,7 +1039,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
       }
 
       const files = getClipboardImageFiles(event);
-      if (files.length === 0) {
+      if (!canEdit || files.length === 0) {
         return;
       }
 
@@ -1027,7 +1049,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
 
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
-  }, [uploadResultFiles]);
+  }, [canEdit, uploadResultFiles]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1044,6 +1066,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
       }
 
       if (
+        canEdit &&
         isCommandShortcut &&
         (event.key === "Backspace" || event.key === "Delete")
       ) {
@@ -1062,7 +1085,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [deleteSelectedImage, navigateSampleByKey, undoLastDeletion]);
+  }, [canEdit, deleteSelectedImage, navigateSampleByKey, undoLastDeletion]);
 
   const navigateGalleryWindow = useCallback((direction: -1 | 1) => {
     setGalleryStartColumn((current) => Math.min(maxGalleryStartColumn, Math.max(1, current + direction)));
@@ -1080,6 +1103,7 @@ export function ResultsReviewBoard({ tile }: { tile: WaferStatusTileModel }) {
         selectedSample={selectedSample}
         selectedImageIndex={selectedImageIndex}
         selectedInspection={selectedInspection}
+        canEdit={canEdit}
         isImageBusy={isImageBusy}
         imageError={imageError}
         isSavingUniformity={isSavingUniformity}

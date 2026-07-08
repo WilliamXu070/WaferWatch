@@ -105,4 +105,5 @@ export type ProcessCalendarBoardProps = {
   initialVisibleStartDate?: string;
   persistenceMode?: CalendarPersistenceMode;
   presentationMode?: CalendarPresentationMode;
+  canEdit?: boolean;
 };

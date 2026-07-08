@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   signInFormAction,
+  signUpFormAction,
   type AuthFormState
 } from "@/features/accounts/actions";
 import { authFormStyles } from "@/styles/tw";
@@ -21,11 +22,47 @@ function SubmitButton({ label }: { label: string }) {
 }
 
 export function AuthForms() {
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [signInState, signInAction] = useActionState(signInFormAction, initialState);
+  const [signUpState, signUpAction] = useActionState(signUpFormAction, initialState);
+  const activeState = mode === "signin" ? signInState : signUpState;
 
   return (
     <div className={authFormStyles.panel}>
-      <form action={signInAction} className={authFormStyles.form}>
+      <div className={authFormStyles.modeSwitch} role="tablist" aria-label="Authentication mode">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "signin"}
+          className={[
+            authFormStyles.modeButtonBase,
+            mode === "signin" ? authFormStyles.modeButtonActive : authFormStyles.modeButtonInactive
+          ].join(" ")}
+          onClick={() => setMode("signin")}
+        >
+          Sign in
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "signup"}
+          className={[
+            authFormStyles.modeButtonBase,
+            mode === "signup" ? authFormStyles.modeButtonActive : authFormStyles.modeButtonInactive
+          ].join(" ")}
+          onClick={() => setMode("signup")}
+        >
+          Sign up
+        </button>
+      </div>
+
+      <form action={mode === "signin" ? signInAction : signUpAction} className={authFormStyles.form}>
+        {mode === "signup" ? (
+          <label className={authFormStyles.field}>
+            <span className={authFormStyles.label}>Name</span>
+            <input className={authFormStyles.input} name="displayName" type="text" autoComplete="name" required />
+          </label>
+        ) : null}
         <label className={authFormStyles.field}>
           <span className={authFormStyles.label}>Email</span>
           <input className={authFormStyles.input} name="email" type="email" autoComplete="email" required />
@@ -41,12 +78,9 @@ export function AuthForms() {
             required
           />
         </label>
-        {signInState.error ? <p className={authFormStyles.formError}>{signInState.error}</p> : null}
-        {signInState.message ? <p className={authFormStyles.formMessage}>{signInState.message}</p> : null}
-        <SubmitButton label="Sign in" />
-        <p className={authFormStyles.formMessage}>
-          Access is invite-only. Ask an administrator to provision your account.
-        </p>
+        {activeState.error ? <p className={authFormStyles.formError}>{activeState.error}</p> : null}
+        {activeState.message ? <p className={authFormStyles.formMessage}>{activeState.message}</p> : null}
+        <SubmitButton label={mode === "signin" ? "Sign in" : "Create account"} />
       </form>
     </div>
   );

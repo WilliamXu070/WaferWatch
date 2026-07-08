@@ -14,6 +14,7 @@ import {
   getProcessDashboardData,
   type ProcessDashboardData
 } from "@/features/process-flows/queries";
+import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ProcessFlowView } from "@/ui/waferwatch-wireframe";
 import type { FlowStatModel } from "@/ui/waferwatch-wireframe/types";
@@ -168,6 +169,23 @@ async function loadProcessFlowData(requestedProcessId: string | undefined) {
   return getProcessDashboardData(requestedProcessId, 14, false).catch(() => null);
 }
 
+async function getCanEditProcessFlow(data: ProcessDashboardData | null) {
+  if (!data) {
+    return false;
+  }
+
+  const account = await getCurrentAccount();
+  if (!account) {
+    return false;
+  }
+
+  if (data.process.owner_project_id) {
+    return canEditProject(data.process.owner_project_id);
+  }
+
+  return canManageProcessLibrary(account.profile.role);
+}
+
 export default async function ProcessFlowWireframePage({
   searchParams
 }: {
@@ -175,6 +193,7 @@ export default async function ProcessFlowWireframePage({
 }) {
   const requestedProcessId = firstSearchValue((await searchParams).processId);
   const dashboardData = await loadProcessFlowData(requestedProcessId);
+  const canEdit = await getCanEditProcessFlow(dashboardData);
   const flowColumns = dashboardData ? toFlowColumns(dashboardData) : [];
   const flowTransitions = toFlowTransitions(dashboardData);
   const processLabel = dashboardData
@@ -202,16 +221,17 @@ export default async function ProcessFlowWireframePage({
       transitions={flowTransitions}
       stats={toFlowStats(dashboardData, flowColumns)}
       processTemplateId={dashboardData?.process.id}
-      onCreateStep={createProcessFlowStep}
-      onCreateWaferAtProcessStart={createWaferAtProcessStart}
-      onUpdateStepPositions={updateProcessStepPositions}
-      onUpdateStepName={updateProcessStepName}
-      onUpdateStepNodeType={updateProcessStepNodeType}
-      onCreateTransition={createProcessStepTransition}
-      onDeleteSteps={deleteProcessSteps}
-      onDeleteTransitions={deleteProcessStepTransitions}
-      onDeleteWafer={deleteProcessFlowWafer}
-      onMoveWafer={moveWaferToProcessStep}
+      canEdit={canEdit}
+      onCreateStep={canEdit ? createProcessFlowStep : undefined}
+      onCreateWaferAtProcessStart={canEdit ? createWaferAtProcessStart : undefined}
+      onUpdateStepPositions={canEdit ? updateProcessStepPositions : undefined}
+      onUpdateStepName={canEdit ? updateProcessStepName : undefined}
+      onUpdateStepNodeType={canEdit ? updateProcessStepNodeType : undefined}
+      onCreateTransition={canEdit ? createProcessStepTransition : undefined}
+      onDeleteSteps={canEdit ? deleteProcessSteps : undefined}
+      onDeleteTransitions={canEdit ? deleteProcessStepTransitions : undefined}
+      onDeleteWafer={canEdit ? deleteProcessFlowWafer : undefined}
+      onMoveWafer={canEdit ? moveWaferToProcessStep : undefined}
     />
   );
 }

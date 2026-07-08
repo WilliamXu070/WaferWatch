@@ -233,10 +233,12 @@ function EmptyWaferStatusState({
 
 export function WaferStatusView({
   model,
+  canEdit = true,
   emptyTitle = "No wafers available",
   emptyDescription = "Authenticated Supabase data loaded, but this project state has no wafers visible to the current session."
 }: {
   model: WaferStatusModel;
+  canEdit?: boolean;
   emptyTitle?: string;
   emptyDescription?: string;
 }) {
@@ -280,6 +282,7 @@ export function WaferStatusView({
     <div className="wafer-status-detail-page grid gap-5 bg-white p-4 md:p-6">
         <DieDetailView
           tile={activeDetailTile}
+          canEdit={canEdit}
           onBack={() => setDetailTile(null)}
           onNavigate={handleNavigateDetail}
           canNavigateBack={activeDetailIndex > 0}

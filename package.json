@@ -24,6 +24,7 @@
     "process:seed": "node --env-file=.env.local scripts/current-process-flow.mjs seed",
     "process:verify": "node --env-file=.env.local scripts/current-process-flow.mjs verify",
     "process:clear-wafers": "node --env-file=.env.local scripts/current-process-flow.mjs clear-wafers",
+    "auth:seed-demo-users": "node --env-file=.env.local scripts/seed-demo-users.mjs",
     "deploy:preview": "npx --yes vercel",
     "deploy:prod": "npx --yes vercel --prod"
   },

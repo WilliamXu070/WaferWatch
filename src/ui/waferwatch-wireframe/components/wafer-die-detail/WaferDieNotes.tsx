@@ -447,10 +447,12 @@ function formatTimelineTimestamp(value: string | null | undefined) {
 
 export function WaferDieNotesDashboard({
   tile,
+  canEdit = true,
   notesByStepId,
   onNotesChange
 }: {
   tile: WaferStatusTileModel;
+  canEdit?: boolean;
   notesByStepId: Record<string, readonly WaferDieNote[]>;
   onNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
 }) {
@@ -604,7 +606,7 @@ export function WaferDieNotesDashboard({
   const addNote = async (stepId: string, stepName: string, stepExecutionId: string | null | undefined) => {
     const draft = draftByStepId[stepId] ?? "";
     const body = draft.trim();
-    if (!body || isSaving) {
+    if (!canEdit || !body || isSaving) {
       return;
     }
 
@@ -644,6 +646,10 @@ export function WaferDieNotesDashboard({
   };
 
   const startEditing = (note: WaferDieNote) => {
+    if (!canEdit) {
+      return;
+    }
+
     setEditingId(note.id);
     setEditValue(note.body);
     setError(null);
@@ -651,7 +657,7 @@ export function WaferDieNotesDashboard({
 
   const saveEdit = async (stepId: string, noteId: string) => {
     const body = editValue.trim();
-    if (!body || isSaving) {
+    if (!canEdit || !body || isSaving) {
       return;
     }
 
@@ -673,7 +679,7 @@ export function WaferDieNotesDashboard({
   };
 
   const deleteNote = async (stepId: string, noteId: string) => {
-    if (isSaving) {
+    if (!canEdit || isSaving) {
       return;
     }
 
@@ -869,6 +875,7 @@ export function WaferDieNotesDashboard({
                       </div>
                     </div>
                   </div>
+                  {canEdit ? (
                   <div className="flex shrink-0 items-center gap-2">
                     {editingId === note.id ? (
                       <button
@@ -899,9 +906,10 @@ export function WaferDieNotesDashboard({
                       Delete
                     </button>
                   </div>
+                  ) : null}
                 </div>
 
-                {editingId === note.id ? (
+                {canEdit && editingId === note.id ? (
                   <div className="grid gap-3">
                     <textarea
                       value={editValue}
@@ -948,6 +956,7 @@ export function WaferDieNotesDashboard({
           )}
         </div>
 
+        {canEdit ? (
         <div className="border-t border-[#e6e6e0] bg-white p-3">
           <textarea
             value={selectedDraft}
@@ -1031,6 +1040,7 @@ export function WaferDieNotesDashboard({
             </div>
           </div>
         </div>
+        ) : null}
       </section>
     </div>
   );

@@ -2,6 +2,7 @@ import { CalendarView } from "@/ui/waferwatch-wireframe";
 import { getProcessCalendarSchedule, type ProcessCalendarLocation } from "@/features/calendar/queries";
 import { getProcessTemplate, listProcessTemplates } from "@/features/process-flows/queries";
 import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
+import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const metadata = {
@@ -43,6 +44,7 @@ type CalendarLoadResult =
           people: { id: string; display_name: string }[];
         }>;
         initialStartDate: string;
+        canEdit: boolean;
       };
     }
   | { status: "unauthenticated" }
@@ -68,9 +70,9 @@ function getMondayWeekStart(date: Date) {
 
 async function loadBackendCalendar(requestedProcessId?: string): Promise<CalendarLoadResult> {
   const supabase = await createServerSupabaseClient();
-  const { data: claimsData } = await supabase.auth.getClaims();
+  const account = await getCurrentAccount();
 
-  if (!claimsData?.claims?.sub) {
+  if (!account) {
     return { status: "unauthenticated" };
   }
 
@@ -88,6 +90,9 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
   }
 
   const process = requestedProcessId ? await getProcessTemplate(requestedProcessId) : fallbackTemplate;
+  const canEdit = process.owner_project_id
+    ? await canEditProject(process.owner_project_id)
+    : canManageProcessLibrary(account.profile.role);
 
   const queryStart = new Date(2000, 0, 1);
   const queryEnd = new Date(2099, 11, 31, 23, 59, 59, 999);
@@ -129,7 +134,8 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
         wafer: event.wafer ?? null,
         location: toCalendarLocation(event.location)
       })),
-      initialStartDate: getMondayWeekStart(new Date()).toISOString().slice(0, 10)
+      initialStartDate: getMondayWeekStart(new Date()).toISOString().slice(0, 10),
+      canEdit
     }
   };
 }

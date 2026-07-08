@@ -2259,3 +2259,24 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
     The CLI browser rendered the login screen, so visual acceptance of the
     signed-in Notes tab still needs a live authenticated browser session.
+
+## Recent development note (2026-07-08 admin viewer roles)
+
+- Restored the auth card Sign in / Sign up mode switch.
+- Added `npm run auth:seed-demo-users`, which creates/updates confirmed
+  `admin@waferwatch.local` and `viewer@waferwatch.local` users, stores generated
+  passwords in ignored `.env.demo-users.local`, upserts matching profiles, and
+  assigns project memberships.
+- Added read-only UI gating for viewer accounts across Calendar, Process Flow,
+  and Wafer / Die Status detail editing surfaces. Server write actions still use
+  the existing profile/project write-access checks.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run auth:seed-demo-users`
+  - Direct Supabase profile check confirmed active `admin` and `viewer` roles.
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright screenshots at `http://localhost:3015/` and
+    `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
+    Login/signup was visually verified; authenticated role-specific UI still
+    needs a signed-in browser session for visual acceptance.

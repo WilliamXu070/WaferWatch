@@ -160,11 +160,13 @@ export function ProcessFlowDiagram({
   onDeleteSteps,
   onDeleteTransitions,
   onDeleteWafer,
-  onMoveWafer
+  onMoveWafer,
+  canEdit = true
 }: {
   steps: DiagramStep[];
   transitions?: DiagramTransition[];
   processTemplateId?: string;
+  canEdit?: boolean;
   onCreateStep?: CreateProcessFlowStepAction;
   onCreateWaferAtProcessStart?: CreateWaferAtProcessStartAction;
   onUpdateStepPositions?: UpdateProcessStepPositionsAction;
@@ -740,6 +742,10 @@ export function ProcessFlowDiagram({
   }, []);
 
   const beginNodeLabelEdit = useCallback((nodeId: string) => {
+    if (!canEdit) {
+      return;
+    }
+
     const node = nodeById.get(nodeId);
     if (!node) {
       return;
@@ -747,9 +753,14 @@ export function ProcessFlowDiagram({
 
     setEditingNode(nodeId);
     setEditingNodeLabel(node.label);
-  }, [nodeById]);
+  }, [canEdit, nodeById]);
 
   const commitNodeLabel = useCallback((nodeId: string, raw: string) => {
+    if (!canEdit) {
+      clearEditingNode();
+      return;
+    }
+
     const nextLabel = raw.trim();
     const node = nodeById.get(nodeId);
 
@@ -782,7 +793,7 @@ export function ProcessFlowDiagram({
     }
 
     clearEditingNode();
-  }, [clearEditingNode, nodeById, pushUndoSnapshot, queueNodeNamePersist]);
+  }, [canEdit, clearEditingNode, nodeById, pushUndoSnapshot, queueNodeNamePersist]);
 
   const commitActiveNodeLabel = useCallback(() => {
     if (!editingNodeId) {
@@ -950,6 +961,10 @@ export function ProcessFlowDiagram({
   }, [applyGraphFit]);
 
   const organizeCanvas = () => {
+    if (!canEdit) {
+      return;
+    }
+
     if (nodes.length < 2) {
       return;
     }
@@ -974,7 +989,7 @@ export function ProcessFlowDiagram({
   };
 
   const addWaferAtStart = useCallback(() => {
-    if (!processTemplateId || !onCreateWaferAtProcessStart || isWaferMutationPending) {
+    if (!canEdit || !processTemplateId || !onCreateWaferAtProcessStart || isWaferMutationPending) {
       return;
     }
 
@@ -1059,6 +1074,7 @@ export function ProcessFlowDiagram({
     });
   }, [
     displayNodes,
+    canEdit,
     isWaferMutationPending,
     onCreateWaferAtProcessStart,
     processTemplateId,
@@ -1077,7 +1093,7 @@ export function ProcessFlowDiagram({
   }, []);
 
   const deleteSelectedWafer = useCallback(() => {
-    if (!selectedWafer || isWaferMutationPending) {
+    if (!canEdit || !selectedWafer || isWaferMutationPending) {
       return;
     }
 
@@ -1117,7 +1133,7 @@ export function ProcessFlowDiagram({
         scheduleBackgroundRefresh();
       })();
     });
-  }, [isWaferMutationPending, onDeleteWafer, scheduleBackgroundRefresh, selectedWafer]);
+  }, [canEdit, isWaferMutationPending, onDeleteWafer, scheduleBackgroundRefresh, selectedWafer]);
 
   const restoreFromSnapshot = useCallback((snapshot: GraphSnapshot) => {
     clearTimers();
@@ -1464,6 +1480,10 @@ export function ProcessFlowDiagram({
     event.preventDefault();
     event.stopPropagation();
 
+    if (!canEdit) {
+      return;
+    }
+
     if (!processTemplateId || !onCreateStep) {
       setMoveMessage("Load an authenticated process template before editing the graph.");
       return;
@@ -1559,6 +1579,10 @@ export function ProcessFlowDiagram({
   };
 
   const handleNodePointerDown = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
+    if (!canEdit) {
+      return;
+    }
+
     event.stopPropagation();
     if (editingNodeId && editingNodeId !== node.id) {
       commitActiveNodeLabel();
@@ -1590,7 +1614,7 @@ export function ProcessFlowDiagram({
   };
 
   const beginNodeDrag = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
-    if (event.button !== 0 || connectionDraft) {
+    if (!canEdit || event.button !== 0 || connectionDraft) {
       return;
     }
 
@@ -1739,7 +1763,7 @@ export function ProcessFlowDiagram({
   };
 
   const beginWaferDrag = (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => {
-    if (!onMoveWafer || event.button !== 0 || isMovePending) {
+    if (!canEdit || !onMoveWafer || event.button !== 0 || isMovePending) {
       return;
     }
 
@@ -2057,6 +2081,10 @@ export function ProcessFlowDiagram({
   };
 
   const deleteNodes = useCallback((nodeIds: string[]) => {
+    if (!canEdit) {
+      return;
+    }
+
     const uniqueNodeIds = Array.from(new Set(nodeIds)).filter((nodeId) => nodeById.has(nodeId));
     if (uniqueNodeIds.length === 0) {
       return;
@@ -2115,13 +2143,17 @@ export function ProcessFlowDiagram({
         setMoveMessage(`Deleted ${label}.`);
       })();
     });
-  }, [nodeById, onDeleteSteps, pushUndoSnapshot]);
+  }, [canEdit, nodeById, onDeleteSteps, pushUndoSnapshot]);
 
   const deleteSelectedNodes = useCallback(() => {
     deleteNodes([...selectedNodeIds]);
   }, [deleteNodes, selectedNodeIds]);
 
   const deleteEdge = useCallback((edgeId: string) => {
+    if (!canEdit) {
+      return;
+    }
+
     const hasEdge = edges.some((edge) => edge.id === edgeId);
     if (!hasEdge) {
       return;
@@ -2149,7 +2181,7 @@ export function ProcessFlowDiagram({
         }
       })();
     });
-  }, [edges, onDeleteTransitions, pushUndoSnapshot]);
+  }, [canEdit, edges, onDeleteTransitions, pushUndoSnapshot]);
 
   useEffect(() => {
     const onGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -2159,12 +2191,20 @@ export function ProcessFlowDiagram({
 
       const isUndoShortcut = (event.key === "z" || event.key === "Z") && (event.ctrlKey || event.metaKey) && !event.shiftKey;
       if (isUndoShortcut) {
+        if (!canEdit) {
+          return;
+        }
+
         event.preventDefault();
         undoLastEdit();
         return;
       }
 
       if (event.key === "Delete" || event.key === "Backspace") {
+        if (!canEdit) {
+          return;
+        }
+
         if (selectedWafer) {
           event.preventDefault();
           deleteSelectedWafer();
@@ -2183,7 +2223,7 @@ export function ProcessFlowDiagram({
     return () => {
       window.removeEventListener("keydown", onGlobalKeyDown);
     };
-  }, [deleteEdge, deleteSelectedNodes, deleteSelectedWafer, selectedEdgeId, selectedNodeIds, selectedWafer, undoLastEdit]);
+  }, [canEdit, deleteEdge, deleteSelectedNodes, deleteSelectedWafer, selectedEdgeId, selectedNodeIds, selectedWafer, undoLastEdit]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -2332,7 +2372,8 @@ export function ProcessFlowDiagram({
         onAddWafer={addWaferAtStart}
         onUndo={undoLastEdit}
         canUndo={undoStepsCount > 0}
-        canAddWafer={Boolean(processTemplateId && onCreateWaferAtProcessStart)}
+        canAddWafer={Boolean(canEdit && processTemplateId && onCreateWaferAtProcessStart)}
+        canEdit={canEdit}
       />
       <ProcessFlowCanvas
         frameRef={frameRef}
@@ -2377,6 +2418,9 @@ export function ProcessFlowDiagram({
         onCanvasDoubleClick={createNode}
         onCanvasContextMenu={(event) => {
           event.preventDefault();
+          if (!canEdit) {
+            return;
+          }
           setRoleMenu(null);
           setSelectionBox(null);
           setSelectedNodeIds(new Set());
@@ -2386,7 +2430,7 @@ export function ProcessFlowDiagram({
         onNodePointerMove={updateNodeDrag}
         onNodePointerUp={finishNodeDrag}
         onNodePointerCancel={finishNodeDrag}
-        onNodeContextMenu={openRoleMenu}
+        onNodeContextMenu={canEdit ? openRoleMenu : (event) => event.preventDefault()}
         onBeginLabelEdit={beginNodeLabelEdit}
         onEditingLabelChange={(event) => setEditingNodeLabel(event.currentTarget.value)}
         onCommitLabel={commitNodeLabel}
@@ -2394,7 +2438,11 @@ export function ProcessFlowDiagram({
         onBeginWaferDrag={beginWaferDrag}
         onSelectWafer={selectWafer}
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}
-        onEdgeClick={(edgeId) => { setSelectedNodeIds(new Set()); setSelectedWafer(null); setSelectedEdgeId(edgeId); }}
+        onEdgeClick={(edgeId) => {
+          setSelectedNodeIds(new Set());
+          setSelectedWafer(null);
+          setSelectedEdgeId(canEdit ? edgeId : null);
+        }}
       />
     </section>
   );

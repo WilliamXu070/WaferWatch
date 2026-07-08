@@ -12,6 +12,7 @@ type ProcessFlowToolbarProps = {
   onUndo: () => void;
   canUndo: boolean;
   canAddWafer: boolean;
+  canEdit: boolean;
 };
 
 export function ProcessFlowToolbar({
@@ -25,14 +26,17 @@ export function ProcessFlowToolbar({
   onAddWafer,
   onUndo,
   canUndo,
-  canAddWafer
+  canAddWafer,
+  canEdit
 }: ProcessFlowToolbarProps) {
   return (
     <div className="flow-map-toolbar" aria-label="Flow map controls">
       <div className="flow-map-actions" role="group" aria-label="Canvas controls">
-        <button className="button button-secondary flow-fit-button" type="button" onClick={onUndo} disabled={!canUndo || isGraphPending}>
-          Undo
-        </button>
+        {canEdit ? (
+          <button className="button button-secondary flow-fit-button" type="button" onClick={onUndo} disabled={!canUndo || isGraphPending}>
+            Undo
+          </button>
+        ) : null}
         <button
           className="button button-secondary flow-icon-button"
           type="button"
@@ -53,23 +57,27 @@ export function ProcessFlowToolbar({
         <button className="button button-secondary flow-fit-button" type="button" onClick={onCenterView} disabled={nodesCount === 0}>
           Center view
         </button>
-        <button
-          className="button button-secondary flow-fit-button flow-auto-layout-button"
-          type="button"
-          onClick={onOrganize}
-          disabled={nodesCount < 2 || isGraphPending}
-        >
-          Organize
-        </button>
-        <button
-          className="button button-secondary flow-fit-button flow-add-wafer-button"
-          type="button"
-          onClick={onAddWafer}
-          disabled={!canAddWafer || isGraphPending}
-        >
-          <span aria-hidden="true">+</span>
-          Add wafer
-        </button>
+        {canEdit ? (
+          <>
+            <button
+              className="button button-secondary flow-fit-button flow-auto-layout-button"
+              type="button"
+              onClick={onOrganize}
+              disabled={nodesCount < 2 || isGraphPending}
+            >
+              Organize
+            </button>
+            <button
+              className="button button-secondary flow-fit-button flow-add-wafer-button"
+              type="button"
+              onClick={onAddWafer}
+              disabled={!canAddWafer || isGraphPending}
+            >
+              <span aria-hidden="true">+</span>
+              Add wafer
+            </button>
+          </>
+        ) : null}
       </div>
     </div>
   );

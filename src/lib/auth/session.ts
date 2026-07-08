@@ -84,6 +84,25 @@ export async function requireProcessManager() {
   return requireRole(["admin", "process_engineer"]);
 }
 
+export function canManageProcessLibrary(role: UserRole) {
+  return role === "admin" || role === "process_engineer";
+}
+
+export async function canEditProject(projectId: string) {
+  const account = await getCurrentAccount();
+
+  if (!account) {
+    return false;
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("can_edit_project", {
+    target_project_id: projectId
+  });
+
+  return !error && Boolean(data);
+}
+
 export async function assertProjectAccess(projectId: string, mode: "read" | "write" = "read") {
   const account = await requireAccount();
   const supabase = await createServerSupabaseClient();

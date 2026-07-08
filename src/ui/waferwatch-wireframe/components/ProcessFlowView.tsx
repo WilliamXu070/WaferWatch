@@ -49,6 +49,7 @@ type ProcessFlowViewProps = {
   steps: ProcessFlowStepModel[];
   transitions: ProcessFlowTransitionModel[];
   stats: readonly FlowStatModel[];
+  canEdit?: boolean;
   processTemplateId?: string;
   onCreateStep?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateStep"];
   onCreateWaferAtProcessStart?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateWaferAtProcessStart"];
@@ -70,6 +71,7 @@ export function ProcessFlowView({
   steps,
   transitions,
   stats,
+  canEdit = true,
   processTemplateId,
   onCreateStep,
   onCreateWaferAtProcessStart,
@@ -113,6 +115,7 @@ export function ProcessFlowView({
             steps={steps}
             transitions={transitions}
             processTemplateId={processTemplateId}
+            canEdit={canEdit}
             onCreateStep={onCreateStep}
             onCreateWaferAtProcessStart={onCreateWaferAtProcessStart}
             onUpdateStepPositions={onUpdateStepPositions}
