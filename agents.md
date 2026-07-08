@@ -1980,3 +1980,27 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     event editor, confirmed the Step / action dropdown contained UUID-backed
     current process steps (`Wafer intake and inspection`, `Solvent clean`,
     `Step 3`) plus `New action`, and confirmed no console errors.
+
+## Recent development note (2026-07-08 calendar selected-process routing)
+
+- Fixed the remaining Calendar/Process Flow mismatch where the main Calendar
+  navigation dropped `processId`, causing `/calendar` to fall back to the old
+  active MQPG template and show unrelated step options after editing a different
+  process flow.
+- Desktop sidebar and mobile chrome main Calendar links now preserve the current
+  process id, matching the existing Process Flow and Wafer / Die Status sub-nav
+  behavior.
+- When `/calendar` is opened without an explicit `processId`, the backend now
+  falls back to the most recently updated process template instead of always
+  preferring any active historical template.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright at `http://localhost:3015/process-flow`: Calendar nav links now
+    resolve to `/calendar?processId=11111111-1111-4111-8111-111111111103`.
+  - Playwright at
+    `http://localhost:3015/calendar?processId=11111111-1111-4111-8111-111111111103`,
+    390x844: opened New event and confirmed the Step / action dropdown showed
+    the selected process flow steps (`Dicing`, `Chrome deposition`,
+    `EBL lithography`, `Pad fabrication`, `PL2`, `Poling`, `Inspection`,
+    `EBL Prep`) plus `New action`, with no console errors.

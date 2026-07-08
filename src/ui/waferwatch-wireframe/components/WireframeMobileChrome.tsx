@@ -36,6 +36,10 @@ function hrefWithProcess(href: string, processId: string) {
   return `${href}?processId=${encodeURIComponent(processId)}`;
 }
 
+function withCurrentProcess(href: string, processId: string | null | undefined) {
+  return processId ? hrefWithProcess(href, processId) : href;
+}
+
 function MobileNavLink({
   item,
   active,
@@ -90,6 +94,7 @@ export function WireframeMobileChrome({
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   const mainNav = getMainNav(navBasePath).map((item) => ({
     ...item,
+    href: withCurrentProcess(item.href, currentProcess?.id),
     badge: item.key === "calendar" && shell.calendarEventCount > 0 ? shell.calendarEventCount : item.badge
   }));
   const processNav = currentProcess

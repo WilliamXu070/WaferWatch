@@ -58,6 +58,10 @@ function hrefWithProcess(href: string, processId: string) {
   return `${href}?processId=${encodeURIComponent(processId)}`;
 }
 
+function withCurrentProcess(href: string, processId: string | null | undefined) {
+  return processId ? hrefWithProcess(href, processId) : href;
+}
+
 export function WireframeSidebar({
   shell,
   navBasePath = "",
@@ -74,7 +78,10 @@ export function WireframeSidebar({
   const searchParams = useSearchParams();
   const selectedProcessId = searchParams.get("processId");
   const currentProcess = shell.currentProcess;
-  const mainNav = getMainNav(navBasePath);
+  const mainNav = getMainNav(navBasePath).map((item) => ({
+    ...item,
+    href: withCurrentProcess(item.href, currentProcess?.id)
+  }));
   const processNav = getProcessNav(navBasePath);
 
   // expanded = sub-nav visible; toggled by single click

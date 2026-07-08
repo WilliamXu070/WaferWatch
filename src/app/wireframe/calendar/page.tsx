@@ -74,7 +74,13 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
   }
 
   const templates = await listProcessTemplates();
-  const fallbackTemplate = templates.find((template) => template.is_active) ?? templates[0];
+  const fallbackTemplate = templates
+    .slice()
+    .sort((a, b) => {
+      const aTime = new Date(a.updated_at ?? a.created_at ?? 0).getTime();
+      const bTime = new Date(b.updated_at ?? b.created_at ?? 0).getTime();
+      return bTime - aTime;
+    })[0] ?? templates.find((template) => template.is_active) ?? templates[0];
 
   if (!fallbackTemplate) {
     return { status: "no-process" };
