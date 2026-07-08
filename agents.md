@@ -2175,3 +2175,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`.
     The CLI browser was unauthenticated, so exact signed-in dicing acceptance
     still needs a live authenticated browser session.
+
+## Recent development note (2026-07-08 dicing note cleanup)
+
+- Corrected dicing note transfer so the parent dicing move note is written into
+  each child die wafer's Dicing step note scope, even though child assignments
+  start after the dicing step.
+- Stopped creating generated child wafer notes like `Diced piece I1 from IOTA.`
+  and suppressed that generated legacy-note pattern for existing diced child
+  wafers so it no longer appears under whichever stage is current.
+- Expanded `src/features/runs/dicingNoteTransfer.test.ts` to cover dicing move
+  note insertion and generated diced-piece note detection.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `node --test src/features/runs/dicingNoteTransfer.test.ts`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright screenshot at
+    `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
+    The CLI browser rendered the auth-gated empty state, so exact signed-in note
+    acceptance still needs a live authenticated browser session.

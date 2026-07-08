@@ -5,6 +5,7 @@ import {
   getAttachmentDownloadUrl,
   registerAttachment
 } from "@/features/measurements/actions";
+import { isGeneratedDicedPieceNote } from "@/features/runs/dicingNoteTransfer";
 import { upsertTextSurface } from "@/features/text-surfaces/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
@@ -189,7 +190,7 @@ export function getInitialWaferDieNotes(tile: WaferStatusTileModel): WaferDieNot
   }
 
   const legacyNote = tile.legacyNote?.trim();
-  if (!legacyNote) {
+  if (!legacyNote || isGeneratedDicedPieceNote(legacyNote)) {
     return [];
   }
 

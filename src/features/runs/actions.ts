@@ -13,6 +13,7 @@ import {
   startStepSchema
 } from "@/features/runs/schemas";
 import {
+  appendDicingMoveNoteToClones,
   buildDicingNoteSurfaceClones,
   getWaferDieNotesScopeKey,
   WAFER_DIE_NOTES_FIELD_KEY,
@@ -190,6 +191,7 @@ async function splitWaferAfterDicing({
   accountId,
   assignmentId,
   currentStep,
+  dicingMoveNote,
   nextSteps,
   now,
   projectId,
@@ -200,6 +202,7 @@ async function splitWaferAfterDicing({
   accountId: string;
   assignmentId: string;
   currentStep: Pick<ProcessStep, "id" | "name" | "slug" | "process_area">;
+  dicingMoveNote: string | null;
   nextSteps: ProcessStep[];
   now: string;
   projectId: string;
@@ -238,7 +241,7 @@ async function splitWaferAfterDicing({
     material_stack: wafer.material_stack,
     diameter_mm: wafer.diameter_mm,
     status: "queued" as const,
-    notes: `Diced piece ${dieLabel} from ${wafer.wafer_code}.`,
+    notes: null,
     metadata: {
       parent_wafer_id: wafer.id,
       parent_wafer_code: wafer.wafer_code,
@@ -284,15 +287,23 @@ async function splitWaferAfterDicing({
     throw parentNoteSurfacesError;
   }
 
-  const childNoteClones = buildDicingNoteSurfaceClones({
-    parentScopeKey: parentNotesScopeKey,
-    surfaces: parentNoteSurfaces ?? [],
-    childWafers: childCodes
-      .map((code, index) => {
-        const child = childWafersByCode.get(code);
-        return child ? { id: child.id, dieLabel: dieLabels[index] } : null;
-      })
-      .filter((child): child is NonNullable<typeof child> => Boolean(child))
+  const childNoteTargets = childCodes
+    .map((code, index) => {
+      const child = childWafersByCode.get(code);
+      return child ? { id: child.id, dieLabel: dieLabels[index] } : null;
+    })
+    .filter((child): child is NonNullable<typeof child> => Boolean(child));
+  const childNoteClones = appendDicingMoveNoteToClones({
+    childWafers: childNoteTargets,
+    clones: buildDicingNoteSurfaceClones({
+      parentScopeKey: parentNotesScopeKey,
+      surfaces: parentNoteSurfaces ?? [],
+      childWafers: childNoteTargets
+    }),
+    dicingStepId: currentStep.id,
+    dicingStepName: currentStep.name,
+    noteBody: dicingMoveNote,
+    timestamp: now
   });
 
   if (childNoteClones.length > 0) {
@@ -560,6 +571,7 @@ export async function completeStepExecution(input: unknown) {
           accountId: account.userId,
           assignmentId: context.assignment_id,
           currentStep,
+          dicingMoveNote: data.run_notes,
           nextSteps: followingSteps,
           now,
           projectId: wafer.project_id,
@@ -830,6 +842,7 @@ export async function moveWaferToProcessStep(input: unknown) {
             accountId: account.userId,
             assignmentId: parsed.assignmentId,
             currentStep: currentStepResult.data,
+            dicingMoveNote: parsed.note ?? currentExecution.run_notes,
             nextSteps: followingSteps,
             now,
             projectId: wafer.project_id,
