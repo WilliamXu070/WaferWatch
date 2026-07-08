@@ -2227,3 +2227,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
     The CLI browser rendered the login screen, so visual acceptance of the
     signed-in Notes tab still needs a live authenticated browser session.
+
+## Recent development note (2026-07-08 notes timeline alignment)
+
+- Aligned the wafer/die Notes tab process timeline with the existing Process
+  timeline styling: compact 20px step markers, continuous neutral connector,
+  family-colored completed connector segment, active-row tint, smaller check
+  markers, and tighter row spacing.
+- Kept the Notes-specific selected-step behavior and note-count pills.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright screenshot at
+    `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
+    The CLI browser rendered the login screen, so visual acceptance of the
+    signed-in Notes tab still needs a live authenticated browser session.
