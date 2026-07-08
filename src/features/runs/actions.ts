@@ -819,7 +819,7 @@ export async function moveWaferToProcessStep(input: unknown) {
       tool_id: null,
       recipe_id: null,
       planned_end_at: null,
-      run_notes: parsed.note ?? targetExecution?.run_notes ?? null
+      run_notes: shouldCompleteSourceStep ? targetExecution?.run_notes ?? null : parsed.note ?? targetExecution?.run_notes ?? null
     };
 
     const targetExecutionResult = targetExecution

@@ -2129,3 +2129,29 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`.
     The CLI browser was unauthenticated, so signed-in drag/drop acceptance still
     needs a live authenticated browser session.
+
+## Recent development note (2026-07-08 wafer-status notes attachments)
+
+- Linked process-flow move notes into wafer status by loading
+  `step_executions.run_notes` into each status process step and seeding those as
+  stage notes in the Notes tab.
+- Added note attachments for new wafer-status notes: files upload to the private
+  `wafer-process-files` bucket, register in `attachments`, persist as attachment
+  references inside the note JSON, and open through a signed-download action.
+- Updated flow-move note persistence so completing a source step stores the move
+  note on the completed source execution instead of duplicating it onto the
+  queued target execution.
+- Added and applied migration `202607080001_note_attachment_file_types.sql` so
+  `wafer-process-files` accepts images, PDFs, Word, PowerPoint, Excel, CSV, and
+  JSON note attachments.
+- Ticket: `docs/tickets/wafer-status-notes-attachments.md`.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run db:push:dry`
+  - `npm run db:push`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright screenshot at
+    `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
+    The CLI browser rendered the auth-gated empty state, so populated signed-in
+    note upload acceptance still needs a live authenticated browser session.

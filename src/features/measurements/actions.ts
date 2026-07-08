@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { fail, ok } from "@/lib/action-result";
 import { assertProjectAccess, requireAccount } from "@/lib/auth/session";
 import { toErrorMessage } from "@/lib/errors";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 import {
+  attachmentDownloadSchema,
   attachmentCreateSchema,
   measurementCreateSchema,
   processIssueCreateSchema
@@ -136,6 +137,41 @@ export async function registerAttachment(input: unknown) {
 
     revalidatePath("/", "layout");
     return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function getAttachmentDownloadUrl(input: unknown) {
+  try {
+    const parsed = attachmentDownloadSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data: attachment, error } = await supabase
+      .from("attachments")
+      .select("*")
+      .eq("id", parsed.attachmentId)
+      .single();
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    await assertProjectAccess(attachment.project_id, "read");
+
+    const admin = createSupabaseAdminClient();
+    const signed = await admin.storage
+      .from(attachment.bucket_name)
+      .createSignedUrl(attachment.object_path, 60 * 60);
+
+    if (signed.error) {
+      return fail(signed.error.message);
+    }
+
+    return ok({
+      signedUrl: signed.data.signedUrl,
+      fileName: attachment.file_name,
+      mimeType: attachment.mime_type
+    });
   } catch (error) {
     return fail(toErrorMessage(error));
   }

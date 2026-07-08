@@ -35,3 +35,7 @@ export const attachmentCreateSchema = z.object({
   mimeType: z.string().trim().max(120).nullable().optional(),
   sizeBytes: z.number().int().nonnegative().nullable().optional()
 });
+
+export const attachmentDownloadSchema = z.object({
+  attachmentId: uuidSchema
+});

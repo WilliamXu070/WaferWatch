@@ -55,7 +55,7 @@ type WaferStatusAssignmentRow = Pick<
 
 type WaferStatusExecutionRow = Pick<
   StepExecution,
-  "id" | "assignment_id" | "process_step_id" | "status" | "created_at" | "started_at" | "completed_at"
+  "id" | "assignment_id" | "process_step_id" | "status" | "created_at" | "started_at" | "completed_at" | "run_notes"
 >;
 
 type WaferStatusStepRow = Pick<ProcessStep, "id" | "template_id" | "name" | "process_area" | "step_order" | "node_type">;
@@ -430,6 +430,7 @@ function mapWafersToStatusModel({
           stepOrder: index + 1,
           status: timelineStatus,
           executionId: execution?.id ?? null,
+          runNote: execution?.run_notes ?? null,
           startedAt: execution?.started_at ?? null,
           completedAt: execution?.completed_at ?? null,
           createdAt: execution?.created_at ?? null
@@ -577,7 +578,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   const executionsResult = assignmentIds.length
     ? await supabase
         .from("step_executions")
-        .select("id, assignment_id, process_step_id, status, created_at, started_at, completed_at")
+        .select("id, assignment_id, process_step_id, status, created_at, started_at, completed_at, run_notes")
         .in("assignment_id", assignmentIds)
     : ({ data: [], error: null } as const);
 
