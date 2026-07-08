@@ -2043,3 +2043,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright at
     `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
     route loaded with no console errors.
+
+## Recent development note (2026-07-08 process-flow selected wafer strip)
+
+- Removed the selected wafer/die action strip that appeared above the process
+  flow canvas after clicking a wafer, including the `Move to ...` and `Delete`
+  buttons shown in that strip.
+- Kept direct wafer drag-to-move behavior and keyboard deletion paths intact;
+  this change only removes the always-visible selected-wafer action bar.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright at
+    `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    route loaded with no console errors and
+    `.flow-selected-wafer-actions` count was `0`.
