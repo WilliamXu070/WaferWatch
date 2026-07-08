@@ -12,6 +12,12 @@ import {
   reservationSchema,
   startStepSchema
 } from "@/features/runs/schemas";
+import {
+  buildDicingNoteSurfaceClones,
+  getWaferDieNotesScopeKey,
+  WAFER_DIE_NOTES_FIELD_KEY,
+  WAFER_DIE_NOTES_SCOPE_TYPE
+} from "@/features/runs/dicingNoteTransfer";
 import { CURRENT_STEP_STATUSES, getSourceStepExecution } from "@/features/runs/stepExecutionSelection";
 import type { Json, ProcessStep, ProcessStepTransition, StepExecution } from "@/types/database";
 
@@ -265,6 +271,51 @@ async function splitWaferAfterDicing({
 
   const childWafersByCode = new Map((childWafers ?? []).map((child) => [child.wafer_code, child]));
   const childWaferIds = (childWafers ?? []).map((child) => child.id);
+  const parentNotesScopeKey = getWaferDieNotesScopeKey(wafer.id, wafer.wafer_code);
+  const { data: parentNoteSurfaces, error: parentNoteSurfacesError } = await supabase
+    .from("text_surfaces")
+    .select("scope_key, value")
+    .eq("project_id", projectId)
+    .eq("scope_type", WAFER_DIE_NOTES_SCOPE_TYPE)
+    .eq("field_key", WAFER_DIE_NOTES_FIELD_KEY)
+    .like("scope_key", `${parentNotesScopeKey}%`);
+
+  if (parentNoteSurfacesError) {
+    throw parentNoteSurfacesError;
+  }
+
+  const childNoteClones = buildDicingNoteSurfaceClones({
+    parentScopeKey: parentNotesScopeKey,
+    surfaces: parentNoteSurfaces ?? [],
+    childWafers: childCodes
+      .map((code, index) => {
+        const child = childWafersByCode.get(code);
+        return child ? { id: child.id, dieLabel: dieLabels[index] } : null;
+      })
+      .filter((child): child is NonNullable<typeof child> => Boolean(child))
+  });
+
+  if (childNoteClones.length > 0) {
+    const { error: childNoteCloneError } = await supabase
+      .from("text_surfaces")
+      .upsert(
+        childNoteClones.map((clone) => ({
+          project_id: projectId,
+          scope_type: WAFER_DIE_NOTES_SCOPE_TYPE,
+          scope_key: clone.scopeKey,
+          field_key: WAFER_DIE_NOTES_FIELD_KEY,
+          value: clone.value,
+          updated_by: accountId,
+          updated_at: now
+        })),
+        { onConflict: "project_id,scope_type,scope_key,field_key" }
+      );
+
+    if (childNoteCloneError) {
+      throw childNoteCloneError;
+    }
+  }
+
   const { data: existingAssignments, error: existingAssignmentsError } = await supabase
     .from("wafer_process_assignments")
     .select("id, wafer_id")

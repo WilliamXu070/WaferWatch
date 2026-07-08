@@ -2155,3 +2155,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`.
     The CLI browser rendered the auth-gated empty state, so populated signed-in
     note upload acceptance still needs a live authenticated browser session.
+
+## Recent development note (2026-07-08 dicing note transfer)
+
+- Fixed dicing split note transfer: when `splitWaferAfterDicing` creates child
+  die wafers, it now copies the parent wafer's general and step-scoped
+  `text_surfaces` notes into each child wafer's `waferId:dieLabel` note scope.
+- Note values are copied unchanged, preserving note JSON and attachment
+  references already stored in the note payload.
+- Added `src/features/runs/dicingNoteTransfer.ts` plus a focused regression test
+  for cloning parent note scopes to child die scopes.
+- Ticket: `docs/tickets/dicing-note-transfer.md`.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `node --test src/features/runs/dicingNoteTransfer.test.ts`
+  - `curl -s http://localhost:3015/api/health`
+  - Playwright screenshot at
+    `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`.
+    The CLI browser was unauthenticated, so exact signed-in dicing acceptance
+    still needs a live authenticated browser session.
