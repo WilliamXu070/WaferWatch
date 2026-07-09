@@ -2468,3 +2468,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     from `0` to `48` with zoom unchanged at `35%`; unmodified pixel wheel
     changed scroll to `128/20` with zoom still `35%`; Ctrl-wheel changed zoom
     to `43%`; no console errors.
+
+## Recent development note (2026-07-08 process flow concurrent wafer delete)
+
+- Fixed process-flow wafer/die deletion so optimistic deletes are no longer
+  blocked by a global wafer mutation pending state.
+- Delete requests now run independently per assignment id, and a failed request
+  restores only the specific failed chip instead of rolling back the whole graph
+  snapshot.
+- Hardened process-flow pointer capture/release calls so interrupted or scripted
+  pointer events do not throw console errors.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Seeded two temporary `CODEX-DELETE-*` wafer assignments on
+    `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`,
+    selected and deleted `T1` then `T2` back-to-back, and confirmed both chips
+    disappeared immediately and stayed gone after server settlement.
+  - Direct Supabase check confirmed the temporary wafer and assignment rows were
+    deleted after verification; Playwright reported no console errors on the
+    final delete run.

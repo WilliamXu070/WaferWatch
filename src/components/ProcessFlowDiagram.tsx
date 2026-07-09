@@ -148,6 +148,33 @@ function isAlreadyDeletedTransitionError(message: string) {
   return message.includes("selected transitions no longer exist");
 }
 
+function safelySetPointerCapture(element: Element, pointerId: number) {
+  if (!("setPointerCapture" in element)) {
+    return;
+  }
+
+  try {
+    element.setPointerCapture(pointerId);
+  } catch {
+    // Scripted events and interrupted gestures may not have an active pointer.
+    // The drag state still tracks pointerId, so capture is only an enhancement.
+  }
+}
+
+function safelyReleasePointerCapture(element: Element, pointerId: number) {
+  if (!("releasePointerCapture" in element)) {
+    return;
+  }
+
+  try {
+    if (!("hasPointerCapture" in element) || element.hasPointerCapture(pointerId)) {
+      element.releasePointerCapture(pointerId);
+    }
+  } catch {
+    // Capture may already be released by cancellation, navigation, or tests.
+  }
+}
+
 export function ProcessFlowDiagram({
   steps,
   transitions = [],
@@ -216,6 +243,7 @@ export function ProcessFlowDiagram({
   const pendingTransitionCreateRef = useRef<Map<string, QueuedTransition>>(new Map());
   const pendingPositionUpdateRef = useRef<Map<string, { canvasX: number; canvasY: number }>>(new Map());
   const pendingNameUpdateRef = useRef<Map<string, string>>(new Map());
+  const pendingWaferDeleteIdsRef = useRef<Set<string>>(new Set());
   const undoRecoveredNodeIdsRef = useRef<Set<string>>(new Set());
   const undoRecoveredEdgeIdsRef = useRef<Set<string>>(new Set());
   const undoStackRef = useRef<GraphSnapshot[]>([]);
@@ -1093,7 +1121,7 @@ export function ProcessFlowDiagram({
   }, []);
 
   const deleteSelectedWafer = useCallback(() => {
-    if (!canEdit || !selectedWafer || isWaferMutationPending) {
+    if (!canEdit || !selectedWafer) {
       return;
     }
 
@@ -1103,7 +1131,18 @@ export function ProcessFlowDiagram({
     }
 
     const wafer = selectedWafer;
-    const previousNodes = nodesRef.current;
+    if (pendingWaferDeleteIdsRef.current.has(wafer.assignmentId)) {
+      return;
+    }
+
+    const sourceNode = nodesRef.current.find((node) => node.id === wafer.nodeId);
+    const deletedPin = sourceNode?.wafers.find((pin) => pin.assignmentId === wafer.assignmentId);
+    if (!deletedPin) {
+      setSelectedWafer(null);
+      return;
+    }
+
+    pendingWaferDeleteIdsRef.current.add(wafer.assignmentId);
     setNodes((currentNodes) =>
       currentNodes.map((node) =>
         node.id === wafer.nodeId
@@ -1118,22 +1157,34 @@ export function ProcessFlowDiagram({
     setSelectedWafer(null);
     setMoveMessage(`Deleting ${wafer.label}...`);
 
-    startWaferMutationTransition(() => {
-      void (async () => {
-        const result = await onDeleteWafer({ assignmentId: wafer.assignmentId });
+    void (async () => {
+      const result = await onDeleteWafer({ assignmentId: wafer.assignmentId });
+      pendingWaferDeleteIdsRef.current.delete(wafer.assignmentId);
 
-        if (!result.ok) {
-          setNodes(previousNodes);
-          setSelectedWafer(wafer);
-          setMoveMessage(result.error);
-          return;
-        }
+      if (!result.ok) {
+        setNodes((currentNodes) =>
+          currentNodes.map((node) => {
+            if (node.id !== wafer.nodeId || node.wafers.some((pin) => pin.assignmentId === wafer.assignmentId)) {
+              return node;
+            }
 
-        setMoveMessage(`Deleted ${wafer.label}.`);
-        scheduleBackgroundRefresh();
-      })();
-    });
-  }, [canEdit, isWaferMutationPending, onDeleteWafer, scheduleBackgroundRefresh, selectedWafer]);
+            const restoredWafers = [...node.wafers, deletedPin];
+            return {
+              ...node,
+              wafers: restoredWafers,
+              height: getNodeHeightForWaferCount(restoredWafers.length)
+            };
+          })
+        );
+        setSelectedWafer(wafer);
+        setMoveMessage(result.error);
+        return;
+      }
+
+      setMoveMessage(`Deleted ${wafer.label}.`);
+      scheduleBackgroundRefresh();
+    })();
+  }, [canEdit, onDeleteWafer, scheduleBackgroundRefresh, selectedWafer]);
 
   const restoreFromSnapshot = useCallback((snapshot: GraphSnapshot) => {
     clearTimers();
@@ -1353,7 +1404,7 @@ export function ProcessFlowDiagram({
       startScrollTop: frame.scrollTop
     };
     setIsPanning(true);
-    frame.setPointerCapture(event.pointerId);
+    safelySetPointerCapture(frame, event.pointerId);
   };
 
   const updatePan = (event: PointerEvent<HTMLDivElement>) => {
@@ -1379,7 +1430,7 @@ export function ProcessFlowDiagram({
 
     const frame = frameRef.current;
     if (frame) {
-      frame.releasePointerCapture(event.pointerId);
+      safelyReleasePointerCapture(frame, event.pointerId);
     }
 
     setIsPanning(false);
@@ -1426,7 +1477,7 @@ export function ProcessFlowDiagram({
       hasMoved: false,
       baseSelectedNodeIds: additive ? [...selectedNodeIds] : []
     });
-    event.currentTarget.setPointerCapture(event.pointerId);
+    safelySetPointerCapture(event.currentTarget, event.pointerId);
   };
 
   const updateCanvasSelection = (event: PointerEvent<SVGSVGElement>) => {
@@ -1469,7 +1520,7 @@ export function ProcessFlowDiagram({
       setSelectedNodeIds(new Set());
     }
 
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    safelyReleasePointerCapture(event.currentTarget, event.pointerId);
     setSelectionBox(null);
     return true;
   };
@@ -1577,7 +1628,7 @@ export function ProcessFlowDiagram({
       y: point.y,
       hasMoved: false
     });
-    event.currentTarget.setPointerCapture(event.pointerId);
+    safelySetPointerCapture(event.currentTarget, event.pointerId);
   };
 
   const handleNodePointerDown = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
@@ -1645,7 +1696,7 @@ export function ProcessFlowDiagram({
       startY: node.y,
       nodeStartPositions
     });
-    event.currentTarget.setPointerCapture(event.pointerId);
+    safelySetPointerCapture(event.currentTarget, event.pointerId);
     setDragTouchAction();
   };
 
@@ -1729,13 +1780,13 @@ export function ProcessFlowDiagram({
   const finishNodeDrag = (event: PointerEvent<SVGGElement>) => {
     clearDragTouchAction();
     if (pendingConnectionStart && pendingConnectionStart.pointerId === event.pointerId) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+      safelyReleasePointerCapture(event.currentTarget, event.pointerId);
       setPendingConnectionStart(null);
       return;
     }
 
     if (connectionDraft && connectionDraft.pointerId === event.pointerId) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+      safelyReleasePointerCapture(event.currentTarget, event.pointerId);
       finishConnection(event);
       return;
     }
@@ -1744,7 +1795,7 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    safelyReleasePointerCapture(event.currentTarget, event.pointerId);
     const finishedDrag = nodeDrag;
     setNodeDrag(null);
     setSnapGuides([]);
@@ -1786,7 +1837,7 @@ export function ProcessFlowDiagram({
       y: point.y,
       hasMoved: false
     });
-    event.currentTarget.setPointerCapture(event.pointerId);
+    safelySetPointerCapture(event.currentTarget, event.pointerId);
     setDragTouchAction();
   };
 
