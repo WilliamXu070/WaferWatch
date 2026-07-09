@@ -259,7 +259,45 @@ export function WireframeSidebar({
           </div>
         </div>
 
-        {/* Animated process drawer: create tile + Process Flow + Wafer / Die Status */}
+        {onCreateProcess ? (
+          isCreatingProcess ? (
+            <div className="mt-2 flex items-center gap-2 rounded-xl border border-dashed border-[#b7b6aa] bg-white px-3 py-2.5 text-sm">
+              <PlusIcon className="shrink-0 text-[#8a887b]" />
+              <input
+                ref={createInputRef}
+                value={createNameDraft}
+                onChange={(event) => setCreateNameDraft(event.currentTarget.value)}
+                onBlur={commitCreateProcess}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitCreateProcess();
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelCreatingProcess();
+                  }
+                }}
+                className="min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-[#151512] outline-none placeholder:text-[#98968a]"
+                placeholder="Name new process"
+                aria-label="New process name"
+                autoFocus
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={startCreatingProcess}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#c9c8be] bg-white px-3 py-2.5 text-[13px] font-semibold text-[#55534a] transition-colors hover:border-[#151512] hover:bg-[#f8f9fb] hover:text-[#151512]"
+              aria-label="Add process"
+            >
+              <PlusIcon className="text-[#8a887b]" />
+              New process
+            </button>
+          )
+        ) : null}
+
+        {/* Animated process drawer: Process Flow + Wafer / Die Status */}
         <div
           className={[
             "grid transition-[grid-template-rows,opacity,transform] duration-200 ease-out",
@@ -270,43 +308,6 @@ export function WireframeSidebar({
         >
           <div className="min-h-0 overflow-hidden">
             <div className="mt-2 flex flex-col gap-2">
-              {onCreateProcess ? (
-                isCreatingProcess ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#b7b6aa] bg-white px-3 py-2.5 text-sm">
-                    <PlusIcon className="shrink-0 text-[#8a887b]" />
-                    <input
-                      ref={createInputRef}
-                      value={createNameDraft}
-                      onChange={(event) => setCreateNameDraft(event.currentTarget.value)}
-                      onBlur={commitCreateProcess}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          commitCreateProcess();
-                        }
-                        if (event.key === "Escape") {
-                          event.preventDefault();
-                          cancelCreatingProcess();
-                        }
-                      }}
-                      className="min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-[#151512] outline-none placeholder:text-[#98968a]"
-                      placeholder="Name new process"
-                      aria-label="New process name"
-                      autoFocus
-                    />
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={startCreatingProcess}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#c9c8be] bg-white px-3 py-2.5 text-[13px] font-semibold text-[#55534a] transition-colors hover:border-[#151512] hover:bg-[#f8f9fb] hover:text-[#151512]"
-                    aria-label="Add process"
-                  >
-                    <PlusIcon className="text-[#8a887b]" />
-                    New process
-                  </button>
-                )
-              ) : null}
               {currentProcess
                 ? processNav.map((item) => {
                     const Icon = iconByKey[item.icon];

@@ -2572,3 +2572,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     open state showed `New process` above `Process Flow`; clicking `Saeed`
     collapsed the drawer to height `0` and made the add tile not hit-testable;
     clicking `Saeed` again reopened it with the same ordering.
+
+## Recent development note (2026-07-09 process create sibling)
+
+- Moved the dashed `+ New process` tile back out of the Saeed/current-process
+  shutter so it is a sibling action below the process card, not a child subtab
+  of that process.
+- The process drawer now contains only process-specific links:
+  `Process Flow` and `Wafer / Die Status`.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://localhost:3015/calendar?processId=11111111-1111-4111-8111-111111111103`:
+    open state had `New process` below the process card and above `Process Flow`;
+    closing `Saeed` collapsed the drawer to height `0`, hid `Process Flow`, and
+    kept `New process` visible and hit-testable.
