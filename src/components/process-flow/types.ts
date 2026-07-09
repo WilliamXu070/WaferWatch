@@ -132,6 +132,7 @@ export type PendingWaferMove = {
   targetLabel: string;
   waferLabel: string;
   completeSourceStep: boolean;
+  revertToPriorStep: boolean;
 };
 
 export type SnapGuide = {
@@ -177,6 +178,7 @@ export type MoveWaferToProcessStepAction = (input: {
   targetStepId: string;
   note: string;
   completeSourceStep?: boolean;
+  revertToPriorStep?: boolean;
 }) => Promise<ActionResult<unknown>>;
 
 export type CreateWaferAtProcessStartAction = (input: {

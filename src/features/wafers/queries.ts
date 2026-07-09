@@ -55,7 +55,15 @@ type WaferStatusAssignmentRow = Pick<
 
 type WaferStatusExecutionRow = Pick<
   StepExecution,
-  "id" | "assignment_id" | "process_step_id" | "status" | "created_at" | "started_at" | "completed_at" | "run_notes"
+  | "id"
+  | "assignment_id"
+  | "process_step_id"
+  | "status"
+  | "created_at"
+  | "started_at"
+  | "completed_at"
+  | "run_notes"
+  | "metadata"
 >;
 
 type WaferStatusStepRow = Pick<ProcessStep, "id" | "template_id" | "name" | "process_area" | "step_order" | "node_type">;
@@ -236,6 +244,23 @@ function pickStepTimelineExecution(executions: ReadonlyArray<WaferStatusExecutio
 
     return compareExecutionRecency(b, a);
   })[0] ?? null;
+}
+
+function getRevertBranchLabel(execution: WaferStatusExecutionRow | null, currentStepId: string | null) {
+  if (!execution) {
+    return null;
+  }
+
+  const metadata = toJsonRecord(execution.metadata);
+  if (typeof metadata.revert_target_at === "string") {
+    return execution.process_step_id === currentStepId ? "Redo from here" : "Redo target";
+  }
+
+  if (typeof metadata.reverted_at === "string") {
+    return "Redo required";
+  }
+
+  return null;
 }
 
 function mapTileStatus({
@@ -433,7 +458,8 @@ function mapWafersToStatusModel({
           runNote: execution?.run_notes ?? null,
           startedAt: execution?.started_at ?? null,
           completedAt: execution?.completed_at ?? null,
-          createdAt: execution?.created_at ?? null
+          createdAt: execution?.created_at ?? null,
+          branchLabel: getRevertBranchLabel(execution, currentStep?.id ?? null)
         };
       }),
       mode,
@@ -576,9 +602,9 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
 
   const assignmentIds = Array.from(assignmentsByWaferId.values()).map((assignment) => assignment.id);
   const executionsResult = assignmentIds.length
-    ? await supabase
+      ? await supabase
         .from("step_executions")
-        .select("id, assignment_id, process_step_id, status, created_at, started_at, completed_at, run_notes")
+        .select("id, assignment_id, process_step_id, status, created_at, started_at, completed_at, run_notes, metadata")
         .in("assignment_id", assignmentIds)
     : ({ data: [], error: null } as const);
 

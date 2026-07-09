@@ -2488,3 +2488,32 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Direct Supabase check confirmed the temporary wafer and assignment rows were
     deleted after verification; Playwright reported no console errors on the
     final delete run.
+
+## Recent development note (2026-07-08 process flow revert to prior step)
+
+- Added explicit redo/revert movement support for process-flow wafers: dragging
+  a wafer/die to an earlier persisted `process_steps.step_order` opens a
+  `Revert wafer` note dialog instead of requiring a forward graph edge.
+- Server-side movement now distinguishes forward moves from revert moves,
+  resets later executions to `pending`, queues the revert target, records
+  `wafer_step_reverted`, and blocks diced children from reverting back through
+  their dicing source step.
+- Wafer-status process timelines now load execution metadata and show redo
+  branch badges such as `Redo from here` and `Redo required`.
+- Fixed wafer drag completion by tracking the active drag in a ref and routing
+  node-level pointer move/up events through wafer drop handling.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright on `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    seeded temporary `R1` at `Testing`, dragged it to earlier `Chrome deposition`,
+    saw the `Revert wafer` dialog, submitted a redo note, and confirmed `R1`
+    moved to `Chrome deposition` with no console errors.
+  - Direct Supabase check confirmed the target execution was queued with
+    `revert_target_at` metadata and later executions were reset with
+    `reverted_at` metadata.
+  - Playwright on `/wafer-status?processId=11111111-1111-4111-8111-111111111103`:
+    opened the temporary `R1` detail view and confirmed `Redo from here` and
+    `Redo required` appeared in the process timeline.
+  - Removed the temporary wafer, assignment, execution, and process-event rows
+    after verification.

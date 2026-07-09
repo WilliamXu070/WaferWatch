@@ -244,6 +244,7 @@ export function ProcessFlowDiagram({
   const pendingPositionUpdateRef = useRef<Map<string, { canvasX: number; canvasY: number }>>(new Map());
   const pendingNameUpdateRef = useRef<Map<string, string>>(new Map());
   const pendingWaferDeleteIdsRef = useRef<Set<string>>(new Set());
+  const waferDragRef = useRef<WaferDrag | null>(null);
   const undoRecoveredNodeIdsRef = useRef<Set<string>>(new Set());
   const undoRecoveredEdgeIdsRef = useRef<Set<string>>(new Set());
   const undoStackRef = useRef<GraphSnapshot[]>([]);
@@ -280,6 +281,7 @@ export function ProcessFlowDiagram({
   const scaledWidth = Math.round(sceneBounds.width * s);
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(displayNodes.map((node) => [node.id, node])), [displayNodes]);
+  const stepOrderById = useMemo(() => new Map(steps.map((step) => [step.id, step.step_order])), [steps]);
   const selectedWaferAssignmentId = useMemo(() => {
     if (!selectedWafer) {
       return null;
@@ -1701,6 +1703,11 @@ export function ProcessFlowDiagram({
   };
 
   const updateNodeDrag = (event: PointerEvent<SVGGElement>) => {
+    if (waferDragRef.current) {
+      updateWaferDrag(event as unknown as PointerEvent<SVGSVGElement>);
+      return;
+    }
+
     if (pendingConnectionStart && pendingConnectionStart.pointerId === event.pointerId) {
       const point = getScenePoint(event);
       const hasMoved =
@@ -1778,6 +1785,11 @@ export function ProcessFlowDiagram({
   };
 
   const finishNodeDrag = (event: PointerEvent<SVGGElement>) => {
+    if (waferDragRef.current) {
+      finishWaferDrag(event as unknown as PointerEvent<SVGSVGElement>);
+      return;
+    }
+
     clearDragTouchAction();
     if (pendingConnectionStart && pendingConnectionStart.pointerId === event.pointerId) {
       safelyReleasePointerCapture(event.currentTarget, event.pointerId);
@@ -1826,7 +1838,7 @@ export function ProcessFlowDiagram({
     setMoveMessage(null);
 
     const point = getScenePoint(event);
-    setWaferDrag({
+    const nextDrag = {
       assignmentId: wafer.assignmentId,
       sourceStepId: node.id,
       waferLabel: getWaferChipLabel(wafer),
@@ -1836,30 +1848,33 @@ export function ProcessFlowDiagram({
       x: point.x,
       y: point.y,
       hasMoved: false
-    });
-    safelySetPointerCapture(event.currentTarget, event.pointerId);
+    };
+    waferDragRef.current = nextDrag;
+    setWaferDrag(nextDrag);
+    if (svgRef.current) {
+      safelySetPointerCapture(svgRef.current, event.pointerId);
+    }
     setDragTouchAction();
   };
 
   const updateWaferDrag = (event: PointerEvent<SVGSVGElement>) => {
-    if (!waferDrag || waferDrag.pointerId !== event.pointerId) {
+    const currentDrag = waferDragRef.current;
+    if (!currentDrag || currentDrag.pointerId !== event.pointerId) {
       return;
     }
 
     const point = getScenePoint(event);
-    setWaferDrag((drag) =>
-      drag
-        ? {
-            ...drag,
-            x: point.x,
-            y: point.y,
-            hasMoved:
-              drag.hasMoved ||
-              Math.abs(point.x - drag.startX) > 6 ||
-              Math.abs(point.y - drag.startY) > 6
-          }
-        : drag
-    );
+    const nextDrag = {
+      ...currentDrag,
+      x: point.x,
+      y: point.y,
+      hasMoved:
+        currentDrag.hasMoved ||
+        Math.abs(point.x - currentDrag.startX) > 6 ||
+        Math.abs(point.y - currentDrag.startY) > 6
+    };
+    waferDragRef.current = nextDrag;
+    setWaferDrag(nextDrag);
   };
 
   const clearDragTouchAction = () => {
@@ -1881,12 +1896,15 @@ export function ProcessFlowDiagram({
   };
 
   const finishWaferDrag = (event: PointerEvent<SVGSVGElement>) => {
-    if (!waferDrag || waferDrag.pointerId !== event.pointerId) {
+    const currentDrag = waferDragRef.current;
+    if (!currentDrag || currentDrag.pointerId !== event.pointerId) {
       return;
     }
 
+    safelyReleasePointerCapture(event.currentTarget, event.pointerId);
     clearDragTouchAction();
-    const finishedDrag = waferDrag;
+    const finishedDrag = currentDrag;
+    waferDragRef.current = null;
     setWaferDrag(null);
 
     const point = getScenePoint(event);
@@ -1906,7 +1924,10 @@ export function ProcessFlowDiagram({
     }
 
     const directedEdge = directedEdgeByNodePair.get(`${finishedDrag.sourceStepId}:${target.id}`);
-    if (!directedEdge) {
+    const sourceStepOrder = stepOrderById.get(sourceNode.id) ?? sourceNode.order;
+    const targetStepOrder = stepOrderById.get(target.id) ?? target.order;
+    const isRevertMove = targetStepOrder < sourceStepOrder;
+    if (!directedEdge && !isRevertMove) {
       setMoveMessage(`No direct process path from ${sourceNode.label} to ${target.label}.`);
       return;
     }
@@ -1918,7 +1939,8 @@ export function ProcessFlowDiagram({
       targetStepId: target.id,
       targetLabel: target.label,
       waferLabel: finishedDrag.waferLabel,
-      completeSourceStep: directedEdge.kind === "flow"
+      completeSourceStep: Boolean(directedEdge && directedEdge.kind === "flow" && !isRevertMove),
+      revertToPriorStep: isRevertMove
     });
     setPendingWaferMoveNote("");
   };
@@ -1997,12 +2019,15 @@ export function ProcessFlowDiagram({
           sourceStepId: move.sourceStepId,
           targetStepId: move.targetStepId,
           note,
-          completeSourceStep: move.completeSourceStep
+          completeSourceStep: move.completeSourceStep,
+          revertToPriorStep: move.revertToPriorStep
         });
 
         if (result.ok) {
           setMoveMessage(
-            move.completeSourceStep
+            move.revertToPriorStep
+              ? `Reverted ${move.waferLabel} to ${move.targetLabel} for redo.`
+              : move.completeSourceStep
               ? `Completed source step and moved ${move.waferLabel} to ${move.targetLabel}.`
               : `Moved ${move.waferLabel} to ${move.targetLabel}.`
           );
@@ -2023,7 +2048,7 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    if (waferDrag) {
+    if (waferDragRef.current) {
       updateWaferDrag(event);
       return;
     }
@@ -2053,7 +2078,7 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    if (waferDrag) {
+    if (waferDragRef.current) {
       finishWaferDrag(event as PointerEvent<SVGSVGElement>);
       return;
     }
@@ -2380,11 +2405,14 @@ export function ProcessFlowDiagram({
             role="dialog"
           >
             <div className="flow-wafer-move-dialog__header">
-              <p className="eyebrow">Process note required</p>
-              <h2 id="flow-wafer-move-title">Move wafer</h2>
+              <p className="eyebrow">{pendingWaferMove.revertToPriorStep ? "Redo note required" : "Process note required"}</p>
+              <h2 id="flow-wafer-move-title">
+                {pendingWaferMove.revertToPriorStep ? "Revert wafer" : "Move wafer"}
+              </h2>
               <p>
-                Add a note before moving {pendingWaferMove.waferLabel} from{" "}
-                {pendingWaferMove.sourceLabel} to {pendingWaferMove.targetLabel}.
+                {pendingWaferMove.revertToPriorStep ? "Add a note explaining why " : "Add a note before moving "}
+                {pendingWaferMove.waferLabel} from {pendingWaferMove.sourceLabel} to{" "}
+                {pendingWaferMove.targetLabel}.
               </p>
             </div>
             <dl className="flow-wafer-move-dialog__path">
@@ -2404,7 +2432,11 @@ export function ProcessFlowDiagram({
                 disabled={isMovePending}
                 maxLength={4000}
                 onChange={(event) => setPendingWaferMoveNote(event.currentTarget.value)}
-                placeholder="What changed, what was observed, or why this wafer is moving now?"
+                placeholder={
+                  pendingWaferMove.revertToPriorStep
+                    ? "Why does this wafer need to redo this earlier step?"
+                    : "What changed, what was observed, or why this wafer is moving now?"
+                }
                 rows={5}
                 value={pendingWaferMoveNote}
               />
@@ -2424,7 +2456,7 @@ export function ProcessFlowDiagram({
                 onClick={submitPendingWaferMove}
                 type="button"
               >
-                {isMovePending ? "Moving..." : "Move wafer"}
+                {isMovePending ? "Saving..." : pendingWaferMove.revertToPriorStep ? "Revert wafer" : "Move wafer"}
               </button>
             </div>
           </section>

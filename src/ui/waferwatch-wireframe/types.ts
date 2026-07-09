@@ -211,6 +211,7 @@ export type WaferStatusProcessStepModel = {
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string | null;
+  branchLabel?: string | null;
 };
 
 export type WaferStatusTileModel = {

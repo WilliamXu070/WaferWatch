@@ -86,7 +86,8 @@ export function ProcessTimelineCard({ tile }: { tile: WaferStatusTileModel }) {
       title: step.name,
       area: step.processArea,
       time: formatTimelineTime(step, state),
-      state
+      state,
+      branchLabel: step.branchLabel ?? null
     };
   });
   const activeIndex = Math.max(
@@ -134,11 +135,18 @@ export function ProcessTimelineCard({ tile }: { tile: WaferStatusTileModel }) {
               </span>
               <span className="min-w-0">
                 <strong className="block truncate text-[14px] text-[#151512]">{item.title}</strong>
-                <span
-                  className={["text-[12px] font-medium", item.state === "active" ? "" : "text-[#8a8a83]"].join(" ")}
-                  style={item.state === "active" ? { color: accent.text } : undefined}
-                >
-                  {item.area ? `${item.area} · ${item.time}` : item.time}
+                <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <span
+                    className={["text-[12px] font-medium", item.state === "active" ? "" : "text-[#8a8a83]"].join(" ")}
+                    style={item.state === "active" ? { color: accent.text } : undefined}
+                  >
+                    {item.area ? `${item.area} · ${item.time}` : item.time}
+                  </span>
+                  {item.branchLabel ? (
+                    <span className="rounded-full border border-[#d9d9d2] bg-[#f7f7f4] px-1.5 py-0.5 text-[10px] font-semibold text-[#6d6d66]">
+                      {item.branchLabel}
+                    </span>
+                  ) : null}
                 </span>
               </span>
               {item.state === "complete" ? (

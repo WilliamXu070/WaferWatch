@@ -711,7 +711,7 @@ export async function moveWaferToProcessStep(input: unknown) {
 
     const { data: targetStep, error: targetStepError } = await supabase
       .from("process_steps")
-      .select("id, template_id, name, step_order")
+      .select("id, template_id, name, step_order, process_area, slug")
       .eq("id", parsed.targetStepId)
       .single();
 
@@ -749,23 +749,6 @@ export async function moveWaferToProcessStep(input: unknown) {
       return fail("This wafer is no longer at the source step. Refresh the process flow and try again.");
     }
 
-    const { data: allowedTransition, error: transitionError } = await supabase
-      .from("process_step_transitions")
-      .select("id, edge_type")
-      .eq("template_id", assignment.template_id)
-      .eq("from_step_id", parsed.sourceStepId)
-      .eq("to_step_id", parsed.targetStepId)
-      .limit(1)
-      .maybeSingle();
-
-    if (transitionError) {
-      return fail(transitionError.message);
-    }
-
-    if (!allowedTransition) {
-      return fail("This wafer can only move along a directly connected process path.");
-    }
-
     const currentStepResult = currentExecution
       ? await supabase
           .from("process_steps")
@@ -778,13 +761,65 @@ export async function moveWaferToProcessStep(input: unknown) {
       return fail(currentStepResult.error.message);
     }
 
+    const currentStep = currentStepResult?.data ?? null;
+    if (!currentStep) {
+      return fail("The source step no longer exists.");
+    }
+
+    const isRevertMove = Boolean(parsed.revertToPriorStep);
+    if (isRevertMove && targetStep.step_order >= currentStep.step_order) {
+      return fail("Revert target must be an earlier process step.");
+    }
+
+    if (isRevertMove) {
+      const waferMetadata = toJsonRecord(wafer.metadata as Json);
+      const dicingSourceStepId = typeof waferMetadata.dicing_source_step_id === "string"
+        ? waferMetadata.dicing_source_step_id
+        : null;
+      if (dicingSourceStepId) {
+        const { data: dicingSourceStep, error: dicingSourceStepError } = await supabase
+          .from("process_steps")
+          .select("id, step_order")
+          .eq("id", dicingSourceStepId)
+          .maybeSingle();
+
+        if (dicingSourceStepError) {
+          return fail(dicingSourceStepError.message);
+        }
+
+        if (dicingSourceStep && targetStep.step_order <= dicingSourceStep.step_order) {
+          return fail("Cannot revert a diced child back through the dicing step.");
+        }
+      }
+    }
+
+    const { data: allowedTransition, error: transitionError } = isRevertMove
+      ? { data: null, error: null }
+      : await supabase
+          .from("process_step_transitions")
+          .select("id, edge_type")
+          .eq("template_id", assignment.template_id)
+          .eq("from_step_id", parsed.sourceStepId)
+          .eq("to_step_id", parsed.targetStepId)
+          .limit(1)
+          .maybeSingle();
+
+    if (transitionError) {
+      return fail(transitionError.message);
+    }
+
+    if (!isRevertMove && !allowedTransition) {
+      return fail("This wafer can only move along a directly connected process path.");
+    }
+
     const shouldCompleteSourceStep = Boolean(
       parsed.completeSourceStep &&
+      !isRevertMove &&
       currentExecution &&
       currentExecution.process_step_id !== parsed.targetStepId &&
       CURRENT_STEP_STATUSES.includes(currentExecution.status as (typeof CURRENT_STEP_STATUSES)[number]) &&
-      currentStepResult?.data &&
-      allowedTransition.edge_type === "flow"
+      currentStep &&
+      allowedTransition?.edge_type === "flow"
     );
 
     const activeExecutionIds = existingExecutions
@@ -794,6 +829,30 @@ export async function moveWaferToProcessStep(input: unknown) {
         CURRENT_STEP_STATUSES.includes(execution.status as (typeof CURRENT_STEP_STATUSES)[number])
       )
       .map((execution) => execution.id);
+
+    const { data: stepOrderRows, error: stepOrderError } = await supabase
+      .from("process_steps")
+      .select("id, step_order")
+      .eq("template_id", assignment.template_id);
+
+    if (stepOrderError) {
+      return fail(stepOrderError.message);
+    }
+
+    const stepOrderById = new Map(stepOrderRows?.map((step) => [step.id, step.step_order] as const) ?? []);
+    const revertedExecutionIds = isRevertMove
+      ? existingExecutions
+          .filter((execution) => {
+            const order = stepOrderById.get(execution.process_step_id);
+            return (
+              execution.process_step_id !== parsed.targetStepId &&
+              order !== undefined &&
+              order > targetStep.step_order &&
+              execution.status !== "pending"
+            );
+          })
+          .map((execution) => execution.id)
+      : [];
 
     if (activeExecutionIds.length) {
       const { error: resetError } = await supabase
@@ -809,6 +868,38 @@ export async function moveWaferToProcessStep(input: unknown) {
 
       if (resetError) {
         return fail(resetError.message);
+      }
+    }
+
+    if (revertedExecutionIds.length) {
+      const resetRows = existingExecutions.filter((execution) => revertedExecutionIds.includes(execution.id));
+      for (const execution of resetRows) {
+        const metadata = toJsonRecord(execution.metadata as Json);
+        const { error: revertResetError } = await supabase
+          .from("step_executions")
+          .update({
+            status: "pending",
+            queue_started_at: null,
+            started_at: null,
+            completed_at: null,
+            skipped_at: null,
+            planned_end_at: null,
+            operator_id: null,
+            completed_by: null,
+            run_notes: execution.run_notes,
+            metadata: {
+              ...metadata,
+              reverted_at: now,
+              reverted_from_step_id: currentStep.id,
+              reverted_to_step_id: targetStep.id,
+              reverted_reason: parsed.note
+            }
+          })
+          .eq("id", execution.id);
+
+        if (revertResetError) {
+          return fail(revertResetError.message);
+        }
       }
     }
 
@@ -828,11 +919,11 @@ export async function moveWaferToProcessStep(input: unknown) {
         return fail(completeSourceError.message);
       }
 
-      if (currentStepResult?.data && isDicingLikeStep(currentStepResult.data)) {
+      if (currentStep && isDicingLikeStep(currentStep)) {
         try {
           const followingSteps = await getFollowingFlowSteps({
-            fallbackAfterStepOrder: currentStepResult.data.step_order,
-            sourceStepId: currentStepResult.data.id,
+            fallbackAfterStepOrder: currentStep.step_order,
+            sourceStepId: currentStep.id,
             supabase,
             targetStepId: parsed.targetStepId,
             templateId: assignment.template_id
@@ -841,7 +932,7 @@ export async function moveWaferToProcessStep(input: unknown) {
           await splitWaferAfterDicing({
             accountId: account.userId,
             assignmentId: parsed.assignmentId,
-            currentStep: currentStepResult.data,
+            currentStep,
             dicingMoveNote: parsed.note ?? currentExecution.run_notes,
             nextSteps: followingSteps,
             now,
@@ -872,6 +963,7 @@ export async function moveWaferToProcessStep(input: unknown) {
       }
     }
 
+    const targetMetadata = targetExecution ? toJsonRecord(targetExecution.metadata as Json) : {};
     const targetPatch = {
       status: "queued" as const,
       queue_started_at: now,
@@ -883,7 +975,16 @@ export async function moveWaferToProcessStep(input: unknown) {
       tool_id: null,
       recipe_id: null,
       planned_end_at: null,
-      run_notes: shouldCompleteSourceStep ? targetExecution?.run_notes ?? null : parsed.note ?? targetExecution?.run_notes ?? null
+      run_notes: shouldCompleteSourceStep ? targetExecution?.run_notes ?? null : parsed.note ?? targetExecution?.run_notes ?? null,
+      metadata: isRevertMove
+        ? {
+            ...targetMetadata,
+            revert_target_at: now,
+            reverted_from_step_id: currentStep.id,
+            reverted_to_step_id: targetStep.id,
+            revert_reason: parsed.note
+          }
+        : targetMetadata
     };
 
     const targetExecutionResult = targetExecution
@@ -935,7 +1036,7 @@ export async function moveWaferToProcessStep(input: unknown) {
       wafer_id: assignment.wafer_id,
       step_execution_id: targetExecutionResult.data.id,
       actor_id: account.userId,
-      event_type: "wafer_step_moved",
+      event_type: isRevertMove ? "wafer_step_reverted" : "wafer_step_moved",
       notes: parsed.note ?? null,
       metadata: {
         assignment_id: parsed.assignmentId,
@@ -943,7 +1044,9 @@ export async function moveWaferToProcessStep(input: unknown) {
         to_step_id: parsed.targetStepId,
         to_step_name: targetStep.name,
         reset_step_execution_ids: activeExecutionIds,
-        completed_source_step_execution_id: shouldCompleteSourceStep ? currentExecution?.id ?? null : null
+        completed_source_step_execution_id: shouldCompleteSourceStep ? currentExecution?.id ?? null : null,
+        movement_kind: isRevertMove ? "revert" : "advance",
+        reverted_step_execution_ids: revertedExecutionIds
       }
     });
 

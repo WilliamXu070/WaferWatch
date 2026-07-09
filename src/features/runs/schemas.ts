@@ -25,7 +25,8 @@ export const moveWaferToProcessStepSchema = z.object({
   sourceStepId: uuidSchema,
   targetStepId: uuidSchema,
   note: z.string().trim().min(1).max(4000),
-  completeSourceStep: z.boolean().default(false)
+  completeSourceStep: z.boolean().default(false),
+  revertToPriorStep: z.boolean().default(false)
 });
 
 export const reservationSchema = z.object({
