@@ -6,6 +6,18 @@ import { authPageStyles, cn } from "@/styles/tw";
 
 export const dynamic = "force-dynamic";
 
+function authErrorMessage(params: {
+  error?: string;
+  error_code?: string;
+  error_description?: string;
+}) {
+  if (params.error_code === "otp_expired") {
+    return "This confirmation link has expired or was already used. Request a new one below.";
+  }
+
+  return params.error_description ?? params.error ?? null;
+}
+
 export default async function HomePage({
   searchParams
 }: {
@@ -34,6 +46,9 @@ export default async function HomePage({
     redirect("/dashboard");
   }
 
+  const authError = authErrorMessage(params);
+  const showExpiredConfirmation = params.error_code === "otp_expired";
+
   return (
     <main className={authPageStyles.shell}>
       <div className={authPageStyles.shellInner}>
@@ -43,9 +58,9 @@ export default async function HomePage({
             <h1 className={authPageStyles.title}>Login</h1>
           </div>
 
-          {params.error ? (
+          {authError ? (
             <p className={cn(authPageStyles.notice, authPageStyles.noticeError)}>
-              {params.error}
+              {authError}
             </p>
           ) : null}
           {params.message ? (
@@ -54,7 +69,7 @@ export default async function HomePage({
             </p>
           ) : null}
 
-          <AuthForms />
+          <AuthForms showExpiredConfirmation={showExpiredConfirmation} />
         </section>
       </div>
     </main>

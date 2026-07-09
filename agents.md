@@ -2670,3 +2670,17 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     confirmed the root code landing path forwards through `/auth/confirm` and
     returns to the auth UI with the expected Supabase PKCE verifier error for a
     fake/cross-origin code, with no redirect loop.
+
+## Recent development note (2026-07-09 expired confirmation recovery)
+
+- Added a privacy-safe resend-confirmation server action using the production
+  `/auth/confirm?next=/dashboard` redirect and a recovery panel for Supabase
+  `otp_expired` responses. Expired/consumed links now explain the condition
+  instead of displaying the raw `access_denied` error.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://127.0.0.1:3015/?error=access_denied&error_code=otp_expired`:
+    the actionable expired-link notice and resend form rendered with no console
+    errors. The resend submit was not exercised to avoid sending an unapproved
+    transactional email or creating a Supabase auth user.

@@ -27,6 +27,9 @@ export const authFormStyles = {
   formError: "rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700",
   formMessage:
     "rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700",
+  resendForm: "space-y-4 border-t border-ww-border pt-5",
+  resendTitle: "text-sm font-semibold text-ww-ink",
+  resendCopy: "mt-1 text-sm text-ww-muted",
   submit:
     "inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-900 bg-zinc-900 px-4 text-sm font-semibold text-white transition hover:bg-zinc-800 active:scale-[0.98]"
 } as const;

@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import {
+  resendConfirmationFormAction,
   signInFormAction,
   signUpFormAction,
   type AuthFormState
@@ -21,10 +22,11 @@ function SubmitButton({ label }: { label: string }) {
   );
 }
 
-export function AuthForms() {
+export function AuthForms({ showExpiredConfirmation = false }: { showExpiredConfirmation?: boolean }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [signInState, signInAction] = useActionState(signInFormAction, initialState);
   const [signUpState, signUpAction] = useActionState(signUpFormAction, initialState);
+  const [resendState, resendAction] = useActionState(resendConfirmationFormAction, initialState);
   const activeState = mode === "signin" ? signInState : signUpState;
 
   return (
@@ -82,6 +84,22 @@ export function AuthForms() {
         {activeState.message ? <p className={authFormStyles.formMessage}>{activeState.message}</p> : null}
         <SubmitButton label={mode === "signin" ? "Sign in" : "Create account"} />
       </form>
+
+      {showExpiredConfirmation ? (
+        <form action={resendAction} className={authFormStyles.resendForm}>
+          <div>
+            <p className={authFormStyles.resendTitle}>Need a new confirmation link?</p>
+            <p className={authFormStyles.resendCopy}>Enter the email address you used to sign up.</p>
+          </div>
+          <label className={authFormStyles.field}>
+            <span className={authFormStyles.label}>Email</span>
+            <input className={authFormStyles.input} name="email" type="email" autoComplete="email" required />
+          </label>
+          {resendState.error ? <p className={authFormStyles.formError}>{resendState.error}</p> : null}
+          {resendState.message ? <p className={authFormStyles.formMessage}>{resendState.message}</p> : null}
+          <SubmitButton label="Resend confirmation email" />
+        </form>
+      ) : null}
     </div>
   );
 }

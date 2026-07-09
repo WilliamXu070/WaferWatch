@@ -15,6 +15,10 @@ const authSchema = z.object({
   password: z.string().min(8)
 });
 
+const emailSchema = z.object({
+  email: z.string().email()
+});
+
 function isHtmlParseError(error: unknown) {
   return (
     error instanceof Error &&
@@ -170,6 +174,43 @@ export async function signUpFormAction(
 
   return {
     message: "Account created. Confirm your email, then sign in.",
+    error: null
+  };
+}
+
+export async function resendConfirmationFormAction(
+  _state: AuthFormState,
+  formData: FormData
+): Promise<AuthFormState> {
+  const parsed = emailSchema.safeParse({
+    email: formString(formData, "email")
+  });
+
+  if (!parsed.success) {
+    return {
+      message: null,
+      error: "Enter a valid email address."
+    };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email: parsed.data.email,
+    options: {
+      emailRedirectTo: `${getAppUrl()}/auth/confirm?next=/dashboard`
+    }
+  });
+
+  if (error) {
+    return {
+      message: null,
+      error: error.message
+    };
+  }
+
+  return {
+    message: "If this address is awaiting confirmation, a new link is on its way.",
     error: null
   };
 }
