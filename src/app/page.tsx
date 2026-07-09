@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { AuthForms } from "@/components/AuthForms";
+import { confirmationRedirectPath } from "@/lib/auth/confirmation-redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { authPageStyles, cn } from "@/styles/tw";
 
@@ -8,11 +9,26 @@ export const dynamic = "force-dynamic";
 export default async function HomePage({
   searchParams
 }: {
-  searchParams: Promise<{ error?: string; message?: string }>;
+  searchParams: Promise<{
+    code?: string;
+    error?: string;
+    error_code?: string;
+    error_description?: string;
+    message?: string;
+    next?: string;
+    token_hash?: string;
+    type?: string;
+  }>;
 }) {
+  const params = await searchParams;
+  const confirmationPath = confirmationRedirectPath(params);
+
+  if (confirmationPath) {
+    redirect(confirmationPath);
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-  const params = await searchParams;
 
   if (!claimsError && Boolean(claimsData?.claims?.sub)) {
     redirect("/dashboard");

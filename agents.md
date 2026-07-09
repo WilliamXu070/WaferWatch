@@ -2655,3 +2655,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     process no longer appeared in the sidebar.
   - Supabase check confirmed no `Codex Delete ...` verification templates
     remained after cleanup.
+
+## Recent development note (2026-07-09 auth code landing fallback)
+
+- Added a shared confirmation redirect helper so Supabase email links that land
+  on `/?code=...` or `/login?code=...` are forwarded into the existing
+  `/auth/confirm` exchange route instead of showing the login page.
+- Kept plain `/?error=...` auth errors on the login page to avoid redirect loops
+  after Supabase rejects an invalid or cross-origin PKCE code.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://localhost:3015/?code=fake-confirmation-code`:
+    confirmed the root code landing path forwards through `/auth/confirm` and
+    returns to the auth UI with the expected Supabase PKCE verifier error for a
+    fake/cross-origin code, with no redirect loop.
