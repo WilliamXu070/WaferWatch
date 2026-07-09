@@ -2233,19 +2233,35 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    const normalizeWheelDelta = (event: globalThis.WheelEvent) => {
+      if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+        return {
+          x: event.deltaX * 16,
+          y: event.deltaY * 16
+        };
+      }
+
+      if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+        return {
+          x: event.deltaX * frame.clientWidth,
+          y: event.deltaY * frame.clientHeight
+        };
+      }
+
+      return {
+        x: event.deltaX,
+        y: event.deltaY
+      };
+    };
+
     const handleWheelFallback = (event: globalThis.WheelEvent) => {
       event.preventDefault();
       event.stopPropagation();
 
-      const absDeltaX = Math.abs(event.deltaX);
-      const absDeltaY = Math.abs(event.deltaY);
-      const hasPreciseTrackpadDeltas =
-        event.deltaMode === WheelEvent.DOM_DELTA_PIXEL &&
-        (absDeltaX > 0 || (absDeltaY > 0 && absDeltaY < 50));
-
-      if (!event.ctrlKey && !event.metaKey && hasPreciseTrackpadDeltas) {
-        frame.scrollLeft += event.deltaX;
-        frame.scrollTop += event.deltaY;
+      if (!event.ctrlKey && !event.metaKey) {
+        const normalizedDelta = normalizeWheelDelta(event);
+        frame.scrollLeft += normalizedDelta.x;
+        frame.scrollTop += normalizedDelta.y;
         return;
       }
 

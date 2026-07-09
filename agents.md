@@ -2454,3 +2454,17 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     show `adam`, `barbara`, `calvin`, or `derik`; no console errors.
   - Playwright MCP at `http://localhost:3015/calendar?processId=11111111-1111-4111-8111-111111111103`:
     page text showed DB users and did not show the old seeded names.
+
+## Recent development note (2026-07-08 process flow desktop wheel)
+
+- Fixed process-flow desktop wheel handling so unmodified mouse-wheel and
+  trackpad events pan the canvas instead of falling through to zoom.
+- Kept Ctrl/Meta wheel and Safari gesture events as the zoom paths.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright MCP at `http://localhost:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    with `1200x900`: unmodified `DOM_DELTA_LINE` wheel changed `scrollTop`
+    from `0` to `48` with zoom unchanged at `35%`; unmodified pixel wheel
+    changed scroll to `128/20` with zoom still `35%`; Ctrl-wheel changed zoom
+    to `43%`; no console errors.
