@@ -83,8 +83,8 @@ function getMaxGalleryStartColumn(visibleCount: number) {
 }
 
 function getResponsiveGalleryVisibleCount(width: number) {
-  if (width < 560) return 1;
-  if (width < 820) return 2;
+  if (width < 560) return 4;
+  if (width < 820) return 4;
   if (width < 1080) return 3;
   if (width < 1320) return 4;
   return MAX_GALLERY_VISIBLE_COUNT;
@@ -335,7 +335,7 @@ const GalleryTile = memo(function GalleryTile({
   return (
     <article
       className={[
-        "grid w-full max-w-full min-w-0 grid-cols-[minmax(0,1fr)] overflow-hidden rounded-lg border bg-white transition-colors",
+        "grid w-full max-w-full min-w-0 snap-start grid-cols-[minmax(0,1fr)] overflow-hidden rounded-lg border bg-white transition-colors",
         selected ? "border-[#111111] shadow-[0_0_0_1px_#111111]" : "border-[#e4e4df]"
       ].join(" ")}
     >
@@ -508,7 +508,7 @@ function ResultsGalleryViewport({
         tabIndex={0}
       >
         <input {...getInputProps()} />
-        <div className="grid w-full max-w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="results-gallery-grid grid w-full max-w-full min-w-0 snap-x snap-mandatory grid-flow-col auto-cols-[minmax(252px,86vw)] gap-2 overflow-x-auto scroll-smooth pb-1 sm:grid-flow-row sm:auto-cols-auto sm:snap-none sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-3 xl:grid-cols-5">
           {visibleSamples.map((sample) => {
             const inspections = inspectionsBySample[sample.id] ?? [];
             const imageIndex = Math.min(imageIndexBySample[sample.id] ?? 0, Math.max(inspections.length - 1, 0));
@@ -580,10 +580,10 @@ function ParameterContext({
       </div>
       {isExpanded ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] table-fixed border-collapse text-left text-[12px]">
+          <table className="w-full min-w-full table-fixed border-collapse text-left text-[12px]">
             <thead>
               <tr className="border-b border-[#eeeeea] text-[#777770]">
-                <th className="w-[150px] px-4 py-2 font-semibold">Parameter</th>
+                <th className="w-[116px] px-3 py-2 font-semibold sm:w-[150px] sm:px-4">Parameter</th>
                 {visibleSamples.map((sample) => {
                   return (
                     <th
@@ -602,7 +602,7 @@ function ParameterContext({
             <tbody>
               {parameterRows.map((row) => (
                 <tr key={row.field} className="border-b border-[#eeeeea] last:border-b-0">
-                  <th className="px-4 py-2 text-[12px] font-semibold text-[#55554f]">{row.label}</th>
+                  <th className="px-3 py-2 text-[12px] font-semibold text-[#55554f] sm:px-4">{row.label}</th>
                   {visibleSamples.map((sample) => {
                     const value = getDisplayParameterValue(tile, contextRow, sample.column, row.field);
                     const toneClass = getParameterToneClass(toneMaps, row.field, value);

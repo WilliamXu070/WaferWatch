@@ -2343,3 +2343,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright MCP at `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`
     on the Results tab: `390x844` showed one 348px sample card with no document
     overflow, `820x700` showed three samples, and `1200x900` showed four samples.
+
+## Recent development note (2026-07-08 results phone carousel)
+
+- Fixed the phone Results tab so the gallery keeps multiple result cards in the
+  row and uses horizontal snap scrolling instead of rendering a single visible
+  card with no next samples to reach.
+- Removed the fixed 760px minimum from the row parameter table so its columns fit
+  the phone viewport and stay aligned with the current visible sample window.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright MCP at `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    on the Results tab with a `390x844` viewport: document width stayed at
+    `390px`, the gallery had `348px` client width and `1032px` scroll width,
+    horizontal scrolling reached later cards, and the parameter headers were
+    `Parameter`, `C10`, `C11`, `C12`, and `C13`.
