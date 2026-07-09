@@ -24,6 +24,11 @@ export type ProcessCalendarEventView = Pick<
   people: ProcessCalendarPersonOption[];
 };
 
+function isVisibleProcessPerson(person: ProcessCalendarPersonOption) {
+  const name = person.display_name.trim().toLowerCase();
+  return name !== "waferwatch admin" && name !== "waferwatch viewer";
+}
+
 function isMissingCalendarTableError(error: unknown) {
   return (
     typeof error === "object" &&
@@ -50,7 +55,7 @@ export async function listProcessPeople(): Promise<ProcessCalendarPersonOption[]
     throw error;
   }
 
-  return data ?? [];
+  return (data ?? []).filter(isVisibleProcessPerson);
 }
 
 export async function getProcessCalendarSchedule(

@@ -2517,3 +2517,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `Redo required` appeared in the process timeline.
   - Removed the temporary wafer, assignment, execution, and process-event rows
     after verification.
+
+## Recent development note (2026-07-09 process creation and team filtering)
+
+- Hid seeded `WaferWatch Admin` and `WaferWatch Viewer` accounts from the visible
+  shell team list and calendar people source, leaving real profile-backed users
+  such as William visible.
+- Enabled `New process` in the authenticated app shell and changed process
+  creation to seed a database-backed starter flow with `Process start`,
+  `Process step`, `Process complete`, and flow transitions.
+- Added a `Process type` option to the calendar event step/action dropdown,
+  persisted through the existing calendar event manual-action field.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://localhost:3015/calendar?processId=11111111-1111-4111-8111-111111111103`
+    signed in as the existing William demo account: sidebar showed `New process`,
+    team showed `William Xu`, seeded WaferWatch admin/viewer names were absent,
+    and the selected event editor dropdown showed database steps followed by
+    `Process type` and `New action`.

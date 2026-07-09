@@ -105,6 +105,28 @@ type CalendarOptionPayload = {
   wafers?: ProcessCalendarWaferOption[];
 };
 
+const PROCESS_TYPE_ACTION_LABEL = "Process type";
+
+function getActionModeForEvent(event: ProcessCalendarEventView | null, steps: ProcessStepOption[]): ActionMode {
+  if (event?.process_step_id) {
+    return "step";
+  }
+
+  if (event?.manual_action === PROCESS_TYPE_ACTION_LABEL) {
+    return "process";
+  }
+
+  return steps.length ? "step" : "manual";
+}
+
+function getManualActionForMode(actionMode: ActionMode, manualAction: string) {
+  if (actionMode === "process") {
+    return PROCESS_TYPE_ACTION_LABEL;
+  }
+
+  return actionMode === "manual" ? manualAction : null;
+}
+
 export function ProcessCalendarBoard({
   processTemplateId,
   calendarStartDate,
@@ -125,13 +147,7 @@ export function ProcessCalendarBoard({
   const [draft, setDraft] = useState<DraftEvent | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(initialSelection?.id ?? null);
   const [actionMode, setActionMode] = useState<ActionMode>(
-    initialSelection
-      ? initialSelection.process_step_id
-        ? "step"
-        : "manual"
-      : initialSteps.length
-        ? "step"
-        : "manual"
+    initialSelection ? getActionModeForEvent(initialSelection, initialSteps) : initialSteps.length ? "step" : "manual"
   );
   const [selectedStepId, setSelectedStepId] = useState(initialSelection?.process_step_id ?? initialSteps[0]?.id ?? "");
   const [selectedWaferId, setSelectedWaferId] = useState(initialSelection?.wafer_id ?? "");
@@ -985,7 +1001,7 @@ export function ProcessCalendarBoard({
       return;
     }
 
-    setActionMode(event.process_step_id ? "step" : "manual");
+    setActionMode(getActionModeForEvent(event, liveSteps));
     setSelectedStepId(event.process_step_id ?? liveSteps[0]?.id ?? "");
     setSelectedWaferId(event.wafer_id ?? "");
     setManualAction(event.manual_action ?? (event.process_step_id ? "" : event.process_step_name_snapshot ?? ""));
@@ -1417,7 +1433,7 @@ export function ProcessCalendarBoard({
         wafer_id: selectedWaferId || null,
         wafer: liveWafers.find((wafer) => wafer.id === selectedWaferId) ?? null,
         process_step_name_snapshot: selectedStepSnapshot(),
-        manual_action: actionMode === "manual" ? manualAction.trim() || null : null,
+        manual_action: getManualActionForMode(actionMode, manualAction)?.trim() || null,
         description: description.trim() || null,
         people: selectedPeopleForSave()
       };
@@ -1437,7 +1453,7 @@ export function ProcessCalendarBoard({
         endsAt: draft.endsAt.toISOString(),
         processStepId: actionMode === "step" ? selectedStepId : null,
         waferId: selectedWaferId || null,
-        manualAction: actionMode === "manual" ? manualAction : null,
+        manualAction: getManualActionForMode(actionMode, manualAction),
         description,
         personIds: selectedPersonIds
       });
@@ -1469,7 +1485,7 @@ export function ProcessCalendarBoard({
         wafer_id: selectedWaferId || null,
         wafer: liveWafers.find((wafer) => wafer.id === selectedWaferId) ?? null,
         process_step_name_snapshot: selectedStepSnapshot(),
-        manual_action: actionMode === "manual" ? manualAction.trim() || null : null,
+        manual_action: getManualActionForMode(actionMode, manualAction)?.trim() || null,
         description: description.trim() || null,
         people: selectedPeopleForSave()
       };
@@ -1488,7 +1504,7 @@ export function ProcessCalendarBoard({
         eventId: selectedEvent.id,
         processStepId: actionMode === "step" ? selectedStepId : null,
         waferId: selectedWaferId || null,
-        manualAction: actionMode === "manual" ? manualAction : null,
+        manualAction: getManualActionForMode(actionMode, manualAction),
         description,
         personIds: selectedPersonIds
       });

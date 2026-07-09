@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { signOut } from "@/features/accounts/actions";
 import {
+  createProcessTemplate,
   updateProcessTemplateName
 } from "@/features/process-flows/actions";
 import { getWireframeShellModel } from "@/features/wireframe/queries";
@@ -16,6 +17,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       shell={shell}
       onSignOut={signOut}
       onUpdateProcessName={updateProcessTemplateName}
+      onCreateProcess={createProcessTemplate}
     >
       {children}
     </WaferWatchShell>

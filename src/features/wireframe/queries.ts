@@ -80,6 +80,18 @@ function getProfileRoleLabel(role: string | null | undefined) {
   return "Viewer";
 }
 
+function isVisibleUserProfile(profile: WireframeShellProfile) {
+  const name = profile.display_name?.trim().toLowerCase() ?? "";
+  const email = profile.email?.trim().toLowerCase() ?? "";
+
+  return (
+    name !== "waferwatch admin" &&
+    name !== "waferwatch viewer" &&
+    email !== "admin@waferwatch.local" &&
+    email !== "viewer@waferwatch.local"
+  );
+}
+
 export async function getWireframeShellModel(): Promise<WireframeShellDto> {
   const supabase = await createServerSupabaseClient();
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
@@ -177,7 +189,9 @@ async function getProjectTeamMembers(projectId: string): Promise<WireframeShellD
   }
 
   const profilesById = new Map(
-    ((profilesResult.data ?? []) as WireframeShellProfile[]).map((profile) => [profile.id, profile])
+    ((profilesResult.data ?? []) as WireframeShellProfile[])
+      .filter(isVisibleUserProfile)
+      .map((profile) => [profile.id, profile])
   );
 
   return memberRows
@@ -211,16 +225,18 @@ async function getActiveProfileTeamMembers(): Promise<WireframeShellDto["teamMem
     throw profilesResult.error;
   }
 
-  return ((profilesResult.data ?? []) as Array<WireframeShellProfile & { role?: string | null }>).map((profile) => {
-    const name = getDisplayName(profile);
+  return ((profilesResult.data ?? []) as Array<WireframeShellProfile & { role?: string | null }>)
+    .filter(isVisibleUserProfile)
+    .map((profile) => {
+      const name = getDisplayName(profile);
 
-    return {
-      id: profile.id,
-      initials: getInitials(name),
-      name,
-      role: getProfileRoleLabel(profile.role)
-    };
-  });
+      return {
+        id: profile.id,
+        initials: getInitials(name),
+        name,
+        role: getProfileRoleLabel(profile.role)
+      };
+    });
 }
 
 export async function getWireframeDashboardData(

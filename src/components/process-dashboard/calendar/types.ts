@@ -51,7 +51,7 @@ export type MoveWindow = {
   endsAt: string;
 };
 
-export type ActionMode = "step" | "manual";
+export type ActionMode = "step" | "process" | "manual";
 export type StageFilterId = string | "__manual__";
 export type CalendarPresentationMode = "default" | "wireframe";
 export type CalendarPersistenceMode = "server" | "local";

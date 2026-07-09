@@ -55,6 +55,36 @@ const GREEK_WAFER_FAMILIES = [
   "OMEGA"
 ] as const;
 
+const DEFAULT_PROCESS_FLOW_STEPS = [
+  {
+    step_order: 10,
+    name: "Process start",
+    slug: "process-start",
+    process_area: "start",
+    node_type: "start" as const,
+    canvas_x: 520,
+    canvas_y: 120
+  },
+  {
+    step_order: 20,
+    name: "Process step",
+    slug: "process-step",
+    process_area: "process",
+    node_type: "procedure" as const,
+    canvas_x: 520,
+    canvas_y: 360
+  },
+  {
+    step_order: 30,
+    name: "Process complete",
+    slug: "process-complete",
+    process_area: "complete",
+    node_type: "end" as const,
+    canvas_x: 520,
+    canvas_y: 600
+  }
+] as const;
+
 function slugifyStepName(name: string) {
   const slug = name
     .trim()
@@ -84,6 +114,58 @@ async function getTemplateForWrite(templateId: string): Promise<ProcessTemplateW
   }
 
   return data;
+}
+
+async function getDefaultOwnerProjectId(accountId: string) {
+  const supabase = await createServerSupabaseClient();
+  const activeTemplateResult = await supabase
+    .from("process_templates")
+    .select("owner_project_id")
+    .not("owner_project_id", "is", null)
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (activeTemplateResult.error) {
+    throw activeTemplateResult.error;
+  }
+
+  if (activeTemplateResult.data?.owner_project_id) {
+    await assertProjectAccess(activeTemplateResult.data.owner_project_id, "write");
+    return activeTemplateResult.data.owner_project_id;
+  }
+
+  const memberProjectResult = await supabase
+    .from("project_members")
+    .select("project_id")
+    .eq("user_id", accountId)
+    .in("role", ["owner", "editor"])
+    .limit(1)
+    .maybeSingle();
+
+  if (memberProjectResult.error) {
+    throw memberProjectResult.error;
+  }
+
+  if (memberProjectResult.data?.project_id) {
+    await assertProjectAccess(memberProjectResult.data.project_id, "write");
+    return memberProjectResult.data.project_id;
+  }
+
+  const ownedProjectResult = await supabase
+    .from("projects")
+    .select("id")
+    .eq("owner_id", accountId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (ownedProjectResult.error) {
+    throw ownedProjectResult.error;
+  }
+
+  return ownedProjectResult.data?.id ?? null;
 }
 
 async function getStepForWrite(stepId: string): Promise<ProcessStep> {
@@ -397,11 +479,12 @@ export async function deleteProcessFlowWafer(input: unknown) {
 
 export async function createProcessTemplate(input: unknown) {
   try {
-    const account = await requireAccount();
+    const account = await requireProcessManager();
     const parsed = processTemplateCreateSchema.parse(input);
+    const ownerProjectId = parsed.ownerProjectId ?? (await getDefaultOwnerProjectId(account.userId));
 
-    if (parsed.ownerProjectId) {
-      await assertProjectAccess(parsed.ownerProjectId, "write");
+    if (ownerProjectId) {
+      await assertProjectAccess(ownerProjectId, "write");
     }
 
     const supabase = await createServerSupabaseClient();
@@ -411,7 +494,7 @@ export async function createProcessTemplate(input: unknown) {
         name: parsed.name,
         version: parsed.version,
         description: parsed.description ?? null,
-        owner_project_id: parsed.ownerProjectId ?? null,
+        owner_project_id: ownerProjectId,
         is_active: parsed.isActive,
         created_by: account.userId
       })
@@ -422,7 +505,57 @@ export async function createProcessTemplate(input: unknown) {
       return fail(error.message);
     }
 
+    const { data: steps, error: stepsError } = await supabase
+      .from("process_steps")
+      .insert(
+        DEFAULT_PROCESS_FLOW_STEPS.map((step) => ({
+          template_id: data.id,
+          step_order: step.step_order,
+          name: step.name,
+          slug: step.slug,
+          process_area: step.process_area,
+          expected_duration_minutes: 60,
+          queue_target_minutes: null,
+          required_tool_type: null,
+          requires_recipe: false,
+          instructions: null,
+          parameters_schema: {},
+          node_type: step.node_type,
+          canvas_x: step.canvas_x,
+          canvas_y: step.canvas_y
+        }))
+      )
+      .select("id, step_order");
+
+    if (stepsError) {
+      await supabase.from("process_templates").delete().eq("id", data.id);
+      return fail(stepsError.message);
+    }
+
+    const orderedSteps = [...(steps ?? [])].sort((a, b) => a.step_order - b.step_order);
+    const transitions = orderedSteps.slice(0, -1).map((step, index) => ({
+      template_id: data.id,
+      from_step_id: step.id,
+      to_step_id: orderedSteps[index + 1]?.id,
+      edge_type: "flow" as const,
+      label: null,
+      condition: {},
+      priority: index
+    })).filter((transition) => Boolean(transition.to_step_id));
+
+    if (transitions.length) {
+      const { error: transitionsError } = await supabase
+        .from("process_step_transitions")
+        .insert(transitions);
+
+      if (transitionsError) {
+        await supabase.from("process_templates").delete().eq("id", data.id);
+        return fail(transitionsError.message);
+      }
+    }
+
     revalidatePath("/", "layout");
+    revalidateProcessFlow(data.id);
     return ok(data);
   } catch (error) {
     return fail(toErrorMessage(error));

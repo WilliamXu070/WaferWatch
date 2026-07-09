@@ -79,10 +79,19 @@ function EventFields({
       <label className="field">
         <span>Step / action</span>
         <select
-          value={actionMode === "step" ? selectedStepId : "__manual"}
+          value={
+            actionMode === "step"
+              ? selectedStepId
+              : actionMode === "process"
+                ? "__process"
+                : "__manual"
+          }
           disabled={!canEdit}
           onChange={(event) => {
-            if (event.target.value === "__manual") {
+            if (event.target.value === "__process") {
+              onActionModeChange("process");
+              onSelectedStepIdChange("");
+            } else if (event.target.value === "__manual") {
               onActionModeChange("manual");
               onSelectedStepIdChange("");
             } else {
@@ -96,6 +105,7 @@ function EventFields({
               {step.name}
             </option>
           ))}
+          <option value="__process">Process type</option>
           <option value="__manual">New action</option>
         </select>
       </label>
