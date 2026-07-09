@@ -2556,3 +2556,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `Process complete`, then deleted the temporary process row from Supabase.
   - Mobile viewport `390x844`: opening the drawer and clicking dashed
     `New process` showed the same inline input with no prompt dialog.
+
+## Recent development note (2026-07-09 process drawer ordering)
+
+- Moved the dashed `+ New process` tile into the current-process drawer below
+  the process card and above `Process Flow` / `Wafer / Die Status`, matching the
+  intended shuttered hierarchy.
+- Fixed the drawer toggle so the selected route no longer forces the process
+  drawer open; clicking the current process card can now close and reopen it.
+- Kept the create tile available when there is no current process.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://localhost:3015/calendar?processId=11111111-1111-4111-8111-111111111103`:
+    open state showed `New process` above `Process Flow`; clicking `Saeed`
+    collapsed the drawer to height `0` and made the add tile not hit-testable;
+    clicking `Saeed` again reopened it with the same ordering.
