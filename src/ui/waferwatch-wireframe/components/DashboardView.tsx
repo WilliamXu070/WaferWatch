@@ -12,12 +12,12 @@ const statIcon = {
 function StatTile({ stat }: { stat: DashboardStat }) {
   const Icon = statIcon[stat.icon];
   return (
-    <div className="flex min-h-[116px] flex-col justify-between border-b border-[#dcdbca] pb-4 pr-2 md:border-b-0 md:border-l md:pb-0 md:pl-6">
+    <div className="dashboard-stat-tile flex min-h-[116px] min-w-0 flex-col justify-between border-b border-[#dcdbca] pb-4 pr-2">
       <span className="grid h-9 w-9 place-items-center self-start rounded-full border border-[#dcdbca] bg-white text-[#4a483f]">
         <Icon />
       </span>
       <div>
-        <p className="text-[40px] font-semibold leading-none tracking-tight text-[#151512]">
+        <p className="dashboard-stat-value text-[40px] font-semibold leading-none tracking-tight text-[#151512]">
           {stat.value}
         </p>
         <p className="mt-2 text-[13px] text-[#8a887b]">{stat.label}</p>
@@ -68,9 +68,9 @@ export function DashboardView({
   const hasCards = columns.some((column) => column.cards.length > 0);
 
   return (
-    <div className="flex flex-col">
-      <section className="bg-[#f2f2e8] px-4 pb-5 pt-4 md:px-8 md:pb-8">
-        <div className="grid grid-cols-1 gap-5 md:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_repeat(2,minmax(0,0.6fr))]">
+    <div className="dashboard-view flex flex-col">
+      <section className="dashboard-overview-band bg-[#f2f2e8] px-4 pb-5 pt-4 md:px-8 md:pb-8">
+        <div className="dashboard-overview-grid">
           <ProcessActivityChart activity={dashboard.activity} />
           <StepProgressGauge progress={dashboard.progress} />
           {dashboard.stats.map((stat) => (

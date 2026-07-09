@@ -15,11 +15,11 @@ export function StepProgressGauge({ progress }: { progress: DashboardModel["prog
   const filled = Math.round((progress.percent / 100) * TICK_COUNT);
 
   return (
-    <section aria-label={progress.title} className="flex flex-col items-center">
+    <section aria-label={progress.title} className="dashboard-progress-card flex min-w-0 flex-col items-center">
       <h2 className="self-start text-[15px] font-semibold text-[#151512]">{progress.title}</h2>
 
-      <div className="relative mt-2">
-        <svg width="260" height="140" viewBox="0 0 260 140" role="img" aria-label={`${progress.percent}% ${progress.caption}`}>
+      <div className="dashboard-progress-gauge relative mt-2 w-full max-w-[260px]">
+        <svg className="h-auto w-full" width="260" height="140" viewBox="0 0 260 140" role="img" aria-label={`${progress.percent}% ${progress.caption}`}>
           {Array.from({ length: TICK_COUNT }).map((_, i) => {
             const angle = 180 - (i / (TICK_COUNT - 1)) * 180;
             const p1 = polar(angle, INNER);

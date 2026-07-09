@@ -1337,6 +1337,83 @@ textarea {
   gap: 18px;
 }
 
+.dashboard-overview-band {
+  container-type: inline-size;
+}
+
+.dashboard-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.95fr) repeat(2, minmax(150px, 0.55fr));
+  gap: 24px;
+  align-items: stretch;
+}
+
+.dashboard-activity-card,
+.dashboard-progress-card,
+.dashboard-stat-tile {
+  min-width: 0;
+}
+
+.dashboard-stat-tile {
+  border-left: 1px solid #dcdbca;
+  border-bottom: 0;
+  padding-bottom: 0;
+  padding-left: 24px;
+}
+
+@container (max-width: 980px) {
+  .dashboard-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+  }
+
+  .dashboard-activity-card {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-progress-card {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-stat-tile {
+    min-height: 104px;
+    border-top: 1px solid #dcdbca;
+    border-left: 0;
+    border-bottom: 0;
+    padding-top: 18px;
+    padding-bottom: 0;
+    padding-left: 0;
+  }
+}
+
+@container (max-width: 640px) {
+  .dashboard-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .dashboard-activity-plot {
+    height: 156px;
+    gap: 10px;
+  }
+
+  .dashboard-progress-gauge {
+    max-width: 232px;
+  }
+
+  .dashboard-stat-tile {
+    min-height: auto;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+  }
+
+  .dashboard-stat-value {
+    font-size: 34px;
+  }
+}
+
 .panel,
 .alert-panel {
   padding: 22px;

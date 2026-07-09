@@ -2359,3 +2359,21 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `390px`, the gallery had `348px` client width and `1032px` scroll width,
     horizontal scrolling reached later cards, and the parameter headers were
     `Parameter`, `C10`, `C11`, `C12`, and `C13`.
+
+## Recent development note (2026-07-08 dashboard zoom layout)
+
+- Reworked the main dashboard overview band to use container-aware layout rules
+  so it responds to the remaining content width after the desktop sidebar,
+  especially under browser zoom or narrow inspection panes.
+- Fixed the broken stat-tile treatment where desktop left borders activated
+  while the dashboard grid was still stacked, creating thin vertical strips in
+  zoomed views.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright MCP at `http://localhost:3015/dashboard`: at `1000x900`, document
+    width stayed `1000px`, main content width stayed `736px`, activity/progress
+    sections were full-width, and both stat tiles were equal `325px` columns.
+  - Playwright MCP at `860x900`: document width stayed `860px`, main content
+    width stayed `596px`, and stat tiles collapsed into full-width readable rows
+    with no console errors.
