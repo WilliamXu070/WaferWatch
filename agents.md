@@ -2601,3 +2601,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `New process` remained visible/hit-testable when Saeed was collapsed;
     `Process Flow` and `Wafer / Die Status` were hidden when collapsed and
     reopened indented at `x=40` versus the `New process` tile at `x=16`.
+
+## Recent development note (2026-07-09 multi-process sidebar)
+
+- Fixed the shell/sidebar model so active process templates render as a list
+  instead of a single `currentProcess` slot. Creating a process now adds a new
+  process row with its own `Process Flow` and `Wafer / Die Status` drawer rather
+  than visually replacing or renaming the original process row.
+- `New process` remains a sibling action after the process list.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://localhost:3015/dashboard?processId=11111111-1111-4111-8111-111111111103`:
+    sidebar showed multiple DB-backed processes at once.
+  - Created temporary `Codex Multi Process ...` through the inline UI and
+    confirmed it appeared alongside `Saeed` with its own process-flow route,
+    then deleted the temporary process row from Supabase.

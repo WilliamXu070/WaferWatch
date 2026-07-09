@@ -46,6 +46,12 @@ export type WireframeShellDto = {
     version: string;
     activeDieCount: number;
   } | null;
+  processes: Array<{
+    id: string;
+    name: string;
+    version: string;
+    activeDieCount: number;
+  }>;
   calendarEventCount: number;
   teamMembers: WireframeShellTeamMemberDto[];
 };

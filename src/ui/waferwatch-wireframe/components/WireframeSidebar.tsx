@@ -78,22 +78,29 @@ export function WireframeSidebar({
   const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
   const selectedProcessId = searchParams.get("processId");
-  const currentProcess = shell.currentProcess;
+  const processes = shell.processes.length
+    ? shell.processes
+    : shell.currentProcess
+      ? [shell.currentProcess]
+      : [];
+  const currentProcess =
+    processes.find((process) => process.id === selectedProcessId) ??
+    shell.currentProcess ??
+    processes[0] ??
+    null;
   const mainNav = getMainNav(navBasePath).map((item) => ({
     ...item,
     href: withCurrentProcess(item.href, currentProcess?.id)
   }));
   const processNav = getProcessNav(navBasePath);
 
-  // expanded = sub-nav visible; toggled by single click
-  const [expanded, setExpanded] = useState(() => Boolean(currentProcess && selectedProcessId === currentProcess.id));
-  const processDrawerOpen = !currentProcess || expanded;
-  const processIsSelected = Boolean(currentProcess && expanded);
+  const [expandedProcessIds, setExpandedProcessIds] = useState<string[]>(() =>
+    selectedProcessId ? [selectedProcessId] : currentProcess ? [currentProcess.id] : []
+  );
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
-  const processActive = processIsSelected && processNav.some((item) => isActive(item.href));
 
   // inline rename
-  const [isEditing, setIsEditing] = useState(false);
+  const [editingProcessId, setEditingProcessId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState(currentProcess?.name ?? "");
   const [isCreatingProcess, setIsCreatingProcess] = useState(false);
   const [createNameDraft, setCreateNameDraft] = useState("");
@@ -103,46 +110,49 @@ export function WireframeSidebar({
   const createInputRef = useRef<HTMLInputElement>(null);
   const createInFlightRef = useRef(false);
 
-  const startEditing = () => {
-    if (!currentProcess) return;
-    setNameDraft(currentProcess.name);
-    setIsEditing(true);
+  const startEditing = (process: NonNullable<WireframeShellDto["currentProcess"]>) => {
+    setNameDraft(process.name);
+    setEditingProcessId(process.id);
     // focus on next tick after render
     setTimeout(() => inputRef.current?.select(), 0);
   };
 
-  const commitRename = () => {
+  const commitRename = (process: NonNullable<WireframeShellDto["currentProcess"]>) => {
     const next = nameDraft.trim();
-    if (!currentProcess || !onUpdateProcessName || next.length < 2) {
-      setIsEditing(false);
+    if (!onUpdateProcessName || next.length < 2) {
+      setEditingProcessId(null);
       return;
     }
-    if (next === currentProcess.name) {
-      setIsEditing(false);
+    if (next === process.name) {
+      setEditingProcessId(null);
       return;
     }
     startRename(() => {
-      void onUpdateProcessName({ templateId: currentProcess.id, name: next }).then((res) => {
+      void onUpdateProcessName({ templateId: process.id, name: next }).then((res) => {
         if (res.ok) router.refresh();
       });
     });
-    setIsEditing(false);
+    setEditingProcessId(null);
   };
 
-  const cancelRename = () => {
-    setIsEditing(false);
-    setNameDraft(currentProcess?.name ?? "");
+  const cancelRename = (process: NonNullable<WireframeShellDto["currentProcess"]>) => {
+    setEditingProcessId(null);
+    setNameDraft(process.name);
   };
 
-  const handleProcessClick = () => {
-    if (!currentProcess || isEditing) return;
-    setExpanded((prev) => !prev);
+  const handleProcessClick = (processId: string) => {
+    if (editingProcessId) return;
+    setExpandedProcessIds((current) =>
+      current.includes(processId)
+        ? current.filter((id) => id !== processId)
+        : [...current, processId]
+    );
   };
 
-  const handleProcessDoubleClick = () => {
-    if (!currentProcess || !onUpdateProcessName) return;
-    if (!expanded) setExpanded(true);
-    startEditing();
+  const handleProcessDoubleClick = (process: NonNullable<WireframeShellDto["currentProcess"]>) => {
+    if (!onUpdateProcessName) return;
+    setExpandedProcessIds((current) => current.includes(process.id) ? current : [...current, process.id]);
+    startEditing(process);
   };
 
   const startCreatingProcess = () => {
@@ -214,49 +224,101 @@ export function WireframeSidebar({
         <p className="px-3 pb-1 text-[11px] font-semibold tracking-[0.06em] text-[#98968a]">
           Current process
         </p>
-        <div
-          className={[
-            "rounded-xl px-3 py-2.5 text-sm transition-all",
-            processIsSelected
-              ? "bg-[#f3f4f6] font-semibold text-[#151512]"
-              : "font-medium text-[#55534a]"
-          ].join(" ")}
-        >
-          <div className="flex items-center gap-3">
-            <CalendarIcon className="shrink-0 text-[#8a887b]" />
-            {isEditing && currentProcess ? (
-              <input
-                ref={inputRef}
-                value={nameDraft}
-                onChange={(e) => setNameDraft(e.currentTarget.value)}
-                onBlur={commitRename}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); commitRename(); }
-                  if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
-                }}
-                className="min-w-0 flex-1 rounded-md border border-[#d1d5db] bg-white px-2 py-0.5 text-[13px] font-semibold text-[#151512] outline-none focus:border-[#151512]"
-                aria-label="Process name"
-                autoFocus
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={handleProcessClick}
-                onDoubleClick={handleProcessDoubleClick}
-                disabled={!currentProcess}
-                title={onUpdateProcessName ? "Click to expand · Double-click to rename" : "Click to expand"}
-                className="min-w-0 flex-1 truncate text-left disabled:cursor-default"
-                aria-pressed={processIsSelected}
-              >
-                {currentProcess?.name ?? "No active process"}
-              </button>
-            )}
-            {currentProcess ? (
-              <span className="min-w-[22px] rounded-full bg-[#f3f4f6] px-1.5 py-0.5 text-center text-[11px] font-semibold text-[#55534a]">
-                {currentProcess.activeDieCount}
-              </span>
-            ) : null}
-          </div>
+        <div className="flex flex-col gap-2">
+          {processes.length ? (
+            processes.map((process) => {
+              const processDrawerOpen = expandedProcessIds.includes(process.id);
+              const processIsSelected = process.id === selectedProcessId;
+              const processActive = processDrawerOpen && processNav.some((item) => isActive(item.href));
+
+              return (
+                <div key={process.id}>
+                  <div
+                    className={[
+                      "rounded-xl px-3 py-2.5 text-sm transition-all",
+                      processIsSelected || processDrawerOpen
+                        ? "bg-[#f3f4f6] font-semibold text-[#151512]"
+                        : "font-medium text-[#55534a]"
+                    ].join(" ")}
+                  >
+                    <div className="flex items-center gap-3">
+                      <CalendarIcon className="shrink-0 text-[#8a887b]" />
+                      {editingProcessId === process.id ? (
+                        <input
+                          ref={inputRef}
+                          value={nameDraft}
+                          onChange={(e) => setNameDraft(e.currentTarget.value)}
+                          onBlur={() => commitRename(process)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") { e.preventDefault(); commitRename(process); }
+                            if (e.key === "Escape") { e.preventDefault(); cancelRename(process); }
+                          }}
+                          className="min-w-0 flex-1 rounded-md border border-[#d1d5db] bg-white px-2 py-0.5 text-[13px] font-semibold text-[#151512] outline-none focus:border-[#151512]"
+                          aria-label="Process name"
+                          autoFocus
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleProcessClick(process.id)}
+                          onDoubleClick={() => handleProcessDoubleClick(process)}
+                          title={onUpdateProcessName ? "Click to expand · Double-click to rename" : "Click to expand"}
+                          className="min-w-0 flex-1 truncate text-left disabled:cursor-default"
+                          aria-pressed={processDrawerOpen}
+                        >
+                          {process.name}
+                        </button>
+                      )}
+                      <span className="min-w-[22px] rounded-full bg-[#f3f4f6] px-1.5 py-0.5 text-center text-[11px] font-semibold text-[#55534a]">
+                        {process.activeDieCount}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div
+                    className={[
+                      "grid transition-[grid-template-rows,opacity,transform] duration-200 ease-out",
+                      processDrawerOpen
+                        ? "grid-rows-[1fr] opacity-100 translate-y-0"
+                        : "grid-rows-[0fr] opacity-0 -translate-y-1"
+                    ].join(" ")}
+                  >
+                    <div className="min-h-0 overflow-hidden">
+                      <div className="mt-2 flex flex-col gap-1 pl-6">
+                        {processNav.map((item) => {
+                          const Icon = iconByKey[item.icon];
+                          const active = processActive && isActive(item.href) && process.id === selectedProcessId;
+                          return (
+                            <Link
+                              key={item.key}
+                              href={hrefWithProcess(item.href, process.id)}
+                              aria-current={active ? "page" : undefined}
+                              className={[
+                                "flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-[14px] transition-colors",
+                                active
+                                  ? "bg-[#f3f4f6] font-semibold text-[#151512]"
+                                  : "font-semibold text-[#6b6a5f] hover:bg-[#f8f9fb]"
+                              ].join(" ")}
+                            >
+                              <Icon className={active ? "text-[#151512]" : "text-[#9c9a8c]"} />
+                              {item.label}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="rounded-xl px-3 py-2.5 text-sm font-medium text-[#55534a]">
+              <div className="flex items-center gap-3">
+                <CalendarIcon className="shrink-0 text-[#8a887b]" />
+                <span className="min-w-0 flex-1 truncate text-left">No active process</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {onCreateProcess ? (
@@ -297,42 +359,6 @@ export function WireframeSidebar({
           )
         ) : null}
 
-        {/* Animated process drawer: Process Flow + Wafer / Die Status */}
-        <div
-          className={[
-            "grid transition-[grid-template-rows,opacity,transform] duration-200 ease-out",
-            processDrawerOpen
-              ? "grid-rows-[1fr] opacity-100 translate-y-0"
-              : "grid-rows-[0fr] opacity-0 -translate-y-1"
-          ].join(" ")}
-        >
-          <div className="min-h-0 overflow-hidden">
-            <div className="mt-2 flex flex-col gap-1 pl-6">
-              {currentProcess
-                ? processNav.map((item) => {
-                    const Icon = iconByKey[item.icon];
-                    const active = processActive && isActive(item.href);
-                    return (
-                      <Link
-                        key={item.key}
-                        href={hrefWithProcess(item.href, currentProcess.id)}
-                        aria-current={active ? "page" : undefined}
-                        className={[
-                          "flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-[14px] transition-colors",
-                          active
-                            ? "bg-[#f3f4f6] font-semibold text-[#151512]"
-                            : "font-semibold text-[#6b6a5f] hover:bg-[#f8f9fb]"
-                        ].join(" ")}
-                      >
-                        <Icon className={active ? "text-[#151512]" : "text-[#9c9a8c]"} />
-                        {item.label}
-                      </Link>
-                    );
-                  })
-                : null}
-            </div>
-          </div>
-        </div>
       </div>
 
       <div className="mt-7">

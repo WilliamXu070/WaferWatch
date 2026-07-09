@@ -99,32 +99,34 @@ export async function getWireframeShellModel(): Promise<WireframeShellDto> {
   if (claimsError || !claimsData?.claims?.sub) {
     return {
       currentProcess: null,
+      processes: [],
       calendarEventCount: 0,
       teamMembers: []
     };
   }
 
-  const templateResult = await supabase
+  const templatesResult = await supabase
     .from("process_templates")
     .select("id, name, version, owner_project_id")
     .eq("is_active", true)
     .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(24);
 
-  if (templateResult.error) {
-    throw templateResult.error;
+  if (templatesResult.error) {
+    throw templatesResult.error;
   }
 
-  const activeTemplate = templateResult.data;
+  const activeTemplates = templatesResult.data ?? [];
+  const activeTemplate = activeTemplates[0] ?? null;
+  const templateIds = activeTemplates.map((template) => template.id);
   const [assignmentsResult, calendarResult] = await Promise.all([
-    activeTemplate
+    templateIds.length
       ? supabase
           .from("wafer_process_assignments")
-          .select("id", { count: "exact", head: true })
-          .eq("template_id", activeTemplate.id)
+          .select("template_id")
+          .in("template_id", templateIds)
           .in("status", [...ACTIVE_ASSIGNMENT_STATUSES])
-      : Promise.resolve({ count: 0, error: null }),
+      : Promise.resolve({ data: [], error: null }),
     activeTemplate
       ? supabase
           .from("process_calendar_events")
@@ -144,6 +146,19 @@ export async function getWireframeShellModel(): Promise<WireframeShellDto> {
   const teamMembers = activeTemplate?.owner_project_id
     ? await getProjectTeamMembers(activeTemplate.owner_project_id)
     : await getActiveProfileTeamMembers();
+  const activeDieCountByTemplate = new Map<string, number>();
+  for (const assignment of assignmentsResult.data ?? []) {
+    activeDieCountByTemplate.set(
+      assignment.template_id,
+      (activeDieCountByTemplate.get(assignment.template_id) ?? 0) + 1
+    );
+  }
+  const processes = activeTemplates.map((template) => ({
+    id: template.id,
+    name: template.name,
+    version: template.version,
+    activeDieCount: activeDieCountByTemplate.get(template.id) ?? 0
+  }));
 
   return {
     currentProcess: activeTemplate
@@ -151,9 +166,10 @@ export async function getWireframeShellModel(): Promise<WireframeShellDto> {
           id: activeTemplate.id,
           name: activeTemplate.name,
           version: activeTemplate.version,
-          activeDieCount: assignmentsResult.count ?? 0
+          activeDieCount: activeDieCountByTemplate.get(activeTemplate.id) ?? 0
         }
       : null,
+    processes,
     calendarEventCount: calendarResult.count ?? 0,
     teamMembers
   };
