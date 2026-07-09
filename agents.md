@@ -650,6 +650,25 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `curl -s http://localhost:3012/api/health`
   - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-five-gallery-auth-gated.png`
 
+## Recent development note (2026-07-09 auth redirect hardening)
+
+- Hardened `getAppUrl()` so production confirmation links will not prefer a
+  localhost `NEXT_PUBLIC_APP_URL` over Vercel deployment URL environment values.
+  This protects signup email redirects from accidentally pointing at localhost.
+- Verified Vercel Production has `NEXT_PUBLIC_APP_URL` configured and it is not
+  localhost. If confirmation emails still contain localhost, the remaining source
+  is Supabase Auth Site URL / Redirect URL configuration or a custom email
+  template in the Supabase dashboard.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://localhost:3015/login`: cleared Playwright cookies,
+    confirmed unauthenticated auth UI shows Sign in, Sign up, name/email/password,
+    and Create account without creating a new Supabase user.
+  - Browser at `http://localhost:3015/auth/confirm?error=access_denied&error_description=Email%20link%20test`:
+    confirmed redirect back to auth UI with the Supabase-style error surfaced and
+    no console errors.
+
 ## Recent development note (2026-07-07 cellphone view)
 
 - Added a mobile WaferWatch shell for phone widths: compact topbar, slide-out
