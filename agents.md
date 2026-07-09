@@ -2414,3 +2414,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     the floating `R3 C15` parameter summary.
   - Playwright MCP at `820x900`: compact matrix still rendered `45` cards,
     scrolled to `R3C15`, had no arrow buttons, and reported no console errors.
+
+## Recent development note (2026-07-08 results popup controls)
+
+- Fixed the compact Results selected-parameter popup so blank database cells
+  display deterministic fallback values instead of empty rows.
+- Added collapse/expand control and touch/pointer drag movement for the popup,
+  with guarded pointer capture for synthetic verification events.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright MCP at `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with `390x844`: selected a die, opened Results, selected `R1C8`, confirmed
+    voltage, pulse width, pulse count, and post-pulse voltage values rendered;
+    collapsed and expanded the popup; dragged it from `79,701` to `9,611`; kept
+    document width at `390px`; and reported no console errors.

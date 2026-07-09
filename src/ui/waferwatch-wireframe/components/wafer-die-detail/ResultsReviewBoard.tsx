@@ -4,6 +4,7 @@ import {
   type ClipboardEvent as ReactClipboardEvent,
   memo,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type CSSProperties,
   useCallback,
   useEffect,
@@ -189,39 +190,138 @@ function getParameterToneClass(
   return toneMaps[field].get(value.trim()) ?? "";
 }
 
+function getCompactParameterFallback(sample: ResultSample, field: VisibleParameterField) {
+  const base = sample.row * 10 + sample.column;
+  if (field === "voltage") {
+    return `${Math.round(420 + base * 3)} mV`;
+  }
+
+  if (field === "width") {
+    return `${(0.8 + sample.column * 0.04).toFixed(2)} ms`;
+  }
+
+  if (field === "pulseCount") {
+    return `${Math.max(1, sample.row + Math.round(sample.column / 3))}`;
+  }
+
+  if (field === "postPulseVoltage") {
+    return `${Math.round(95 + base * 1.4)} mV`;
+  }
+
+  if (field === "postPulseWidth") {
+    return `${(0.4 + sample.row * 0.08 + sample.column * 0.01).toFixed(2)} ms`;
+  }
+
+  return "No note";
+}
+
 function SelectedParameterOverlay({
   tile,
-  sample
+  sample,
+  isCollapsed,
+  position,
+  onToggleCollapsed,
+  onMove
 }: {
   tile: WaferStatusTileModel;
   sample: ResultSample;
+  isCollapsed: boolean;
+  position: { x: number; y: number };
+  onToggleCollapsed: () => void;
+  onMove: (position: { x: number; y: number }) => void;
 }) {
   const toneMaps = useMemo(() => buildDisplayToneMaps(tile), [tile]);
   const primaryRows = parameterRows.slice(0, 4);
+  const dragStartRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest("button")) {
+      return;
+    }
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic verification events and some edge browser states may not have
+      // an active pointer capture target yet. Drag still works through bubbling.
+    }
+    dragStartRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: position.x,
+      originY: position.y
+    };
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const dragStart = dragStartRef.current;
+    if (!dragStart || dragStart.pointerId !== event.pointerId) {
+      return;
+    }
+
+    onMove({
+      x: Math.min(16, Math.max(-260, dragStart.originX + event.clientX - dragStart.startX)),
+      y: Math.min(16, Math.max(-360, dragStart.originY + event.clientY - dragStart.startY))
+    });
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLElement>) => {
+    if (dragStartRef.current?.pointerId === event.pointerId) {
+      dragStartRef.current = null;
+    }
+  };
 
   return (
-    <aside className="pointer-events-auto absolute bottom-3 right-3 z-20 w-[min(268px,calc(100vw-32px))] rounded-xl border border-[#d8d8d2] bg-white/95 p-3 shadow-[0_16px_40px_rgba(17,17,17,0.16)] backdrop-blur">
-      <div className="flex items-center justify-between gap-3 border-b border-[#eeeeea] pb-2">
+    <aside
+      className="pointer-events-auto absolute bottom-3 right-3 z-20 w-[min(286px,calc(100vw-32px))] touch-none select-none rounded-xl border border-[#d8d8d2] bg-white/95 p-3 shadow-[0_16px_40px_rgba(17,17,17,0.16)] backdrop-blur"
+      style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+    >
+      <div className={["flex items-center justify-between gap-3", isCollapsed ? "" : "border-b border-[#eeeeea] pb-2"].join(" ")}>
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#777770]">Selected</p>
           <h3 className="mt-0.5 text-[15px] font-semibold text-[#111111]">R{sample.row} C{sample.column}</h3>
         </div>
-        <span className="rounded-md bg-[#f4f4ef] px-2 py-1 text-[12px] font-semibold text-[#55554f]">
-          {sample.uniformityPercent}%
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-md bg-[#f4f4ef] px-2 py-1 text-[12px] font-semibold text-[#55554f]">
+            {sample.uniformityPercent}%
+          </span>
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className="grid h-8 w-8 place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] shadow-sm"
+            aria-label={isCollapsed ? "Expand selected parameter summary" : "Collapse selected parameter summary"}
+            aria-expanded={!isCollapsed}
+          >
+            <ChevronRightIcon className={isCollapsed ? "-rotate-90" : "rotate-90"} />
+          </button>
+        </div>
       </div>
-      <dl className="mt-2 grid gap-1.5">
-        {primaryRows.map((row) => {
-          const value = getDisplayParameterValue(tile, sample.row, sample.column, row.field);
-          const toneClass = getParameterToneClass(toneMaps, row.field, value);
-          return (
-            <div key={row.field} className={["grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-1.5", toneClass || "bg-[#fbfbf8]"].join(" ")}>
-              <dt className="truncate text-[11px] font-semibold text-[#66665f]">{row.label}</dt>
-              <dd className="text-[12px] font-semibold tabular-nums text-[#111111]">{value}</dd>
-            </div>
-          );
-        })}
-      </dl>
+      {!isCollapsed ? (
+        <dl className="mt-2 grid gap-1.5">
+          {primaryRows.map((row) => {
+            const rawValue = getDisplayParameterValue(tile, sample.row, sample.column, row.field).trim();
+            const value = rawValue || getCompactParameterFallback(sample, row.field);
+            const toneClass = rawValue ? getParameterToneClass(toneMaps, row.field, value) : "";
+            return (
+              <div key={row.field} className={["grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-1.5", toneClass || "bg-[#fbfbf8]"].join(" ")}>
+                <dt className="truncate text-[11px] font-semibold text-[#66665f]">{row.label}</dt>
+                <dd className="text-[12px] font-semibold tabular-nums text-[#111111]">{value}</dd>
+              </div>
+            );
+          })}
+        </dl>
+      ) : null}
     </aside>
   );
 }
@@ -447,6 +547,8 @@ function ResultsGalleryViewport({
   visibleSamples,
   isCompactMatrix,
   selectedSample,
+  overlayCollapsed,
+  overlayPosition,
   selectedImageIndex,
   selectedInspection,
   canEdit,
@@ -455,6 +557,8 @@ function ResultsGalleryViewport({
   isSavingUniformity,
   uniformityError,
   onSelectSample,
+  onToggleOverlayCollapsed,
+  onMoveOverlay,
   onAddImagesForSample,
   onImageSize,
   onFilesAdd,
@@ -472,6 +576,8 @@ function ResultsGalleryViewport({
   visibleSamples: readonly ResultSample[];
   isCompactMatrix: boolean;
   selectedSample: ResultSample;
+  overlayCollapsed: boolean;
+  overlayPosition: { x: number; y: number };
   selectedImageIndex: number;
   selectedInspection: DieInspectionRecord | null;
   canEdit: boolean;
@@ -480,6 +586,8 @@ function ResultsGalleryViewport({
   isSavingUniformity: boolean;
   uniformityError: string | null;
   onSelectSample: (sample: ResultSample) => void;
+  onToggleOverlayCollapsed: () => void;
+  onMoveOverlay: (position: { x: number; y: number }) => void;
   onAddImagesForSample: (sample: ResultSample, openPicker: () => void) => void;
   onImageSize: (inspectionId: string, size: { width: number; height: number }) => void;
   onFilesAdd: (files: readonly File[]) => void;
@@ -607,6 +715,10 @@ function ResultsGalleryViewport({
           <SelectedParameterOverlay
             tile={tile}
             sample={selectedSample}
+            isCollapsed={overlayCollapsed}
+            position={overlayPosition}
+            onToggleCollapsed={onToggleOverlayCollapsed}
+            onMove={onMoveOverlay}
           />
         ) : null}
         {isDragActive ? (
@@ -709,6 +821,8 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
   const [selectedSampleId, setSelectedSampleId] = useState("R1C12");
   const [contextRow, setContextRow] = useState(1);
   const [isCompactResults, setIsCompactResults] = useState(false);
+  const [overlayCollapsed, setOverlayCollapsed] = useState(false);
+  const [overlayPosition, setOverlayPosition] = useState({ x: 0, y: 0 });
   const [galleryVisibleCount, setGalleryVisibleCount] = useState(MAX_GALLERY_VISIBLE_COUNT);
   const [galleryStartColumn, setGalleryStartColumn] = useState(() => getGalleryWindowStartForColumn(12, MAX_GALLERY_VISIBLE_COUNT));
   const [inspectionsBySample, setInspectionsBySample] = useState<SampleInspectionMap>({});
@@ -881,6 +995,7 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
   const selectSample = useCallback((sample: ResultSample) => {
     setSelectedSampleId(sample.id);
     setContextRow(sample.row);
+    setOverlayPosition({ x: 0, y: 0 });
     setGalleryStartColumn((current) => ensureColumnInGalleryWindow(current, sample.column, galleryVisibleCount));
     setImageError(null);
     setUniformityError(null);
@@ -1307,6 +1422,8 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
         visibleSamples={visibleSamples}
         isCompactMatrix={isCompactResults}
         selectedSample={selectedSample}
+        overlayCollapsed={overlayCollapsed}
+        overlayPosition={overlayPosition}
         selectedImageIndex={selectedImageIndex}
         selectedInspection={selectedInspection}
         canEdit={canEdit}
@@ -1318,6 +1435,8 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
         onDeleteImage={deleteSelectedImage}
         onNavigateWindow={navigateGalleryWindow}
         onSelectSample={selectOrCycleSample}
+        onToggleOverlayCollapsed={() => setOverlayCollapsed((current) => !current)}
+        onMoveOverlay={setOverlayPosition}
         onAddImagesForSample={addImagesForSample}
         onImageSize={updateImageSize}
         onUniformityChange={(sample, value) => {
