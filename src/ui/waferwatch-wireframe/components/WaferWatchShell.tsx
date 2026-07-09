@@ -19,13 +19,18 @@ export type CreateProcessAction = (input: {
   isActive?: boolean;
 }) => Promise<ActionResult<{ id: string; name: string; version: string }>>;
 
+export type DeleteProcessAction = (input: {
+  templateId: string;
+}) => Promise<ActionResult<{ deleted: string }>>;
+
 export function WaferWatchShell({
   children,
   shell,
   navBasePath = "",
   onSignOut,
   onUpdateProcessName,
-  onCreateProcess
+  onCreateProcess,
+  onDeleteProcess
 }: {
   children: ReactNode;
   shell: WireframeShellDto;
@@ -33,6 +38,7 @@ export function WaferWatchShell({
   onSignOut?: () => void | Promise<void>;
   onUpdateProcessName?: UpdateProcessNameAction;
   onCreateProcess?: CreateProcessAction;
+  onDeleteProcess?: DeleteProcessAction;
 }) {
   return (
     <div className="waferwatch-wireframe flex h-[100svh] w-full overflow-hidden bg-white text-[#151512]">
@@ -47,6 +53,7 @@ export function WaferWatchShell({
         navBasePath={navBasePath}
         onUpdateProcessName={onUpdateProcessName}
         onCreateProcess={onCreateProcess}
+        onDeleteProcess={onDeleteProcess}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <WireframeTopbar

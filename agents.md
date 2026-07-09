@@ -2617,3 +2617,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Created temporary `Codex Multi Process ...` through the inline UI and
     confirmed it appeared alongside `Saeed` with its own process-flow route,
     then deleted the temporary process row from Supabase.
+
+## Recent development note (2026-07-09 process deletion)
+
+- Added a delete action for process templates with manager/project write access
+  enforcement. The action deletes process assignments first, then removes the
+  template so its flow/steps/transitions cascade through the existing schema.
+- Added a small delete control beside each process row in the sidebar with a
+  confirmation prompt and a redirect back to `/dashboard` when the selected
+  process is removed.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://localhost:3015/api/health`
+  - Browser at `http://localhost:3015/dashboard?processId=11111111-1111-4111-8111-111111111103`:
+    created `Codex Delete E2E ...`, clicked its delete control, accepted the
+    confirmation, confirmed the UI returned to `/dashboard`, and confirmed the
+    process no longer appeared in the sidebar.
+  - Supabase check confirmed no `Codex Delete ...` verification templates
+    remained after cleanup.

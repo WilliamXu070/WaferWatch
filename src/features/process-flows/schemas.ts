@@ -19,6 +19,10 @@ export const processTemplateNameUpdateSchema = z.object({
   name: z.string().trim().min(2).max(180)
 });
 
+export const processTemplateDeleteSchema = z.object({
+  templateId: uuidSchema
+});
+
 export const processFlowWaferCreateSchema = z.object({
   templateId: uuidSchema
 });

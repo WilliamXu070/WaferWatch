@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { WireframeShellDto } from "@/features/wireframe/types";
-import type { CreateProcessAction, UpdateProcessNameAction } from "./WaferWatchShell";
+import type { CreateProcessAction, DeleteProcessAction, UpdateProcessNameAction } from "./WaferWatchShell";
 import {
   CalendarIcon,
   ChevronRightIcon,
+  CloseIcon,
   FlowIcon,
   GridIcon,
   HelpIcon,
@@ -67,12 +68,14 @@ export function WireframeSidebar({
   shell,
   navBasePath = "",
   onUpdateProcessName,
-  onCreateProcess
+  onCreateProcess,
+  onDeleteProcess
 }: {
   shell: WireframeShellDto;
   navBasePath?: NavBasePath;
   onUpdateProcessName?: UpdateProcessNameAction;
   onCreateProcess?: CreateProcessAction;
+  onDeleteProcess?: DeleteProcessAction;
 }) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
@@ -106,9 +109,11 @@ export function WireframeSidebar({
   const [createNameDraft, setCreateNameDraft] = useState("");
   const [, startRename] = useTransition();
   const [, startCreate] = useTransition();
+  const [, startDelete] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
   const createInFlightRef = useRef(false);
+  const deletingProcessIdsRef = useRef(new Set<string>());
 
   const startEditing = (process: NonNullable<WireframeShellDto["currentProcess"]>) => {
     setNameDraft(process.name);
@@ -195,6 +200,30 @@ export function WireframeSidebar({
     });
   };
 
+  const handleDeleteProcess = (process: NonNullable<WireframeShellDto["currentProcess"]>) => {
+    if (!onDeleteProcess || deletingProcessIdsRef.current.has(process.id)) return;
+    const confirmed = window.confirm(`Delete process "${process.name}"? This removes its process flow and assignments.`);
+    if (!confirmed) return;
+
+    deletingProcessIdsRef.current.add(process.id);
+    startDelete(() => {
+      void onDeleteProcess({ templateId: process.id }).then((res) => {
+        deletingProcessIdsRef.current.delete(process.id);
+        if (!res.ok) return;
+        setExpandedProcessIds((current) => current.filter((id) => id !== process.id));
+        if (editingProcessId === process.id) {
+          setEditingProcessId(null);
+        }
+        router.refresh();
+        if (selectedProcessId === process.id) {
+          router.push(`${navBasePath}/dashboard`);
+        }
+      }).catch(() => {
+        deletingProcessIdsRef.current.delete(process.id);
+      });
+    });
+  };
+
   return (
     <aside className="wireframe-sidebar hidden h-full w-[264px] shrink-0 flex-col border-r border-[#e9e9df] bg-white px-4 py-5 md:flex">
       <div className="flex items-center gap-2.5 px-2">
@@ -272,6 +301,17 @@ export function WireframeSidebar({
                       <span className="min-w-[22px] rounded-full bg-[#f3f4f6] px-1.5 py-0.5 text-center text-[11px] font-semibold text-[#55534a]">
                         {process.activeDieCount}
                       </span>
+                      {onDeleteProcess ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteProcess(process)}
+                          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[#98968a] transition-colors hover:bg-[#f2e7e3] hover:text-[#b4533f]"
+                          aria-label={`Delete ${process.name}`}
+                          title={`Delete ${process.name}`}
+                        >
+                          <CloseIcon />
+                        </button>
+                      ) : null}
                     </div>
                   </div>
 

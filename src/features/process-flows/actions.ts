@@ -17,6 +17,7 @@ import {
   processStepPositionUpdateSchema,
   processStepTransitionCreateSchema,
   processStepTransitionDeleteSchema,
+  processTemplateDeleteSchema,
   processTemplateNameUpdateSchema,
   processTemplateCreateSchema,
   processStepNameUpdateSchema
@@ -580,6 +581,37 @@ export async function updateProcessTemplateName(input: unknown) {
 
     revalidateProcessFlow(template.id);
     return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function deleteProcessTemplate(input: unknown) {
+  try {
+    const parsed = processTemplateDeleteSchema.parse(input);
+    const template = await getTemplateForWrite(parsed.templateId);
+    const adminSupabase = createSupabaseAdminClient();
+
+    const { error: assignmentsError } = await adminSupabase
+      .from("wafer_process_assignments")
+      .delete()
+      .eq("template_id", parsed.templateId);
+
+    if (assignmentsError) {
+      return fail(assignmentsError.message);
+    }
+
+    const { error: templateError } = await adminSupabase
+      .from("process_templates")
+      .delete()
+      .eq("id", parsed.templateId);
+
+    if (templateError) {
+      return fail(templateError.message);
+    }
+
+    revalidateProcessFlow(template.id);
+    return ok({ deleted: parsed.templateId });
   } catch (error) {
     return fail(toErrorMessage(error));
   }
