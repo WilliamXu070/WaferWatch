@@ -2429,3 +2429,28 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     voltage, pulse width, pulse count, and post-pulse voltage values rendered;
     collapsed and expanded the popup; dragged it from `79,701` to `9,611`; kept
     document width at `390px`; and reported no console errors.
+
+## Recent development note (2026-07-08 profile-backed team users)
+
+- Replaced the shell team list source from seeded `process_people` rows to real
+  active `profiles`, scoped through `project_members` when the active process is
+  project-owned.
+- Added a Supabase migration so project teammates can read each other's active
+  profiles, and deactivated the old unlinked seeded people `adam`, `barbara`,
+  `calvin`, and `derik` in existing databases.
+- Updated demo-user seeding to create/link `william@waferwatch.local` as
+  `William Xu`, plus profile-linked calendar person rows for admin, viewer, and
+  William.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `npm run db:push`
+  - `npm run auth:seed-demo-users`
+  - Direct Supabase check confirmed active profiles for admin, viewer, and
+    William; confirmed old seeded process people are inactive and profile-linked
+    rows exist for the real users.
+  - Playwright MCP at `http://localhost:3015/dashboard`, `1200x900`: sidebar
+    showed `WaferWatch Admin`, `WaferWatch Viewer`, and `William Xu`; did not
+    show `adam`, `barbara`, `calvin`, or `derik`; no console errors.
+  - Playwright MCP at `http://localhost:3015/calendar?processId=11111111-1111-4111-8111-111111111103`:
+    page text showed DB users and did not show the old seeded names.

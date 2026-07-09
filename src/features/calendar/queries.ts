@@ -39,6 +39,7 @@ export async function listProcessPeople(): Promise<ProcessCalendarPersonOption[]
     .from("process_people")
     .select("id, display_name")
     .eq("is_active", true)
+    .not("profile_id", "is", null)
     .order("display_name", { ascending: true });
 
   if (error) {

@@ -98,15 +98,15 @@ async function validatePeopleAreActive(personIds: string[]) {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("process_people")
-    .select("id, display_name, is_active")
+    .select("id, display_name, is_active, profile_id")
     .in("id", uniquePersonIds);
 
   if (error) {
     throw error;
   }
 
-  const people = (data ?? []) as Pick<ProcessPerson, "id" | "display_name" | "is_active">[];
-  const activePeople = people.filter((person) => person.is_active);
+  const people = (data ?? []) as Array<Pick<ProcessPerson, "id" | "display_name" | "is_active" | "profile_id">>;
+  const activePeople = people.filter((person) => person.is_active && person.profile_id);
 
   if (activePeople.length !== uniquePersonIds.length) {
     throw new Error("One or more selected people are no longer available.");
