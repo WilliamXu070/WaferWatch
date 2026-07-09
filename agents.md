@@ -2536,3 +2536,23 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     team showed `William Xu`, seeded WaferWatch admin/viewer names were absent,
     and the selected event editor dropdown showed database steps followed by
     `Process type` and `New action`.
+
+## Recent development note (2026-07-09 inline process creation)
+
+- Replaced the blocking `window.prompt("Process name")` process creation flow
+  with an inline dashed `+ New process` tile below the existing current process
+  card in both desktop sidebar and mobile drawer.
+- Clicking the dashed tile opens an in-place `Name new process` input; empty or
+  invalid names are discarded, Escape cancels, and Enter/blur creates the process
+  only after a valid name is provided.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://localhost:3015/calendar?processId=11111111-1111-4111-8111-111111111103`:
+    desktop click on the dashed `New process` tile showed the inline input with
+    no prompt dialog.
+  - Created a temporary process through the inline UI, confirmed
+    `/process-flow?processId=...` rendered `Process start`, `Process step`, and
+    `Process complete`, then deleted the temporary process row from Supabase.
+  - Mobile viewport `390x844`: opening the drawer and clicking dashed
+    `New process` showed the same inline input with no prompt dialog.

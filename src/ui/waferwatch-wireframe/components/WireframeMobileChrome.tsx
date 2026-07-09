@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { WireframeShellDto } from "@/features/wireframe/types";
 import type { CreateProcessAction } from "./WaferWatchShell";
 import {
@@ -89,7 +89,11 @@ export function WireframeMobileChrome({
   const selectedProcessId = searchParams.get("processId");
   const currentProcess = shell.currentProcess;
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isCreatingProcess, setIsCreatingProcess] = useState(false);
+  const [createNameDraft, setCreateNameDraft] = useState("");
   const [, startCreate] = useTransition();
+  const createInputRef = useRef<HTMLInputElement>(null);
+  const createInFlightRef = useRef(false);
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   const mainNav = getMainNav(navBasePath).map((item) => ({
@@ -106,22 +110,43 @@ export function WireframeMobileChrome({
   const bottomNav = [...mainNav, ...processNav];
   const currentProcessSelected = Boolean(currentProcess && selectedProcessId === currentProcess.id);
 
-  const handleCreateProcess = () => {
+  const startCreatingProcess = () => {
     if (!onCreateProcess) return;
-    const name = window.prompt("Process name");
-    const nextName = name?.trim();
-    if (!nextName || nextName.length < 2) return;
+    setCreateNameDraft("");
+    setIsCreatingProcess(true);
+    setTimeout(() => createInputRef.current?.focus(), 0);
+  };
 
+  const cancelCreatingProcess = () => {
+    setCreateNameDraft("");
+    setIsCreatingProcess(false);
+  };
+
+  const commitCreateProcess = () => {
+    if (!onCreateProcess) return;
+    if (createInFlightRef.current) return;
+    const nextName = createNameDraft.trim();
+    if (nextName.length < 2) {
+      cancelCreatingProcess();
+      return;
+    }
+
+    createInFlightRef.current = true;
     startCreate(() => {
       void onCreateProcess({
         name: nextName,
         version: "1.0",
         isActive: true
       }).then((res) => {
+        createInFlightRef.current = false;
         if (!res.ok) return;
+        setIsCreatingProcess(false);
+        setCreateNameDraft("");
         setDrawerOpen(false);
         router.refresh();
         router.push(hrefWithProcess(`${navBasePath}/process-flow`, res.data.id));
+      }).catch(() => {
+        createInFlightRef.current = false;
       });
     });
   };
@@ -220,16 +245,6 @@ export function WireframeMobileChrome({
                 <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#98968a]">
                   Current process
                 </p>
-                {onCreateProcess ? (
-                  <button
-                    type="button"
-                    onClick={handleCreateProcess}
-                    className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-[#151512] bg-[#151512] px-3 text-[14px] font-semibold text-white"
-                  >
-                    <PlusIcon />
-                    New process
-                  </button>
-                ) : null}
                 <div
                   className={[
                     "rounded-xl border border-[#e7e7e2] px-3 py-3",
@@ -243,6 +258,43 @@ export function WireframeMobileChrome({
                     {currentProcess ? `${currentProcess.activeDieCount} active die` : "Create a process to enable flow and status"}
                   </p>
                 </div>
+                {onCreateProcess ? (
+                  isCreatingProcess ? (
+                    <div className="flex min-h-[46px] items-center gap-2 rounded-xl border border-dashed border-[#b7b6aa] bg-white px-3">
+                      <PlusIcon className="shrink-0 text-[#8a887b]" />
+                      <input
+                        ref={createInputRef}
+                        value={createNameDraft}
+                        onChange={(event) => setCreateNameDraft(event.currentTarget.value)}
+                        onBlur={commitCreateProcess}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            commitCreateProcess();
+                          }
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            cancelCreatingProcess();
+                          }
+                        }}
+                        className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-[#151512] outline-none placeholder:text-[#98968a]"
+                        placeholder="Name new process"
+                        aria-label="New process name"
+                        autoFocus
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startCreatingProcess}
+                      className="flex min-h-[46px] items-center justify-center gap-2 rounded-xl border border-dashed border-[#c9c8be] bg-white px-3 text-[14px] font-semibold text-[#55534a]"
+                      aria-label="Add process"
+                    >
+                      <PlusIcon className="text-[#8a887b]" />
+                      New process
+                    </button>
+                  )
+                ) : null}
                 <nav className="grid gap-1" aria-label="Process">
                   {processNav.map((item) => (
                     <MobileNavLink

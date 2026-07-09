@@ -11,6 +11,7 @@ import {
   FlowIcon,
   GridIcon,
   HelpIcon,
+  PlusIcon,
   WaferLogoIcon,
   WaferStatusIcon
 } from "../icons";
@@ -96,9 +97,13 @@ export function WireframeSidebar({
   // inline rename
   const [isEditing, setIsEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState(currentProcess?.name ?? "");
+  const [isCreatingProcess, setIsCreatingProcess] = useState(false);
+  const [createNameDraft, setCreateNameDraft] = useState("");
   const [, startRename] = useTransition();
   const [, startCreate] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
+  const createInputRef = useRef<HTMLInputElement>(null);
+  const createInFlightRef = useRef(false);
 
   const startEditing = () => {
     if (!currentProcess) return;
@@ -142,21 +147,42 @@ export function WireframeSidebar({
     startEditing();
   };
 
-  const handleCreateProcess = () => {
+  const startCreatingProcess = () => {
     if (!onCreateProcess) return;
-    const name = window.prompt("Process name");
-    const nextName = name?.trim();
-    if (!nextName || nextName.length < 2) return;
+    setCreateNameDraft("");
+    setIsCreatingProcess(true);
+    setTimeout(() => createInputRef.current?.focus(), 0);
+  };
 
+  const cancelCreatingProcess = () => {
+    setIsCreatingProcess(false);
+    setCreateNameDraft("");
+  };
+
+  const commitCreateProcess = () => {
+    if (!onCreateProcess) return;
+    if (createInFlightRef.current) return;
+    const nextName = createNameDraft.trim();
+    if (nextName.length < 2) {
+      cancelCreatingProcess();
+      return;
+    }
+
+    createInFlightRef.current = true;
     startCreate(() => {
       void onCreateProcess({
         name: nextName,
         version: "1.0",
         isActive: true
       }).then((res) => {
+        createInFlightRef.current = false;
         if (!res.ok) return;
+        setIsCreatingProcess(false);
+        setCreateNameDraft("");
         router.refresh();
         router.push(hrefWithProcess(`${navBasePath}/process-flow`, res.data.id));
+      }).catch(() => {
+        createInFlightRef.current = false;
       });
     });
   };
@@ -190,15 +216,6 @@ export function WireframeSidebar({
         <p className="px-3 pb-1 text-[11px] font-semibold tracking-[0.06em] text-[#98968a]">
           Current process
         </p>
-        {onCreateProcess ? (
-          <button
-            type="button"
-            onClick={handleCreateProcess}
-            className="mb-2 flex w-full items-center justify-center rounded-xl border border-[#e1e1dc] bg-white px-3 py-2 text-[13px] font-semibold text-[#151512] transition-colors hover:bg-[#f8f9fb]"
-          >
-            New process
-          </button>
-        ) : null}
         <div
           className={[
             "rounded-xl px-3 py-2.5 text-sm transition-all",
@@ -243,6 +260,44 @@ export function WireframeSidebar({
             ) : null}
           </div>
         </div>
+
+        {onCreateProcess ? (
+          isCreatingProcess ? (
+            <div className="mt-2 flex items-center gap-2 rounded-xl border border-dashed border-[#b7b6aa] bg-white px-3 py-2.5 text-sm">
+              <PlusIcon className="shrink-0 text-[#8a887b]" />
+              <input
+                ref={createInputRef}
+                value={createNameDraft}
+                onChange={(event) => setCreateNameDraft(event.currentTarget.value)}
+                onBlur={commitCreateProcess}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitCreateProcess();
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelCreatingProcess();
+                  }
+                }}
+                className="min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-[#151512] outline-none placeholder:text-[#98968a]"
+                placeholder="Name new process"
+                aria-label="New process name"
+                autoFocus
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={startCreatingProcess}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#c9c8be] bg-white px-3 py-2.5 text-[13px] font-semibold text-[#55534a] transition-colors hover:border-[#151512] hover:bg-[#f8f9fb] hover:text-[#151512]"
+              aria-label="Add process"
+            >
+              <PlusIcon className="text-[#8a887b]" />
+              New process
+            </button>
+          )
+        ) : null}
 
         {/* Animated sub-nav: Process Flow + Wafer / Die Status */}
         <div
