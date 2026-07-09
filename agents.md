@@ -2393,3 +2393,24 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     with `390x844` and `1200x900` viewports: selected a die, opened Notes, and
     confirmed the removed labels were absent, document width matched viewport
     width, and no console errors were reported.
+
+## Recent development note (2026-07-08 results compact matrix)
+
+- Reworked the wafer die Results tab for phone/tablet widths so the gallery
+  renders the full `3 x 15` result-sample matrix in one horizontal scroll
+  surface instead of only the selected row window.
+- Removed image-window arrow controls in compact mode and changed empty-sample
+  taps to select the sample instead of opening the upload picker.
+- Added a floating bottom-right selected-parameter summary for compact mode,
+  replacing the bottom parameter table on phone/tablet while preserving the
+  desktop row-review layout.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright MCP at `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with `390x844`: selected a die, opened Results, confirmed `45` sample
+    cards, `3660px` gallery scroll width, no document overflow, no arrow
+    buttons, selected empty `R3C15` without opening the file chooser, and saw
+    the floating `R3 C15` parameter summary.
+  - Playwright MCP at `820x900`: compact matrix still rendered `45` cards,
+    scrolled to `R3C15`, had no arrow buttons, and reported no console errors.

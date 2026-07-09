@@ -4,6 +4,7 @@ import {
   type ClipboardEvent as ReactClipboardEvent,
   memo,
   type KeyboardEvent as ReactKeyboardEvent,
+  type CSSProperties,
   useCallback,
   useEffect,
   useMemo,
@@ -59,6 +60,7 @@ const INSPECTION_BUCKET = "wafer-process-files";
 const recipeCode = "TFA3.1M1R1";
 const MAX_GALLERY_VISIBLE_COUNT = 5;
 const DELETE_UNDO_DELAY_MS = 3500;
+const COMPACT_RESULTS_BREAKPOINT = 900;
 
 function buildSamples() {
   return chipRowSections.flatMap((section) => {
@@ -83,7 +85,7 @@ function getMaxGalleryStartColumn(visibleCount: number) {
 }
 
 function getResponsiveGalleryVisibleCount(width: number) {
-  if (width < 560) return 4;
+  if (width < 560) return 3;
   if (width < 820) return 4;
   if (width < 1080) return 3;
   if (width < 1320) return 4;
@@ -185,6 +187,43 @@ function getParameterToneClass(
   value: string
 ) {
   return toneMaps[field].get(value.trim()) ?? "";
+}
+
+function SelectedParameterOverlay({
+  tile,
+  sample
+}: {
+  tile: WaferStatusTileModel;
+  sample: ResultSample;
+}) {
+  const toneMaps = useMemo(() => buildDisplayToneMaps(tile), [tile]);
+  const primaryRows = parameterRows.slice(0, 4);
+
+  return (
+    <aside className="pointer-events-auto absolute bottom-3 right-3 z-20 w-[min(268px,calc(100vw-32px))] rounded-xl border border-[#d8d8d2] bg-white/95 p-3 shadow-[0_16px_40px_rgba(17,17,17,0.16)] backdrop-blur">
+      <div className="flex items-center justify-between gap-3 border-b border-[#eeeeea] pb-2">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#777770]">Selected</p>
+          <h3 className="mt-0.5 text-[15px] font-semibold text-[#111111]">R{sample.row} C{sample.column}</h3>
+        </div>
+        <span className="rounded-md bg-[#f4f4ef] px-2 py-1 text-[12px] font-semibold text-[#55554f]">
+          {sample.uniformityPercent}%
+        </span>
+      </div>
+      <dl className="mt-2 grid gap-1.5">
+        {primaryRows.map((row) => {
+          const value = getDisplayParameterValue(tile, sample.row, sample.column, row.field);
+          const toneClass = getParameterToneClass(toneMaps, row.field, value);
+          return (
+            <div key={row.field} className={["grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-1.5", toneClass || "bg-[#fbfbf8]"].join(" ")}>
+              <dt className="truncate text-[11px] font-semibold text-[#66665f]">{row.label}</dt>
+              <dd className="text-[12px] font-semibold tabular-nums text-[#111111]">{value}</dd>
+            </div>
+          );
+        })}
+      </dl>
+    </aside>
+  );
 }
 
 const ResultImage = memo(function ResultImage({
@@ -292,12 +331,14 @@ const GalleryTile = memo(function GalleryTile({
   uniformityValue,
   selected,
   canEdit,
+  selectEmptySamples,
   imageSizes,
   onSelect,
   onAddImages,
   onImageSize,
   onUniformityChange,
-  onUniformityBlur
+  onUniformityBlur,
+  style
 }: {
   sample: ResultSample;
   inspections: readonly DieInspectionRecord[];
@@ -307,12 +348,14 @@ const GalleryTile = memo(function GalleryTile({
   uniformityValue: string;
   selected: boolean;
   canEdit: boolean;
+  selectEmptySamples?: boolean;
   imageSizes: ImageSizeMap;
   onSelect: (sample: ResultSample) => void;
   onAddImages: (sample: ResultSample) => void;
   onImageSize: (inspectionId: string, size: { width: number; height: number }) => void;
   onUniformityChange: (sample: ResultSample, value: string) => void;
   onUniformityBlur: (sample: ResultSample) => void;
+  style?: CSSProperties;
 }) {
   const handleImageKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key === " ") {
@@ -323,7 +366,9 @@ const GalleryTile = memo(function GalleryTile({
     if (event.key === "Enter") {
       event.preventDefault();
       if (inspections.length === 0) {
-        if (canEdit) {
+        if (selectEmptySamples) {
+          onSelect(sample);
+        } else if (canEdit) {
           onAddImages(sample);
         }
       } else {
@@ -334,6 +379,8 @@ const GalleryTile = memo(function GalleryTile({
 
   return (
     <article
+      data-result-sample-id={sample.id}
+      style={style}
       className={[
         "grid w-full max-w-full min-w-0 snap-start grid-cols-[minmax(0,1fr)] overflow-hidden rounded-lg border bg-white transition-colors",
         selected ? "border-[#111111] shadow-[0_0_0_1px_#111111]" : "border-[#e4e4df]"
@@ -343,7 +390,9 @@ const GalleryTile = memo(function GalleryTile({
         type="button"
         onClick={() => {
           if (inspections.length === 0) {
-            if (canEdit) {
+            if (selectEmptySamples) {
+              onSelect(sample);
+            } else if (canEdit) {
               onAddImages(sample);
             }
           } else {
@@ -396,6 +445,7 @@ function ResultsGalleryViewport({
   uniformityBySample,
   row,
   visibleSamples,
+  isCompactMatrix,
   selectedSample,
   selectedImageIndex,
   selectedInspection,
@@ -420,6 +470,7 @@ function ResultsGalleryViewport({
   uniformityBySample: Record<string, string>;
   row: number;
   visibleSamples: readonly ResultSample[];
+  isCompactMatrix: boolean;
   selectedSample: ResultSample;
   selectedImageIndex: number;
   selectedInspection: DieInspectionRecord | null;
@@ -464,28 +515,34 @@ function ResultsGalleryViewport({
     <section className="grid w-full max-w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-[18px] font-semibold text-[#111111]">Row {row} result images</h2>
+          <h2 className="text-[18px] font-semibold text-[#111111]">
+            {isCompactMatrix ? "Result surface" : `Row ${row} result images`}
+          </h2>
           <p className="mt-1 text-[12px] font-semibold text-[#777770]">
             {selectedSample.id} / image {selectedInspection ? selectedImageIndex + 1 : 0}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 text-[12px] font-semibold text-[#55554f]">
-          <button
-            type="button"
-            onClick={() => onNavigateWindow(-1)}
-            className="grid h-9 w-9 place-items-center rounded-md border border-[#e1e1dc] bg-white hover:bg-[#fafafa]"
-            aria-label="Previous image window"
-          >
-            <ChevronLeftIcon />
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigateWindow(1)}
-            className="grid h-9 w-9 place-items-center rounded-md border border-[#e1e1dc] bg-white hover:bg-[#fafafa]"
-            aria-label="Next image window"
-          >
-            <ChevronRightIcon />
-          </button>
+          {!isCompactMatrix ? (
+            <>
+              <button
+                type="button"
+                onClick={() => onNavigateWindow(-1)}
+                className="grid h-9 w-9 place-items-center rounded-md border border-[#e1e1dc] bg-white hover:bg-[#fafafa]"
+                aria-label="Previous image window"
+              >
+                <ChevronLeftIcon />
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigateWindow(1)}
+                className="grid h-9 w-9 place-items-center rounded-md border border-[#e1e1dc] bg-white hover:bg-[#fafafa]"
+                aria-label="Next image window"
+              >
+                <ChevronRightIcon />
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             onClick={onDeleteImage}
@@ -508,7 +565,18 @@ function ResultsGalleryViewport({
         tabIndex={0}
       >
         <input {...getInputProps()} />
-        <div className="results-gallery-grid grid w-full max-w-full min-w-0 snap-x snap-mandatory grid-flow-col auto-cols-[minmax(252px,86vw)] gap-2 overflow-x-auto scroll-smooth pb-1 sm:grid-flow-row sm:auto-cols-auto sm:snap-none sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-3 xl:grid-cols-5">
+        <div
+          className={[
+            "results-gallery-grid grid w-full max-w-full min-w-0 gap-2 scroll-smooth pb-1",
+            isCompactMatrix
+              ? "max-h-[62vh] overflow-auto overscroll-contain pr-2"
+              : "snap-x snap-mandatory grid-flow-col auto-cols-[minmax(252px,86vw)] overflow-x-auto sm:grid-flow-row sm:auto-cols-auto sm:snap-none sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-3 xl:grid-cols-5"
+          ].join(" ")}
+          style={isCompactMatrix ? {
+            gridTemplateColumns: `repeat(${chipColumns.length}, minmax(236px, 72vw))`,
+            gridTemplateRows: `repeat(${chipRowSections.length}, auto)`
+          } : undefined}
+        >
           {visibleSamples.map((sample) => {
             const inspections = inspectionsBySample[sample.id] ?? [];
             const imageIndex = Math.min(imageIndexBySample[sample.id] ?? 0, Math.max(inspections.length - 1, 0));
@@ -523,16 +591,24 @@ function ResultsGalleryViewport({
                 uniformityValue={uniformityBySample[getSampleMetricKey(tile, sample)] ?? sample.uniformityPercent}
                 selected={sample.id === selectedSample.id}
                 canEdit={canEdit}
+                selectEmptySamples={isCompactMatrix}
                 imageSizes={imageSizes}
                 onSelect={onSelectSample}
                 onAddImages={(nextSample) => onAddImagesForSample(nextSample, open)}
                 onImageSize={onImageSize}
                 onUniformityChange={onUniformityChange}
                 onUniformityBlur={onUniformityBlur}
+                style={isCompactMatrix ? { gridColumn: sample.column, gridRow: sample.row } : undefined}
               />
             );
           })}
         </div>
+        {isCompactMatrix ? (
+          <SelectedParameterOverlay
+            tile={tile}
+            sample={selectedSample}
+          />
+        ) : null}
         {isDragActive ? (
           <div className="pointer-events-none absolute inset-2 grid place-items-center rounded-md bg-white/80 text-[13px] font-semibold text-[#111111]">
             Release to upload to {selectedSample.id}
@@ -632,6 +708,7 @@ function ParameterContext({
 export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatusTileModel; canEdit?: boolean }) {
   const [selectedSampleId, setSelectedSampleId] = useState("R1C12");
   const [contextRow, setContextRow] = useState(1);
+  const [isCompactResults, setIsCompactResults] = useState(false);
   const [galleryVisibleCount, setGalleryVisibleCount] = useState(MAX_GALLERY_VISIBLE_COUNT);
   const [galleryStartColumn, setGalleryStartColumn] = useState(() => getGalleryWindowStartForColumn(12, MAX_GALLERY_VISIBLE_COUNT));
   const [inspectionsBySample, setInspectionsBySample] = useState<SampleInspectionMap>({});
@@ -649,10 +726,16 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
     [selectedSampleId]
   );
   const visibleSamples = useMemo(
-    () => resultSamples
-      .filter((sample) => sample.row === selectedSample.row)
-      .slice(galleryStartColumn - 1, galleryStartColumn - 1 + galleryVisibleCount),
-    [galleryStartColumn, galleryVisibleCount, selectedSample.row]
+    () => {
+      if (isCompactResults) {
+        return resultSamples;
+      }
+
+      return resultSamples
+        .filter((sample) => sample.row === selectedSample.row)
+        .slice(galleryStartColumn - 1, galleryStartColumn - 1 + galleryVisibleCount);
+    },
+    [galleryStartColumn, galleryVisibleCount, isCompactResults, selectedSample.row]
   );
   const dieCode = useMemo(() => getPersistenceDieCode(tile), [tile]);
   const selectedInspections = inspectionsBySample[selectedSample.id] ?? [];
@@ -685,6 +768,7 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
 
   useEffect(() => {
     const syncVisibleCount = () => {
+      setIsCompactResults(window.innerWidth < COMPACT_RESULTS_BREAKPOINT);
       const nextVisibleCount = getResponsiveGalleryVisibleCount(window.innerWidth);
       setGalleryVisibleCount(nextVisibleCount);
       setGalleryStartColumn((current) => {
@@ -697,6 +781,18 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
     window.addEventListener("resize", syncVisibleCount);
     return () => window.removeEventListener("resize", syncVisibleCount);
   }, [selectedSample.column]);
+
+  useEffect(() => {
+    if (!isCompactResults) {
+      return;
+    }
+
+    const selectedElement = document.querySelector<HTMLElement>(`[data-result-sample-id="${selectedSample.id}"]`);
+    selectedElement?.scrollIntoView({
+      block: "nearest",
+      inline: "center"
+    });
+  }, [isCompactResults, selectedSample.id]);
 
   useEffect(() => {
     if (sampleMetricScopeKey in uniformityBySample) {
@@ -1209,6 +1305,7 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
         uniformityBySample={uniformityBySample}
         row={selectedSample.row}
         visibleSamples={visibleSamples}
+        isCompactMatrix={isCompactResults}
         selectedSample={selectedSample}
         selectedImageIndex={selectedImageIndex}
         selectedInspection={selectedInspection}
@@ -1233,12 +1330,14 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
         }}
         onUniformityBlur={(sample) => void saveUniformity(sample)}
       />
-      <ParameterContext
-        tile={tile}
-        selectedSample={selectedSample}
-        visibleSamples={visibleSamples}
-        contextRow={contextRow}
-      />
+      {!isCompactResults ? (
+        <ParameterContext
+          tile={tile}
+          selectedSample={selectedSample}
+          visibleSamples={visibleSamples}
+          contextRow={contextRow}
+        />
+      ) : null}
     </div>
   );
 }
