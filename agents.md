@@ -2377,3 +2377,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Playwright MCP at `860x900`: document width stayed `860px`, main content
     width stayed `596px`, and stat tiles collapsed into full-width readable rows
     with no console errors.
+
+## Recent development note (2026-07-08 notes controls removal)
+
+- Removed the Notes tab filter/sort toolbar controls from the wafer die notes
+  dashboard: `All notes`, `Open issues`, `Pinned`, `With attachments`, and the
+  sort select no longer render in mobile or desktop layouts.
+- Removed the extra notes header overflow action while keeping the selected
+  process-step header, note count, save state, note list, composer, and
+  attachments behavior.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Playwright MCP at `http://localhost:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    with `390x844` and `1200x900` viewports: selected a die, opened Notes, and
+    confirmed the removed labels were absent, document width matched viewport
+    width, and no console errors were reported.

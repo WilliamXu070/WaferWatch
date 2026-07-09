@@ -11,7 +11,6 @@ import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
 import {
   CheckIcon,
-  DotsIcon,
   StepFileIcon
 } from "../../icons";
 import { DetailCard } from "./DetailCard";
@@ -41,8 +40,6 @@ export type WaferDieNote = {
   updatedAt: string;
 };
 
-type NotesSortOrder = "newest" | "oldest";
-
 const MAX_NOTE_LENGTH = 1600;
 const MAX_ATTACHMENTS_PER_NOTE = 8;
 const NOTE_ATTACHMENT_BUCKET = "wafer-process-files";
@@ -64,10 +61,6 @@ const NOTE_ATTACHMENT_ACCEPT = [
   ".json"
 ].join(",");
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const notesSortOptions: Array<{ id: NotesSortOrder; label: string }> = [
-  { id: "newest", label: "Newest first" },
-  { id: "oldest", label: "Oldest first" }
-];
 const EMPTY_NOTES: readonly WaferDieNote[] = [];
 
 function nowIso() {
@@ -333,8 +326,6 @@ export function NotesCard({
   );
 }
 
-type NotesFilter = "all" | "issues" | "pinned" | "attachments";
-
 const timelineAccentByFamily: Record<string, { line: string; fill: string; text: string; activeBackground: string }> = {
   ALPHA: {
     line: "#3f7534",
@@ -356,13 +347,6 @@ const timelineAccentByFamily: Record<string, { line: string; fill: string; text:
   }
 };
 
-const noteFilters: Array<{ id: NotesFilter; label: string }> = [
-  { id: "all", label: "All notes" },
-  { id: "issues", label: "Open issues" },
-  { id: "pinned", label: "Pinned" },
-  { id: "attachments", label: "With attachments" }
-];
-
 function getTimelineAccent(tile: WaferStatusTileModel) {
   return timelineAccentByFamily[tile.family.trim().toUpperCase()] ?? {
     line: "#111111",
@@ -379,22 +363,6 @@ function isOpenIssueNote(note: WaferDieNote) {
 function isPinnedNote(note: WaferDieNote) {
   const pinned = (note as WaferDieNote & { pinned?: unknown }).pinned;
   return pinned === true || note.id.startsWith("pinned:");
-}
-
-function filterNotes(notes: readonly WaferDieNote[], filter: NotesFilter) {
-  if (filter === "issues") {
-    return notes.filter(isOpenIssueNote);
-  }
-
-  if (filter === "pinned") {
-    return notes.filter(isPinnedNote);
-  }
-
-  if (filter === "attachments") {
-    return notes.filter((note) => (note.attachments?.length ?? 0) > 0);
-  }
-
-  return [...notes];
 }
 
 function getTimelineStepState(step: { id: string; status?: string }, currentStepId: string | null | undefined) {
@@ -460,18 +428,15 @@ export function WaferDieNotesDashboard({
   const stageRows = processSteps.length
     ? processSteps
     : [{ id: "die", name: "Die notes", stepOrder: 1 }];
-  const totalNotes = stageRows.reduce((total, step) => total + (notesByStepId[step.id]?.length ?? 0), 0);
   const [selectedStepId, setSelectedStepId] = useState(() =>
     tile.currentStepId && stageRows.some((step) => step.id === tile.currentStepId)
       ? tile.currentStepId
       : stageRows.find((step) => (notesByStepId[step.id]?.length ?? 0) > 0)?.id ?? stageRows[0]?.id ?? "die"
   );
-  const [activeFilter, setActiveFilter] = useState<NotesFilter>("all");
   const [draftByStepId, setDraftByStepId] = useState<Record<string, string>>({});
   const [draftFilesByStepId, setDraftFilesByStepId] = useState<Record<string, File[]>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [sortOrder, setSortOrder] = useState<NotesSortOrder>("oldest");
   const [isSaving, setIsSaving] = useState(false);
   const [openingAttachmentId, setOpeningAttachmentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -695,17 +660,10 @@ export function WaferDieNotesDashboard({
 
   const selectedStep = stageRows.find((step) => step.id === selectedStepId) ?? stageRows[0];
   const selectedNotes = selectedStep ? notesByStepId[selectedStep.id] ?? EMPTY_NOTES : EMPTY_NOTES;
-  const visibleNotes = filterNotes(selectedNotes, activeFilter).sort((first, second) => {
+  const visibleNotes = [...selectedNotes].sort((first, second) => {
     const difference = getNoteTimeValue(first) - getNoteTimeValue(second);
-    return sortOrder === "oldest" ? difference : -difference;
+    return difference;
   });
-  const allNotes = stageRows.flatMap((step) => notesByStepId[step.id] ?? EMPTY_NOTES);
-  const filterCounts: Record<NotesFilter, number> = {
-    all: totalNotes,
-    issues: allNotes.filter(isOpenIssueNote).length,
-    pinned: allNotes.filter(isPinnedNote).length,
-    attachments: allNotes.filter((note) => (note.attachments?.length ?? 0) > 0).length
-  };
   const selectedDraft = selectedStep ? draftByStepId[selectedStep.id] ?? "" : "";
   const selectedDraftFiles = selectedStep ? draftFilesByStepId[selectedStep.id] ?? [] : [];
   const selectedStepExecutionId =
@@ -789,47 +747,6 @@ export function WaferDieNotesDashboard({
       </DetailCard>
 
       <section className="overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eeeeea] px-4 py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {noteFilters.map((filter) => (
-              <button
-                key={filter.id}
-                type="button"
-                onClick={() => setActiveFilter(filter.id)}
-                className={[
-                  "inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold",
-                  activeFilter === filter.id
-                    ? "border-[#8db5ff] bg-[#f5f8ff] text-[#111111]"
-                    : "border-[#e6e6e0] bg-white text-[#44443f] hover:bg-[#fafafa]"
-                ].join(" ")}
-                aria-pressed={activeFilter === filter.id}
-              >
-                {filter.label}
-                <span className={activeFilter === filter.id ? "text-[#2d74f0]" : "text-[#777770]"}>
-                  {filterCounts[filter.id]}
-                </span>
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 text-[12px] font-semibold text-[#66665f]">
-            <span className={error ? "text-[#a33a2b]" : "text-[#777770]"}>
-              {error ?? (isSaving ? "Saving..." : savedAt ? `Saved ${formatNoteTime(savedAt)}` : "")}
-            </span>
-            <label className="flex items-center gap-2">
-              Sort:
-              <select
-                value={sortOrder}
-                onChange={(event) => setSortOrder(event.target.value as NotesSortOrder)}
-                className="h-8 rounded-md border border-[#e1e1dc] bg-white px-2 text-[12px] font-semibold text-[#44443f] outline-none focus:border-[#111111]"
-              >
-                {notesSortOptions.map((option) => (
-                  <option key={option.id} value={option.id}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </div>
-
         <div className="border-b border-[#eeeeea] px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -839,13 +756,9 @@ export function WaferDieNotesDashboard({
                 {selectedNotes.length} {selectedNotes.length === 1 ? "note" : "notes"}
               </span>
             </div>
-                  <button
-                    type="button"
-                    className="grid h-9 w-9 place-items-center rounded-lg border border-[#e6e6e0] bg-white text-[16px] font-semibold text-[#66665f] hover:bg-[#fafafa]"
-                    title="More note actions"
-                  >
-                    <DotsIcon />
-                  </button>
+            <span className={error ? "text-[12px] font-semibold text-[#a33a2b]" : "text-[12px] font-semibold text-[#777770]"}>
+              {error ?? (isSaving ? "Saving..." : savedAt ? `Saved ${formatNoteTime(savedAt)}` : "")}
+            </span>
           </div>
         </div>
 
