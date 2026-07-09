@@ -307,7 +307,7 @@ export function WireframeSidebar({
           ].join(" ")}
         >
           <div className="min-h-0 overflow-hidden">
-            <div className="mt-2 flex flex-col gap-2">
+            <div className="mt-2 flex flex-col gap-1 pl-6">
               {currentProcess
                 ? processNav.map((item) => {
                     const Icon = iconByKey[item.icon];
@@ -318,10 +318,10 @@ export function WireframeSidebar({
                         href={hrefWithProcess(item.href, currentProcess.id)}
                         aria-current={active ? "page" : undefined}
                         className={[
-                          "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-colors",
+                          "flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-[14px] transition-colors",
                           active
                             ? "bg-[#f3f4f6] font-semibold text-[#151512]"
-                            : "font-medium text-[#6b6a5f] hover:bg-[#f8f9fb]"
+                            : "font-semibold text-[#6b6a5f] hover:bg-[#f8f9fb]"
                         ].join(" ")}
                       >
                         <Icon className={active ? "text-[#151512]" : "text-[#9c9a8c]"} />

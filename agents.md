@@ -2587,3 +2587,17 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     open state had `New process` below the process card and above `Process Flow`;
     closing `Saeed` collapsed the drawer to height `0`, hid `Process Flow`, and
     kept `New process` visible and hit-testable.
+
+## Recent development note (2026-07-09 process sublink indentation)
+
+- Adjusted the open process layout so `Process Flow` and `Wafer / Die Status`
+  render as indented child rows under the full-width dashed `New process` tile,
+  making the create action read as a sibling and the process links read as
+  Saeed/current-process children.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://localhost:3015/dashboard?processId=11111111-1111-4111-8111-111111111103`:
+    `New process` remained visible/hit-testable when Saeed was collapsed;
+    `Process Flow` and `Wafer / Die Status` were hidden when collapsed and
+    reopened indented at `x=40` versus the `New process` tile at `x=16`.
