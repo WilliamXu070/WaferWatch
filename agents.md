@@ -2829,19 +2829,3 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     using `390x844`: no horizontal overflow or console errors. The available
     browser redirected to Login, so a signed-in iPhone tap still needs live
     verification.
-
-## Recent development note (2026-07-09 resizable die info panel)
-
-- Added a lower-corner resize handle to the movable wafer/die info panel. Width
-  is constrained between 280px and 480px and cannot extend outside the current
-  phone or desktop viewport.
-- Added a header reset control that restores the standard size and anchors the
-  panel back above the bottom-right mobile navigation or desktop corner.
-- Verified with:
-  - `npm run lint`
-  - `npm run build`
-  - `curl -s http://127.0.0.1:3015/api/health`
-  - Browser at `http://127.0.0.1:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`
-    using `390x844`: no horizontal overflow or console errors. The available
-    browser redirected to Login, so authenticated resize/reset interaction
-    remains unavailable.

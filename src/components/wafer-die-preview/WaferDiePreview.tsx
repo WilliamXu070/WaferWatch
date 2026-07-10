@@ -1,13 +1,11 @@
 "use client";
 
-import { ArrowUpRight, GripHorizontal, RotateCcw, Scaling, UserRound } from "lucide-react";
+import { ArrowUpRight, GripHorizontal, UserRound } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { WaferGeometryPreview } from "@/ui/waferwatch-wireframe/components/WaferGeometryPreview";
 
 const PANEL_MARGIN = 12;
-const MIN_PANEL_WIDTH = 280;
-const MAX_PANEL_WIDTH = 480;
 
 type PanelPosition = {
   left: number;
@@ -20,14 +18,6 @@ type PanelDrag = {
   offsetY: number;
   width: number;
   height: number;
-};
-
-type PanelResize = {
-  pointerId: number;
-  right: number;
-  startClientX: number;
-  startWidth: number;
-  top: number;
 };
 
 export type WaferDiePreviewModel = {
@@ -53,11 +43,8 @@ function clampPanelPosition(left: number, top: number, width: number, height: nu
 export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | null }) {
   const panelRef = useRef<HTMLElement>(null);
   const dragRef = useRef<PanelDrag | null>(null);
-  const resizeRef = useRef<PanelResize | null>(null);
   const [position, setPosition] = useState<PanelPosition | null>(null);
-  const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
     const keepPanelInViewport = () => {
@@ -67,11 +54,6 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
       }
 
       const rect = panel.getBoundingClientRect();
-      setPanelWidth((current) =>
-        current
-          ? Math.min(current, Math.max(MIN_PANEL_WIDTH, window.innerWidth - PANEL_MARGIN * 2))
-          : current
-      );
       setPosition((current) =>
         current ? clampPanelPosition(current.left, current.top, rect.width, rect.height) : current
       );
@@ -168,75 +150,6 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
     );
   };
 
-  const beginResize = (event: PointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0) {
-      return;
-    }
-
-    const panel = panelRef.current;
-    if (!panel) {
-      return;
-    }
-
-    const rect = panel.getBoundingClientRect();
-    resizeRef.current = {
-      pointerId: event.pointerId,
-      right: rect.right,
-      startClientX: event.clientX,
-      startWidth: rect.width,
-      top: rect.top
-    };
-    setPosition({ left: rect.left, top: rect.top });
-    setPanelWidth(rect.width);
-    setIsResizing(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const resizePanel = (event: PointerEvent<HTMLButtonElement>) => {
-    const resize = resizeRef.current;
-    if (!resize || resize.pointerId !== event.pointerId) {
-      return;
-    }
-
-    const maxWidth = Math.min(MAX_PANEL_WIDTH, resize.right - PANEL_MARGIN);
-    const nextWidth = Math.max(
-      Math.min(MIN_PANEL_WIDTH, maxWidth),
-      Math.min(resize.startWidth + resize.startClientX - event.clientX, maxWidth)
-    );
-    setPanelWidth(nextWidth);
-    setPosition({ left: resize.right - nextWidth, top: resize.top });
-  };
-
-  const finishResize = (event: PointerEvent<HTMLButtonElement>) => {
-    if (resizeRef.current?.pointerId !== event.pointerId) {
-      return;
-    }
-
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    resizeRef.current = null;
-    setIsResizing(false);
-  };
-
-  const resetPanel = () => {
-    dragRef.current = null;
-    resizeRef.current = null;
-    setIsDragging(false);
-    setIsResizing(false);
-    setPanelWidth(null);
-    setPosition(null);
-  };
-
-  const panelStyle: CSSProperties | undefined = position || panelWidth
-    ? {
-        ...(position ? { left: position.left, top: position.top } : {}),
-        ...(panelWidth ? { width: panelWidth } : {})
-      }
-    : undefined;
-
   return (
     <aside
       ref={panelRef}
@@ -244,45 +157,34 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
         "pointer-events-none fixed z-40 w-[calc(100vw-1.5rem)] sm:w-[360px]",
         position ? "" : "inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] sm:inset-x-auto sm:bottom-5 sm:right-5"
       ].join(" ")}
-      style={panelStyle}
+      style={position ? { left: position.left, top: position.top } : undefined}
     >
-      <div className="pointer-events-auto relative overflow-hidden rounded-lg border border-[#deded8] bg-[#fefefd] text-left shadow-[0_14px_36px_rgba(22,22,18,0.16)]">
-        <div className="flex border-b border-[#eeeeea]">
-          <button
-            type="button"
-            aria-label="Move selected wafer information panel"
-            className={[
-              "flex min-w-0 flex-1 touch-none items-start justify-between gap-3 px-4 py-3 text-left outline-none transition-colors duration-150 hover:bg-[#f8f8f5] focus-visible:bg-[#f3f3ef] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#111111]",
-              isDragging ? "cursor-grabbing bg-[#f3f3ef]" : "cursor-grab"
-            ].join(" ")}
-            title="Move panel"
-            onKeyDown={movePanelWithKeyboard}
-            onPointerCancel={finishDrag}
-            onPointerDown={beginDrag}
-            onPointerMove={movePanel}
-            onPointerUp={finishDrag}
-          >
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a887b]">
-                {isDie ? "Selected die" : "Selected wafer"}
-              </p>
-              <div className="mt-1 flex min-w-0 items-baseline gap-2">
-                <h2 className="truncate text-[20px] font-semibold leading-none text-[#111111]">{displayLabel}</h2>
-                <span className="truncate text-xs text-[#77776f]">{preview.waferCode}</span>
-              </div>
+      <div className="pointer-events-auto overflow-hidden rounded-lg border border-[#deded8] bg-[#fefefd] text-left shadow-[0_14px_36px_rgba(22,22,18,0.16)]">
+        <button
+          type="button"
+          aria-label="Move selected wafer information panel"
+          className={[
+            "flex w-full touch-none items-start justify-between gap-3 border-b border-[#eeeeea] px-4 py-3 text-left outline-none transition-colors duration-150 hover:bg-[#f8f8f5] focus-visible:bg-[#f3f3ef] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#111111]",
+            isDragging ? "cursor-grabbing bg-[#f3f3ef]" : "cursor-grab"
+          ].join(" ")}
+          title="Move panel"
+          onKeyDown={movePanelWithKeyboard}
+          onPointerCancel={finishDrag}
+          onPointerDown={beginDrag}
+          onPointerMove={movePanel}
+          onPointerUp={finishDrag}
+        >
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a887b]">
+              {isDie ? "Selected die" : "Selected wafer"}
+            </p>
+            <div className="mt-1 flex min-w-0 items-baseline gap-2">
+              <h2 className="truncate text-[20px] font-semibold leading-none text-[#111111]">{displayLabel}</h2>
+              <span className="truncate text-xs text-[#77776f]">{preview.waferCode}</span>
             </div>
-            <GripHorizontal className="mt-1 size-5 shrink-0 text-[#77776f]" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            aria-label="Reset panel to bottom right"
-            className="grid w-11 shrink-0 place-items-center border-l border-[#eeeeea] text-[#77776f] outline-none transition-colors duration-150 hover:bg-[#f3f3ef] hover:text-[#22221f] focus-visible:bg-[#f3f3ef] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#111111]"
-            title="Reset position and size"
-            onClick={resetPanel}
-          >
-            <RotateCcw className="size-4" aria-hidden="true" />
-          </button>
-        </div>
+          </div>
+          <GripHorizontal className="mt-1 size-5 shrink-0 text-[#77776f]" aria-hidden="true" />
+        </button>
 
         <Link
           aria-label={`Open status for ${isDie ? "die" : "wafer"} ${displayLabel}`}
@@ -320,21 +222,6 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
             </div>
           </div>
         </Link>
-        <button
-          type="button"
-          aria-label="Resize selected wafer information panel"
-          className={[
-            "absolute bottom-0 left-0 z-10 grid size-8 touch-none place-items-center text-[#8a887b] outline-none transition-colors duration-150 hover:bg-[#eeeeea] hover:text-[#22221f] focus-visible:bg-[#eeeeea] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#111111]",
-            isResizing ? "cursor-nesw-resize bg-[#eeeeea] text-[#22221f]" : "cursor-nesw-resize"
-          ].join(" ")}
-          title="Resize panel"
-          onPointerCancel={finishResize}
-          onPointerDown={beginResize}
-          onPointerMove={resizePanel}
-          onPointerUp={finishResize}
-        >
-          <Scaling className="size-3.5 -rotate-90" aria-hidden="true" />
-        </button>
       </div>
     </aside>
   );
