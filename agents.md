@@ -2948,3 +2948,7 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `http://127.0.0.1:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`
     using `1280x720`, `1080x800`, and `390x844`: no tile overlap, clipped
     previews, horizontal page overflow, or console errors.
+- Production verification additionally found a timeline hydration mismatch
+  caused by Vercel and the browser formatting timestamps in different default
+  timezones. Timeline and revert timestamps now explicitly use
+  `America/Toronto` on both server and client.

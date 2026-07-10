@@ -5,6 +5,13 @@ const ROW_HEIGHT = 104;
 const MAIN_MARKER_X = 22;
 const BRANCH_MARKER_X = 62;
 const BRANCH_COLORS = ["#d78a17", "#3477b8", "#3f8c66", "#a0524a"] as const;
+const TIMELINE_TIME_FORMATTER = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "America/Toronto"
+});
 
 const timelineAccentByFamily: Record<string, { line: string; fill: string; activeBackground: string }> = {
   ALPHA: { line: "#3f7534", fill: "#3f7534", activeBackground: "#f3f8f1" },
@@ -31,13 +38,13 @@ function formatTimelineTime(step: WaferStatusProcessStepModel, state: "complete"
   if (!timestamp) return state === "complete" ? "Complete" : state === "pending" ? "Pending" : "In progress";
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return state === "pending" ? "Pending" : "Saved";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+  return TIMELINE_TIME_FORMATTER.format(date);
 }
 
 function formatRevertTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Saved revert";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+  return TIMELINE_TIME_FORMATTER.format(date);
 }
 
 type RevertEdge = WaferStatusRevertEvent & {
