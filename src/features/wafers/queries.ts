@@ -18,6 +18,7 @@ import type {
   WaferFamilyStatus,
   WaferStatusMetric,
   WaferStatusModel,
+  WaferStatusRevertEvent,
   WaferStatusTileModel,
   WaferTileStatus
 } from "@/ui/waferwatch-wireframe/types";
@@ -68,6 +69,13 @@ type WaferStatusExecutionRow = Pick<
 
 type WaferStatusStepRow = Pick<ProcessStep, "id" | "template_id" | "name" | "process_area" | "step_order" | "node_type">;
 type WaferStatusTransitionRow = Pick<ProcessStepTransition, "from_step_id" | "to_step_id" | "edge_type" | "priority" | "created_at">;
+type WaferStatusProcessEventRow = {
+  id: string;
+  wafer_id: string | null;
+  event_at: string;
+  notes: string | null;
+  metadata: Json;
+};
 
 const ACTIVE_ASSIGNMENT_STATUSES: FabricationStatus[] = ["planned", "queued", "in_progress", "on_hold"];
 const DIE_POLING_PARAMETERS_KEY = "die_poling_parameters";
@@ -246,23 +254,6 @@ function pickStepTimelineExecution(executions: ReadonlyArray<WaferStatusExecutio
   })[0] ?? null;
 }
 
-function getRevertBranchLabel(execution: WaferStatusExecutionRow | null, currentStepId: string | null) {
-  if (!execution) {
-    return null;
-  }
-
-  const metadata = toJsonRecord(execution.metadata);
-  if (typeof metadata.revert_target_at === "string") {
-    return execution.process_step_id === currentStepId ? "Redo from here" : "Redo target";
-  }
-
-  if (typeof metadata.reverted_at === "string") {
-    return "Redo required";
-  }
-
-  return null;
-}
-
 function mapTileStatus({
   waferStatus,
   currentStep,
@@ -363,7 +354,8 @@ function mapWafersToStatusModel({
   stepsById,
   processSteps,
   stepOccurrenceById,
-  textSurfacesByKey
+  textSurfacesByKey,
+  revertHistoryByWaferId
 }: {
   wafers: WaferStatusWaferRow[];
   assignmentsByWaferId: Map<string, WaferStatusAssignmentRow>;
@@ -372,6 +364,7 @@ function mapWafersToStatusModel({
   processSteps: WaferStatusStepRow[];
   stepOccurrenceById: Map<string, number>;
   textSurfacesByKey: Map<string, WaferStatusTextSurfaceRow>;
+  revertHistoryByWaferId: Map<string, WaferStatusRevertEvent[]>;
 }): WaferStatusModel {
   const familyBuckets = new Map<string, { wafers: WaferStatusWaferRow[]; tiles: WaferStatusTileModel[] }>();
   const tiles: WaferStatusTileModel[] = [];
@@ -459,9 +452,10 @@ function mapWafersToStatusModel({
           startedAt: execution?.started_at ?? null,
           completedAt: execution?.completed_at ?? null,
           createdAt: execution?.created_at ?? null,
-          branchLabel: getRevertBranchLabel(execution, currentStep?.id ?? null)
+          branchLabel: null
         };
       }),
+      revertHistory: revertHistoryByWaferId.get(wafer.id) ?? [],
       mode,
       isUndiced: mode === "undiced",
       diePolingParameters: readDiePolingParameters(wafer.metadata)
@@ -608,8 +602,21 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
         .in("assignment_id", assignmentIds)
     : ({ data: [], error: null } as const);
 
+  const processEventsResult = waferIds.length
+    ? await supabase
+        .from("process_events")
+        .select("id, wafer_id, event_at, notes, metadata")
+        .in("wafer_id", waferIds)
+        .eq("event_type", "wafer_step_reverted")
+        .order("event_at", { ascending: true })
+    : ({ data: [], error: null } as const);
+
   if (executionsResult.error) {
     throw executionsResult.error;
+  }
+
+  if (processEventsResult.error) {
+    throw processEventsResult.error;
   }
 
   const executions = (executionsResult.data ?? []) as WaferStatusExecutionRow[];
@@ -621,6 +628,32 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     } else {
       executionsByAssignmentId.set(execution.assignment_id, [execution]);
     }
+  }
+
+  const assignmentIdByWaferId = new Map(assignments.map((assignment) => [assignment.wafer_id, assignment.id]));
+  const revertHistoryByWaferId = new Map<string, WaferStatusRevertEvent[]>();
+  for (const event of (processEventsResult.data ?? []) as WaferStatusProcessEventRow[]) {
+    if (!event.wafer_id) {
+      continue;
+    }
+
+    const metadata = toJsonRecord(event.metadata);
+    const eventAssignmentId = getString(metadata, "assignment_id");
+    const fromStepId = getString(metadata, "from_step_id");
+    const toStepId = getString(metadata, "to_step_id");
+    if (!fromStepId || !toStepId || eventAssignmentId !== assignmentIdByWaferId.get(event.wafer_id)) {
+      continue;
+    }
+
+    const history = revertHistoryByWaferId.get(event.wafer_id) ?? [];
+    history.push({
+      id: event.id,
+      fromStepId,
+      toStepId,
+      occurredAt: event.event_at,
+      reason: event.notes
+    });
+    revertHistoryByWaferId.set(event.wafer_id, history);
   }
 
   const executionStepIds = Array.from(new Set(executions.map((execution) => execution.process_step_id)));
@@ -676,7 +709,8 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     stepsById,
     processSteps,
     stepOccurrenceById,
-    textSurfacesByKey
+    textSurfacesByKey,
+    revertHistoryByWaferId
   });
 }
 

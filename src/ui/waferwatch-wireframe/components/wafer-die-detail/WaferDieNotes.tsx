@@ -17,11 +17,9 @@ import { isGeneratedDicedPieceNote } from "@/features/runs/dicingNoteTransfer";
 import { upsertTextSurface } from "@/features/text-surfaces/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
-import {
-  CheckIcon,
-  StepFileIcon
-} from "../../icons";
+import { StepFileIcon } from "../../icons";
 import { DetailCard } from "./DetailCard";
+import { ProcessTimelineTree } from "./ProcessTimelineTree";
 import {
   getWaferDieNotesScopeKey,
   getWaferDieStepNotesScopeKey,
@@ -354,36 +352,6 @@ export function NotesCard({
   );
 }
 
-const timelineAccentByFamily: Record<string, { line: string; fill: string; text: string; activeBackground: string }> = {
-  ALPHA: {
-    line: "#3f7534",
-    fill: "#3f7534",
-    text: "#2d5327",
-    activeBackground: "#f3f8f1"
-  },
-  BETA: {
-    line: "#326b98",
-    fill: "#326b98",
-    text: "#2b5578",
-    activeBackground: "#f2f7fb"
-  },
-  GAMMA: {
-    line: "#9f493f",
-    fill: "#9f493f",
-    text: "#703831",
-    activeBackground: "#fbf3f2"
-  }
-};
-
-function getTimelineAccent(tile: WaferStatusTileModel) {
-  return timelineAccentByFamily[tile.family.trim().toUpperCase()] ?? {
-    line: "#111111",
-    fill: "#111111",
-    text: "#111111",
-    activeBackground: "#f5f5f2"
-  };
-}
-
 function isOpenIssueNote(note: WaferDieNote) {
   return /\b(issue|blocked|fail|failed|risk|chipping|investigating|urgent|problem)\b/i.test(note.body);
 }
@@ -391,54 +359,6 @@ function isOpenIssueNote(note: WaferDieNote) {
 function isPinnedNote(note: WaferDieNote) {
   const pinned = (note as WaferDieNote & { pinned?: unknown }).pinned;
   return pinned === true || note.id.startsWith("pinned:");
-}
-
-function getTimelineStepState(step: { id: string; status?: string }, currentStepId: string | null | undefined) {
-  if (step.status === "completed" || step.status === "skipped") {
-    return "complete";
-  }
-
-  if (step.id === currentStepId || step.status === "running" || step.status === "queued" || step.status === "blocked" || step.status === "failed") {
-    return "active";
-  }
-
-  return "pending";
-}
-
-function getStepStatusLabel(step: {
-  id: string;
-  name: string;
-  status?: string;
-  processArea?: string;
-  completedAt?: string | null;
-  startedAt?: string | null;
-  createdAt?: string | null;
-}) {
-  const state = step.status === "completed" || step.status === "skipped"
-    ? "Complete"
-    : step.status === "running" || step.status === "queued" || step.status === "blocked" || step.status === "failed"
-      ? formatTimelineTimestamp(step.startedAt ?? step.createdAt) ?? "Active"
-      : "Pending";
-
-  return step.processArea ? `${step.processArea} · ${state}` : state;
-}
-
-function formatTimelineTimestamp(value: string | null | undefined) {
-  if (!value) {
-    return null;
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(date);
 }
 
 export function WaferDieNotesDashboard({
@@ -730,18 +650,6 @@ export function WaferDieNotesDashboard({
     typeof selectedStep.executionId === "string"
       ? selectedStep.executionId
       : null;
-  const timelineAccent = getTimelineAccent(tile);
-  const timelineItems = stageRows.map((step, index) => ({
-    step,
-    index,
-    state: getTimelineStepState(step, tile.currentStepId)
-  }));
-  const activeTimelineIndex = Math.max(
-    timelineItems.findIndex((item) => item.state === "active"),
-    timelineItems.findLastIndex((item) => item.state === "complete")
-  );
-  const completedProgressHeight =
-    activeTimelineIndex > 0 ? `${(activeTimelineIndex / Math.max(timelineItems.length - 1, 1)) * 100}%` : "0%";
 
   useEffect(() => {
     let cancelled = false;
@@ -775,62 +683,9 @@ export function WaferDieNotesDashboard({
   return (
     <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
       <DetailCard title="Process timeline" className="min-h-[520px]">
-        <ol className="relative grid gap-1">
-          <span className="absolute bottom-[26px] left-[17px] top-[26px] z-10 w-px bg-[#deded8]" aria-hidden />
-          <span
-            className="absolute left-[17px] top-[26px] z-10 w-px"
-            style={{ height: completedProgressHeight, backgroundColor: timelineAccent.line }}
-            aria-hidden
-          />
-          {timelineItems.map(({ step, index, state }) => {
-            const isSelected = step.id === selectedStep?.id;
-
-            return (
-              <li key={step.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedStepId(step.id)}
-                  className={[
-                    "relative grid w-full grid-cols-[28px_minmax(0,1fr)_18px] items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors",
-                    isSelected ? "" : "hover:bg-[#fafafa]"
-                  ].join(" ")}
-                  style={isSelected || state === "active" ? { backgroundColor: timelineAccent.activeBackground } : undefined}
-                  aria-pressed={isSelected}
-                >
-                  <span
-                    className={[
-                      "relative z-20 grid h-5 w-5 place-items-center rounded-full border text-[11px] font-semibold",
-                      state === "pending"
-                        ? "border-[#d7d7d0] bg-white text-[#8a8a83]"
-                        : "text-white"
-                    ].join(" ")}
-                    style={state === "pending" ? undefined : { backgroundColor: timelineAccent.fill, borderColor: timelineAccent.fill }}
-                  >
-                    {index + 1}
-                  </span>
-                  <span className="min-w-0">
-                    <strong className="block truncate text-[14px] text-[#151512]">{step.name}</strong>
-                    <span
-                      className={["text-[12px] font-medium", isSelected || state === "active" ? "" : "text-[#8a8a83]"].join(" ")}
-                      style={isSelected || state === "active" ? { color: timelineAccent.text } : undefined}
-                    >
-                      {getStepStatusLabel(step)}
-                    </span>
-                  </span>
-                  {state === "complete" ? (
-                    <span
-                      className="grid h-4 w-4 place-items-center rounded-full text-white"
-                      style={{ backgroundColor: timelineAccent.fill }}
-                      aria-hidden
-                    >
-                      <CheckIcon />
-                    </span>
-                  ) : null}
-                </button>
-              </li>
-            );
-          })}
-        </ol>
+        {processSteps.length ? (
+          <ProcessTimelineTree tile={tile} selectedStepId={selectedStep?.id} onSelectStep={setSelectedStepId} />
+        ) : null}
       </DetailCard>
 
       <section className="overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">

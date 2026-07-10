@@ -2747,6 +2747,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     the available browser session redirected to Login with no console errors.
     No active production wafer was mutated during verification.
 
+## Recent development note (2026-07-09 revert timeline tree)
+
+- Replaced the linear redo tags with a shared branch-aware Process timeline in
+  Overview, Process History, and Notes. It now reads append-only
+  `wafer_step_reverted` events and draws source-to-target connector paths with
+  the recorded rework reason.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Direct Supabase read confirmed the selected wafer has two ordered revert
+    events, each with source, target, timestamp, and reason.
+  - Browser at `http://127.0.0.1:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103&waferId=250397e7-4c58-43b1-b571-82d53854a103`:
+    the available browser session redirected to Login with no console errors.
+    Authenticated visual review of the event tree still requires a confirmed
+    signed-in browser session.
+
 ## Recent development note (2026-07-09 process-flow click/drag threshold)
 
 - Fixed die-chip presses so pointer down remains an invisible click candidate;

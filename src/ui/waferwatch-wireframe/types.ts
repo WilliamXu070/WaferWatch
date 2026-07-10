@@ -214,6 +214,14 @@ export type WaferStatusProcessStepModel = {
   branchLabel?: string | null;
 };
 
+export type WaferStatusRevertEvent = {
+  id: string;
+  fromStepId: string;
+  toStepId: string;
+  occurredAt: string;
+  reason: string | null;
+};
+
 export type WaferStatusTileModel = {
   id: string;
   projectId: string;
@@ -230,6 +238,7 @@ export type WaferStatusTileModel = {
   currentStepId?: string | null;
   currentStepExecutionId?: string | null;
   processSteps?: readonly WaferStatusProcessStepModel[];
+  revertHistory?: readonly WaferStatusRevertEvent[];
   mode?: WaferDisplayMode;
   isUndiced?: boolean;
   isSelected?: boolean;
