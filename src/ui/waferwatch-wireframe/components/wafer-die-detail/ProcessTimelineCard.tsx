@@ -22,7 +22,7 @@ export function ProcessTimelineCard({ tile }: { tile: WaferStatusTileModel }) {
 
   return (
     <DetailCard title="Process timeline" className="lg:col-span-3">
-      <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(390px,0.95fr)_minmax(0,1.05fr)]">
         <ProcessTimelineTree tile={tile} />
 
         <div className="border-l border-[#eeeeea] pl-5">

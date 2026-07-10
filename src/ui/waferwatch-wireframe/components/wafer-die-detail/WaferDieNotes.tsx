@@ -681,7 +681,7 @@ export function WaferDieNotesDashboard({
   }, [imageUrlByAttachmentId, selectedImageAttachments]);
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+    <div className="grid gap-4 xl:grid-cols-[440px_minmax(0,1fr)]">
       <DetailCard title="Process timeline" className="min-h-[520px]">
         {processSteps.length ? (
           <ProcessTimelineTree tile={tile} selectedStepId={selectedStep?.id} onSelectStep={setSelectedStepId} />

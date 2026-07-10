@@ -1,20 +1,21 @@
 import { CheckIcon } from "../../icons";
 import type { WaferStatusProcessStepModel, WaferStatusRevertEvent, WaferStatusTileModel } from "../../types";
 
-const ROW_HEIGHT = 76;
-const MARKER_X = 18;
+const ROW_HEIGHT = 104;
+const MAIN_MARKER_X = 22;
+const BRANCH_MARKER_X = 62;
+const BRANCH_COLORS = ["#d78a17", "#3477b8", "#3f8c66", "#a0524a"] as const;
 
-const timelineAccentByFamily: Record<string, { line: string; fill: string; text: string; activeBackground: string }> = {
-  ALPHA: { line: "#3f7534", fill: "#3f7534", text: "#2d5327", activeBackground: "#f3f8f1" },
-  BETA: { line: "#326b98", fill: "#326b98", text: "#2b5578", activeBackground: "#f2f7fb" },
-  GAMMA: { line: "#9f493f", fill: "#9f493f", text: "#703831", activeBackground: "#fbf3f2" }
+const timelineAccentByFamily: Record<string, { line: string; fill: string; activeBackground: string }> = {
+  ALPHA: { line: "#3f7534", fill: "#3f7534", activeBackground: "#f3f8f1" },
+  BETA: { line: "#326b98", fill: "#326b98", activeBackground: "#f2f7fb" },
+  GAMMA: { line: "#9f493f", fill: "#9f493f", activeBackground: "#fbf3f2" }
 };
 
-export function getTimelineAccent(tile: WaferStatusTileModel) {
+function getTimelineAccent(tile: WaferStatusTileModel) {
   return timelineAccentByFamily[tile.family.trim().toUpperCase()] ?? {
-    line: "#111111",
-    fill: "#111111",
-    text: "#111111",
+    line: "#171714",
+    fill: "#171714",
     activeBackground: "#f5f5f2"
   };
 }
@@ -25,7 +26,7 @@ function getStepState(step: WaferStatusProcessStepModel, currentStepId: string |
   return "pending";
 }
 
-export function formatTimelineTime(step: WaferStatusProcessStepModel, state: "complete" | "active" | "pending") {
+function formatTimelineTime(step: WaferStatusProcessStepModel, state: "complete" | "active" | "pending") {
   const timestamp = step.completedAt ?? step.startedAt ?? step.createdAt;
   if (!timestamp) return state === "complete" ? "Complete" : state === "pending" ? "Pending" : "In progress";
   const date = new Date(timestamp);
@@ -33,18 +34,30 @@ export function formatTimelineTime(step: WaferStatusProcessStepModel, state: "co
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
 }
 
+function formatRevertTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Saved revert";
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+type RevertEdge = WaferStatusRevertEvent & {
+  branchNumber: number;
+  color: (typeof BRANCH_COLORS)[number];
+  fromIndex: number;
+  toIndex: number;
+};
+
 function getRevertEdges(processSteps: readonly WaferStatusProcessStepModel[], history: readonly WaferStatusRevertEvent[]) {
   const indexByStepId = new Map(processSteps.map((step, index) => [step.id, index]));
   return history
     .map((event, index) => ({
       ...event,
-      index,
+      branchNumber: index + 1,
+      color: BRANCH_COLORS[index % BRANCH_COLORS.length],
       fromIndex: indexByStepId.get(event.fromStepId),
       toIndex: indexByStepId.get(event.toStepId)
     }))
-    .filter((event): event is WaferStatusRevertEvent & { index: number; fromIndex: number; toIndex: number } =>
-      event.fromIndex !== undefined && event.toIndex !== undefined
-    );
+    .filter((event): event is RevertEdge => event.fromIndex !== undefined && event.toIndex !== undefined);
 }
 
 export function ProcessTimelineTree({
@@ -59,88 +72,133 @@ export function ProcessTimelineTree({
   const accent = getTimelineAccent(tile);
   const processSteps = tile.processSteps?.length ? tile.processSteps : [];
   const revertEdges = getRevertEdges(processSteps, tile.revertHistory ?? []);
-  const latestRevert = revertEdges.at(-1) ?? null;
-  const revertsFromStep = new Map<string, typeof revertEdges>();
-  const revertsToStep = new Map<string, typeof revertEdges>();
+  const revertsFromStep = new Map<string, RevertEdge[]>();
   for (const event of revertEdges) {
     revertsFromStep.set(event.fromStepId, [...(revertsFromStep.get(event.fromStepId) ?? []), event]);
-    revertsToStep.set(event.toStepId, [...(revertsToStep.get(event.toStepId) ?? []), event]);
   }
+
+  const currentStepIndex = Math.max(0, processSteps.findIndex((step) => step.id === tile.currentStepId));
   const treeHeight = Math.max(processSteps.length * ROW_HEIGHT, ROW_HEIGHT);
+  const markerY = (index: number) => index * ROW_HEIGHT + ROW_HEIGHT / 2;
 
   return (
-    <ol className="relative" aria-label="Process revision timeline">
+    <ol className="relative min-w-0" aria-label="Process revision timeline">
       <svg
-        className="pointer-events-none absolute left-0 top-0 h-full w-[72px] overflow-visible"
-        viewBox={`0 0 72 ${treeHeight}`}
+        className="pointer-events-none absolute left-0 top-0 z-[1] h-full w-[88px] overflow-visible"
+        viewBox={`0 0 88 ${treeHeight}`}
         preserveAspectRatio="none"
         aria-hidden
       >
         {processSteps.length > 1 ? (
-          <path d={`M ${MARKER_X} ${ROW_HEIGHT / 2} V ${treeHeight - ROW_HEIGHT / 2}`} stroke="#deded8" strokeWidth="1.5" />
-        ) : null}
-        {revertEdges.map((event) => {
-          const laneX = 42 + (event.index % 2) * 14;
-          const fromY = event.fromIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
-          const toY = event.toIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
-          const isLatest = event.id === latestRevert?.id;
-          return (
+          <>
             <path
-              key={event.id}
-              d={`M ${MARKER_X} ${fromY} C ${laneX} ${fromY} ${laneX} ${toY} ${MARKER_X} ${toY}`}
+              d={`M ${MAIN_MARKER_X} ${markerY(0)} V ${markerY(processSteps.length - 1)}`}
               fill="none"
-              stroke={isLatest ? accent.line : "#a8a8a1"}
-              strokeWidth={isLatest ? "2.5" : "1.5"}
-              strokeLinecap="round"
+              stroke="#d9d9d3"
+              strokeWidth="2"
             />
+            <path
+              d={`M ${MAIN_MARKER_X} ${markerY(0)} V ${markerY(currentStepIndex)}`}
+              fill="none"
+              stroke={accent.line}
+              strokeWidth="2.5"
+            />
+          </>
+        ) : null}
+
+        {revertEdges.map((event, index) => {
+          const branchX = BRANCH_MARKER_X + (index % 2) * 12;
+          const sourceY = markerY(event.fromIndex);
+          const targetY = markerY(event.toIndex);
+          const bendY = targetY + Math.sign(sourceY - targetY || 1) * 24;
+          return (
+            <g key={event.id}>
+              <path
+                d={`M ${MAIN_MARKER_X} ${targetY} C ${branchX} ${targetY}, ${branchX} ${bendY}, ${branchX} ${sourceY}`}
+                fill="none"
+                stroke={event.color}
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              />
+              <circle cx={branchX} cy={sourceY} r="10" fill="#fffefb" stroke={event.color} strokeWidth="2.5" />
+              <text
+                x={branchX}
+                y={sourceY + 3.5}
+                fill={event.color}
+                fontSize="9"
+                fontWeight="700"
+                textAnchor="middle"
+              >
+                {event.fromIndex + 1}
+              </text>
+            </g>
           );
         })}
       </svg>
 
       {processSteps.map((step, index) => {
         const state = getStepState(step, tile.currentStepId);
-        const outgoing = revertsFromStep.get(step.id) ?? [];
-        const incoming = revertsToStep.get(step.id) ?? [];
-        const latestOutgoing = outgoing.at(-1) ?? null;
-        const latestIncoming = incoming.at(-1) ?? null;
-        const isCurrentRedoTarget = latestRevert?.toStepId === step.id;
+        const attempts = revertsFromStep.get(step.id) ?? [];
         const isSelected = selectedStepId === step.id;
-        const rowStyle = state === "active" || isCurrentRedoTarget || isSelected ? { backgroundColor: accent.activeBackground } : undefined;
-        const description = latestOutgoing
-          ? `Reverted to ${processSteps[latestOutgoing.toIndex]?.name ?? "earlier stage"}${latestOutgoing.reason ? `: ${latestOutgoing.reason}` : ""}`
-          : latestIncoming
-            ? `Redo branch ${latestIncoming.index + 1}${latestIncoming.reason ? `: ${latestIncoming.reason}` : ""}`
-            : step.processArea ? `${step.processArea} · ${formatTimelineTime(step, state)}` : formatTimelineTime(step, state);
+        const isActive = step.id === tile.currentStepId;
+        const rowStyle = isActive || isSelected ? { backgroundColor: accent.activeBackground } : undefined;
+        const canonicalDescription = step.processArea
+          ? `${step.processArea} · ${formatTimelineTime(step, state)}`
+          : formatTimelineTime(step, state);
+
         const content = (
           <>
-            <span className="relative z-10 grid h-6 w-6 place-items-center rounded-full border text-[11px] font-semibold" style={{
-              marginLeft: `${MARKER_X - 12}px`,
-              backgroundColor: state === "pending" && !isCurrentRedoTarget ? "#ffffff" : accent.fill,
-              borderColor: state === "pending" && !isCurrentRedoTarget ? "#d7d7d0" : accent.fill,
-              color: state === "pending" && !isCurrentRedoTarget ? "#8a8a83" : "#ffffff"
-            }}>
+            <span
+              className="relative z-10 grid h-8 w-8 place-items-center rounded-full border text-[13px] font-semibold"
+              style={{
+                marginLeft: `${MAIN_MARKER_X - 16}px`,
+                backgroundColor: state === "pending" ? "#fffefb" : accent.fill,
+                borderColor: state === "pending" ? "#d4d4ce" : accent.fill,
+                color: state === "pending" ? "#8a8a83" : "#fffefb"
+              }}
+            >
               {index + 1}
             </span>
-            <span className="min-w-0 pr-2">
-              <strong className="block truncate text-[14px] text-[#151512]">{step.name}</strong>
-              <span className="block text-[12px] font-medium text-[#777770]">{description}</span>
+
+            <span className="min-w-0 py-3">
+              <strong className="block text-[15px] font-semibold leading-5 text-[#171714]">{step.name}</strong>
+              <span className="mt-1 block text-[12px] font-medium leading-5 text-[#7b7b73]">{canonicalDescription}</span>
             </span>
+
+            <span className="grid min-w-0 gap-2 py-2">
+              {attempts.map((attempt) => (
+                <span key={attempt.id} className="min-w-0 rounded-md border border-[#e2e2dc] bg-[#fffefb] px-2.5 py-2">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: attempt.color }} aria-hidden />
+                    <strong className="truncate text-[11px] font-semibold text-[#34342f]">
+                      Attempt {attempt.branchNumber}
+                    </strong>
+                  </span>
+                  <span className="mt-1 block text-[11px] leading-4 text-[#6f6f68]">
+                    {attempt.reason?.trim() || "Reverted attempt"}
+                  </span>
+                  <span className="mt-0.5 block text-[10px] text-[#96968f]">{formatRevertTime(attempt.occurredAt)}</span>
+                </span>
+              ))}
+            </span>
+
             {state === "complete" ? (
-              <span className="grid h-4 w-4 place-items-center rounded-full text-white" style={{ backgroundColor: accent.fill }} aria-hidden>
+              <span className="grid h-4 w-4 place-items-center rounded-full text-[#fffefb]" style={{ backgroundColor: accent.fill }} aria-hidden>
                 <CheckIcon />
               </span>
             ) : null}
           </>
         );
 
+        const rowClassName = "relative grid min-h-[104px] grid-cols-[88px_minmax(112px,1fr)_minmax(108px,0.9fr)_18px] items-center gap-2 rounded-lg px-1";
         return onSelectStep ? (
-          <li key={step.id} className="relative grid min-h-[76px] grid-cols-[48px_minmax(0,1fr)_18px] items-center gap-2 rounded-lg" style={rowStyle}>
+          <li key={step.id} className={rowClassName} style={rowStyle}>
             <button type="button" onClick={() => onSelectStep(step.id)} className="contents text-left" aria-pressed={isSelected}>
               {content}
             </button>
           </li>
         ) : (
-          <li key={step.id} className="relative grid min-h-[76px] grid-cols-[48px_minmax(0,1fr)_18px] items-center gap-2 rounded-lg" style={rowStyle}>
+          <li key={step.id} className={rowClassName} style={rowStyle}>
             {content}
           </li>
         );
