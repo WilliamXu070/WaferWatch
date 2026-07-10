@@ -2734,6 +2734,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     Authenticated drag/drop and revert persistence require a confirmed signed-in
     browser session.
 
+## Recent development note (2026-07-09 return-branch movement)
+
+- Corrected branch movement classification for direct `return` transitions.
+  A configured edge now takes precedence over legacy numeric `step_order`, so a
+  return branch is submitted as a normal graph move rather than an invalid
+  manual revert.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://127.0.0.1:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    the available browser session redirected to Login with no console errors.
+    No active production wafer was mutated during verification.
+
 ## Recent development note (2026-07-09 process-flow click/drag threshold)
 
 - Fixed die-chip presses so pointer down remains an invisible click candidate;

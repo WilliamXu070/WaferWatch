@@ -285,7 +285,6 @@ export function ProcessFlowDiagram({
   const scaledWidth = Math.round(sceneBounds.width * s);
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(displayNodes.map((node) => [node.id, node])), [displayNodes]);
-  const stepOrderById = useMemo(() => new Map(steps.map((step) => [step.id, step.step_order])), [steps]);
   const selectedWaferAssignmentId = useMemo(() => {
     if (!selectedWafer) {
       return null;
@@ -320,9 +319,9 @@ export function ProcessFlowDiagram({
       return null;
     }
 
-    const isRevert = target.order < source.order;
-    const hasForwardPath = directedEdgeByNodePair.has(`${source.id}:${target.id}`);
-    if (!isRevert && !hasForwardPath) {
+    const hasDirectPath = directedEdgeByNodePair.has(`${source.id}:${target.id}`);
+    const isRevert = !hasDirectPath && target.order < source.order;
+    if (!isRevert && !hasDirectPath) {
       return null;
     }
 
@@ -1970,7 +1969,7 @@ export function ProcessFlowDiagram({
     }
 
     const point = getScenePoint(event);
-    const target = nodes.find((node) => (
+    const target = displayNodes.find((node) => (
       node.role === "normal" &&
       node.id !== finishedDrag.sourceStepId &&
       nodeContainsPoint(node, point)
@@ -1986,9 +1985,10 @@ export function ProcessFlowDiagram({
     }
 
     const directedEdge = directedEdgeByNodePair.get(`${finishedDrag.sourceStepId}:${target.id}`);
-    const sourceStepOrder = stepOrderById.get(sourceNode.id) ?? sourceNode.order;
-    const targetStepOrder = stepOrderById.get(target.id) ?? target.order;
-    const isRevertMove = targetStepOrder < sourceStepOrder;
+    // A configured return edge is an allowed next branch, even when its legacy
+    // numeric step_order is lower than the source. Only unconnected earlier
+    // stages are treated as manual reverts.
+    const isRevertMove = !directedEdge && target.order < sourceNode.order;
     if (!directedEdge && !isRevertMove) {
       setMoveMessage(`No direct process path from ${sourceNode.label} to ${target.label}.`);
       return;
