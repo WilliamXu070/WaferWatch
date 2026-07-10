@@ -2,7 +2,7 @@ import "server-only";
 
 import { getProcessCalendarSchedule } from "@/features/calendar/queries";
 import { getProcessDashboardData } from "@/features/process-flows/queries";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 import type { FabricationStatus } from "@/types/database";
 import {
   createEmptyWireframeDashboardDto,
@@ -23,6 +23,7 @@ import type {
   WireframeWaferSource,
   WireframeWaferViewerDto
 } from "./types";
+import { mapProfilesToTeamMembers, type TeamDirectoryProfile } from "./teamDirectory";
 
 const ACTIVE_ASSIGNMENT_STATUSES: readonly FabricationStatus[] = [
   "planned",
@@ -30,67 +31,6 @@ const ACTIVE_ASSIGNMENT_STATUSES: readonly FabricationStatus[] = [
   "in_progress",
   "on_hold"
 ];
-
-type WireframeShellProfile = {
-  id: string;
-  display_name: string | null;
-  email?: string | null;
-};
-
-function getDisplayName(profile: WireframeShellProfile) {
-  return profile.display_name?.trim() || profile.email?.trim() || "Process user";
-}
-
-function getInitials(name: string) {
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-
-  return initials || "WW";
-}
-
-function getProjectMemberRoleLabel(role: string | null | undefined) {
-  if (role === "owner") {
-    return "Project owner";
-  }
-
-  if (role === "editor") {
-    return "Process team";
-  }
-
-  return "Viewer";
-}
-
-function getProfileRoleLabel(role: string | null | undefined) {
-  if (role === "admin") {
-    return "Admin";
-  }
-
-  if (role === "process_engineer") {
-    return "Process team";
-  }
-
-  if (role === "researcher") {
-    return "Researcher";
-  }
-
-  return "Viewer";
-}
-
-function isVisibleUserProfile(profile: WireframeShellProfile) {
-  const name = profile.display_name?.trim().toLowerCase() ?? "";
-  const email = profile.email?.trim().toLowerCase() ?? "";
-
-  return (
-    name !== "waferwatch admin" &&
-    name !== "waferwatch viewer" &&
-    email !== "admin@waferwatch.local" &&
-    email !== "viewer@waferwatch.local"
-  );
-}
 
 export async function getWireframeShellModel(): Promise<WireframeShellDto> {
   const supabase = await createServerSupabaseClient();
@@ -143,9 +83,7 @@ export async function getWireframeShellModel(): Promise<WireframeShellDto> {
     throw calendarResult.error;
   }
 
-  const teamMembers = activeTemplate?.owner_project_id
-    ? await getProjectTeamMembers(activeTemplate.owner_project_id)
-    : await getActiveProfileTeamMembers();
+  const teamMembers = await getActiveProfileTeamMembers();
   const activeDieCountByTemplate = new Map<string, number>();
   for (const assignment of assignmentsResult.data ?? []) {
     activeDieCountByTemplate.set(
@@ -175,84 +113,20 @@ export async function getWireframeShellModel(): Promise<WireframeShellDto> {
   };
 }
 
-async function getProjectTeamMembers(projectId: string): Promise<WireframeShellDto["teamMembers"]> {
-  const supabase = await createServerSupabaseClient();
-  const membersResult = await supabase
-    .from("project_members")
-    .select("user_id, role")
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: true })
-    .limit(6);
-
-  if (membersResult.error) {
-    throw membersResult.error;
-  }
-
-  const memberRows = membersResult.data ?? [];
-  const userIds = memberRows.map((member) => member.user_id).filter((id): id is string => Boolean(id));
-  if (!userIds.length) {
-    return [];
-  }
-
-  const profilesResult = await supabase
-    .from("profiles")
-    .select("id, display_name, email")
-    .in("id", userIds)
-    .eq("is_active", true);
-
-  if (profilesResult.error) {
-    throw profilesResult.error;
-  }
-
-  const profilesById = new Map(
-    ((profilesResult.data ?? []) as WireframeShellProfile[])
-      .filter(isVisibleUserProfile)
-      .map((profile) => [profile.id, profile])
-  );
-
-  return memberRows
-    .map((member) => {
-      const profile = profilesById.get(member.user_id);
-      if (!profile) {
-        return null;
-      }
-
-      const name = getDisplayName(profile);
-      return {
-        id: profile.id,
-        initials: getInitials(name),
-        name,
-        role: getProjectMemberRoleLabel(member.role)
-      };
-    })
-    .filter((member): member is WireframeShellDto["teamMembers"][number] => Boolean(member));
-}
-
 async function getActiveProfileTeamMembers(): Promise<WireframeShellDto["teamMembers"]> {
-  const supabase = await createServerSupabaseClient();
+  // The caller has already authenticated the request; return only the limited directory DTO below.
+  const supabase = createSupabaseAdminClient();
   const profilesResult = await supabase
     .from("profiles")
-    .select("id, display_name, email, role")
+    .select("id, display_name, email, role, is_active")
     .eq("is_active", true)
-    .order("display_name", { ascending: true })
-    .limit(6);
+    .order("display_name", { ascending: true });
 
   if (profilesResult.error) {
     throw profilesResult.error;
   }
 
-  return ((profilesResult.data ?? []) as Array<WireframeShellProfile & { role?: string | null }>)
-    .filter(isVisibleUserProfile)
-    .map((profile) => {
-      const name = getDisplayName(profile);
-
-      return {
-        id: profile.id,
-        initials: getInitials(name),
-        name,
-        role: getProfileRoleLabel(profile.role)
-      };
-    });
+  return mapProfilesToTeamMembers((profilesResult.data ?? []) as TeamDirectoryProfile[]);
 }
 
 export async function getWireframeDashboardData(

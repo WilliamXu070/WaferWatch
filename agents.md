@@ -2895,3 +2895,21 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     route loaded without console errors. The available browser session was
     unauthenticated, so real-user note creation and color rendering could not
     be exercised without bypassing auth.
+
+## Recent development note (2026-07-10 profile-backed team directory)
+
+- Fixed the sidebar Team directory so it reads active real profiles instead of
+  the newest process template's fixture-project memberships. Project membership
+  still controls authorization and is not changed by directory visibility.
+- Seeded `@waferwatch.local`, inactive, Playwright, and Timeline Test profiles
+  remain hidden. The sidebar now scrolls when the real-user list exceeds the
+  available viewport height.
+- Verified with:
+  - `npx --yes tsx --test src/features/wireframe/teamDirectory.test.ts`
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Signed-in browser at `http://127.0.0.1:3015/dashboard`: Team contained
+    Mulei, Saeed Oghbaey, William (admin), William (researcher), and William Xu;
+    seeded Admin/Viewer and automation profiles were absent, and the console
+    error log was empty.

@@ -235,7 +235,7 @@ export function WireframeSidebar({
   };
 
   return (
-    <aside className="wireframe-sidebar hidden h-full w-[264px] shrink-0 flex-col border-r border-[#e9e9df] bg-white px-4 py-5 md:flex">
+    <aside className="wireframe-sidebar hidden h-full w-[264px] shrink-0 flex-col overflow-y-auto border-r border-[#e9e9df] bg-white px-4 py-5 md:flex">
       <div className="flex items-center gap-2.5 px-2">
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#141412] text-white">
           <WaferLogoIcon />
