@@ -2609,7 +2609,7 @@ export function ProcessFlowDiagram({
           setSelectedEdgeId(canEdit ? edgeId : null);
         }}
       />
-      <WaferDiePreview preview={waferPreview} onClose={() => setWaferPreview(null)} />
+      <WaferDiePreview preview={waferPreview} />
     </section>
   );
 }

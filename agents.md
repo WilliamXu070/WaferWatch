@@ -2763,3 +2763,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     the available browser session redirected to Login with no console errors.
     Authenticated click-hold, drag, and die double-click verification still
     requires a confirmed signed-in browser session.
+
+## Recent development note (2026-07-09 wafer/die info panel)
+
+- Replaced the wafer/die preview modal with a compact fixed info panel. It has
+  no backdrop, close button, or modal focus behavior, so the surrounding flow
+  or calendar remains usable while the selection summary is visible.
+- The entire panel opens the matching wafer/die status dashboard. It sits in
+  the bottom-right on desktop and above the bottom navigation on phone.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Browser at `http://127.0.0.1:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    using `390x844`: no horizontal overflow or console errors. The available
+    browser session redirected to Login, so an authenticated selected-die
+    visual check remains unavailable.

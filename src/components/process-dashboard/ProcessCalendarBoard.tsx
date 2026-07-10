@@ -1907,7 +1907,7 @@ export function ProcessCalendarBoard({
           onSelectedWaferIdChange={setSelectedWaferId}
         />
       </aside>
-      <WaferDiePreview preview={waferPreview} onClose={() => setPreviewEventId(null)} />
+      <WaferDiePreview preview={waferPreview} />
     </div>
   );
 }
