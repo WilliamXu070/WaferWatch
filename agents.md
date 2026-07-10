@@ -2733,3 +2733,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     the available browser session redirected to Login with no console errors.
     Authenticated drag/drop and revert persistence require a confirmed signed-in
     browser session.
+
+## Recent development note (2026-07-09 process-flow click/drag threshold)
+
+- Fixed die-chip presses so pointer down remains an invisible click candidate;
+  the drag preview and touch lock now begin only after 10 physical pixels of
+  movement, independent of canvas zoom.
+- Added a canvas-level double-click guard so selected dies and process nodes
+  cannot bubble into process-step creation.
+- Verified with:
+  - `npx --yes tsx --test src/components/process-flow/interactions.test.ts`
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Browser at `http://127.0.0.1:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    the available browser session redirected to Login with no console errors.
+    Authenticated click-hold, drag, and die double-click verification still
+    requires a confirmed signed-in browser session.

@@ -119,6 +119,8 @@ export type WaferDrag = {
   sourceStepId: string;
   waferLabel: string;
   pointerId: number;
+  startClientX: number;
+  startClientY: number;
   startX: number;
   startY: number;
   x: number;

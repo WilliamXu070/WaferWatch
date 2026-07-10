@@ -27,6 +27,7 @@ import {
 } from "./process-flow/constants";
 import { getGraphBounds, getSnappedNodePosition, nodeContainsPoint } from "./process-flow/geometry";
 import { findEdgeSplitCandidate, splitEdgeWithNode } from "./process-flow/graphEdit";
+import { hasCrossedWaferDragThreshold } from "./process-flow/interactions";
 import {
   clampScale,
   getWaferChipLabel,
@@ -1577,6 +1578,12 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    if (event.target instanceof Element && event.target.closest(".flow-wafer-chip, .flow-node")) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     event.preventDefault();
     event.stopPropagation();
 
@@ -1660,7 +1667,6 @@ export function ProcessFlowDiagram({
   };
 
   const beginPendingConnection = (event: PointerEvent<SVGGElement>, nodeId: string) => {
-    event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
     setSelectedWafer(null);
@@ -1877,7 +1883,6 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
     setMoveMessage(null);
@@ -1888,6 +1893,8 @@ export function ProcessFlowDiagram({
       sourceStepId: node.id,
       waferLabel: getWaferChipLabel(wafer),
       pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
       startX: point.x,
       startY: point.y,
       x: point.x,
@@ -1895,11 +1902,7 @@ export function ProcessFlowDiagram({
       hasMoved: false
     };
     waferDragRef.current = nextDrag;
-    setWaferDrag(nextDrag);
-    if (svgRef.current) {
-      safelySetPointerCapture(svgRef.current, event.pointerId);
-    }
-    setDragTouchAction();
+    safelySetPointerCapture(event.currentTarget, event.pointerId);
   };
 
   const updateWaferDrag = (event: PointerEvent<SVGSVGElement>) => {
@@ -1909,17 +1912,27 @@ export function ProcessFlowDiagram({
     }
 
     const point = getScenePoint(event);
+    const hasMoved =
+      currentDrag.hasMoved ||
+      hasCrossedWaferDragThreshold({
+        startClientX: currentDrag.startClientX,
+        startClientY: currentDrag.startClientY,
+        clientX: event.clientX,
+        clientY: event.clientY
+      });
     const nextDrag = {
       ...currentDrag,
       x: point.x,
       y: point.y,
-      hasMoved:
-        currentDrag.hasMoved ||
-        Math.abs(point.x - currentDrag.startX) > 6 ||
-        Math.abs(point.y - currentDrag.startY) > 6
+      hasMoved
     };
     waferDragRef.current = nextDrag;
-    setWaferDrag(nextDrag);
+    if (hasMoved) {
+      if (!currentDrag.hasMoved) {
+        setDragTouchAction();
+      }
+      setWaferDrag(nextDrag);
+    }
   };
 
   const clearDragTouchAction = () => {
