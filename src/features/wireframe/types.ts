@@ -40,6 +40,11 @@ export type WireframeShellTeamMemberDto = {
 };
 
 export type WireframeShellDto = {
+  currentUser: {
+    id: string;
+    initials: string;
+    name: string;
+  } | null;
   currentProcess: {
     id: string;
     name: string;

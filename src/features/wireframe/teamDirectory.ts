@@ -23,6 +23,16 @@ function getInitials(name: string) {
   return initials || "WW";
 }
 
+export function mapProfileToTeamIdentity(profile: TeamDirectoryProfile) {
+  const name = getDisplayName(profile);
+
+  return {
+    id: profile.id,
+    initials: getInitials(name),
+    name
+  };
+}
+
 function getProfileRoleLabel(role: string | null | undefined) {
   if (role === "admin") {
     return "Admin";
@@ -62,12 +72,10 @@ export function mapProfilesToTeamMembers(
   return profiles
     .filter(isVisibleTeamProfile)
     .map((profile) => {
-      const name = getDisplayName(profile);
+      const identity = mapProfileToTeamIdentity(profile);
 
       return {
-        id: profile.id,
-        initials: getInitials(name),
-        name,
+        ...identity,
         role: getProfileRoleLabel(profile.role)
       };
     });

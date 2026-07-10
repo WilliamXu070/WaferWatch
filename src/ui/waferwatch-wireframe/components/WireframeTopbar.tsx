@@ -4,10 +4,14 @@ import {
   SearchIcon,
   UserIcon
 } from "../icons";
+import type { WireframeShellDto } from "@/features/wireframe/types";
+import { TeamMessages } from "./TeamMessages";
 
 export function WireframeTopbar({
+  currentUser,
   onSignOut
 }: {
+  currentUser: WireframeShellDto["currentUser"];
   onSignOut?: () => void | Promise<void>;
 }) {
   return (
@@ -29,6 +33,7 @@ export function WireframeTopbar({
       </div>
 
       <div className="flex items-center gap-3">
+        {currentUser ? <TeamMessages currentUser={currentUser} /> : null}
         <div className="flex h-11 items-center overflow-hidden rounded-xl border border-[#e4e4df] bg-white">
           <button
             type="button"

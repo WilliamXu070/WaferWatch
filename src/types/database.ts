@@ -338,6 +338,14 @@ export type AuditEvent = {
   created_at: string;
 };
 
+export type TeamMessage = {
+  id: string;
+  author_id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+};
+
 export type WaferCycleTimeMetric = {
   assignment_id: string;
   wafer_id: string;
@@ -409,6 +417,7 @@ export interface Database {
       process_issues: Row<ProcessIssue>;
       process_events: Row<ProcessEvent>;
       audit_events: Row<AuditEvent>;
+      team_messages: Row<TeamMessage>;
     };
     Views: {
       vw_wafer_cycle_time: { Row: WaferCycleTimeMetric; Relationships: [] };

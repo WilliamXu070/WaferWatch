@@ -23,7 +23,11 @@ import type {
   WireframeWaferSource,
   WireframeWaferViewerDto
 } from "./types";
-import { mapProfilesToTeamMembers, type TeamDirectoryProfile } from "./teamDirectory";
+import {
+  mapProfileToTeamIdentity,
+  mapProfilesToTeamMembers,
+  type TeamDirectoryProfile
+} from "./teamDirectory";
 
 const ACTIVE_ASSIGNMENT_STATUSES: readonly FabricationStatus[] = [
   "planned",
@@ -38,6 +42,7 @@ export async function getWireframeShellModel(): Promise<WireframeShellDto> {
 
   if (claimsError || !claimsData?.claims?.sub) {
     return {
+      currentUser: null,
       currentProcess: null,
       processes: [],
       calendarEventCount: 0,
@@ -45,15 +50,26 @@ export async function getWireframeShellModel(): Promise<WireframeShellDto> {
     };
   }
 
-  const templatesResult = await supabase
-    .from("process_templates")
-    .select("id, name, version, owner_project_id")
-    .eq("is_active", true)
-    .order("updated_at", { ascending: false })
-    .limit(24);
+  const [templatesResult, currentProfileResult] = await Promise.all([
+    supabase
+      .from("process_templates")
+      .select("id, name, version, owner_project_id")
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(24),
+    supabase
+      .from("profiles")
+      .select("id, display_name, email, role, is_active")
+      .eq("id", claimsData.claims.sub)
+      .single()
+  ]);
 
   if (templatesResult.error) {
     throw templatesResult.error;
+  }
+
+  if (currentProfileResult.error) {
+    throw currentProfileResult.error;
   }
 
   const activeTemplates = templatesResult.data ?? [];
@@ -99,6 +115,7 @@ export async function getWireframeShellModel(): Promise<WireframeShellDto> {
   }));
 
   return {
+    currentUser: mapProfileToTeamIdentity(currentProfileResult.data as TeamDirectoryProfile),
     currentProcess: activeTemplate
       ? {
           id: activeTemplate.id,

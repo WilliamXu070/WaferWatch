@@ -57,6 +57,7 @@ export function WaferWatchShell({
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <WireframeTopbar
+          currentUser={shell.currentUser}
           onSignOut={onSignOut}
         />
         <main className="wireframe-main min-h-0 flex-1 overflow-auto bg-white">{children}</main>
