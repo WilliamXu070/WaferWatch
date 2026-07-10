@@ -26,7 +26,6 @@ type WaferGeometryPreviewProps = {
   showDieLabel?: boolean;
   showOnlySelectedDie?: boolean;
   className?: string;
-  dimmed?: boolean;
 };
 
 const PRE_MODE_KEYWORDS = [
@@ -543,8 +542,7 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
   colorSeed,
   showDieLabel = true,
   showOnlySelectedDie = false,
-  className = "",
-  dimmed = false
+  className = ""
 }) => {
   const mode = inferModeFromKeyword(modeKeyword);
   const chipSeed = (colorSeed || selectedDieCode || String(selectedLabel ?? "")).trim();
@@ -597,7 +595,7 @@ export const WaferGeometryPreview: FC<WaferGeometryPreviewProps> = ({
   return (
     <div className={"grid min-h-[78px] w-full place-items-center " + className}>
       <svg
-        className={"h-full w-full max-w-[220px] " + (dimmed ? "opacity-50" : "opacity-100")}
+        className="h-full w-full max-w-[220px]"
         viewBox={`0 0 ${formatSvgCoordinate(viewportForRender.halfSpan * 2)} ${formatSvgCoordinate(viewportForRender.halfSpan * 2)}`}
         role="img"
         aria-label="Wafer keyword preview"

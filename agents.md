@@ -2877,6 +2877,26 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - The authenticated `/wafer-status` route remains unavailable in the current
     browser session; no auth bypass or live wafer mutation was used.
 
+## Recent development note (2026-07-10 queued wafer tile visibility)
+
+- Fixed the general Wafer / Die Status grid so queued dies no longer look
+  disabled. Removed the 50% geometry opacity and kept setup-family names at
+  normal contrast; status dots and labels still communicate queued state.
+- Split the existing status tile into a focused component and added a rendered
+  regression test for a selected queued NU die at Testing.
+- Verified with:
+  - Live Supabase inspection confirming the reported NU dies are queued at
+    Testing, which activated the old dimming branch.
+  - `npx --yes tsx --test src/ui/waferwatch-wireframe/components/WaferGeometryPreview.test.tsx`
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Browser at
+    `http://127.0.0.1:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`:
+    expected unauthenticated empty state and no console errors. The protected
+    `/wafer-status` route redirected to Login, so authenticated visual
+    acceptance remains unavailable in this browser session.
+
 ## Recent development note (2026-07-09 note author identity)
 
 - Wafer/die notes now persist the authenticated profile ID and display name

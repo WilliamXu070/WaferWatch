@@ -12,10 +12,10 @@ import type {
   WaferFamilyModel,
   WaferStatusMetric,
   WaferStatusModel,
-  WaferStatusTileModel,
-  WaferTileStatus
+  WaferStatusTileModel
 } from "../types";
 import { WaferGeometryPreview } from "./WaferGeometryPreview";
+import { WaferStatusTile } from "./WaferStatusTile";
 import {
   canOpenDieDetail,
   DieDetailView,
@@ -24,16 +24,6 @@ import {
   isUndicedMode
 } from "./wafer-die-detail";
 import type { WaferDieNoteViewer } from "./wafer-die-detail/WaferDieNotes";
-
-const statusDotColor: Record<WaferTileStatus, string> = {
-  litho: "bg-[#111111]",
-  etch: "bg-[#111111]",
-  inspection: "bg-[#111111]",
-  bond: "bg-[#777770]",
-  test: "bg-[#777770]",
-  dice: "bg-[#777770]",
-  queued: "bg-[#c9c9c2]"
-};
 
 const metricIcons = {
   neutral: WaferLogoIcon,
@@ -60,59 +50,6 @@ function MetricTile({ metric }: { metric: WaferStatusMetric }) {
   );
 }
 
-function WaferTile({
-  tile,
-  selected,
-  isUndiced,
-  onSelect
-}: {
-  tile: WaferStatusTileModel;
-  selected: boolean;
-  isUndiced: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onSelect}
-      className={[
-        "wafer-status-tile relative grid min-h-[118px] grid-cols-[minmax(76px,0.9fr)_minmax(104px,1.1fr)] gap-4 rounded-lg border bg-white p-4 text-left transition-all",
-        selected
-          ? "border-[#111111] shadow-[0_0_0_1px_rgba(17,17,17,0.16)]"
-          : "border-[#e7e7e2] hover:border-[#b9b9b0] hover:bg-[#fcfcfb]"
-      ].join(" ")}
-    >
-      <span className="min-w-0">
-        <span className="block text-[18px] font-semibold leading-none text-[#111111]">
-          {getWaferDisplayLabel(tile, isUndiced)}
-        </span>
-        <span className="mt-4 flex items-center gap-2 text-[13px] font-medium text-[#6f6f68]">
-          <span className={["h-2.5 w-2.5 rounded-full", statusDotColor[tile.status]].join(" ")} />
-          {tile.stepLabel}
-        </span>
-      </span>
-      <span className="grid min-h-[80px] place-items-center rounded-md border border-[#eeeeea] bg-white px-2 py-1">
-        <WaferGeometryPreview
-          modeKeyword={tile.waferStateName}
-          selectedLabel={getSelectedDieLabel(tile)}
-          selectedDieCode={isUndiced ? undefined : (tile.dieLabel || tile.code)}
-          colorSeed={tile.family}
-          showOnlySelectedDie={!isUndiced}
-          showDieLabel={false}
-          dimmed={tile.status === "queued"}
-          className="max-h-[78px]"
-        />
-      </span>
-      {selected ? (
-        <span className="absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-[#111111] text-[12px] font-semibold text-white">
-          ✓
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
 function FamilySection({
   family,
   selectedTile,
@@ -123,7 +60,6 @@ function FamilySection({
   onSelect: (tile: WaferStatusTileModel) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const familyMuted = family.status === "setup";
 
   return (
     <section className="wafer-status-family border-b border-[#e7e7e2] bg-white">
@@ -139,7 +75,7 @@ function FamilySection({
             family.status === "active" ? "bg-[#111111]" : "bg-[#c9c9c2]"
           ].join(" ")}
         />
-        <span className={["text-[24px] font-semibold leading-none tracking-normal", familyMuted ? "text-[#9b9b94]" : "text-[#111111]"].join(" ")}>
+        <span className="text-[24px] font-semibold leading-none tracking-normal text-[#111111]">
           {family.name}
         </span>
         <span className="rounded-md border border-[#e4e4df] bg-white px-2 py-0.5 text-[12px] font-semibold text-[#5d5d56]">
@@ -156,7 +92,7 @@ function FamilySection({
       {open ? (
         <div className="wafer-status-family__tiles grid gap-3 pb-5">
           {family.tiles.map((tile) => (
-            <WaferTile
+            <WaferStatusTile
               key={tile.id}
               tile={tile}
               isUndiced={isUndicedMode(tile)}
