@@ -2932,3 +2932,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 - A recovery email was not submitted during automation to avoid sending an
   unsolicited transactional email. Production delivery still depends on the
   Supabase redirect allow list containing the deployed `/auth/confirm` URL.
+
+## Recent development note (2026-07-10 responsive wafer status grid)
+
+- Replaced viewport-based wafer-status column breakpoints with a named CSS
+  container. Family tiles now auto-fit at a stable 250px minimum instead of
+  forcing four columns beside the selected-die inspector.
+- At constrained desktop widths the inspector becomes a compact horizontal
+  band above the grid. Phone widths retain a single full-width tile column and
+  keep the inspector after the wafer list.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Authenticated browser at
+    `http://127.0.0.1:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    using `1280x720`, `1080x800`, and `390x844`: no tile overlap, clipped
+    previews, horizontal page overflow, or console errors.

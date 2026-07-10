@@ -154,7 +154,7 @@ function FamilySection({
       </button>
 
       {open ? (
-        <div className="wafer-status-family__tiles grid grid-cols-1 gap-3 pb-5 md:grid-cols-2 xl:grid-cols-4">
+        <div className="wafer-status-family__tiles grid gap-3 pb-5">
           {family.tiles.map((tile) => (
             <WaferTile
               key={tile.id}
@@ -180,7 +180,7 @@ function SelectedDiePanel({
   const displayLabel = getWaferDisplayLabel(selectedTile, isUndiced);
 
   return (
-    <aside className="selected-die-panel grid gap-5 border-t border-[#eeeeea] bg-white pt-5 xl:sticky xl:top-6 xl:max-h-[calc(100svh-8rem)] xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
+    <aside className="selected-die-panel grid gap-5 bg-white">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[11px] font-semibold tracking-[0.08em] text-[#9b9b94]">
@@ -312,7 +312,7 @@ export function WaferStatusView({
   return (
     <div className="wafer-status-page grid gap-5 bg-white p-4 md:gap-6 md:p-6">
       {hasWafers ? (
-        <section className="wafer-status-metrics grid grid-cols-1 gap-x-8 gap-y-2 lg:grid-cols-4">
+        <section className="wafer-status-metrics grid gap-x-8 gap-y-2">
           {model.metrics.map((metric) => (
             <MetricTile key={metric.id} metric={metric} />
           ))}
@@ -320,7 +320,7 @@ export function WaferStatusView({
       ) : null}
 
       {hasWafers ? (
-        <section className="wafer-status-main-grid grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="wafer-status-main-grid grid gap-8">
           <div className="wafer-status-family-list grid min-w-0 gap-5">
             {model.families.map((family) => (
               <FamilySection

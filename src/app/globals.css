@@ -3222,6 +3222,65 @@ textarea {
   box-shadow: 1px 0 0 #e7e7dc;
 }
 
+.wafer-status-page {
+  container-name: wafer-status;
+  container-type: inline-size;
+}
+
+.wafer-status-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+}
+
+.wafer-status-main-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+}
+
+.wafer-status-family__tiles {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+}
+
+.wafer-status-main-grid > .selected-die-panel {
+  position: sticky;
+  top: 24px;
+  max-height: calc(100svh - 8rem);
+  align-self: start;
+  border-left: 1px solid #eeeeea;
+  padding-left: 24px;
+}
+
+@container wafer-status (max-width: 900px) {
+  .wafer-status-main-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wafer-status-main-grid > .selected-die-panel {
+    position: static;
+    max-height: none;
+    border-top: 1px solid #eeeeea;
+    border-left: 0;
+    padding-top: 20px;
+    padding-left: 0;
+  }
+}
+
+@container wafer-status (min-width: 641px) and (max-width: 900px) {
+  .wafer-status-main-grid > .selected-die-panel {
+    order: -1;
+    grid-template-columns: minmax(180px, 0.45fr) minmax(280px, 1fr);
+    align-items: center;
+  }
+
+  .wafer-status-main-grid > .selected-die-panel > div:nth-child(2) {
+    min-height: 200px;
+  }
+}
+
+@container wafer-status (max-width: 640px) {
+  .wafer-status-main-grid > .selected-die-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 1120px) and (min-width: 768px) {
   .wafer-die-detail-tabs__list {
     display: flex;
