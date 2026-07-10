@@ -3728,7 +3728,9 @@ textarea {
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-panel {
     overflow-x: auto;
-    overscroll-behavior: contain;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: auto;
     touch-action: pan-y;
   }
 

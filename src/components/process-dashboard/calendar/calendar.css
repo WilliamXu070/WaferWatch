@@ -578,12 +578,14 @@
 /* Calendar wireframe week board. Scoped to the preview route only.     */
 /* ------------------------------------------------------------------ */
 .wireframe-calendar-surface .calendar-timeline-panel {
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   touch-action: pan-y;
 }
 
 .wireframe-calendar-surface .ww-process-timeline {
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   touch-action: pan-y;
 }
 
@@ -599,9 +601,9 @@
 .wireframe-calendar-week {
   border-top: 1px solid var(--border);
   overflow-x: auto;
-  touch-action: none;
+  touch-action: pan-y;
   overscroll-behavior-x: none;
-  overscroll-behavior-y: none;
+  overscroll-behavior-y: auto;
 }
 
 .wireframe-calendar-week--dragging {
@@ -1150,8 +1152,10 @@
   border-radius: 0;
   background: #ffffff;
   box-shadow: none;
-  overflow: auto;
-  overscroll-behavior: contain;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
 }
@@ -1160,7 +1164,8 @@
   border: 0;
   background: #ffffff;
   font-family: inherit;
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   touch-action: pan-y;
 }
 
@@ -1303,6 +1308,7 @@
 .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item {
   min-width: 0;
   box-sizing: border-box;
+  container-type: inline-size;
   border: 1px solid #ddcea6 !important;
   border-left: 4px solid #a8863f !important;
   border-radius: 8px;
@@ -1385,8 +1391,14 @@
   min-width: 0;
   overflow: hidden;
   align-content: start;
-  gap: 8px;
-  padding: 14px 16px;
+  gap: 6px;
+  padding: 12px 14px;
+  transform: translateX(var(--ww-timeline-clipped-start, 0));
+  width: calc(100% - var(--ww-timeline-clipped-start, 0));
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content--marker {
+  display: none;
 }
 
 .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-title-row {
@@ -1404,8 +1416,9 @@
   font-size: 13px;
   font-weight: 700;
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-badge {
@@ -1428,12 +1441,19 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-description {
   white-space: normal;
+}
+
+@container (max-width: 132px) {
+  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content {
+    display: none;
+  }
 }
 
 .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-resize {
@@ -1458,7 +1478,7 @@
 .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe.calendar-inspector--active {
   position: static;
   display: grid;
-  grid-template-columns: minmax(180px, 1.15fr) repeat(3, minmax(128px, 1fr)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 12px;
   align-items: end;
   border: 0;
@@ -1466,6 +1486,18 @@
   border-radius: 0;
   background: #f7f7ee;
   padding: 16px 20px;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe .field,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe input,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe select,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe textarea {
+  min-width: 0;
+  width: 100%;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe .form-error {
+  grid-column: 1 / -1;
 }
 
 .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe .person-suggestions {
@@ -1500,9 +1532,6 @@
     flex-direction: column;
   }
 
-  .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe.calendar-inspector--active {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 767px) {
@@ -1588,14 +1617,14 @@
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item {
-    min-height: 58px;
+    min-height: 72px;
     border-left-width: 3px !important;
     border-radius: 7px;
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content {
-    gap: 3px;
-    padding: 8px 10px;
+    gap: 4px;
+    padding: 8px 9px;
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-title-row {

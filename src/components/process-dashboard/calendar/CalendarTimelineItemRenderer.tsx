@@ -1,4 +1,10 @@
-import { HTMLAttributes, RefObject, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  HTMLAttributes,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type Ref,
+  type RefObject
+} from "react";
 import type { ReactCalendarTimelineProps } from "react-calendar-timeline";
 import type {
   CalendarPresentationMode,
@@ -32,25 +38,28 @@ export function renderCalendarTimelineItem({
   stopItemDragSelectionBlock,
   rendererProps
 }: RenderCalendarTimelineItemInput) {
-  const { item, itemContext, getItemProps, getResizeProps } = rendererProps;
+  const { item, itemContext, timelineContext, getItemProps, getResizeProps } = rendererProps;
   const isItemSelected = item.isDraft ? Boolean(draft) : item.id === selectedEventId;
   const resizeProps = getResizeProps();
   const itemPropsAll = getItemProps({
     className: `ww-timeline-item ${item.toneClass} ${isItemSelected ? "ww-timeline-item--selected" : ""}`
   }) as HTMLAttributes<HTMLDivElement> & { key?: React.Key; ref?: unknown };
   const { key, onPointerDown, onPointerUp, onPointerCancel, ref: itemRef, ...itemProps } = itemPropsAll;
-
-  const handleItemRef = (el: HTMLDivElement | null) => {
-    if (typeof itemRef === "function") {
-      itemRef(el);
-    } else if (itemRef && typeof itemRef === "object") {
-      (itemRef as { current: HTMLDivElement | null }).current = el;
-    }
-    if (el && !el.dataset.prevented) {
-      el.dataset.prevented = "true";
-      el.addEventListener("touchstart", (e) => { e.preventDefault(); }, { passive: false });
-    }
-  };
+  const timelineState = timelineContext.getTimelineState();
+  const visibleDuration = Math.max(1, timelineState.visibleTimeEnd - timelineState.visibleTimeStart);
+  const visibleItemStart = Math.max(Number(item.start_time), timelineState.visibleTimeStart);
+  const visibleItemEnd = Math.min(Number(item.end_time), timelineState.visibleTimeEnd);
+  const clippedStartWidth = Math.max(
+    0,
+    ((visibleItemStart - Number(item.start_time)) / visibleDuration) * timelineState.timelineWidth
+  );
+  const visibleItemWidth = Math.max(
+    0,
+    ((visibleItemEnd - visibleItemStart) / visibleDuration) * timelineState.timelineWidth
+  );
+  const contentStyle = {
+    "--ww-timeline-clipped-start": `${clippedStartWidth}px`
+  } as CSSProperties;
 
   const handleItemPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     suppressedItemSelectionIdRef.current = null;
@@ -76,12 +85,15 @@ export function renderCalendarTimelineItem({
       onPointerDown={handleItemPointerDown}
       onPointerUp={handleItemPointerUp}
       onPointerCancel={handleItemPointerCancel}
-      ref={handleItemRef}
+      ref={itemRef as Ref<HTMLDivElement>}
     >
       {itemContext.useResizeHandle ? (
         <div {...resizeProps.left} className="ww-timeline-resize ww-timeline-resize--left" />
       ) : null}
-      <div className="ww-timeline-item-content">
+      <div
+        className={`ww-timeline-item-content ${visibleItemWidth <= 132 ? "ww-timeline-item-content--marker" : ""}`}
+        style={contentStyle}
+      >
         {presentationMode === "wireframe" ? (
           <>
             <div className="ww-timeline-item-title-row">

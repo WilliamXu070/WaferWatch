@@ -3004,3 +3004,26 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   caused by Vercel and the browser formatting timestamps in different default
   timezones. Timeline and revert timestamps now explicitly use
   `America/Toronto` on both server and client.
+
+## Recent development note (2026-07-10 calendar people and directional scrolling)
+
+- Synchronized active real profiles into `process_people` with a profile trigger
+  and backfill, then made the calendar People picker use the same filtered team
+  directory as the sidebar. The migration was applied to the linked database.
+- Reworked event/editor sizing so fields auto-fit without overflow, short events
+  render as clean markers, partially visible labels stay inside the viewport,
+  and wireframe weeks align to midnight so day headers are not clipped.
+- Removed the item-level touch blocker and added directional gesture locking:
+  horizontal drags pan the timeline while vertical wheel/touch movement remains
+  available to page scrolling.
+- Verified with:
+  - `npx --yes tsx --test src/components/process-dashboard/calendar/gesture.test.ts src/features/wireframe/teamDirectory.test.ts`
+  - `npm run lint`
+  - `npm run build`
+  - `npm run migration:list` with `202607100001` present locally and remotely.
+  - Authenticated browser at
+    `http://127.0.0.1:3015/wireframe/calendar?processId=11111111-1111-4111-8111-111111111103`
+    using `2048x1280` and `390x844`: all sidebar team profiles appeared in
+    People search, event/editor content had no measured overflow, vertical
+    scrolling moved the page from `0` to `300`, horizontal dragging changed the
+    visible week without moving the page, and the console error log was empty.

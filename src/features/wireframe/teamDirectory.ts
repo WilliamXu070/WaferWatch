@@ -39,7 +39,7 @@ function getProfileRoleLabel(role: string | null | undefined) {
   return "Viewer";
 }
 
-function isVisibleTeamProfile(profile: TeamDirectoryProfile) {
+export function isVisibleTeamProfile(profile: TeamDirectoryProfile) {
   const name = profile.display_name?.trim().toLowerCase() ?? "";
   const email = profile.email?.trim().toLowerCase() ?? "";
 

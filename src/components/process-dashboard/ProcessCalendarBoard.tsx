@@ -34,6 +34,7 @@ import type {
 import { CalendarEventEditor } from "./calendar/CalendarEventEditor";
 import { CalendarFilterPanel } from "./calendar/CalendarFilterPanel";
 import { renderCalendarTimelineItem } from "./calendar/CalendarTimelineItemRenderer";
+import { resolveGestureAxis } from "./calendar/gesture";
 import {
   DAY_MS,
   DEFAULT_EVENT_MS,
@@ -296,9 +297,10 @@ export function ProcessCalendarBoard({
 
   const initialVisibleWindow = useMemo(() => {
     const requestedDate = new Date(`${initialVisibleStartDate}T00:00:00`);
+    const requestedMinute = presentationMode === "wireframe" ? 0 : START_MINUTE;
     const requestedStart = Number.isNaN(requestedDate.getTime())
-      ? getCurrentWeekStart(new Date())
-      : buildDateAtMinute(requestedDate, START_MINUTE).getTime();
+      ? getCurrentWeekStart(new Date()) - (presentationMode === "wireframe" ? START_MINUTE * 60 * 1000 : 0)
+      : buildDateAtMinute(requestedDate, requestedMinute).getTime();
     const requestedSpanMs = DEFAULT_VISIBLE_RANGE_DAYS * DAY_MS;
 
     return clampVisibleWindow(
@@ -308,7 +310,7 @@ export function ProcessCalendarBoard({
       timelineEnd,
       maxZoomMs
     );
-  }, [initialVisibleStartDate, maxZoomMs, timelineEnd, timelineStart]);
+  }, [initialVisibleStartDate, maxZoomMs, presentationMode, timelineEnd, timelineStart]);
   const [visibleRange, setVisibleRange] = useState(() => ({
     boundsStart: timelineStart,
     boundsEnd: timelineEnd,
@@ -481,7 +483,7 @@ export function ProcessCalendarBoard({
           canMove: canEdit,
           canChangeGroup: canEdit,
           canResize: canEdit ? "both" : false,
-          height: presentationMode === "wireframe" ? (isCompactViewport ? 60 : 84) : 30
+          height: presentationMode === "wireframe" ? (isCompactViewport ? 72 : 100) : 30
         };
       });
 
@@ -507,7 +509,7 @@ export function ProcessCalendarBoard({
           canMove: !draftDragSelection,
           canChangeGroup: !draftDragSelection,
           canResize: draftDragSelection ? false : "both",
-          height: presentationMode === "wireframe" ? (isCompactViewport ? 60 : 84) : 30,
+          height: presentationMode === "wireframe" ? (isCompactViewport ? 72 : 100) : 30,
           isDraft: true
         });
       }
@@ -1180,7 +1182,9 @@ export function ProcessCalendarBoard({
     if (event.pointerType !== "touch") {
       event.preventDefault();
     }
-    timelinePanelRef.current?.setPointerCapture?.(event.pointerId);
+    if (event.pointerType !== "touch") {
+      timelinePanelRef.current?.setPointerCapture?.(event.pointerId);
+    }
     timelinePanRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -1188,6 +1192,7 @@ export function ProcessCalendarBoard({
       pointerType: event.pointerType,
       startStart: effectiveVisibleRange.start,
       startEnd: effectiveVisibleRange.end,
+      axis: "pending",
       moved: false
     };
     setTimelinePanPointerId(event.pointerId);
@@ -1677,16 +1682,20 @@ export function ProcessCalendarBoard({
 
       const dragDistance = event.clientX - pan.startX;
       const verticalDistance = event.clientY - pan.startY;
-      if (!pan.moved && Math.abs(dragDistance) < 4) {
-        return;
-      }
+      if (pan.axis === "pending") {
+        pan.axis = resolveGestureAxis(dragDistance, verticalDistance);
+        if (pan.axis === "pending") {
+          return;
+        }
 
-      if (
-        pan.pointerType === "touch" &&
-        !pan.moved &&
-        Math.abs(verticalDistance) > Math.abs(dragDistance)
-      ) {
-        return;
+        if (pan.axis === "vertical") {
+          timelinePanRef.current = null;
+          setTimelinePanPointerId(null);
+          setIsTimelinePanning(false);
+          return;
+        }
+
+        timelinePanelRef.current?.setPointerCapture?.(event.pointerId);
       }
 
       event.preventDefault();

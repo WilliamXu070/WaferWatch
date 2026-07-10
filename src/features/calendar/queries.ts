@@ -1,6 +1,8 @@
 import "server-only";
 
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { isVisibleTeamProfile, type TeamDirectoryProfile } from "@/features/wireframe/teamDirectory";
+import { requireAccount } from "@/lib/auth/session";
+import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 import type { ProcessCalendarEvent, ProcessPerson } from "@/types/database";
 
 export type ProcessCalendarLocation = "McMaster" | "Waterloo" | "Toronto";
@@ -39,12 +41,32 @@ function isMissingCalendarTableError(error: unknown) {
 }
 
 export async function listProcessPeople(): Promise<ProcessCalendarPersonOption[]> {
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
+  await requireAccount();
+
+  const admin = createSupabaseAdminClient();
+  const profilesResult = await admin
+    .from("profiles")
+    .select("id, display_name, email, role, is_active")
+    .eq("is_active", true)
+    .order("display_name", { ascending: true });
+
+  if (profilesResult.error) {
+    throw profilesResult.error;
+  }
+
+  const visibleProfileIds = (profilesResult.data as TeamDirectoryProfile[])
+    .filter(isVisibleTeamProfile)
+    .map((profile) => profile.id);
+
+  if (!visibleProfileIds.length) {
+    return [];
+  }
+
+  const { data, error } = await admin
     .from("process_people")
     .select("id, display_name")
     .eq("is_active", true)
-    .not("profile_id", "is", null)
+    .in("profile_id", visibleProfileIds)
     .order("display_name", { ascending: true });
 
   if (error) {

@@ -39,6 +39,7 @@ export type TimelinePanState = {
   pointerType: string;
   startStart: number;
   startEnd: number;
+  axis: "pending" | "horizontal" | "vertical";
   moved: boolean;
 };
 
