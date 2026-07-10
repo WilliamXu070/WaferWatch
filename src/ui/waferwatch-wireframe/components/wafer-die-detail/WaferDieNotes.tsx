@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import {
+  type ClipboardEvent as ReactClipboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from "react";
+import { Camera, ImagePlus, Paperclip } from "lucide-react";
+import Image from "next/image";
 import {
   getAttachmentDownloadUrl,
   registerAttachment
@@ -48,6 +56,10 @@ const NOTE_ATTACHMENT_ACCEPT = [
   ".png",
   ".jpg",
   ".jpeg",
+  ".gif",
+  ".webp",
+  ".heic",
+  ".heif",
   ".tif",
   ".tiff",
   ".pdf",
@@ -60,6 +72,7 @@ const NOTE_ATTACHMENT_ACCEPT = [
   ".csv",
   ".json"
 ].join(",");
+const NOTE_IMAGE_ACCEPT = "image/*,.heic,.heif";
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const EMPTY_NOTES: readonly WaferDieNote[] = [];
 
@@ -106,6 +119,17 @@ function formatFileSize(sizeBytes: number | null | undefined) {
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function isImageAttachment(attachment: WaferDieNoteAttachment) {
+  return attachment.mimeType?.startsWith("image/") ?? /\.(?:avif|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(attachment.fileName);
+}
+
+function getClipboardImageFiles(event: ReactClipboardEvent<HTMLTextAreaElement>) {
+  return Array.from(event.clipboardData.items)
+    .filter((item) => item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
+}
+
 function coerceAttachment(value: unknown): WaferDieNoteAttachment | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -141,19 +165,23 @@ function coerceNote(value: unknown): WaferDieNote | null {
   }
 
   const note = value as Partial<Record<keyof WaferDieNote, unknown>>;
-  if (typeof note.body !== "string" || !note.body.trim()) {
+  if (typeof note.body !== "string") {
     return null;
   }
 
+  const attachments = Array.isArray(note.attachments)
+    ? note.attachments.map(coerceAttachment).filter((attachment): attachment is WaferDieNoteAttachment => Boolean(attachment))
+    : [];
   const body = note.body.trim().slice(0, MAX_NOTE_LENGTH);
+  if (!body && attachments.length === 0) {
+    return null;
+  }
   const timestamp = typeof note.createdAt === "string" && note.createdAt ? note.createdAt : "unknown";
   return {
     id: typeof note.id === "string" && note.id ? note.id : getFallbackNoteId(body, timestamp),
     author: typeof note.author === "string" && note.author.trim() ? note.author.trim() : "WaferWatch",
     body,
-    attachments: Array.isArray(note.attachments)
-      ? note.attachments.map(coerceAttachment).filter((attachment): attachment is WaferDieNoteAttachment => Boolean(attachment))
-      : [],
+    attachments,
     processStepId: typeof note.processStepId === "string" && note.processStepId ? note.processStepId : null,
     processStepName: typeof note.processStepName === "string" && note.processStepName ? note.processStepName : null,
     createdAt: timestamp,
@@ -439,6 +467,7 @@ export function WaferDieNotesDashboard({
   const [editValue, setEditValue] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [openingAttachmentId, setOpeningAttachmentId] = useState<string | null>(null);
+  const [imageUrlByAttachmentId, setImageUrlByAttachmentId] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -568,17 +597,42 @@ export function WaferDieNotesDashboard({
     [onNotesChange, textSurfaceIdentityForStep]
   );
 
+  const appendDraftFiles = useCallback((stepId: string, files: readonly File[]) => {
+    const acceptedFiles = files.filter((file) => file.size <= NOTE_ATTACHMENT_MAX_BYTES);
+    if (acceptedFiles.length !== files.length) {
+      setError("Images and files must be 50 MB or smaller.");
+    }
+
+    setDraftFilesByStepId((current) => {
+      const existing = current[stepId] ?? [];
+      const knownFiles = new Set(existing.map((file) => `${file.name}:${file.size}:${file.lastModified}`));
+      const additions = acceptedFiles.filter((file) => {
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (knownFiles.has(key)) {
+          return false;
+        }
+        knownFiles.add(key);
+        return true;
+      });
+
+      return {
+        ...current,
+        [stepId]: [...existing, ...additions].slice(0, MAX_ATTACHMENTS_PER_NOTE)
+      };
+    });
+  }, []);
+
   const addNote = async (stepId: string, stepName: string, stepExecutionId: string | null | undefined) => {
     const draft = draftByStepId[stepId] ?? "";
     const body = draft.trim();
-    if (!canEdit || !body || isSaving) {
+    const files = draftFilesByStepId[stepId] ?? [];
+    if (!canEdit || (!body && files.length === 0) || isSaving) {
       return;
     }
 
     const notes = notesByStepId[stepId] ?? EMPTY_NOTES;
     const timestamp = nowIso();
     const noteId = crypto.randomUUID();
-    const files = draftFilesByStepId[stepId] ?? [];
     setIsSaving(true);
     setError(null);
 
@@ -666,6 +720,10 @@ export function WaferDieNotesDashboard({
   });
   const selectedDraft = selectedStep ? draftByStepId[selectedStep.id] ?? "" : "";
   const selectedDraftFiles = selectedStep ? draftFilesByStepId[selectedStep.id] ?? [] : [];
+  const selectedImageAttachments = useMemo(
+    () => selectedNotes.flatMap((note) => note.attachments?.filter(isImageAttachment) ?? []),
+    [selectedNotes]
+  );
   const selectedStepExecutionId =
     selectedStep &&
     "executionId" in selectedStep &&
@@ -684,6 +742,35 @@ export function WaferDieNotesDashboard({
   );
   const completedProgressHeight =
     activeTimelineIndex > 0 ? `${(activeTimelineIndex / Math.max(timelineItems.length - 1, 1)) * 100}%` : "0%";
+
+  useEffect(() => {
+    let cancelled = false;
+    const missingAttachments = selectedImageAttachments.filter((attachment) => !imageUrlByAttachmentId[attachment.id]);
+
+    if (missingAttachments.length === 0) {
+      return;
+    }
+
+    void Promise.all(
+      missingAttachments.map(async (attachment) => {
+        const result = await getAttachmentDownloadUrl({ attachmentId: attachment.id });
+        return result.ok ? [attachment.id, result.data.signedUrl] as const : null;
+      })
+    ).then((entries) => {
+      if (cancelled) {
+        return;
+      }
+
+      const nextUrls = entries.filter((entry): entry is readonly [string, string] => Boolean(entry));
+      if (nextUrls.length > 0) {
+        setImageUrlByAttachmentId((current) => ({ ...current, ...Object.fromEntries(nextUrls) }));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrlByAttachmentId, selectedImageAttachments]);
 
   return (
     <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -844,9 +931,42 @@ export function WaferDieNotesDashboard({
                   <p className="max-w-[75ch] whitespace-pre-wrap text-[14px] leading-6 text-[#44443f]">{note.body}</p>
                 )}
 
-                {note.attachments?.length ? (
+                {note.attachments?.some(isImageAttachment) ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {note.attachments.filter(isImageAttachment).map((attachment) => {
+                      const imageUrl = imageUrlByAttachmentId[attachment.id];
+                      return (
+                        <button
+                          key={attachment.id}
+                          type="button"
+                          onClick={() => void openAttachment(attachment)}
+                          disabled={openingAttachmentId === attachment.id}
+                          className="group relative aspect-[4/3] overflow-hidden rounded-md border border-[#e1e1dc] bg-[#f5f5f1] text-left disabled:opacity-60"
+                          title={`Open ${attachment.fileName}`}
+                        >
+                          {imageUrl ? (
+                            <Image
+                              src={imageUrl}
+                              alt={attachment.fileName}
+                              fill
+                              unoptimized
+                              sizes="(max-width: 640px) 50vw, 180px"
+                              className="object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                            />
+                          ) : (
+                            <span className="grid h-full place-items-center px-3 text-center text-[12px] font-semibold text-[#777770]">
+                              {openingAttachmentId === attachment.id ? "Opening image..." : "Image preview"}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                {note.attachments?.some((attachment) => !isImageAttachment(attachment)) ? (
                   <div className="mt-3 grid max-w-[560px] gap-2">
-                    {note.attachments.map((attachment) => (
+                    {note.attachments.filter((attachment) => !isImageAttachment(attachment)).map((attachment) => (
                       <button
                         key={attachment.id}
                         type="button"
@@ -879,6 +999,17 @@ export function WaferDieNotesDashboard({
             }))}
             placeholder={selectedStep ? `Write a note for ${selectedStep.name}...` : "Write a note..."}
             className="min-h-[88px] w-full resize-y rounded-lg border border-[#e6e6e0] bg-[#fbfbf8] px-3 py-3 text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94] focus:border-[#111111]"
+            onPaste={(event) => {
+              if (!selectedStep) {
+                return;
+              }
+
+              const pastedImages = getClipboardImageFiles(event);
+              if (pastedImages.length > 0) {
+                event.preventDefault();
+                appendDraftFiles(selectedStep.id, pastedImages);
+              }
+            }}
           />
           {selectedDraftFiles.length ? (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -908,8 +1039,8 @@ export function WaferDieNotesDashboard({
               <p className="mr-1 text-[12px] font-medium text-[#8a8a83]">
                 {selectedDraft.length}/{MAX_NOTE_LENGTH}
               </p>
-              <label className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[13px] font-semibold text-[#55554f] hover:bg-[#fafafa]" title="Attach files">
-                <StepFileIcon />
+              <label className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Attach files" aria-label="Attach files">
+                <Paperclip size={16} aria-hidden />
                 <input
                   type="file"
                   multiple
@@ -923,13 +1054,45 @@ export function WaferDieNotesDashboard({
 
                     const selectedFiles = Array.from(event.currentTarget.files ?? []);
                     event.currentTarget.value = "";
-                    setDraftFilesByStepId((current) => {
-                      const existing = current[selectedStep.id] ?? [];
-                      return {
-                        ...current,
-                        [selectedStep.id]: [...existing, ...selectedFiles].slice(0, MAX_ATTACHMENTS_PER_NOTE)
-                      };
-                    });
+                    appendDraftFiles(selectedStep.id, selectedFiles);
+                  }}
+                />
+              </label>
+              <label className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Choose photos" aria-label="Choose photos">
+                <ImagePlus size={16} aria-hidden />
+                <input
+                  type="file"
+                  multiple
+                  accept={NOTE_IMAGE_ACCEPT}
+                  className="sr-only"
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    if (!selectedStep) {
+                      return;
+                    }
+
+                    const selectedFiles = Array.from(event.currentTarget.files ?? []);
+                    event.currentTarget.value = "";
+                    appendDraftFiles(selectedStep.id, selectedFiles);
+                  }}
+                />
+              </label>
+              <label className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Take photo" aria-label="Take photo">
+                <Camera size={16} aria-hidden />
+                <input
+                  type="file"
+                  accept={NOTE_IMAGE_ACCEPT}
+                  capture="environment"
+                  className="sr-only"
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    if (!selectedStep) {
+                      return;
+                    }
+
+                    const selectedFiles = Array.from(event.currentTarget.files ?? []);
+                    event.currentTarget.value = "";
+                    appendDraftFiles(selectedStep.id, selectedFiles);
                   }}
                 />
               </label>
@@ -937,7 +1100,14 @@ export function WaferDieNotesDashboard({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => selectedStep && setDraftByStepId((current) => ({ ...current, [selectedStep.id]: "" }))}
+                onClick={() => {
+                  if (!selectedStep) {
+                    return;
+                  }
+
+                  setDraftByStepId((current) => ({ ...current, [selectedStep.id]: "" }));
+                  setDraftFilesByStepId((current) => ({ ...current, [selectedStep.id]: [] }));
+                }}
                 className="h-10 rounded-lg border border-transparent px-4 text-[14px] font-semibold text-[#55554f] hover:bg-[#fafafa]"
               >
                 Cancel
@@ -945,7 +1115,7 @@ export function WaferDieNotesDashboard({
               <button
                 type="button"
                 onClick={() => selectedStep ? void addNote(selectedStep.id, selectedStep.name, selectedStepExecutionId) : undefined}
-                disabled={!selectedDraft.trim() || isSaving || !selectedStep}
+                disabled={(!selectedDraft.trim() && selectedDraftFiles.length === 0) || isSaving || !selectedStep}
                 className="h-10 rounded-lg bg-[#2d74f0] px-5 text-[14px] font-semibold text-white hover:bg-[#1f60d1] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
               >
                 Add note

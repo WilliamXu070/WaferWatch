@@ -2684,3 +2684,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     the actionable expired-link notice and resend form rendered with no console
     errors. The resend submit was not exercised to avoid sending an unapproved
     transactional email or creating a Supabase auth user.
+
+## Recent development note (2026-07-09 note photo capture and embedding)
+
+- Extended the shared die/process-stage note composer with photo-library and
+  camera inputs, clipboard image paste, HEIC/HEIF support, attachment-only
+  notes, and signed image previews embedded in persisted note cards. Both stage
+  notes and `Die notes` use this same database-backed component and upload path.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://127.0.0.1:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`
+    using a `390x844` viewport: the protected route redirected to login as the
+    available browser had no authenticated session; no console errors occurred.
+  - Authenticated camera, paste, upload, and image-preview persistence require
+    a confirmed signed-in browser session and were not simulated against live
+    storage.
