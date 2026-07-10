@@ -20,6 +20,7 @@ import type { WaferStatusTileModel } from "../../types";
 import { StepFileIcon } from "../../icons";
 import { DetailCard } from "./DetailCard";
 import { ProcessTimelineTree } from "./ProcessTimelineTree";
+import { createTiffPngPreview, isTiffImage } from "./tiffPreview";
 import {
   getWaferDieNotesScopeKey,
   getWaferDieStepNotesScopeKey,
@@ -364,6 +365,59 @@ function EmptyNotesState() {
   );
 }
 
+function NoteImagePreview({ attachment }: { attachment: WaferDieNoteAttachment }) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let generatedUrl: string | null = null;
+
+    void getAttachmentDownloadUrl({ attachmentId: attachment.id }).then(async (result) => {
+      if (!result.ok || cancelled) {
+        if (!cancelled) setPreviewError(result.ok ? null : result.error);
+        return;
+      }
+
+      try {
+        const nextUrl = isTiffImage(attachment.fileName, attachment.mimeType)
+          ? await fetch(result.data.signedUrl)
+              .then((response) => {
+                if (!response.ok) throw new Error("Unable to load the TIFF attachment.");
+                return response.arrayBuffer();
+              })
+              .then(createTiffPngPreview)
+          : result.data.signedUrl;
+
+        if (isTiffImage(attachment.fileName, attachment.mimeType)) generatedUrl = nextUrl;
+        if (!cancelled) setImageUrl(nextUrl);
+      } catch (error) {
+        if (!cancelled) setPreviewError(error instanceof Error ? error.message : "Unable to render image preview.");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (generatedUrl) URL.revokeObjectURL(generatedUrl);
+    };
+  }, [attachment.fileName, attachment.id, attachment.mimeType]);
+
+  return imageUrl ? (
+    <Image
+      src={imageUrl}
+      alt={attachment.fileName}
+      fill
+      unoptimized
+      sizes="(max-width: 640px) 50vw, 180px"
+      className="object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+    />
+  ) : (
+    <span className="grid h-full place-items-center px-3 text-center text-[12px] font-semibold text-[#777770]">
+      {previewError ?? (isTiffImage(attachment.fileName, attachment.mimeType) ? "Rendering TIFF preview..." : "Image preview")}
+    </span>
+  );
+}
+
 export function NotesCard({
   notes,
   currentUser,
@@ -454,7 +508,6 @@ export function WaferDieNotesDashboard({
   const [editValue, setEditValue] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [openingAttachmentId, setOpeningAttachmentId] = useState<string | null>(null);
-  const [imageUrlByAttachmentId, setImageUrlByAttachmentId] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -707,45 +760,12 @@ export function WaferDieNotesDashboard({
   });
   const selectedDraft = selectedStep ? draftByStepId[selectedStep.id] ?? "" : "";
   const selectedDraftFiles = selectedStep ? draftFilesByStepId[selectedStep.id] ?? [] : [];
-  const selectedImageAttachments = useMemo(
-    () => selectedNotes.flatMap((note) => note.attachments?.filter(isImageAttachment) ?? []),
-    [selectedNotes]
-  );
   const selectedStepExecutionId =
     selectedStep &&
     "executionId" in selectedStep &&
     typeof selectedStep.executionId === "string"
       ? selectedStep.executionId
       : null;
-
-  useEffect(() => {
-    let cancelled = false;
-    const missingAttachments = selectedImageAttachments.filter((attachment) => !imageUrlByAttachmentId[attachment.id]);
-
-    if (missingAttachments.length === 0) {
-      return;
-    }
-
-    void Promise.all(
-      missingAttachments.map(async (attachment) => {
-        const result = await getAttachmentDownloadUrl({ attachmentId: attachment.id });
-        return result.ok ? [attachment.id, result.data.signedUrl] as const : null;
-      })
-    ).then((entries) => {
-      if (cancelled) {
-        return;
-      }
-
-      const nextUrls = entries.filter((entry): entry is readonly [string, string] => Boolean(entry));
-      if (nextUrls.length > 0) {
-        setImageUrlByAttachmentId((current) => ({ ...current, ...Object.fromEntries(nextUrls) }));
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [imageUrlByAttachmentId, selectedImageAttachments]);
 
   return (
     <div className="grid gap-4 xl:grid-cols-[440px_minmax(0,1fr)]">
@@ -866,7 +886,6 @@ export function WaferDieNotesDashboard({
                 {note.attachments?.some(isImageAttachment) ? (
                   <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {note.attachments.filter(isImageAttachment).map((attachment) => {
-                      const imageUrl = imageUrlByAttachmentId[attachment.id];
                       return (
                         <button
                           key={attachment.id}
@@ -876,20 +895,7 @@ export function WaferDieNotesDashboard({
                           className="group relative aspect-[4/3] overflow-hidden rounded-md border border-[#e1e1dc] bg-[#f5f5f1] text-left disabled:opacity-60"
                           title={`Open ${attachment.fileName}`}
                         >
-                          {imageUrl ? (
-                            <Image
-                              src={imageUrl}
-                              alt={attachment.fileName}
-                              fill
-                              unoptimized
-                              sizes="(max-width: 640px) 50vw, 180px"
-                              className="object-cover transition-transform duration-200 group-hover:scale-[1.02]"
-                            />
-                          ) : (
-                            <span className="grid h-full place-items-center px-3 text-center text-[12px] font-semibold text-[#777770]">
-                              {openingAttachmentId === attachment.id ? "Opening image..." : "Image preview"}
-                            </span>
-                          )}
+                          <NoteImagePreview attachment={attachment} />
                         </button>
                       );
                     })}

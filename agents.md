@@ -650,6 +650,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - `curl -s http://localhost:3012/api/health`
   - `npx playwright screenshot --full-page --device="Desktop Chrome" http://localhost:3012/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103 /tmp/waferwatch-results-five-gallery-auth-gated.png`
 
+## Recent development note (2026-07-10 TIFF note previews)
+
+- Fixed `.tif` and `.tiff` note attachments so their first page is decoded in
+  the browser and rendered as a PNG preview; opening still uses the original file.
+- Added regression coverage for TIFF detection, pixel decoding, and invalid data.
+- Verified with:
+  - `node --test src/ui/waferwatch-wireframe/components/wafer-die-detail/tiffPreview.test.ts`
+  - `npm run lint`
+  - `npm run build`
+  - In-app browser at
+    `http://localhost:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`:
+    the route rendered without console errors, but the session had no accessible
+    wafer data, so an existing stored TIFF could not be exercised in the notes UI.
+
 ## Recent development note (2026-07-09 auth redirect hardening)
 
 - Hardened `getAppUrl()` so production confirmation links will not prefer a
