@@ -9,10 +9,12 @@ import {
 } from "../../icons";
 import { dieDetailTabs, type DieDetailTab } from "./waferDieDetailData";
 import { WaferDieDetailTabs } from "./WaferDieDetailTabs";
+import type { WaferDieNoteViewer } from "./WaferDieNotes";
 
 export function DieDetailView({
   tile,
   canEdit,
+  currentUser,
   onBack,
   onNavigate,
   canNavigateBack,
@@ -20,6 +22,7 @@ export function DieDetailView({
 }: {
   tile: WaferStatusTileModel;
   canEdit: boolean;
+  currentUser?: WaferDieNoteViewer | null;
   onBack: () => void;
   onNavigate: (direction: -1 | 1) => void;
   canNavigateBack: boolean;
@@ -103,6 +106,7 @@ export function DieDetailView({
         activeTab={activeTab}
         tile={tile}
         canEdit={canEdit}
+        currentUser={currentUser}
         onOpenNotes={() => setActiveTab("notes")}
       />
     </section>

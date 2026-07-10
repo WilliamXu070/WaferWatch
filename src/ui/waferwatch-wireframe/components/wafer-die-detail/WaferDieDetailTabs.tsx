@@ -16,17 +16,20 @@ import {
   getInitialWaferDieNotesByStep,
   NotesCard,
   WaferDieNotesDashboard,
-  type WaferDieNote
+  type WaferDieNote,
+  type WaferDieNoteViewer
 } from "./WaferDieNotes";
 import { type DieDetailTab } from "./waferDieDetailData";
 
 function DieOverviewTab({
   tile,
   notes,
+  currentUser,
   onOpenNotes
 }: {
   tile: WaferStatusTileModel;
   notes: readonly WaferDieNote[];
+  currentUser?: WaferDieNoteViewer | null;
   onOpenNotes: () => void;
 }) {
   return (
@@ -38,7 +41,7 @@ function DieOverviewTab({
       </div>
       <aside className="grid content-start gap-4">
         <KeyResultsCard />
-        <NotesCard notes={notes} onOpenNotes={onOpenNotes} />
+        <NotesCard notes={notes} currentUser={currentUser} onOpenNotes={onOpenNotes} />
       </aside>
     </div>
   );
@@ -47,17 +50,19 @@ function DieOverviewTab({
 function DieHistoryTab({
   tile,
   notes,
+  currentUser,
   onOpenNotes
 }: {
   tile: WaferStatusTileModel;
   notes: readonly WaferDieNote[];
+  currentUser?: WaferDieNoteViewer | null;
   onOpenNotes: () => void;
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
       <ProcessTimelineCard tile={tile} />
       <aside className="grid content-start gap-4">
-        <NotesCard notes={notes} onOpenNotes={onOpenNotes} />
+        <NotesCard notes={notes} currentUser={currentUser} onOpenNotes={onOpenNotes} />
       </aside>
     </div>
   );
@@ -91,11 +96,13 @@ function DieResultsTab({ tile, canEdit }: { tile: WaferStatusTileModel; canEdit:
 function DieNotesTab({
   tile,
   canEdit,
+  currentUser,
   notesByStepId,
   onNotesChange
 }: {
   tile: WaferStatusTileModel;
   canEdit: boolean;
+  currentUser?: WaferDieNoteViewer | null;
   notesByStepId: Record<string, readonly WaferDieNote[]>;
   onNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
 }) {
@@ -105,6 +112,7 @@ function DieNotesTab({
         key={tile.id}
         tile={tile}
         canEdit={canEdit}
+        currentUser={currentUser}
         notesByStepId={notesByStepId}
         onNotesChange={onNotesChange}
       />
@@ -116,11 +124,13 @@ export function WaferDieDetailTabs({
   activeTab,
   tile,
   canEdit,
+  currentUser,
   onOpenNotes
 }: {
   activeTab: DieDetailTab;
   tile: WaferStatusTileModel;
   canEdit: boolean;
+  currentUser?: WaferDieNoteViewer | null;
   onOpenNotes: () => void;
 }) {
   const [notesByStepId, setNotesByStepId] = useState<Record<string, WaferDieNote[]>>(() =>
@@ -134,11 +144,11 @@ export function WaferDieDetailTabs({
     }));
   };
 
-  if (activeTab === "history") return <DieHistoryTab tile={tile} notes={notes} onOpenNotes={onOpenNotes} />;
+  if (activeTab === "history") return <DieHistoryTab tile={tile} notes={notes} currentUser={currentUser} onOpenNotes={onOpenNotes} />;
   if (activeTab === "parameters") return <DieParametersTab tile={tile} canEdit={canEdit} onPolingNotesChange={setStepNotes} />;
   if (activeTab === "results") return <DieResultsTab tile={tile} canEdit={canEdit} />;
   if (activeTab === "notes") {
-    return <DieNotesTab tile={tile} canEdit={canEdit} notesByStepId={notesByStepId} onNotesChange={setStepNotes} />;
+    return <DieNotesTab tile={tile} canEdit={canEdit} currentUser={currentUser} notesByStepId={notesByStepId} onNotesChange={setStepNotes} />;
   }
-  return <DieOverviewTab tile={tile} notes={notes} onOpenNotes={onOpenNotes} />;
+  return <DieOverviewTab tile={tile} notes={notes} currentUser={currentUser} onOpenNotes={onOpenNotes} />;
 }

@@ -23,6 +23,7 @@ import {
   getWaferDisplayLabel,
   isUndicedMode
 } from "./wafer-die-detail";
+import type { WaferDieNoteViewer } from "./wafer-die-detail/WaferDieNotes";
 
 const statusDotColor: Record<WaferTileStatus, string> = {
   litho: "bg-[#111111]",
@@ -234,6 +235,7 @@ function EmptyWaferStatusState({
 export function WaferStatusView({
   model,
   canEdit = true,
+  currentUser,
   initialWaferId,
   initialDieLabel,
   emptyTitle = "No wafers available",
@@ -241,6 +243,7 @@ export function WaferStatusView({
 }: {
   model: WaferStatusModel;
   canEdit?: boolean;
+  currentUser?: WaferDieNoteViewer | null;
   initialWaferId?: string;
   initialDieLabel?: string;
   emptyTitle?: string;
@@ -296,6 +299,7 @@ export function WaferStatusView({
         <DieDetailView
           tile={activeDetailTile}
           canEdit={canEdit}
+          currentUser={currentUser}
           onBack={() => setDetailTile(null)}
           onNavigate={handleNavigateDetail}
           canNavigateBack={activeDetailIndex > 0}

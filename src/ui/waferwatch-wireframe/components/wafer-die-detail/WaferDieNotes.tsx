@@ -37,6 +37,7 @@ export type WaferDieNoteAttachment = {
 
 export type WaferDieNote = {
   id: string;
+  authorId?: string | null;
   author: string;
   body: string;
   attachments?: WaferDieNoteAttachment[];
@@ -44,6 +45,11 @@ export type WaferDieNote = {
   processStepName?: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type WaferDieNoteViewer = {
+  id: string;
+  displayName: string;
 };
 
 const MAX_NOTE_LENGTH = 1600;
@@ -73,6 +79,15 @@ const NOTE_ATTACHMENT_ACCEPT = [
 const NOTE_IMAGE_ACCEPT = "image/*,.heic,.heif";
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const EMPTY_NOTES: readonly WaferDieNote[] = [];
+const NOTE_AUTHOR_THEMES = [
+  { background: "#e7f0fa", foreground: "#245b87" },
+  { background: "#e7f4ed", foreground: "#216a49" },
+  { background: "#fbf0dc", foreground: "#805817" },
+  { background: "#f0eafa", foreground: "#65438a" },
+  { background: "#f8e8ec", foreground: "#8a3c4b" },
+  { background: "#e4f3f2", foreground: "#1f6965" }
+] as const;
+const SYSTEM_NOTE_THEME = { background: "#efefec", foreground: "#62625c" } as const;
 
 function nowIso() {
   return new Date().toISOString();
@@ -99,6 +114,39 @@ function getNoteTimeValue(note: WaferDieNote) {
 
 function getFallbackNoteId(body: string, timestamp: string) {
   return `note-${timestamp}-${body.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 48)}`;
+}
+
+function getAuthorInitials(author: string) {
+  const initials = author
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+
+  return initials || "N";
+}
+
+function getAuthorTheme(note: WaferDieNote) {
+  if (!note.authorId) {
+    return SYSTEM_NOTE_THEME;
+  }
+
+  let hash = 0;
+  for (const character of note.authorId) {
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  }
+
+  return NOTE_AUTHOR_THEMES[hash % NOTE_AUTHOR_THEMES.length];
+}
+
+function isOwnNote(note: WaferDieNote, currentUser: WaferDieNoteViewer | null | undefined) {
+  return Boolean(note.authorId && currentUser?.id && note.authorId === currentUser.id);
+}
+
+function getNoteAuthorName(note: WaferDieNote, currentUser: WaferDieNoteViewer | null | undefined) {
+  return isOwnNote(note, currentUser) ? currentUser?.displayName ?? note.author : note.author;
 }
 
 function sanitizeFileName(fileName: string) {
@@ -175,9 +223,12 @@ function coerceNote(value: unknown): WaferDieNote | null {
     return null;
   }
   const timestamp = typeof note.createdAt === "string" && note.createdAt ? note.createdAt : "unknown";
+  const authorId = typeof note.authorId === "string" && note.authorId.trim() ? note.authorId.trim() : null;
+  const persistedAuthor = typeof note.author === "string" && note.author.trim() ? note.author.trim() : "WaferWatch";
   return {
     id: typeof note.id === "string" && note.id ? note.id : getFallbackNoteId(body, timestamp),
-    author: typeof note.author === "string" && note.author.trim() ? note.author.trim() : "WaferWatch",
+    authorId,
+    author: !authorId && persistedAuthor.toLowerCase() === "you" ? "Unknown user" : persistedAuthor,
     body,
     attachments,
     processStepId: typeof note.processStepId === "string" && note.processStepId ? note.processStepId : null,
@@ -286,10 +337,16 @@ export function flattenStepNotes(notesByStepId: Record<string, readonly WaferDie
   return Object.values(notesByStepId).flat();
 }
 
-function NoteAuthorMark({ author }: { author: string }) {
+function NoteAuthorMark({ note, authorName }: { note: WaferDieNote; authorName: string }) {
+  const theme = getAuthorTheme(note);
+
   return (
-    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#111111] text-[12px] font-semibold text-white">
-      {author.trim().charAt(0).toUpperCase() || "N"}
+    <span
+      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[11px] font-bold"
+      style={{ backgroundColor: theme.background, color: theme.foreground }}
+      aria-hidden
+    >
+      {getAuthorInitials(authorName)}
     </span>
   );
 }
@@ -309,9 +366,11 @@ function EmptyNotesState() {
 
 export function NotesCard({
   notes,
+  currentUser,
   onOpenNotes
 }: {
   notes: readonly WaferDieNote[];
+  currentUser?: WaferDieNoteViewer | null;
   onOpenNotes: () => void;
 }) {
   const latestNotes = useMemo(
@@ -323,18 +382,24 @@ export function NotesCard({
     <DetailCard title="Notes (latest)">
       <div className="grid gap-3">
         {latestNotes.length ? (
-          latestNotes.map((note) => (
-            <article key={note.id} className="border-b border-[#eeeeea] py-4">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="grid h-5 w-5 place-items-center rounded-md bg-[#111111] text-[11px] font-semibold text-white">
-                  {note.author.trim().charAt(0).toUpperCase() || "N"}
-                </span>
-                <strong className="text-[13px] text-[#111111]">{note.author}</strong>
-                <span className="text-[12px] font-medium text-[#8a8a83]">{formatNoteTime(note.updatedAt)}</span>
-              </div>
-              <p className="line-clamp-3 text-[13px] leading-5 text-[#44443f]">{note.body}</p>
-            </article>
-          ))
+          latestNotes.map((note) => {
+            const authorName = getNoteAuthorName(note, currentUser);
+            const ownNote = isOwnNote(note, currentUser);
+
+            return (
+              <article key={note.id} className="border-b border-[#eeeeea] py-4">
+                <div className="mb-2 flex items-center gap-2">
+                  <NoteAuthorMark note={note} authorName={authorName} />
+                  <strong className="text-[13px] text-[#111111]">{authorName}</strong>
+                  {ownNote ? (
+                    <span className="rounded-md bg-[#f0f0ed] px-1.5 py-0.5 text-[10px] font-bold text-[#5f5f59]">You</span>
+                  ) : null}
+                  <span className="text-[12px] font-medium text-[#8a8a83]">{formatNoteTime(note.updatedAt)}</span>
+                </div>
+                <p className="line-clamp-3 text-[13px] leading-5 text-[#44443f]">{note.body}</p>
+              </article>
+            );
+          })
         ) : (
           <p className="rounded-lg border border-dashed border-[#ddddda] bg-white px-4 py-5 text-[13px] font-medium text-[#777770]">
             No notes yet
@@ -364,11 +429,13 @@ function isPinnedNote(note: WaferDieNote) {
 export function WaferDieNotesDashboard({
   tile,
   canEdit = true,
+  currentUser,
   notesByStepId,
   onNotesChange
 }: {
   tile: WaferStatusTileModel;
   canEdit?: boolean;
+  currentUser?: WaferDieNoteViewer | null;
   notesByStepId: Record<string, readonly WaferDieNote[]>;
   onNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
 }) {
@@ -569,7 +636,8 @@ export function WaferDieNotesDashboard({
       ...notes,
       {
         id: noteId,
-        author: "You",
+        authorId: currentUser?.id ?? null,
+        author: currentUser?.displayName ?? "Unknown user",
         body: body.slice(0, MAX_NOTE_LENGTH),
         attachments,
         processStepId: stepId === "die" ? null : stepId,
@@ -605,7 +673,6 @@ export function WaferDieNotesDashboard({
       note.id === noteId
         ? {
             ...note,
-            author: note.author === "Wafer note" ? "You" : note.author,
             body: body.slice(0, MAX_NOTE_LENGTH),
             updatedAt: nowIso()
           }
@@ -706,11 +773,16 @@ export function WaferDieNotesDashboard({
 
         <div className="grid max-h-[540px] min-h-[300px] gap-3 overflow-y-auto bg-[#fbfbf8] p-3">
           {visibleNotes.length ? (
-            visibleNotes.map((note) => (
-              <article key={note.id} className="rounded-lg border border-[#e6e6e0] bg-white p-4">
+            visibleNotes.map((note) => {
+              const authorName = getNoteAuthorName(note, currentUser);
+              const ownNote = isOwnNote(note, currentUser);
+              const authorTheme = getAuthorTheme(note);
+
+              return (
+                <article key={note.id} className="rounded-lg border border-[#e6e6e0] bg-white p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
-                    <NoteAuthorMark author={note.author} />
+                    <NoteAuthorMark note={note} authorName={authorName} />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         {isPinnedNote(note) ? (
@@ -725,7 +797,12 @@ export function WaferDieNotesDashboard({
                         ) : null}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <strong className="text-[14px] text-[#111111]">{note.author}</strong>
+                        <strong className="text-[14px]" style={{ color: authorTheme.foreground }}>{authorName}</strong>
+                        {ownNote ? (
+                          <span className="rounded-md bg-[#f0f0ed] px-1.5 py-0.5 text-[10px] font-bold text-[#5f5f59]">
+                            You
+                          </span>
+                        ) : null}
                         <span className="text-[13px] font-medium text-[#8a8a83]">{formatNoteTime(note.updatedAt)}</span>
                       </div>
                     </div>
@@ -837,8 +914,9 @@ export function WaferDieNotesDashboard({
                     ))}
                   </div>
                 ) : null}
-              </article>
-            ))
+                </article>
+              );
+            })
           ) : (
             <EmptyNotesState />
           )}

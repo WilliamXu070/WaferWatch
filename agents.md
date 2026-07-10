@@ -2876,3 +2876,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     and a duplicate step 3 attempt rendered in the right branch lane.
   - The authenticated `/wafer-status` route remains unavailable in the current
     browser session; no auth bypass or live wafer mutation was used.
+
+## Recent development note (2026-07-09 note author identity)
+
+- Wafer/die notes now persist the authenticated profile ID and display name
+  instead of the shared `You` label. Notes use a stable per-user avatar color,
+  and notes owned by the signed-in profile show an explicit `You` badge in the
+  Notes tab, Overview, and Process history summaries.
+- Legacy notes saved only as `You` are shown as `Unknown user` because their
+  original author cannot be recovered safely. System and parameter notes keep
+  a neutral identity treatment.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Browser at
+    `http://127.0.0.1:3015/wireframe/wafer-status?processId=11111111-1111-4111-8111-111111111103`:
+    route loaded without console errors. The available browser session was
+    unauthenticated, so real-user note creation and color rendering could not
+    be exercised without bypassing auth.

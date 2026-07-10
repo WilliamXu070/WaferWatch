@@ -74,6 +74,10 @@ export default async function WireframeWaferStatusPage({
     <WaferStatusView
       model={model}
       canEdit={canEdit}
+      currentUser={account ? {
+        id: account.userId,
+        displayName: account.profile.display_name?.trim() || account.email?.trim() || "WaferWatch user"
+      } : null}
       initialWaferId={requestedWaferId}
       initialDieLabel={requestedDieLabel}
     />
