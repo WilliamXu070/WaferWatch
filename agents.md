@@ -2844,3 +2844,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     using `320x700`, `430x900`, and `1280x800`: no horizontal overflow or
     console errors. The available session redirected to Login, so the live
     selected-die panel itself remained unavailable.
+
+## Recent development note (2026-07-09 single-open process sidebar)
+
+- Changed the wireframe process list to a single-open accordion. Opening a
+  process now closes the previous drawer, clicking the open process collapses
+  it, and route, rename, and deletion state remain synchronized.
+- Added focused regression coverage for process switching and collapse.
+- Verified with:
+  - `npx --yes tsx --test src/ui/waferwatch-wireframe/components/processAccordion.test.ts`
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Browser at `http://127.0.0.1:3015/wireframe/dashboard`: the route loaded
+    without console errors, but this browser session had no process rows. The
+    protected `/dashboard` route redirected to Login, so the authenticated
+    two-process click sequence remains covered by the regression test only.

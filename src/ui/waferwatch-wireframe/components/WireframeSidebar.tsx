@@ -23,6 +23,7 @@ import {
   wireframeBrand,
   type SidebarNavItem
 } from "../nav";
+import { toggleExpandedProcessId } from "./processAccordion";
 
 const iconByKey = {
   grid: GridIcon,
@@ -97,9 +98,16 @@ export function WireframeSidebar({
   }));
   const processNav = getProcessNav(navBasePath);
 
-  const [expandedProcessIds, setExpandedProcessIds] = useState<string[]>(() =>
-    selectedProcessId ? [selectedProcessId] : currentProcess ? [currentProcess.id] : []
-  );
+  const [expandedProcessState, setExpandedProcessState] = useState<{
+    routeProcessId: string | null;
+    expandedProcessId: string | null;
+  }>(() => ({
+    routeProcessId: selectedProcessId,
+    expandedProcessId: selectedProcessId ?? currentProcess?.id ?? null
+  }));
+  const expandedProcessId = expandedProcessState.routeProcessId === selectedProcessId
+    ? expandedProcessState.expandedProcessId
+    : selectedProcessId;
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   // inline rename
@@ -147,16 +155,15 @@ export function WireframeSidebar({
 
   const handleProcessClick = (processId: string) => {
     if (editingProcessId) return;
-    setExpandedProcessIds((current) =>
-      current.includes(processId)
-        ? current.filter((id) => id !== processId)
-        : [...current, processId]
-    );
+    setExpandedProcessState({
+      routeProcessId: selectedProcessId,
+      expandedProcessId: toggleExpandedProcessId(expandedProcessId, processId)
+    });
   };
 
   const handleProcessDoubleClick = (process: NonNullable<WireframeShellDto["currentProcess"]>) => {
     if (!onUpdateProcessName) return;
-    setExpandedProcessIds((current) => current.includes(process.id) ? current : [...current, process.id]);
+    setExpandedProcessState({ routeProcessId: selectedProcessId, expandedProcessId: process.id });
     startEditing(process);
   };
 
@@ -210,7 +217,10 @@ export function WireframeSidebar({
       void onDeleteProcess({ templateId: process.id }).then((res) => {
         deletingProcessIdsRef.current.delete(process.id);
         if (!res.ok) return;
-        setExpandedProcessIds((current) => current.filter((id) => id !== process.id));
+        setExpandedProcessState({
+          routeProcessId: selectedProcessId,
+          expandedProcessId: expandedProcessId === process.id ? null : expandedProcessId
+        });
         if (editingProcessId === process.id) {
           setEditingProcessId(null);
         }
@@ -256,7 +266,7 @@ export function WireframeSidebar({
         <div className="flex flex-col gap-2">
           {processes.length ? (
             processes.map((process) => {
-              const processDrawerOpen = expandedProcessIds.includes(process.id);
+              const processDrawerOpen = expandedProcessId === process.id;
               const processIsSelected = process.id === selectedProcessId;
               const processActive = processDrawerOpen && processNav.some((item) => isActive(item.href));
 
