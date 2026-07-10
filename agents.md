@@ -2860,3 +2860,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     without console errors, but this browser session had no process rows. The
     protected `/dashboard` route redirected to Login, so the authenticated
     two-process click sequence remains covered by the regression test only.
+
+## Recent development note (2026-07-09 canonical revert branches)
+
+- Reworked the shared process timeline so the canonical process remains one
+  straight numbered trunk. A `3 -> 2` revert leaves step 2 active and step 3
+  pending, while the historical step 3 attempt appears as a duplicate numbered
+  node in a colored right-hand branch with its reason and timestamp.
+- The same renderer remains shared by Overview, Process History, and Notes.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Temporary component render at `390x844`: canonical steps 1-9 remained on
+    the main line, step 2 rendered active, canonical step 3 rendered pending,
+    and a duplicate step 3 attempt rendered in the right branch lane.
+  - The authenticated `/wafer-status` route remains unavailable in the current
+    browser session; no auth bypass or live wafer mutation was used.
