@@ -161,7 +161,7 @@ export function FlowNodeCard({
               onSelectWafer(node.id, wafer);
               onBeginWaferDrag(event, node, wafer);
             }}
-            onClick={() => onOpenWaferPreview(node, wafer)}
+            onPointerUp={() => onOpenWaferPreview(node, wafer)}
           />
         ))}
       </g>
@@ -190,7 +190,7 @@ function WaferChip({
   opacity,
   isSelected = false,
   onPointerDown,
-  onClick
+  onPointerUp
 }: {
   label: string;
   x: number;
@@ -200,7 +200,7 @@ function WaferChip({
   opacity?: string;
   isSelected?: boolean;
   onPointerDown?: (event: PointerEvent<SVGGElement>) => void;
-  onClick?: () => void;
+  onPointerUp?: (event: PointerEvent<SVGGElement>) => void;
 }) {
   const chipRef = useRef<SVGGElement>(null);
 
@@ -229,9 +229,9 @@ function WaferChip({
       opacity={opacity}
       style={{ touchAction: "none" }}
       onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
       onClick={(event) => {
         event.stopPropagation();
-        onClick?.();
       }}
       onDoubleClick={(event) => {
         event.preventDefault();

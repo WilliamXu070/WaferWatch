@@ -1167,6 +1167,10 @@ export function ProcessFlowDiagram({
     });
   }, [processTemplateId]);
 
+  const scheduleWaferPreview = useCallback((node: FlowNode, wafer: WaferPin) => {
+    window.setTimeout(() => openWaferPreview(node, wafer), 0);
+  }, [openWaferPreview]);
+
   const deleteSelectedWafer = useCallback(() => {
     if (!canEdit || !selectedWafer) {
       return;
@@ -2601,7 +2605,7 @@ export function ProcessFlowDiagram({
         onCancelLabelEdit={cancelNodeLabelEdit}
         onBeginWaferDrag={beginWaferDrag}
         onSelectWafer={selectWafer}
-        onOpenWaferPreview={openWaferPreview}
+        onOpenWaferPreview={scheduleWaferPreview}
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}
         onEdgeClick={(edgeId) => {
           setSelectedNodeIds(new Set());

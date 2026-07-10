@@ -2812,3 +2812,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     using `390x844`: no horizontal overflow or console errors. The available
     browser session redirected to Login, so authenticated panel dragging could
     not be exercised against a live selected die.
+
+## Recent development note (2026-07-09 iPhone die preview activation)
+
+- Fixed iPhone die preview activation by moving it from synthetic `click` to
+  the completed pointer gesture. This avoids Safari suppressing the preview
+  after the chip's scroll-protection `touchstart` is cancelled.
+- Preview opening is deferred until drag classification finishes, so stationary
+  taps open the info panel while intentional wafer drags remain suppressed.
+- Verified with:
+  - `npx --yes tsx --test src/components/process-flow/interactions.test.ts`
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Browser at `http://127.0.0.1:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    using `390x844`: no horizontal overflow or console errors. The available
+    browser redirected to Login, so a signed-in iPhone tap still needs live
+    verification.
