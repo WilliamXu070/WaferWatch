@@ -2779,3 +2779,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     using `390x844`: no horizontal overflow or console errors. The available
     browser session redirected to Login, so an authenticated selected-die
     visual check remains unavailable.
+
+## Recent development note (2026-07-09 movable wafer/die info panel)
+
+- Added a dedicated drag handle to the wafer/die info panel. The panel can be
+  moved with mouse, touch, or keyboard arrow keys and remains clamped inside
+  the current viewport after dragging or resizing.
+- Kept the information body as the status-dashboard link and reorganized the
+  handler into a labeled identity row with a stable person badge and aligned
+  name.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Browser at `http://127.0.0.1:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    using `390x844`: no horizontal overflow or console errors. The available
+    browser session redirected to Login, so authenticated panel dragging could
+    not be exercised against a live selected die.
