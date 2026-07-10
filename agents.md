@@ -2911,6 +2911,24 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     `/wafer-status` route redirected to Login, so authenticated visual
     acceptance remains unavailable in this browser session.
 
+## Recent development note (2026-07-10 configurable wafer creation)
+
+- Replaced immediate Process Flow wafer creation with a responsive dialog for
+  an editable wafer name and standard 50/75/100/150/200 mm diameter selection.
+- The default name now comes from all project wafer records and follows the
+  complete Greek sequence; the current project correctly suggests `SIGMA`.
+- Persisted the selected name to `wafers.wafer_code`, the selected size to
+  `wafers.diameter_mm`, and retained local-first background creation behavior.
+- Verified with:
+  - `npx --yes tsx --test src/features/process-flows/waferNaming.test.ts src/components/process-flow/WaferCreateDialog.test.tsx`
+  - `npm run lint`
+  - `npm run build`
+  - Signed-in browser at
+    `http://127.0.0.1:3015/wireframe/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    on desktop and `390x844`: `SIGMA` default, editable name, selectable size,
+    no horizontal overflow, Cancel closes without mutation, and no console
+    errors. Live creation was intentionally not submitted during verification.
+
 ## Recent development note (2026-07-09 note author identity)
 
 - Wafer/die notes now persist the authenticated profile ID and display name

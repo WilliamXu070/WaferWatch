@@ -4,9 +4,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import type { MouseEvent, PointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import { WaferDiePreview, type WaferDiePreviewModel } from "@/components/wafer-die-preview";
+import { getNextGreekWaferCode, normalizeWaferCode } from "@/features/process-flows/waferNaming";
 import type { ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
 import { ProcessFlowToolbar } from "./process-flow/ProcessFlowToolbar";
+import { WaferCreateDialog, type WaferCreateDraft } from "./process-flow/WaferCreateDialog";
 import {
   BUTTON_ZOOM_STEP,
   EDGE_ID_PREFIX,
@@ -181,6 +183,7 @@ export function ProcessFlowDiagram({
   steps,
   transitions = [],
   processTemplateId,
+  suggestedWaferCode,
   onCreateStep,
   onCreateWaferAtProcessStart,
   onUpdateStepPositions,
@@ -195,6 +198,7 @@ export function ProcessFlowDiagram({
   steps: DiagramStep[];
   transitions?: DiagramTransition[];
   processTemplateId?: string;
+  suggestedWaferCode?: string;
   canEdit?: boolean;
   onCreateStep?: CreateProcessFlowStepAction;
   onCreateWaferAtProcessStart?: CreateWaferAtProcessStartAction;
@@ -219,6 +223,7 @@ export function ProcessFlowDiagram({
   const [waferDrag, setWaferDrag] = useState<WaferDrag | null>(null);
   const [pendingWaferMove, setPendingWaferMove] = useState<PendingWaferMove | null>(null);
   const [pendingWaferMoveNote, setPendingWaferMoveNote] = useState("");
+  const [waferCreateDraft, setWaferCreateDraft] = useState<WaferCreateDraft | null>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
   const [isPanning, setIsPanning] = useState(false);
@@ -1048,7 +1053,7 @@ export function ProcessFlowDiagram({
     });
   };
 
-  const addWaferAtStart = useCallback(() => {
+  const openWaferCreateDialog = useCallback(() => {
     if (!canEdit || !processTemplateId || !onCreateWaferAtProcessStart || isWaferMutationPending) {
       return;
     }
@@ -1059,10 +1064,38 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    const existingWaferCodes = displayNodes.flatMap((node) => node.wafers.map((wafer) => wafer.waferCode));
+    setWaferCreateDraft({
+      waferCode: suggestedWaferCode ?? getNextGreekWaferCode(existingWaferCodes),
+      diameterMm: 100
+    });
+  }, [
+    canEdit,
+    displayNodes,
+    isWaferMutationPending,
+    onCreateWaferAtProcessStart,
+    processTemplateId,
+    suggestedWaferCode
+  ]);
+
+  const submitWaferCreate = useCallback(() => {
+    if (!waferCreateDraft || !canEdit || !processTemplateId || !onCreateWaferAtProcessStart || isWaferMutationPending) {
+      return;
+    }
+
+    const startNode = displayNodes.find((node) => node.role === "start") ?? displayNodes[0];
+    const waferCode = normalizeWaferCode(waferCreateDraft.waferCode);
+    if (!startNode || !waferCode) {
+      return;
+    }
+
+    const draft = { ...waferCreateDraft, waferCode };
+    setWaferCreateDraft(null);
+
     const temporaryAssignmentId = `local-wafer-${Math.random().toString(36).slice(2, 10)}`;
     const optimisticWafer: WaferPin = {
       assignmentId: temporaryAssignmentId,
-      waferCode: "Adding...",
+      waferCode,
       dieLabel: null,
       currentStepStatus: "queued"
     };
@@ -1082,7 +1115,9 @@ export function ProcessFlowDiagram({
     startWaferMutationTransition(() => {
       void (async () => {
         const result = await onCreateWaferAtProcessStart({
-          templateId: processTemplateId
+          templateId: processTemplateId,
+          waferCode,
+          diameterMm: draft.diameterMm
         });
 
         if (!result.ok) {
@@ -1099,15 +1134,16 @@ export function ProcessFlowDiagram({
                 : node
             )
           );
+          setWaferCreateDraft(draft);
           setMoveMessage(result.error);
           return;
         }
 
         const payload = result.data as CreatedWaferPayload;
         const assignmentId = payload.assignment?.id;
-        const waferCode = payload.wafer?.wafer_code;
+        const createdWaferCode = payload.wafer?.wafer_code;
 
-        if (assignmentId && waferCode) {
+        if (assignmentId && createdWaferCode) {
           setNodes((currentNodes) =>
             currentNodes.map((node) =>
               node.id === startNode.id
@@ -1118,7 +1154,7 @@ export function ProcessFlowDiagram({
                         ? {
                             ...wafer,
                             assignmentId,
-                            waferCode
+                            waferCode: createdWaferCode
                           }
                         : wafer
                     )
@@ -1128,17 +1164,18 @@ export function ProcessFlowDiagram({
           );
         }
 
-        setMoveMessage("Added wafer.");
+        setMoveMessage(`Added ${waferCode}.`);
         scheduleBackgroundRefresh();
       })();
     });
   }, [
-    displayNodes,
     canEdit,
+    displayNodes,
     isWaferMutationPending,
     onCreateWaferAtProcessStart,
     processTemplateId,
-    scheduleBackgroundRefresh
+    scheduleBackgroundRefresh,
+    waferCreateDraft
   ]);
 
   const selectWafer = useCallback((nodeId: string, wafer: WaferPin) => {
@@ -2462,6 +2499,15 @@ export function ProcessFlowDiagram({
 
   return (
     <section className="flow-map-shell">
+      {waferCreateDraft ? (
+        <WaferCreateDialog
+          draft={waferCreateDraft}
+          isPending={isWaferMutationPending}
+          onCancel={() => setWaferCreateDraft(null)}
+          onChange={setWaferCreateDraft}
+          onSubmit={submitWaferCreate}
+        />
+      ) : null}
       {pendingWaferMove ? (
         <div className="flow-wafer-move-dialog-backdrop">
           <section
@@ -2536,7 +2582,7 @@ export function ProcessFlowDiagram({
         onZoomIn={zoomIn}
         onCenterView={() => centerView()}
         onOrganize={organizeCanvas}
-        onAddWafer={addWaferAtStart}
+        onAddWafer={openWaferCreateDialog}
         onUndo={undoLastEdit}
         canUndo={undoStepsCount > 0}
         canAddWafer={Boolean(canEdit && processTemplateId && onCreateWaferAtProcessStart)}

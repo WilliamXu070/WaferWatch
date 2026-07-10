@@ -14,6 +14,7 @@ import {
   getProcessDashboardData,
   type ProcessDashboardData
 } from "@/features/process-flows/queries";
+import { getNextGreekWaferCode } from "@/features/process-flows/waferNaming";
 import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ProcessFlowView } from "@/ui/waferwatch-wireframe";
@@ -190,6 +191,28 @@ async function getCanEditProcessFlow(data: ProcessDashboardData | null) {
   return canManageProcessLibrary(account.profile.role);
 }
 
+async function getSuggestedWaferCode(data: ProcessDashboardData | null) {
+  if (!data) {
+    return undefined;
+  }
+
+  const fallbackCodes = data.workspaceWaferStates.map((wafer) => wafer.waferCode);
+  const projectId = data.process.owner_project_id ?? data.workspaceWaferStates[0]?.projectId;
+  if (!projectId) {
+    return getNextGreekWaferCode(fallbackCodes);
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { data: wafers, error } = await supabase
+    .from("wafers")
+    .select("wafer_code")
+    .eq("project_id", projectId);
+
+  return getNextGreekWaferCode(
+    error ? fallbackCodes : (wafers ?? []).map((wafer) => wafer.wafer_code)
+  );
+}
+
 export default async function ProcessFlowWireframePage({
   searchParams
 }: {
@@ -198,6 +221,7 @@ export default async function ProcessFlowWireframePage({
   const requestedProcessId = firstSearchValue((await searchParams).processId);
   const dashboardData = await loadProcessFlowData(requestedProcessId);
   const canEdit = await getCanEditProcessFlow(dashboardData);
+  const suggestedWaferCode = await getSuggestedWaferCode(dashboardData);
   const flowColumns = dashboardData ? toFlowColumns(dashboardData) : [];
   const flowTransitions = toFlowTransitions(dashboardData);
   const processLabel = dashboardData
@@ -225,6 +249,7 @@ export default async function ProcessFlowWireframePage({
       transitions={flowTransitions}
       stats={toFlowStats(dashboardData, flowColumns)}
       processTemplateId={dashboardData?.process.id}
+      suggestedWaferCode={suggestedWaferCode}
       canEdit={canEdit}
       onCreateStep={canEdit ? createProcessFlowStep : undefined}
       onCreateWaferAtProcessStart={canEdit ? createWaferAtProcessStart : undefined}

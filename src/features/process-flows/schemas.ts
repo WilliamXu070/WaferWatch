@@ -24,7 +24,12 @@ export const processTemplateDeleteSchema = z.object({
 });
 
 export const processFlowWaferCreateSchema = z.object({
-  templateId: uuidSchema
+  templateId: uuidSchema,
+  waferCode: z.string().trim().min(1).max(80).regex(
+    /^[A-Za-z0-9]+(?:[ A-Za-z0-9_.-]*[A-Za-z0-9])?$/,
+    "Use letters, numbers, spaces, periods, underscores, or hyphens."
+  ),
+  diameterMm: z.number().min(1).max(450)
 });
 
 export const processFlowWaferDeleteSchema = z.object({

@@ -22,39 +22,13 @@ import {
   processTemplateCreateSchema,
   processStepNameUpdateSchema
 } from "@/features/process-flows/schemas";
+import { normalizeWaferCode } from "@/features/process-flows/waferNaming";
 import type { Json, ProcessStep } from "@/types/database";
 
 type ProcessTemplateWriteContext = {
   id: string;
   owner_project_id: string | null;
 };
-
-const GREEK_WAFER_FAMILIES = [
-  "ALPHA",
-  "BETA",
-  "GAMMA",
-  "DELTA",
-  "EPSILON",
-  "ZETA",
-  "ETA",
-  "THETA",
-  "IOTA",
-  "KAPPA",
-  "LAMBDA",
-  "MU",
-  "NU",
-  "XI",
-  "OMICRON",
-  "PI",
-  "RHO",
-  "SIGMA",
-  "TAU",
-  "UPSILON",
-  "PHI",
-  "CHI",
-  "PSI",
-  "OMEGA"
-] as const;
 
 const DEFAULT_PROCESS_FLOW_STEPS = [
   {
@@ -251,32 +225,6 @@ function deriveWaferFamily(waferCode: string) {
   return leading || waferCode.trim().toUpperCase() || "WAFER";
 }
 
-function getWaferBaseCode(waferCode: string) {
-  return waferCode.trim().toUpperCase().split("-")[0];
-}
-
-function getNextGreekWaferCode(existingWaferCodes: string[]) {
-  const existingBaseCodes = new Set(existingWaferCodes.map(getWaferBaseCode));
-  const existingExactCodes = new Set(existingWaferCodes.map((code) => code.trim().toUpperCase()));
-
-  for (const family of GREEK_WAFER_FAMILIES) {
-    if (!existingBaseCodes.has(family)) {
-      return family;
-    }
-  }
-
-  for (let cycle = 2; cycle < 1000; cycle += 1) {
-    for (const family of GREEK_WAFER_FAMILIES) {
-      const candidate = `${family}-${cycle}`;
-      if (!existingExactCodes.has(candidate)) {
-        return candidate;
-      }
-    }
-  }
-
-  return `WAFER-${Date.now()}`;
-}
-
 async function getTemplateProjectForWaferCreate(templateId: string) {
   const account = await requireAccount();
   const supabase = await createServerSupabaseClient();
@@ -362,7 +310,11 @@ export async function createWaferAtProcessStart(input: unknown) {
       return fail(existingWafersError.message);
     }
 
-    const waferCode = getNextGreekWaferCode((existingWafers ?? []).map((wafer) => wafer.wafer_code));
+    const existingWaferCodes = (existingWafers ?? []).map((wafer) => wafer.wafer_code);
+    const waferCode = normalizeWaferCode(parsed.waferCode);
+    if (existingWaferCodes.some((code) => normalizeWaferCode(code) === waferCode)) {
+      return fail(`A wafer named ${waferCode} already exists.`);
+    }
     const now = new Date().toISOString();
     const { data: wafer, error: waferError } = await supabase
       .from("wafers")
@@ -371,7 +323,7 @@ export async function createWaferAtProcessStart(input: unknown) {
         wafer_code: waferCode,
         status: "queued",
         material_stack: null,
-        diameter_mm: 100,
+        diameter_mm: parsed.diameterMm,
         notes: null,
         metadata: {
           created_by: account.userId,
@@ -428,6 +380,7 @@ export async function createWaferAtProcessStart(input: unknown) {
       metadata: {
         assignment_id: assignment.id,
         start_step_id: startStep.id,
+        diameter_mm: parsed.diameterMm,
         wafer_metadata: getMetadataRecord(wafer.metadata as Json)
       }
     });
