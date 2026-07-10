@@ -2700,3 +2700,20 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
   - Authenticated camera, paste, upload, and image-preview persistence require
     a confirmed signed-in browser session and were not simulated against live
     storage.
+
+## Recent development note (2026-07-09 wafer/die status shortcut)
+
+- Added a shared wafer/die preview dialog to Process Flow and Calendar. It shows
+  the selected geometry, current process step, and current handler, then routes
+  to the matching `/wafer-status` detail through stable process, wafer, and die
+  query parameters.
+- Process Flow keeps click-to-preview separate from drag-to-move: previews open
+  only after a non-drag chip click, and all real drags suppress that click path.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Browser at `http://127.0.0.1:3015/wafer-status?processId=11111111-1111-4111-8111-111111111103`:
+    the available browser session redirected to Login with no console errors.
+    Authenticated Process Flow/Calendar click and mobile-sheet verification
+    require a confirmed signed-in browser session.

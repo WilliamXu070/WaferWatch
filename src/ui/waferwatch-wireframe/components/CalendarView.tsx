@@ -32,7 +32,13 @@ type CalendarViewProps = {
         data: {
           process: CalendarProcess;
           steps: readonly ProcessStepOption[];
-          wafers: readonly { id: string; wafer_code: string }[];
+          wafers: readonly {
+            id: string;
+            wafer_code: string;
+            die_label?: string | null;
+            current_step_name?: string | null;
+            current_handler_name?: string | null;
+          }[];
           people: readonly CalendarPersonModel[];
           initialEvents: readonly CalendarEventModel[];
           initialStartDate: string;

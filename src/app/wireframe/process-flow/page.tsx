@@ -40,9 +40,11 @@ type DiagramStep = {
   canvas_y: number | null;
   wafers: {
     assignmentId: string;
+    waferId: string;
     waferCode: string;
     dieLabel: string | null;
     currentStepStatus: StepStatus | null;
+    currentHandlerName: string | null;
   }[];
 };
 
@@ -74,9 +76,11 @@ function toFlowColumns(data: ProcessDashboardData): DiagramStep[] {
         .filter((state) => state.currentStepId === step.id)
         .map((state) => ({
           assignmentId: state.assignmentId,
+          waferId: state.waferId,
           waferCode: state.waferCode,
           dieLabel: state.dieLabel,
-          currentStepStatus: state.currentStepStatus
+          currentStepStatus: state.currentStepStatus,
+          currentHandlerName: state.currentHandlerName
         }))
     }));
 }

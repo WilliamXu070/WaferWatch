@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { MouseEvent, PointerEvent } from "react";
 import { useRouter } from "next/navigation";
+import { WaferDiePreview, type WaferDiePreviewModel } from "@/components/wafer-die-preview";
 import type { ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
 import { ProcessFlowToolbar } from "./process-flow/ProcessFlowToolbar";
@@ -227,6 +228,7 @@ export function ProcessFlowDiagram({
     nodeId: string;
     label: string;
   } | null>(null);
+  const [waferPreview, setWaferPreview] = useState<WaferDiePreviewModel | null>(null);
   const [undoStepsCount, setUndoStepsCount] = useState(0);
   const setMoveMessage = (msg: string | null) => { if (msg) console.warn("[ProcessFlow]", msg); };
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
@@ -245,6 +247,7 @@ export function ProcessFlowDiagram({
   const pendingNameUpdateRef = useRef<Map<string, string>>(new Map());
   const pendingWaferDeleteIdsRef = useRef<Set<string>>(new Set());
   const waferDragRef = useRef<WaferDrag | null>(null);
+  const ignoreWaferPreviewUntilRef = useRef(0);
   const undoRecoveredNodeIdsRef = useRef<Set<string>>(new Set());
   const undoRecoveredEdgeIdsRef = useRef<Set<string>>(new Set());
   const undoStackRef = useRef<GraphSnapshot[]>([]);
@@ -1122,6 +1125,21 @@ export function ProcessFlowDiagram({
     });
   }, []);
 
+  const openWaferPreview = useCallback((node: FlowNode, wafer: WaferPin) => {
+    if (!processTemplateId || !wafer.waferId || Date.now() < ignoreWaferPreviewUntilRef.current) {
+      return;
+    }
+
+    setWaferPreview({
+      processId: processTemplateId,
+      waferId: wafer.waferId,
+      waferCode: wafer.waferCode,
+      dieLabel: wafer.dieLabel,
+      stepLabel: node.label,
+      handlerName: wafer.currentHandlerName
+    });
+  }, [processTemplateId]);
+
   const deleteSelectedWafer = useCallback(() => {
     if (!canEdit || !selectedWafer) {
       return;
@@ -1907,6 +1925,10 @@ export function ProcessFlowDiagram({
     waferDragRef.current = null;
     setWaferDrag(null);
 
+    if (finishedDrag.hasMoved) {
+      ignoreWaferPreviewUntilRef.current = Date.now() + 250;
+    }
+
     const point = getScenePoint(event);
     const target = nodes.find((node) => (
       node.role === "normal" &&
@@ -2538,6 +2560,7 @@ export function ProcessFlowDiagram({
         onCancelLabelEdit={cancelNodeLabelEdit}
         onBeginWaferDrag={beginWaferDrag}
         onSelectWafer={selectWafer}
+        onOpenWaferPreview={openWaferPreview}
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}
         onEdgeClick={(edgeId) => {
           setSelectedNodeIds(new Set());
@@ -2545,6 +2568,7 @@ export function ProcessFlowDiagram({
           setSelectedEdgeId(canEdit ? edgeId : null);
         }}
       />
+      <WaferDiePreview preview={waferPreview} onClose={() => setWaferPreview(null)} />
     </section>
   );
 }

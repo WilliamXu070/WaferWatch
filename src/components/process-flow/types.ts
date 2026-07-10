@@ -3,9 +3,11 @@ import type { ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from 
 
 export type WaferPin = {
   assignmentId: string;
+  waferId?: string;
   waferCode: string;
   dieLabel: string | null;
   currentStepStatus: StepStatus | null;
+  currentHandlerName?: string | null;
 };
 
 export type DiagramStep = {

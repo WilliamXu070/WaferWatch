@@ -35,6 +35,7 @@ type FlowNodeCardProps = {
   onCancelLabelEdit: (nodeId: string) => void;
   onBeginWaferDrag: (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => void;
   onSelectWafer: (nodeId: string, wafer: WaferPin) => void;
+  onOpenWaferPreview: (node: FlowNode, wafer: WaferPin) => void;
 };
 
 export function FlowNodeCard({
@@ -56,7 +57,8 @@ export function FlowNodeCard({
   onCommitLabel,
   onCancelLabelEdit,
   onBeginWaferDrag,
-  onSelectWafer
+  onSelectWafer,
+  onOpenWaferPreview
 }: FlowNodeCardProps) {
   const active = hasActiveWafer(node);
   const nodeCardRef = useRef<SVGGElement>(null);
@@ -155,6 +157,7 @@ export function FlowNodeCard({
               onSelectWafer(node.id, wafer);
               onBeginWaferDrag(event, node, wafer);
             }}
+            onClick={() => onOpenWaferPreview(node, wafer)}
           />
         ))}
       </g>
@@ -182,7 +185,8 @@ function WaferChip({
   pointerEvents,
   opacity,
   isSelected = false,
-  onPointerDown
+  onPointerDown,
+  onClick
 }: {
   label: string;
   x: number;
@@ -192,6 +196,7 @@ function WaferChip({
   opacity?: string;
   isSelected?: boolean;
   onPointerDown?: (event: PointerEvent<SVGGElement>) => void;
+  onClick?: () => void;
 }) {
   const chipRef = useRef<SVGGElement>(null);
 
@@ -222,6 +227,7 @@ function WaferChip({
       onPointerDown={onPointerDown}
       onClick={(event) => {
         event.stopPropagation();
+        onClick?.();
       }}
       onDoubleClick={(event) => {
         event.preventDefault();

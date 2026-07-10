@@ -20,6 +20,7 @@ import Timeline, {
   type ReactCalendarTimelineProps
 } from "react-calendar-timeline";
 import { flushSync } from "react-dom";
+import { WaferDiePreview, type WaferDiePreviewModel } from "@/components/wafer-die-preview";
 import {
   createProcessCalendarEvent,
   moveProcessCalendarEvent,
@@ -146,6 +147,7 @@ export function ProcessCalendarBoard({
   const initialSelection = presentationMode === "wireframe" ? null : initialEvents[0] ?? null;
   const [draft, setDraft] = useState<DraftEvent | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(initialSelection?.id ?? null);
+  const [previewEventId, setPreviewEventId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<ActionMode>(
     initialSelection ? getActionModeForEvent(initialSelection, initialSteps) : initialSteps.length ? "step" : "manual"
   );
@@ -411,6 +413,21 @@ export function ProcessCalendarBoard({
     [visibleEvents]
   );
   const selectedEvent = selectedEventId ? visibleEventById.get(selectedEventId) ?? null : null;
+  const previewEvent = previewEventId ? events.find((event) => event.id === previewEventId) ?? null : null;
+  const previewWafer = previewEvent?.wafer_id
+    ? liveWafers.find((wafer) => wafer.id === previewEvent.wafer_id) ?? null
+    : null;
+  const eventHandlerNames = previewEvent?.people.map((person) => person.display_name).join(", ") || null;
+  const waferPreview: WaferDiePreviewModel | null = previewEvent?.wafer_id
+    ? {
+        processId: processTemplateId,
+        waferId: previewEvent.wafer_id,
+        waferCode: previewWafer?.wafer_code ?? previewEvent.wafer?.wafer_code ?? "Wafer",
+        dieLabel: previewWafer?.die_label ?? null,
+        stepLabel: previewWafer?.current_step_name ?? previewEvent.process_step_name_snapshot ?? previewEvent.manual_action,
+        handlerName: previewWafer?.current_handler_name ?? eventHandlerNames
+      }
+    : null;
   const selectedPeople = selectedPersonIds
     .map((personId) => peopleById.get(personId))
     .filter((person): person is ProcessCalendarPersonOption => Boolean(person));
@@ -998,6 +1015,7 @@ export function ProcessCalendarBoard({
       setSelectedPersonIds([]);
       setError(null);
       setDraft(null);
+      setPreviewEventId(null);
       return;
     }
 
@@ -1071,6 +1089,7 @@ export function ProcessCalendarBoard({
     }
 
     syncSelectionForm(event);
+    setPreviewEventId(event.wafer_id ? event.id : null);
   }, [clearSelectedEvent, events, syncSelectionForm]);
 
   const handleItemDeselect = useCallback(() => {
@@ -1888,6 +1907,7 @@ export function ProcessCalendarBoard({
           onSelectedWaferIdChange={setSelectedWaferId}
         />
       </aside>
+      <WaferDiePreview preview={waferPreview} onClose={() => setPreviewEventId(null)} />
     </div>
   );
 }

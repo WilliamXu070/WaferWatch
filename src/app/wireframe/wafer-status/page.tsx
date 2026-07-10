@@ -14,6 +14,8 @@ export const metadata = {
 
 type WaferStatusSearchParams = {
   processId?: string | string[];
+  waferId?: string | string[];
+  dieLabel?: string | string[];
 };
 
 function firstSearchValue(value: string | string[] | undefined) {
@@ -25,7 +27,10 @@ export default async function WireframeWaferStatusPage({
 }: {
   searchParams: Promise<WaferStatusSearchParams>;
 }) {
-  const requestedProcessId = firstSearchValue((await searchParams).processId);
+  const resolvedSearchParams = await searchParams;
+  const requestedProcessId = firstSearchValue(resolvedSearchParams.processId);
+  const requestedWaferId = firstSearchValue(resolvedSearchParams.waferId);
+  const requestedDieLabel = firstSearchValue(resolvedSearchParams.dieLabel);
   if (!requestedProcessId) {
     return (
       <WaferStatusView
@@ -65,5 +70,12 @@ export default async function WireframeWaferStatusPage({
       (projectIds.length > 0 && (await Promise.all(projectIds.map((projectId) => canEditProject(projectId)))).every(Boolean))
     : false;
 
-  return <WaferStatusView model={model} canEdit={canEdit} />;
+  return (
+    <WaferStatusView
+      model={model}
+      canEdit={canEdit}
+      initialWaferId={requestedWaferId}
+      initialDieLabel={requestedDieLabel}
+    />
+  );
 }

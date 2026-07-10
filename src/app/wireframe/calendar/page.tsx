@@ -1,6 +1,6 @@
 import { CalendarView } from "@/ui/waferwatch-wireframe";
 import { getProcessCalendarSchedule, type ProcessCalendarLocation } from "@/features/calendar/queries";
-import { getProcessTemplate, listProcessTemplates } from "@/features/process-flows/queries";
+import { getProcessDashboardData, getProcessTemplate, listProcessTemplates } from "@/features/process-flows/queries";
 import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -27,7 +27,13 @@ type CalendarLoadResult =
           version: string;
         };
         steps: { id: string; name: string }[];
-        wafers: { id: string; wafer_code: string }[];
+        wafers: {
+          id: string;
+          wafer_code: string;
+          die_label?: string | null;
+          current_step_name?: string | null;
+          current_handler_name?: string | null;
+        }[];
         people: { id: string; display_name: string }[];
         initialEvents: Array<{
           id: string;
@@ -101,12 +107,15 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
     queryStart.toISOString(),
     queryEnd.toISOString()
   );
-  const wafersResult = await supabase
-    .from("wafer_process_assignments")
-    .select("wafers(id, wafer_code)")
-    .eq("template_id", process.id)
-    .in("status", ["planned", "queued", "in_progress", "on_hold"])
-    .order("assigned_at", { ascending: false });
+  const [wafersResult, dashboardData] = await Promise.all([
+    supabase
+      .from("wafer_process_assignments")
+      .select("wafers(id, wafer_code)")
+      .eq("template_id", process.id)
+      .in("status", ["planned", "queued", "in_progress", "on_hold"])
+      .order("assigned_at", { ascending: false }),
+    getProcessDashboardData(process.id, 0, false)
+  ]);
 
   if (wafersResult.error) {
     throw wafersResult.error;
@@ -115,6 +124,18 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
   const wafers = (wafersResult.data ?? [])
     .map((row) => Array.isArray(row.wafers) ? row.wafers[0] : row.wafers)
     .filter((wafer): wafer is { id: string; wafer_code: string } => Boolean(wafer?.id));
+  const activeStateByWaferId = new Map(
+    dashboardData.activeWaferStates.map((state) => [state.waferId, state])
+  );
+  const previewWafers = wafers.map((wafer) => {
+    const state = activeStateByWaferId.get(wafer.id);
+    return {
+      ...wafer,
+      die_label: state?.dieLabel ?? null,
+      current_step_name: state?.currentStepName ?? null,
+      current_handler_name: state?.currentHandlerName ?? null
+    };
+  });
 
   return {
     status: "ready",
@@ -126,7 +147,7 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
       },
       steps: orderProcessStepsByOccurrence(process.process_steps, process.process_step_transitions)
         .map((step) => ({ id: step.id, name: step.name })),
-      wafers,
+      wafers: previewWafers,
       people: schedule.people,
       initialEvents: schedule.events.map((event) => ({
         ...event,

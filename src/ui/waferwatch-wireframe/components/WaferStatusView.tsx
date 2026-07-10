@@ -234,23 +234,36 @@ function EmptyWaferStatusState({
 export function WaferStatusView({
   model,
   canEdit = true,
+  initialWaferId,
+  initialDieLabel,
   emptyTitle = "No wafers available",
   emptyDescription = "Authenticated Supabase data loaded, but this project state has no wafers visible to the current session."
 }: {
   model: WaferStatusModel;
   canEdit?: boolean;
+  initialWaferId?: string;
+  initialDieLabel?: string;
   emptyTitle?: string;
   emptyDescription?: string;
 }) {
-  const initialSelected = useMemo(
-    () =>
-      model.families
-        .flatMap((family) => family.tiles)
-        .find((tile) => tile.isSelected) ?? model.families[0]?.tiles[0] ?? null,
-    [model]
+  const initialSelected = useMemo(() => {
+    const tiles = model.families.flatMap((family) => family.tiles);
+    return (
+      tiles.find((tile) =>
+        tile.waferId === initialWaferId &&
+        (!initialDieLabel || tile.dieLabel === initialDieLabel)
+      ) ??
+      tiles.find((tile) => tile.isSelected) ??
+      model.families[0]?.tiles[0] ??
+      null
+    );
+  },
+    [initialDieLabel, initialWaferId, model]
   );
   const [selectedTile, setSelectedTile] = useState<WaferStatusTileModel | null>(initialSelected);
-  const [detailTile, setDetailTile] = useState<WaferStatusTileModel | null>(null);
+  const [detailTile, setDetailTile] = useState<WaferStatusTileModel | null>(() =>
+    initialSelected && canOpenDieDetail(initialSelected) ? initialSelected : null
+  );
   const selectedUndiced = selectedTile ? isUndicedMode(selectedTile) : false;
   const hasWafers = model.families.some((family) => family.tiles.length > 0);
   const detailTiles = model.families
