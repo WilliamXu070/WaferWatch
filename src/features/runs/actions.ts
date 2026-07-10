@@ -20,6 +20,7 @@ import {
   WAFER_DIE_NOTES_SCOPE_TYPE
 } from "@/features/runs/dicingNoteTransfer";
 import { CURRENT_STEP_STATUSES, getSourceStepExecution } from "@/features/runs/stepExecutionSelection";
+import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import type { Json, ProcessStep, ProcessStepTransition, StepExecution } from "@/types/database";
 
 const DIE_COUNT = 8;
@@ -766,8 +767,34 @@ export async function moveWaferToProcessStep(input: unknown) {
       return fail("The source step no longer exists.");
     }
 
+    const [processStepsResult, transitionsResult] = await Promise.all([
+      supabase
+        .from("process_steps")
+        .select("id, step_order, name, node_type")
+        .eq("template_id", assignment.template_id),
+      supabase
+        .from("process_step_transitions")
+        .select("from_step_id, to_step_id, edge_type, priority, created_at")
+        .eq("template_id", assignment.template_id)
+    ]);
+
+    if (processStepsResult.error) {
+      return fail(processStepsResult.error.message);
+    }
+
+    if (transitionsResult.error) {
+      return fail(transitionsResult.error.message);
+    }
+
+    const orderedSteps = orderProcessStepsByOccurrence(
+      processStepsResult.data ?? [],
+      transitionsResult.data ?? []
+    );
+    const stepOccurrenceById = new Map(orderedSteps.map((step, index) => [step.id, index]));
+    const sourceOccurrence = stepOccurrenceById.get(currentStep.id) ?? currentStep.step_order;
+    const targetOccurrence = stepOccurrenceById.get(targetStep.id) ?? targetStep.step_order;
     const isRevertMove = Boolean(parsed.revertToPriorStep);
-    if (isRevertMove && targetStep.step_order >= currentStep.step_order) {
+    if (isRevertMove && targetOccurrence >= sourceOccurrence) {
       return fail("Revert target must be an earlier process step.");
     }
 
@@ -777,17 +804,8 @@ export async function moveWaferToProcessStep(input: unknown) {
         ? waferMetadata.dicing_source_step_id
         : null;
       if (dicingSourceStepId) {
-        const { data: dicingSourceStep, error: dicingSourceStepError } = await supabase
-          .from("process_steps")
-          .select("id, step_order")
-          .eq("id", dicingSourceStepId)
-          .maybeSingle();
-
-        if (dicingSourceStepError) {
-          return fail(dicingSourceStepError.message);
-        }
-
-        if (dicingSourceStep && targetStep.step_order <= dicingSourceStep.step_order) {
+        const dicingSourceOccurrence = stepOccurrenceById.get(dicingSourceStepId);
+        if (dicingSourceOccurrence !== undefined && targetOccurrence <= dicingSourceOccurrence) {
           return fail("Cannot revert a diced child back through the dicing step.");
         }
       }
@@ -830,24 +848,14 @@ export async function moveWaferToProcessStep(input: unknown) {
       )
       .map((execution) => execution.id);
 
-    const { data: stepOrderRows, error: stepOrderError } = await supabase
-      .from("process_steps")
-      .select("id, step_order")
-      .eq("template_id", assignment.template_id);
-
-    if (stepOrderError) {
-      return fail(stepOrderError.message);
-    }
-
-    const stepOrderById = new Map(stepOrderRows?.map((step) => [step.id, step.step_order] as const) ?? []);
     const revertedExecutionIds = isRevertMove
       ? existingExecutions
           .filter((execution) => {
-            const order = stepOrderById.get(execution.process_step_id);
+            const occurrence = stepOccurrenceById.get(execution.process_step_id);
             return (
               execution.process_step_id !== parsed.targetStepId &&
-              order !== undefined &&
-              order > targetStep.step_order &&
+              occurrence !== undefined &&
+              occurrence > targetOccurrence &&
               execution.status !== "pending"
             );
           })

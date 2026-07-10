@@ -704,6 +704,16 @@ textarea {
   stroke-width: 2.5;
 }
 
+.flow-node--drop-target .flow-node-card {
+  stroke: #16a34a;
+  stroke-width: 3;
+}
+
+.flow-node--drop-target-revert .flow-node-card {
+  fill: #eff6ff;
+  stroke: #2563eb;
+}
+
 .flow-node-port {
   fill: var(--accent);
   stroke: var(--panel);
@@ -3028,6 +3038,16 @@ textarea {
 .wireframe-flow-surface .flow-node--selected .flow-node-card {
   stroke: #2563eb;
   stroke-width: 2.5;
+}
+
+.wireframe-flow-surface .flow-node--drop-target .flow-node-card {
+  stroke: #16a34a;
+  stroke-width: 3;
+}
+
+.wireframe-flow-surface .flow-node--drop-target-revert .flow-node-card {
+  fill: #eff6ff;
+  stroke: #2563eb;
 }
 
 .wireframe-flow-surface .flow-node--start .flow-node-card {

@@ -1,10 +1,11 @@
 import { NODE_WIDTH, SCENE_HEIGHT, SCENE_WIDTH, getNodeHeightForWaferCount } from "./constants";
+import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import { applyGraphDisplayOrder, autoLayoutNodes } from "./layout";
 import { toFlowNodeRole } from "./labels";
 import type { DiagramStep, DiagramTransition, FlowEdge, FlowNode } from "./types";
 
 export function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransition[]) {
-  const sortedSteps = [...steps].sort((a, b) => a.step_order - b.step_order);
+  const sortedSteps = orderProcessStepsByOccurrence(steps, transitions);
   const nodes: FlowNode[] = sortedSteps.map((step, index): FlowNode => ({
       id: step.id,
       label: step.name,

@@ -303,6 +303,33 @@ export function ProcessFlowDiagram({
     }
     return map;
   }, [edges]);
+  const waferDropTarget = useMemo(() => {
+    if (!waferDrag?.hasMoved || !onMoveWafer) {
+      return null;
+    }
+
+    const source = nodeById.get(waferDrag.sourceStepId);
+    const target = displayNodes.find((node) =>
+      node.role === "normal" &&
+      node.id !== waferDrag.sourceStepId &&
+      nodeContainsPoint(node, { x: waferDrag.x, y: waferDrag.y })
+    );
+
+    if (!source || !target) {
+      return null;
+    }
+
+    const isRevert = target.order < source.order;
+    const hasForwardPath = directedEdgeByNodePair.has(`${source.id}:${target.id}`);
+    if (!isRevert && !hasForwardPath) {
+      return null;
+    }
+
+    return {
+      nodeId: target.id,
+      kind: isRevert ? "revert" as const : "advance" as const
+    };
+  }, [directedEdgeByNodePair, displayNodes, nodeById, onMoveWafer, waferDrag]);
   const nodesRef = useRef<FlowNode[]>([]);
   const edgesRef = useRef<FlowEdge[]>([]);
 
@@ -2512,6 +2539,7 @@ export function ProcessFlowDiagram({
         connectionDraft={connectionDraft}
         connectionNodeId={connectionDraft?.from ?? null}
         waferDrag={waferDrag}
+        waferDropTarget={waferDropTarget}
         edges={edges}
         selectedNodeIds={selectedNodeIds}
         selectedEdgeId={selectedEdgeId}

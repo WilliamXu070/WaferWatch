@@ -2717,3 +2717,19 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     the available browser session redirected to Login with no console errors.
     Authenticated Process Flow/Calendar click and mobile-sheet verification
     require a confirmed signed-in browser session.
+
+## Recent development note (2026-07-09 reverse wafer movement)
+
+- Fixed reverse wafer movement so the client and server now use process graph
+  occurrence order, excluding return edges, instead of stale raw `step_order`
+  values. Branches can therefore send a wafer back to an earlier visible stage.
+- Added drag-over feedback: valid advance targets use green, and valid reverse
+  targets use blue before the required revert-note dialog opens.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - `curl -s http://127.0.0.1:3015/api/health`
+  - Browser at `http://127.0.0.1:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`:
+    the available browser session redirected to Login with no console errors.
+    Authenticated drag/drop and revert persistence require a confirmed signed-in
+    browser session.

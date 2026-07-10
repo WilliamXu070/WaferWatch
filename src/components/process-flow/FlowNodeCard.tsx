@@ -19,6 +19,7 @@ type FlowNodeCardProps = {
   node: FlowNode;
   isConnecting: boolean;
   isDragging: boolean;
+  dropTargetKind: "advance" | "revert" | null;
   isSelected: boolean;
   selectedWaferAssignmentId: string | null;
   isEditing: boolean;
@@ -42,6 +43,7 @@ export function FlowNodeCard({
   node,
   isConnecting,
   isDragging,
+  dropTargetKind,
   isSelected,
   selectedWaferAssignmentId,
   isEditing,
@@ -80,6 +82,8 @@ export function FlowNodeCard({
       ref={nodeCardRef}
       className={`flow-node flow-node--${node.role} ${active ? "flow-node--active" : ""} ${isConnecting ? "flow-node--connecting" : ""} ${
         isDragging ? "flow-node--dragging" : ""
+      } ${dropTargetKind ? "flow-node--drop-target" : ""} ${
+        dropTargetKind === "revert" ? "flow-node--drop-target-revert" : ""
       } ${isSelected ? "flow-node--selected" : ""}`}
       transform={`translate(${node.x} ${node.y})`}
       onPointerDown={(event) => onNodePointerDown(event, node)}

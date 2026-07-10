@@ -151,7 +151,7 @@ export function autoLayoutNodes(
 }
 
 export function applyGraphDisplayOrder(nodes: FlowNode[], edges: FlowEdge[]) {
-  const orderedIds = orderNodes(nodes, edges);
+  const orderedIds = orderNodes(nodes, edges.filter((edge) => edge.kind !== "return"));
   const orderById = new Map(orderedIds.map((id, index) => [id, index + 1]));
 
   return nodes.map((node) => ({
