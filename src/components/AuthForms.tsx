@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import {
+  requestPasswordResetFormAction,
   resendConfirmationFormAction,
   signInFormAction,
   signUpFormAction,
@@ -24,10 +25,35 @@ function SubmitButton({ label }: { label: string }) {
 
 export function AuthForms({ showExpiredConfirmation = false }: { showExpiredConfirmation?: boolean }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [showPasswordRecovery, setShowPasswordRecovery] = useState(false);
   const [signInState, signInAction] = useActionState(signInFormAction, initialState);
   const [signUpState, signUpAction] = useActionState(signUpFormAction, initialState);
   const [resendState, resendAction] = useActionState(resendConfirmationFormAction, initialState);
+  const [recoveryState, recoveryAction] = useActionState(requestPasswordResetFormAction, initialState);
   const activeState = mode === "signin" ? signInState : signUpState;
+
+  if (showPasswordRecovery) {
+    return (
+      <div className={authFormStyles.panel}>
+        <div>
+          <p className={authFormStyles.recoveryTitle}>Reset your password</p>
+          <p className={authFormStyles.recoveryCopy}>Enter your account email and we will send you a secure reset link.</p>
+        </div>
+        <form action={recoveryAction} className={authFormStyles.form}>
+          <label className={authFormStyles.field}>
+            <span className={authFormStyles.label}>Email</span>
+            <input className={authFormStyles.input} name="email" type="email" autoComplete="email" required autoFocus />
+          </label>
+          {recoveryState.error ? <p className={authFormStyles.formError}>{recoveryState.error}</p> : null}
+          {recoveryState.message ? <p className={authFormStyles.formMessage}>{recoveryState.message}</p> : null}
+          <SubmitButton label="Send reset link" />
+        </form>
+        <button type="button" className={authFormStyles.textButton} onClick={() => setShowPasswordRecovery(false)}>
+          Back to sign in
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className={authFormStyles.panel}>
@@ -69,17 +95,29 @@ export function AuthForms({ showExpiredConfirmation = false }: { showExpiredConf
           <span className={authFormStyles.label}>Email</span>
           <input className={authFormStyles.input} name="email" type="email" autoComplete="email" required />
         </label>
-        <label className={authFormStyles.field}>
-          <span className={authFormStyles.label}>Password</span>
+        <div className={authFormStyles.field}>
+          <span className={authFormStyles.passwordLabelRow}>
+            <label className={authFormStyles.label} htmlFor="auth-password">Password</label>
+            {mode === "signin" ? (
+              <button
+                type="button"
+                className={authFormStyles.textButton}
+                onClick={() => setShowPasswordRecovery(true)}
+              >
+                Forgot password?
+              </button>
+            ) : null}
+          </span>
           <input
+            id="auth-password"
             className={authFormStyles.input}
             name="password"
             type="password"
-            autoComplete="current-password"
+            autoComplete={mode === "signin" ? "current-password" : "new-password"}
             minLength={8}
             required
           />
-        </label>
+        </div>
         {activeState.error ? <p className={authFormStyles.formError}>{activeState.error}</p> : null}
         {activeState.message ? <p className={authFormStyles.formMessage}>{activeState.message}</p> : null}
         <SubmitButton label={mode === "signin" ? "Sign in" : "Create account"} />

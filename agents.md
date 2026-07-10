@@ -2913,3 +2913,22 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     Mulei, Saeed Oghbaey, William (admin), William (researcher), and William Xu;
     seeded Admin/Viewer and automation profiles were absent, and the console
     error log was empty.
+
+## Recent development note (2026-07-10 password recovery)
+
+- Added `Forgot password?` to Sign in and wired the complete Supabase recovery
+  flow: request email, confirm recovery callback, protected new-password page,
+  password update, local sign-out, and return to Sign in.
+- Recovery access now requires both a valid Supabase session and a short-lived
+  HttpOnly marker set by `/auth/confirm`. Authentication redirects also reject
+  protocol-relative external paths.
+- Verified with:
+  - `npx --yes tsx --test src/lib/auth/password-recovery.test.ts`
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://127.0.0.1:3015/`: Forgot password opened the email-only
+    recovery form, Back restored Sign in, direct `/reset-password` access was
+    rejected, and the console error log was empty.
+- A recovery email was not submitted during automation to avoid sending an
+  unsolicited transactional email. Production delivery still depends on the
+  Supabase redirect allow list containing the deployed `/auth/confirm` URL.

@@ -1,4 +1,5 @@
 import "server-only";
+import { safeAuthRedirectPath } from "./password-recovery";
 
 type ConfirmationSearchParams = {
   code?: string;
@@ -27,7 +28,7 @@ export function confirmationRedirectPath(params: ConfirmationSearchParams) {
     }
   }
 
-  query.set("next", params.next?.startsWith("/") ? params.next : "/dashboard");
+  query.set("next", safeAuthRedirectPath(params.next));
 
   return `/auth/confirm?${query.toString()}`;
 }

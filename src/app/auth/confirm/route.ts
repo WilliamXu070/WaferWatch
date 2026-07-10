@@ -1,11 +1,28 @@
 import { type NextRequest, NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
+import {
+  PASSWORD_RECOVERY_COOKIE,
+  PASSWORD_RECOVERY_MAX_AGE_SECONDS,
+  safeAuthRedirectPath
+} from "@/lib/auth/password-recovery";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const allowedOtpTypes = new Set(["signup", "invite", "magiclink", "recovery", "email_change", "email"]);
 
-function redirectTo(request: NextRequest, path: string) {
-  return NextResponse.redirect(new URL(path, request.url));
+function redirectTo(request: NextRequest, path: string, passwordRecovery = false) {
+  const response = NextResponse.redirect(new URL(path, request.url));
+
+  if (passwordRecovery) {
+    response.cookies.set(PASSWORD_RECOVERY_COOKIE, "1", {
+      httpOnly: true,
+      maxAge: PASSWORD_RECOVERY_MAX_AGE_SECONDS,
+      path: "/",
+      sameSite: "lax",
+      secure: request.nextUrl.protocol === "https:"
+    });
+  }
+
+  return response;
 }
 
 export async function GET(request: NextRequest) {
@@ -14,7 +31,7 @@ export async function GET(request: NextRequest) {
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type");
   const next = searchParams.get("next") ?? "/dashboard";
-  const safeNext = next.startsWith("/") ? next : "/";
+  const safeNext = safeAuthRedirectPath(next);
   const oauthError = searchParams.get("error") ?? searchParams.get("error_code");
   const oauthErrorDescription = searchParams.get("error_description");
 
@@ -32,7 +49,7 @@ export async function GET(request: NextRequest) {
       return redirectTo(request, `/?error=${encodeURIComponent(error.message)}`);
     }
 
-    return redirectTo(request, safeNext);
+    return redirectTo(request, safeNext, safeNext === "/reset-password");
   }
 
   if (tokenHash && type && allowedOtpTypes.has(type)) {
@@ -45,7 +62,7 @@ export async function GET(request: NextRequest) {
       return redirectTo(request, `/?error=${encodeURIComponent(error.message)}`);
     }
 
-    return redirectTo(request, safeNext);
+    return redirectTo(request, safeNext, safeNext === "/reset-password");
   }
 
   return redirectTo(
