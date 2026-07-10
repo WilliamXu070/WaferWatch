@@ -2800,7 +2800,7 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
 
 - Added a dedicated drag handle to the wafer/die info panel. The panel can be
   moved with mouse, touch, or keyboard arrow keys and remains clamped inside
-  the current viewport after dragging or resizing.
+  the current viewport after dragging or viewport changes.
 - Kept the information body as the status-dashboard link and reorganized the
   handler into a labeled identity row with a stable person badge and aligned
   name.
@@ -2829,3 +2829,18 @@ Ignored auth/session files should remain ignored, such as `playwright/.auth/`.
     using `390x844`: no horizontal overflow or console errors. The available
     browser redirected to Login, so a signed-in iPhone tap still needs live
     verification.
+
+## Recent development note (2026-07-09 responsive die info panel)
+
+- Reverted the manual resize handle and reset control. The movable panel now
+  sizes itself automatically from 300px to 380px using the current viewport,
+  with a screen-width cap for narrow iPhones.
+- Restored the default bottom-right anchor above mobile navigation; manually
+  moved panels remain clamped when the viewport changes.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - Browser at `http://127.0.0.1:3015/process-flow?processId=11111111-1111-4111-8111-111111111103`
+    using `320x700`, `430x900`, and `1280x800`: no horizontal overflow or
+    console errors. The available session redirected to Login, so the live
+    selected-die panel itself remained unavailable.

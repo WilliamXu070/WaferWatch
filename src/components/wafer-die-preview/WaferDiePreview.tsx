@@ -154,8 +154,8 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
     <aside
       ref={panelRef}
       className={[
-        "pointer-events-none fixed z-40 w-[calc(100vw-1.5rem)] sm:w-[360px]",
-        position ? "" : "inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] sm:inset-x-auto sm:bottom-5 sm:right-5"
+        "pointer-events-none fixed z-40 w-[clamp(300px,30vw,380px)] max-w-[calc(100vw-1.5rem)]",
+        position ? "" : "bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-3 sm:bottom-5 sm:right-5"
       ].join(" ")}
       style={position ? { left: position.left, top: position.top } : undefined}
     >
