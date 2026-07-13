@@ -203,7 +203,11 @@ export function WaferStatusView({
   const [detailTile, setDetailTile] = useState<WaferStatusTileModel | null>(() =>
     initialSelected && canOpenDieDetail(initialSelected) ? initialSelected : null
   );
-  const selectedUndiced = selectedTile ? isUndicedMode(selectedTile) : false;
+  const latestTiles = model.families.flatMap((family) => family.tiles);
+  const activeSelectedTile = selectedTile
+    ? latestTiles.find((tile) => tile.id === selectedTile.id) ?? selectedTile
+    : initialSelected;
+  const selectedUndiced = activeSelectedTile ? isUndicedMode(activeSelectedTile) : false;
   const hasWafers = model.families.some((family) => family.tiles.length > 0);
   const detailTiles = model.families
     .flatMap((family) => family.tiles)
@@ -267,9 +271,9 @@ export function WaferStatusView({
               />
             ))}
           </div>
-          {selectedTile ? (
+          {activeSelectedTile ? (
             <SelectedDiePanel
-              selectedTile={selectedTile}
+              selectedTile={activeSelectedTile}
               isUndiced={selectedUndiced}
             />
           ) : null}

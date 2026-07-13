@@ -129,6 +129,7 @@ export type WaferDrag = {
 };
 
 export type PendingWaferMove = {
+  mutationId: string;
   assignmentId: string;
   sourceStepId: string;
   sourceLabel: string;
@@ -177,6 +178,7 @@ export type GraphViewportFit = {
 };
 
 export type MoveWaferToProcessStepAction = (input: {
+  mutationId: string;
   assignmentId: string;
   sourceStepId: string;
   targetStepId: string;
@@ -209,12 +211,15 @@ export type UpdateProcessStepPositionsAction = (input: {
     stepId: string;
     canvasX: number;
     canvasY: number;
+    expectedCanvasX: number;
+    expectedCanvasY: number;
   }>;
 }) => Promise<ActionResult<unknown>>;
 
 export type UpdateProcessStepNameAction = (input: {
   stepId: string;
   name: string;
+  expectedName: string;
 }) => Promise<ActionResult<PersistedStepPayload>>;
 
 export type UpdateProcessStepNodeTypeAction = (input: {

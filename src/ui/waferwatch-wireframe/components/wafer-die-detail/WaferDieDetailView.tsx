@@ -102,7 +102,13 @@ export function DieDetailView({
       </div>
 
       <WaferDieDetailTabs
-        key={`${tile.id}:${tile.notesSurfaceValue ?? ""}:${tile.legacyNote ?? ""}`}
+        key={`${tile.id}:${JSON.stringify({
+          notes: tile.notesSurfaceValue ?? "",
+          stepNotes: tile.notesSurfaceValuesByStepId ?? {},
+          parameters: tile.diePolingParameters ?? {},
+          steps: tile.processSteps ?? [],
+          reverts: tile.revertHistory ?? []
+        })}`}
         activeTab={activeTab}
         tile={tile}
         canEdit={canEdit}

@@ -7,6 +7,7 @@ import {
 } from "@/features/process-flows/actions";
 import { getWireframeShellModel } from "@/features/wireframe/queries";
 import { WaferWatchShell } from "@/ui/waferwatch-wireframe";
+import { RealtimeWorkflowBridge } from "@/features/collaboration/RealtimeWorkflowBridge";
 
 export default async function WireframeLayout({ children }: { children: ReactNode }) {
   const shell = await getWireframeShellModel();
@@ -20,6 +21,7 @@ export default async function WireframeLayout({ children }: { children: ReactNod
       onCreateProcess={createProcessTemplate}
       onDeleteProcess={deleteProcessTemplate}
     >
+      <RealtimeWorkflowBridge enabled={Boolean(shell.currentUser)} />
       {children}
     </WaferWatchShell>
   );

@@ -65,7 +65,8 @@ export const waferDiePolingParameterBatchSchema = z.object({
         "pulseDuration",
         "description"
       ]),
-      value: z.string().max(2000)
+      value: z.string().max(2000),
+      expectedValue: z.string().max(2000).optional()
     })
   ).min(1).max(500)
 });

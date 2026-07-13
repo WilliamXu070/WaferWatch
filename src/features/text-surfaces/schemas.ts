@@ -9,5 +9,12 @@ export const textSurfaceIdentitySchema = z.object({
 });
 
 export const textSurfaceUpsertSchema = textSurfaceIdentitySchema.extend({
-  value: z.string().max(20000)
+  value: z.string().max(20000),
+  expectedVersion: z.number().int().min(0).nullable().optional()
+});
+
+export const textSurfaceJsonArrayMutationSchema = textSurfaceIdentitySchema.extend({
+  operation: z.enum(["add", "update", "delete"]),
+  itemId: z.string().trim().min(1).max(200),
+  item: z.record(z.string(), z.unknown()).nullable().optional()
 });

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, KeyboardEvent, PointerEvent } from "react";
-import { upsertTextSurface } from "@/features/text-surfaces/actions";
+import { mutateTextSurfaceJsonArray } from "@/features/text-surfaces/actions";
 import { updateWaferDiePolingParameters } from "@/features/wafers/actions";
 import type { DiePolingParameterField, WaferStatusTileModel } from "../../types";
 import { DetailCard } from "./DetailCard";
@@ -471,11 +471,17 @@ export function ParametersTableCard({
           return null;
         }
 
-        return { key, value, ...parsed };
+        return {
+          key,
+          value,
+          expectedValue: getPersistedOrDefaultValue(key),
+          ...parsed
+        };
       })
       .filter((update): update is {
         key: ParameterCellKey;
         value: string;
+        expectedValue: string;
         row: number;
         column: number;
         field: VisibleParameterField;
@@ -490,11 +496,12 @@ export function ParametersTableCard({
     const result = await updateWaferDiePolingParameters({
       waferId: tile.waferId,
       dieCode,
-      updates: updates.map(({ row, column, field, value }) => ({
+      updates: updates.map(({ row, column, field, value, expectedValue }) => ({
         row,
         column,
         field,
-        value
+        value,
+        expectedValue
       }))
     });
 
@@ -523,18 +530,35 @@ export function ParametersTableCard({
           processStepName: polingStep.name
         }));
 
-        const notesResult = await upsertTextSurface({
+        const identity = {
           projectId: tile.projectId,
           scopeType: waferDieNotesSurface.scopeType,
           scopeKey: getWaferDieStepNotesScopeKey(tile.waferId, tile.dieLabel || tile.code, polingStep.id),
-          fieldKey: waferDieNotesSurface.fieldKey,
-          value: JSON.stringify(nextPolingNotes)
-        });
+          fieldKey: waferDieNotesSurface.fieldKey
+        };
+        let latestPolingNotes = polingNotesRef.current;
 
-        if (notesResult.ok) {
-          polingNotesRef.current = nextPolingNotes;
-          onPolingNotesChange?.(polingStep.id, nextPolingNotes);
+        for (const noteUpdate of noteUpdates) {
+          const noteId = `parameter-note:R${noteUpdate.row}:C${noteUpdate.column}`;
+          const existingNote = latestPolingNotes.find((note) => note.id === noteId) ?? null;
+          const nextNote = nextPolingNotes.find((note) => note.id === noteId) ?? null;
+          const notesResult = await mutateTextSurfaceJsonArray({
+            ...identity,
+            operation: nextNote ? existingNote ? "update" : "add" : "delete",
+            itemId: noteId,
+            item: nextNote
+          });
+
+          if (!notesResult.ok) {
+            setSaveState("error");
+            break;
+          }
+
+          latestPolingNotes = parsePersistedNotes(notesResult.data.value) ?? [];
         }
+
+        polingNotesRef.current = latestPolingNotes;
+        onPolingNotesChange?.(polingStep.id, latestPolingNotes);
       }
     } else {
       for (const update of updates) {

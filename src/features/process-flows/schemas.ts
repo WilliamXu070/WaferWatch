@@ -64,13 +64,16 @@ export const processFlowStepCreateSchema = z.object({
 
 export const processStepNameUpdateSchema = z.object({
   stepId: uuidSchema,
-  name: z.string().trim().min(2).max(180)
+  name: z.string().trim().min(2).max(180),
+  expectedName: z.string().trim().min(2).max(180)
 });
 
 export const processStepPositionUpdateSchema = z.object({
   stepId: uuidSchema,
   canvasX: canvasCoordinateSchema,
-  canvasY: canvasCoordinateSchema
+  canvasY: canvasCoordinateSchema,
+  expectedCanvasX: canvasCoordinateSchema,
+  expectedCanvasY: canvasCoordinateSchema
 });
 
 export const processStepPositionsUpdateSchema = z.object({

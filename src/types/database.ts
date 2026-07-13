@@ -86,6 +86,7 @@ export type ProcessStep = {
   requires_recipe: boolean;
   instructions: string | null;
   parameters_schema: Json;
+  revision: number;
   created_at: string;
   updated_at: string;
 };
@@ -166,6 +167,8 @@ export type WaferProcessAssignment = {
   assigned_at: string;
   started_at: string | null;
   completed_at: string | null;
+  current_step_id: string | null;
+  revision: number;
 };
 
 export type StepExecution = {
@@ -225,6 +228,7 @@ export type ProcessCalendarEvent = {
   manual_action: string | null;
   description: string | null;
   created_by: string | null;
+  revision: number;
   created_at: string;
   updated_at: string;
 };
@@ -325,6 +329,7 @@ export type ProcessEvent = {
   event_at: string;
   notes: string | null;
   metadata: Json;
+  client_mutation_id: string | null;
 };
 
 export type AuditEvent = {
@@ -441,6 +446,49 @@ export interface Database {
       can_access_step_execution: {
         Args: { target_step_execution_id: string | null };
         Returns: boolean;
+      };
+      claim_wafer_assignment_move: {
+        Args: {
+          target_assignment_id: string;
+          expected_source_step_id: string;
+          next_step_id: string;
+        };
+        Returns: WaferProcessAssignment;
+      };
+      upsert_text_surface_versioned: {
+        Args: {
+          target_project_id: string;
+          target_scope_type: string;
+          target_scope_key: string;
+          target_field_key: string;
+          next_value: string;
+          expected_version?: number | null;
+        };
+        Returns: TextSurface;
+      };
+      mutate_text_surface_json_array: {
+        Args: {
+          target_project_id: string;
+          target_scope_type: string;
+          target_scope_key: string;
+          target_field_key: string;
+          operation: "add" | "update" | "delete";
+          item_id: string;
+          item?: Json | null;
+        };
+        Returns: TextSurface;
+      };
+      patch_wafer_die_poling_parameters: {
+        Args: {
+          target_wafer_id: string;
+          target_die_code: string;
+          updates: Json;
+        };
+        Returns: Wafer;
+      };
+      update_process_step_positions_versioned: {
+        Args: { position_updates: Json };
+        Returns: ProcessStep[];
       };
     };
     Enums: {

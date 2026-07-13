@@ -21,6 +21,7 @@ export type ProcessCalendarEventView = Pick<
   | "process_step_name_snapshot"
   | "manual_action"
   | "description"
+  | "revision"
 > & {
   wafer: { id: string; wafer_code: string } | null;
   people: ProcessCalendarPersonOption[];
@@ -93,7 +94,7 @@ export async function getProcessCalendarSchedule(
     supabase
       .from("process_calendar_events")
       .select(
-        "id, process_template_id, wafer_id, location, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description"
+        "id, process_template_id, wafer_id, location, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description, revision"
       )
       .eq("process_template_id", processTemplateId)
       .lt("starts_at", toIso)

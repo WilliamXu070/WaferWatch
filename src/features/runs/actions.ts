@@ -346,6 +346,7 @@ async function splitWaferAfterDicing({
     .map((child) => ({
       wafer_id: child.id,
       template_id: templateId,
+      current_step_id: nextStep.id,
       assigned_by: accountId,
       status: "queued" as const,
       assigned_at: now,
@@ -693,6 +694,20 @@ export async function moveWaferToProcessStep(input: unknown) {
     const parsed = moveWaferToProcessStepSchema.parse(input);
     const supabase = await createServerSupabaseClient();
 
+    const { data: completedMutation, error: completedMutationError } = await supabase
+      .from("process_events")
+      .select("id, step_execution_id")
+      .eq("client_mutation_id", parsed.mutationId)
+      .maybeSingle();
+
+    if (completedMutationError) {
+      return fail(completedMutationError.message);
+    }
+
+    if (completedMutation) {
+      return ok(completedMutation);
+    }
+
     const { data: assignment, error: assignmentError } = await supabase
       .from("wafer_process_assignments")
       .select("*, wafers(*)")
@@ -861,6 +876,16 @@ export async function moveWaferToProcessStep(input: unknown) {
           })
           .map((execution) => execution.id)
       : [];
+
+    const { error: claimError } = await supabase.rpc("claim_wafer_assignment_move", {
+      target_assignment_id: parsed.assignmentId,
+      expected_source_step_id: parsed.sourceStepId,
+      next_step_id: parsed.targetStepId
+    });
+
+    if (claimError) {
+      return fail(claimError.message);
+    }
 
     if (activeExecutionIds.length) {
       const { error: resetError } = await supabase
@@ -1055,7 +1080,8 @@ export async function moveWaferToProcessStep(input: unknown) {
         completed_source_step_execution_id: shouldCompleteSourceStep ? currentExecution?.id ?? null : null,
         movement_kind: isRevertMove ? "revert" : "advance",
         reverted_step_execution_ids: revertedExecutionIds
-      }
+      },
+      client_mutation_id: parsed.mutationId
     });
 
     if (eventError) {

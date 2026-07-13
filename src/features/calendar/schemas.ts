@@ -44,12 +44,14 @@ export const processCalendarEventCreateSchema = z
   });
 
 export const processCalendarEventDeleteSchema = z.object({
-  eventId: uuidSchema
+  eventId: uuidSchema,
+  expectedRevision: z.number().int().min(1)
 });
 
 export const processCalendarEventMoveSchema = z
   .object({
     eventId: uuidSchema,
+    expectedRevision: z.number().int().min(1),
     location: processCalendarLocationSchema,
     startsAt: z.string().datetime(),
     endsAt: z.string().datetime()
@@ -74,6 +76,7 @@ export const processCalendarEventMoveSchema = z
 export const processCalendarEventUpdateSchema = z
   .object({
     eventId: uuidSchema,
+    expectedRevision: z.number().int().min(1),
     waferId: uuidSchema.nullable().optional(),
     processStepId: uuidSchema.nullable().optional(),
     manualAction: z.string().trim().max(160).nullable().optional(),

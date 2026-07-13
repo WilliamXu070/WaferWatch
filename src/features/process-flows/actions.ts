@@ -344,6 +344,7 @@ export async function createWaferAtProcessStart(input: unknown) {
       .insert({
         wafer_id: wafer.id,
         template_id: parsed.templateId,
+        current_step_id: startStep.id,
         assigned_by: account.userId,
         status: "queued",
         assigned_at: now,
@@ -698,25 +699,20 @@ export async function updateProcessStepPositions(input: unknown) {
     const templateIds = Array.from(new Set((steps ?? []).map((step) => step.template_id)));
     await Promise.all(templateIds.map((templateId) => getTemplateForWrite(templateId)));
 
-    for (const position of parsed.positions) {
-      const { error } = await supabase
-        .from("process_steps")
-        .update({
-          canvas_x: position.canvasX,
-          canvas_y: position.canvasY
-        })
-        .eq("id", position.stepId);
+    const { data: updatedSteps, error: positionsError } = await supabase.rpc(
+      "update_process_step_positions_versioned",
+      { position_updates: parsed.positions as Json }
+    );
 
-      if (error) {
-        return fail(error.message);
-      }
+    if (positionsError) {
+      return fail(positionsError.message);
     }
 
     for (const templateId of templateIds) {
       revalidateProcessFlow(templateId);
     }
 
-    return ok({ updated: parsed.positions.length });
+    return ok({ updated: parsed.positions.length, steps: updatedSteps });
   } catch (error) {
     return fail(toErrorMessage(error));
   }
@@ -773,11 +769,16 @@ export async function updateProcessStepName(input: unknown) {
         slug
       })
       .eq("id", parsed.stepId)
+      .eq("name", parsed.expectedName)
       .select("*")
-      .single();
+      .maybeSingle();
 
     if (error) {
       return fail(error.message);
+    }
+
+    if (!data) {
+      return fail("This process step was renamed by another collaborator. The latest name has been loaded.");
     }
 
     revalidateProcessFlow(step.template_id);
@@ -978,6 +979,7 @@ export async function assignProcessToWafer(input: unknown) {
       .insert({
         wafer_id: parsed.waferId,
         template_id: parsed.templateId,
+        current_step_id: steps[0].id,
         assigned_by: account.userId,
         status: "queued"
       })

@@ -142,6 +142,7 @@ export type CalendarEventModel = {
   process_step_name_snapshot: string | null;
   manual_action: string | null;
   description: string | null;
+  revision: number;
   wafer_id: string | null;
   wafer: { id: string; wafer_code: string } | null;
   people: CalendarPersonModel[];

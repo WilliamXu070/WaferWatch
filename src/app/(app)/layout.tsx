@@ -8,6 +8,7 @@ import {
 import { getWireframeShellModel } from "@/features/wireframe/queries";
 import { requireAccountOrRedirect } from "@/lib/auth/session";
 import { WaferWatchShell } from "@/ui/waferwatch-wireframe";
+import { RealtimeWorkflowBridge } from "@/features/collaboration/RealtimeWorkflowBridge";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   await requireAccountOrRedirect();
@@ -21,6 +22,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       onCreateProcess={createProcessTemplate}
       onDeleteProcess={deleteProcessTemplate}
     >
+      <RealtimeWorkflowBridge />
       {children}
     </WaferWatchShell>
   );

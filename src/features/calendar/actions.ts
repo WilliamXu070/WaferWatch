@@ -19,7 +19,7 @@ const MISSING_CALENDAR_TABLES_MESSAGE =
 const CALENDAR_PATH = "/calendar";
 const WIREFRAME_CALENDAR_PATH = "/wireframe/calendar";
 const CALENDAR_EVENT_SELECT =
-  "id, process_template_id, wafer_id, location, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description";
+  "id, process_template_id, wafer_id, location, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description, revision";
 
 type ProcessTemplateAccessContext = Pick<
   ProcessTemplate,
@@ -352,13 +352,20 @@ export async function deleteProcessCalendarEvent(input: unknown) {
 
     await assertProcessCalendarAccess(event.process_template_id, "write");
 
-    const { error } = await supabase
+    const { data: deletedEvent, error } = await supabase
       .from("process_calendar_events")
       .delete()
-      .eq("id", parsed.eventId);
+      .eq("id", parsed.eventId)
+      .eq("revision", parsed.expectedRevision)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       return fail(error.message);
+    }
+
+    if (!deletedEvent) {
+      return fail("This calendar event changed before deletion. The latest schedule has been loaded.");
     }
 
     revalidatePath(`/processes/${event.process_template_id}`);
@@ -423,11 +430,16 @@ export async function moveProcessCalendarEvent(input: unknown) {
         ends_at: parsed.endsAt
       })
       .eq("id", parsed.eventId)
+      .eq("revision", parsed.expectedRevision)
       .select(CALENDAR_EVENT_SELECT)
-      .single();
+      .maybeSingle();
 
     if (updateError) {
       return fail(updateError.message);
+    }
+
+    if (!updatedEvent) {
+      return fail("This calendar event was changed by another collaborator. The latest schedule has been loaded.");
     }
 
     revalidatePath(`/processes/${event.process_template_id}`);
@@ -497,11 +509,16 @@ export async function updateProcessCalendarEvent(input: unknown) {
         description: parsed.description?.trim() || null
       })
       .eq("id", parsed.eventId)
+      .eq("revision", parsed.expectedRevision)
       .select(CALENDAR_EVENT_SELECT)
-      .single();
+      .maybeSingle();
 
     if (updateError) {
       return fail(updateError.message);
+    }
+
+    if (!updatedEvent) {
+      return fail("This calendar event was changed by another collaborator. The latest schedule has been loaded.");
     }
 
     if (personIds.length) {

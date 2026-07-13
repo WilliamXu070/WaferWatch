@@ -14,7 +14,7 @@ import {
   registerAttachment
 } from "@/features/measurements/actions";
 import { isGeneratedDicedPieceNote } from "@/features/runs/dicingNoteTransfer";
-import { upsertTextSurface } from "@/features/text-surfaces/actions";
+import { mutateTextSurfaceJsonArray } from "@/features/text-surfaces/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
 import { StepFileIcon } from "../../icons";
@@ -614,19 +614,36 @@ export function WaferDieNotesDashboard({
     window.open(result.data.signedUrl, "_blank", "noopener,noreferrer");
   }, []);
 
-  const persistNotes = useCallback(
-    async (stepId: string, nextNotes: WaferDieNote[], previousNotes: readonly WaferDieNote[]) => {
-      onNotesChange(stepId, nextNotes);
+  const persistNoteMutation = useCallback(
+    async ({
+      stepId,
+      operation,
+      noteId,
+      note,
+      optimisticNotes,
+      previousNotes
+    }: {
+      stepId: string;
+      operation: "add" | "update" | "delete";
+      noteId: string;
+      note: WaferDieNote | null;
+      optimisticNotes: WaferDieNote[];
+      previousNotes: readonly WaferDieNote[];
+    }) => {
+      onNotesChange(stepId, optimisticNotes);
       setIsSaving(true);
       setError(null);
 
-      const result = await upsertTextSurface({
+      const result = await mutateTextSurfaceJsonArray({
         ...textSurfaceIdentityForStep(stepId),
-        value: JSON.stringify(nextNotes)
+        operation,
+        itemId: noteId,
+        item: note
       });
 
       setIsSaving(false);
       if (result.ok) {
+        onNotesChange(stepId, parsePersistedNotes(result.data.value) ?? []);
         setSavedAt(nowIso());
         return;
       }
@@ -702,7 +719,15 @@ export function WaferDieNotesDashboard({
 
     setDraftByStepId((current) => ({ ...current, [stepId]: "" }));
     setDraftFilesByStepId((current) => ({ ...current, [stepId]: [] }));
-    await persistNotes(stepId, nextNotes, notes);
+    const addedNote = nextNotes[nextNotes.length - 1];
+    await persistNoteMutation({
+      stepId,
+      operation: "add",
+      noteId: addedNote.id,
+      note: addedNote,
+      optimisticNotes: nextNotes,
+      previousNotes: notes
+    });
   };
 
   const startEditing = (note: WaferDieNote) => {
@@ -734,7 +759,14 @@ export function WaferDieNotesDashboard({
 
     setEditingId(null);
     setEditValue("");
-    await persistNotes(stepId, nextNotes, notes);
+    await persistNoteMutation({
+      stepId,
+      operation: "update",
+      noteId,
+      note: nextNotes.find((note) => note.id === noteId) ?? null,
+      optimisticNotes: nextNotes,
+      previousNotes: notes
+    });
   };
 
   const deleteNote = async (stepId: string, noteId: string) => {
@@ -749,7 +781,14 @@ export function WaferDieNotesDashboard({
       setEditValue("");
     }
 
-    await persistNotes(stepId, nextNotes, notes);
+    await persistNoteMutation({
+      stepId,
+      operation: "delete",
+      noteId,
+      note: null,
+      optimisticNotes: nextNotes,
+      previousNotes: notes
+    });
   };
 
   const selectedStep = stageRows.find((step) => step.id === selectedStepId) ?? stageRows[0];

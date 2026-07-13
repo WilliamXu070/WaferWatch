@@ -832,6 +832,7 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
   const [imageError, setImageError] = useState<string | null>(null);
   const [uniformityBySample, setUniformityBySample] = useState<Record<string, string>>({});
   const [savedUniformityBySample, setSavedUniformityBySample] = useState<Record<string, string>>({});
+  const [uniformityVersionBySample, setUniformityVersionBySample] = useState<Record<string, number>>({});
   const [isSavingUniformity, setIsSavingUniformity] = useState(false);
   const [uniformityError, setUniformityError] = useState<string | null>(null);
   const pendingDeletionRef = useRef<PendingDeletion | null>(null);
@@ -934,6 +935,10 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
           ...current,
           [sampleMetricScopeKey]: value
         }));
+        setUniformityVersionBySample((current) => ({
+          ...current,
+          [sampleMetricScopeKey]: result.data?.version ?? 0
+        }));
       } else {
         setUniformityError(result.error);
       }
@@ -943,6 +948,47 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
       isStale = true;
     };
   }, [sampleMetricScopeKey, selectedSample.uniformityPercent, tile.projectId, uniformityBySample]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`result-metric:${tile.projectId}:${sampleMetricScopeKey}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "text_surfaces",
+          filter: `project_id=eq.${tile.projectId}`
+        },
+        () => {
+          void getTextSurface({
+            projectId: tile.projectId,
+            scopeType: RESULT_SAMPLE_SCOPE_TYPE,
+            scopeKey: sampleMetricScopeKey,
+            fieldKey: RESULT_SAMPLE_UNIFORMITY_FIELD
+          }).then((result) => {
+            if (!result.ok) {
+              setUniformityError(result.error);
+              return;
+            }
+
+            const value = result.data?.value ?? selectedSample.uniformityPercent;
+            setUniformityBySample((current) => ({ ...current, [sampleMetricScopeKey]: value }));
+            setSavedUniformityBySample((current) => ({ ...current, [sampleMetricScopeKey]: value }));
+            setUniformityVersionBySample((current) => ({
+              ...current,
+              [sampleMetricScopeKey]: result.data?.version ?? 0
+            }));
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [sampleMetricScopeKey, selectedSample.uniformityPercent, tile.projectId]);
 
   useEffect(() => {
     if (!tile.waferId || !dieCode) {
@@ -973,6 +1019,45 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
 
     return () => {
       isStale = true;
+    };
+  }, [dieCode, tile.waferId]);
+
+  useEffect(() => {
+    if (!tile.waferId || !dieCode) {
+      return;
+    }
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`die-results:${tile.waferId}:${dieCode}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "die_inspections",
+          filter: `wafer_id=eq.${tile.waferId}`
+        },
+        () => {
+          void listDieInspectionsForDie({ waferId: tile.waferId, dieCode }).then((result) => {
+            if (!result.ok) {
+              setImageError(result.error);
+              return;
+            }
+
+            const nextBySample: SampleInspectionMap = {};
+            for (const inspection of result.data) {
+              const key = getSampleInspectionKey(inspection.row, inspection.column);
+              nextBySample[key] = mergeUniqueInspections(nextBySample[key] ?? [], [inspection]);
+            }
+            setInspectionsBySample(nextBySample);
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
     };
   }, [dieCode, tile.waferId]);
 
@@ -1086,7 +1171,8 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
       scopeType: RESULT_SAMPLE_SCOPE_TYPE,
       scopeKey,
       fieldKey: RESULT_SAMPLE_UNIFORMITY_FIELD,
-      value
+      value,
+      expectedVersion: uniformityVersionBySample[scopeKey] ?? 0
     });
 
     setIsSavingUniformity(false);
@@ -1099,6 +1185,10 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
         ...current,
         [scopeKey]: result.data.value
       }));
+      setUniformityVersionBySample((current) => ({
+        ...current,
+        [scopeKey]: result.data.version
+      }));
     } else {
       setUniformityError(result.error);
     }
@@ -1107,6 +1197,7 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
     canEdit,
     savedUniformityBySample,
     tile,
+    uniformityVersionBySample,
     uniformityBySample
   ]);
 

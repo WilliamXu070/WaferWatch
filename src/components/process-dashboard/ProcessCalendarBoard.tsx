@@ -168,6 +168,7 @@ export function ProcessCalendarBoard({
   const [isFilterPanelExpanded, setIsFilterPanelExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const isPendingRef = useRef(isPending);
   const timelineRef = useRef<CalendarTimelineRef>(null);
   const timelinePanelRef = useRef<HTMLDivElement>(null);
   const draftDragSelectionRef = useRef<DraftDragSelection | null>(null);
@@ -192,6 +193,24 @@ export function ProcessCalendarBoard({
   const [timelinePanPointerId, setTimelinePanPointerId] = useState<number | null>(null);
   const [isTimelinePanning, setIsTimelinePanning] = useState(false);
   const [isCompactViewport, setIsCompactViewport] = useState(false);
+
+  useEffect(() => {
+    isPendingRef.current = isPending;
+  }, [isPending]);
+
+  useEffect(() => {
+    if (isPendingRef.current || isItemDragActiveRef.current || itemMoveRef.current) {
+      return;
+    }
+
+    setEvents(initialEvents);
+    const nextEventIds = new Set(initialEvents.map((event) => event.id));
+    if (selectedEventIdRef.current && !nextEventIds.has(selectedEventIdRef.current)) {
+      selectedEventIdRef.current = null;
+      setSelectedEventId(null);
+      setPreviewEventId(null);
+    }
+  }, [initialEvents]);
 
   const refreshCalendarOptions = useCallback(async () => {
     if (persistenceMode === "local") {
@@ -684,6 +703,7 @@ export function ProcessCalendarBoard({
     const persistMove = async () => {
       const result = await moveProcessCalendarEvent({
         eventId: input.eventId,
+        expectedRevision: eventToMove.revision,
         location: input.next.location,
         startsAt: input.next.startsAt,
         endsAt: input.next.endsAt
@@ -1449,6 +1469,7 @@ export function ProcessCalendarBoard({
     if (persistenceMode === "local") {
       const createdEvent: ProcessCalendarEventView = {
         id: `local-${Date.now().toString(36)}`,
+        revision: 0,
         process_template_id: processTemplateId,
         location: draft.location,
         starts_at: draft.startsAt.toISOString(),
@@ -1526,6 +1547,7 @@ export function ProcessCalendarBoard({
     startTransition(async () => {
       const result = await updateProcessCalendarEvent({
         eventId: selectedEvent.id,
+        expectedRevision: selectedEvent.revision,
         processStepId: actionMode === "step" ? selectedStepId : null,
         waferId: selectedWaferId || null,
         manualAction: getManualActionForMode(actionMode, manualAction),

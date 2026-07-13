@@ -249,8 +249,13 @@ export function ProcessFlowDiagram({
   const pendingGraphFitRef = useRef<GraphViewportFit | null>(null);
   const pendingStepCreateRef = useRef<Map<string, QueuedStepCreate>>(new Map());
   const pendingTransitionCreateRef = useRef<Map<string, QueuedTransition>>(new Map());
-  const pendingPositionUpdateRef = useRef<Map<string, { canvasX: number; canvasY: number }>>(new Map());
-  const pendingNameUpdateRef = useRef<Map<string, string>>(new Map());
+  const pendingPositionUpdateRef = useRef<Map<string, {
+    canvasX: number;
+    canvasY: number;
+    expectedCanvasX: number;
+    expectedCanvasY: number;
+  }>>(new Map());
+  const pendingNameUpdateRef = useRef<Map<string, { name: string; expectedName: string }>>(new Map());
   const pendingWaferDeleteIdsRef = useRef<Set<string>>(new Set());
   const waferDragRef = useRef<WaferDrag | null>(null);
   const ignoreWaferPreviewUntilRef = useRef(0);
@@ -505,7 +510,10 @@ export function ProcessFlowDiagram({
     moveQueuedValues(temporaryStepId, persistedStep.id, pendingNameUpdateRef.current);
 
     if (finalLabel !== persistedStep.name) {
-      pendingNameUpdateRef.current.set(persistedStep.id, finalLabel);
+      pendingNameUpdateRef.current.set(persistedStep.id, {
+        name: finalLabel,
+        expectedName: persistedStep.name
+      });
     }
   }, [editingNodeId, getLatestNode]);
 
@@ -566,15 +574,16 @@ export function ProcessFlowDiagram({
       pendingNameUpdateRef.current.delete(stepId);
     }
 
-    for (const [stepId, name] of entries) {
-      const trimmed = name.trim();
+    for (const [stepId, update] of entries) {
+      const trimmed = update.name.trim();
       if (trimmed.length < 2) {
         continue;
       }
 
       const result = await onUpdateStepName({
         stepId,
-        name: trimmed
+        name: trimmed,
+        expectedName: update.expectedName
       });
 
       if (result.ok) {
@@ -613,7 +622,9 @@ export function ProcessFlowDiagram({
       positions: entries.map(([stepId, position]) => ({
         stepId,
         canvasX: position.canvasX,
-        canvasY: position.canvasY
+        canvasY: position.canvasY,
+        expectedCanvasX: position.expectedCanvasX,
+        expectedCanvasY: position.expectedCanvasY
       }))
     });
 
@@ -764,18 +775,28 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    pendingNameUpdateRef.current.set(stepId, trimmed);
+    const persistedNode = serverGraph.nodes.find((node) => node.id === stepId);
+    pendingNameUpdateRef.current.set(stepId, {
+      name: trimmed,
+      expectedName: persistedNode?.label ?? getLatestNode(stepId)?.label ?? trimmed
+    });
     schedulePending(pendingNameTimerRef, flushPendingNameUpdates, NAME_DEBOUNCE_MS);
-  }, [flushPendingNameUpdates, isOptimisticStep, schedulePending]);
+  }, [flushPendingNameUpdates, getLatestNode, isOptimisticStep, schedulePending, serverGraph.nodes]);
 
   const queueNodePositionPersist = useCallback((stepId: string, canvasX: number, canvasY: number) => {
-    pendingPositionUpdateRef.current.set(stepId, { canvasX, canvasY });
+    const persistedNode = serverGraph.nodes.find((node) => node.id === stepId);
+    pendingPositionUpdateRef.current.set(stepId, {
+      canvasX,
+      canvasY,
+      expectedCanvasX: persistedNode?.x ?? canvasX,
+      expectedCanvasY: persistedNode?.y ?? canvasY
+    });
     if (isOptimisticStep(stepId)) {
       return;
     }
 
     schedulePending(pendingPositionTimerRef, flushPendingPositionUpdates, POSITION_DEBOUNCE_MS);
-  }, [flushPendingPositionUpdates, isOptimisticStep, schedulePending]);
+  }, [flushPendingPositionUpdates, isOptimisticStep, schedulePending, serverGraph.nodes]);
 
   const queueTransitionPersist = useCallback((transitionId: string, payload: QueuedTransition) => {
     pendingTransitionCreateRef.current.set(transitionId, payload);
@@ -1351,12 +1372,14 @@ export function ProcessFlowDiagram({
 
         seenNodeIds.add(node.id);
         undoRecoveredNodeIdsRef.current.delete(node.id);
+        const hasPendingName = pendingNameUpdateRef.current.has(node.id) || editingNodeId === node.id;
+        const hasPendingPosition = pendingPositionUpdateRef.current.has(node.id);
         nextNodes.push({
-          ...node,
-          wafers: serverNode.wafers,
+          ...serverNode,
+          label: hasPendingName ? node.label : serverNode.label,
+          x: hasPendingPosition ? node.x : serverNode.x,
+          y: hasPendingPosition ? node.y : serverNode.y,
           height: getNodeHeightForWaferCount(serverNode.wafers.length),
-          subLabel: serverNode.subLabel,
-          order: serverNode.order,
           isOptimistic: false
         });
       }
@@ -1408,7 +1431,7 @@ export function ProcessFlowDiagram({
 
       return normalizeFlowEdges(nextEdges);
     });
-  }, []);
+  }, [editingNodeId]);
 
   useEffect(() => {
     if (seededGraphKeyRef.current === graphSeedKey) {
@@ -2036,6 +2059,7 @@ export function ProcessFlowDiagram({
     }
 
     setPendingWaferMove({
+      mutationId: crypto.randomUUID(),
       assignmentId: finishedDrag.assignmentId,
       sourceStepId: finishedDrag.sourceStepId,
       sourceLabel: sourceNode.label,
@@ -2118,6 +2142,7 @@ export function ProcessFlowDiagram({
     startMoveTransition(() => {
       void (async () => {
         const result = await onMoveWafer({
+          mutationId: move.mutationId,
           assignmentId: move.assignmentId,
           sourceStepId: move.sourceStepId,
           targetStepId: move.targetStepId,

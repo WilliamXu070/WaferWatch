@@ -21,6 +21,7 @@ export const blockStepSchema = z.object({
 });
 
 export const moveWaferToProcessStepSchema = z.object({
+  mutationId: uuidSchema,
   assignmentId: uuidSchema,
   sourceStepId: uuidSchema,
   targetStepId: uuidSchema,
