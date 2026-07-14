@@ -28,6 +28,12 @@ type RenderCalendarTimelineItemInput = {
   rendererProps: TimelineItemRendererProps;
 };
 
+export function getTimelineItemLabelMode(visibleItemWidth: number) {
+  if (visibleItemWidth <= 44) return "marker";
+  if (visibleItemWidth <= 132) return "compact";
+  return "full";
+}
+
 export function renderCalendarTimelineItem({
   draft,
   presentationMode,
@@ -41,10 +47,6 @@ export function renderCalendarTimelineItem({
   const { item, itemContext, timelineContext, getItemProps, getResizeProps } = rendererProps;
   const isItemSelected = item.isDraft ? Boolean(draft) : item.id === selectedEventId;
   const resizeProps = getResizeProps();
-  const itemPropsAll = getItemProps({
-    className: `ww-timeline-item ${item.toneClass} ${isItemSelected ? "ww-timeline-item--selected" : ""}`
-  }) as HTMLAttributes<HTMLDivElement> & { key?: React.Key; ref?: unknown };
-  const { key, onPointerDown, onPointerUp, onPointerCancel, ref: itemRef, ...itemProps } = itemPropsAll;
   const timelineState = timelineContext.getTimelineState();
   const visibleDuration = Math.max(1, timelineState.visibleTimeEnd - timelineState.visibleTimeStart);
   const visibleItemStart = Math.max(Number(item.start_time), timelineState.visibleTimeStart);
@@ -57,6 +59,18 @@ export function renderCalendarTimelineItem({
     0,
     ((visibleItemEnd - visibleItemStart) / visibleDuration) * timelineState.timelineWidth
   );
+  const itemLabelMode = getTimelineItemLabelMode(visibleItemWidth);
+  const itemPropsAll = getItemProps({
+    className: [
+      "ww-timeline-item",
+      item.toneClass,
+      isItemSelected ? "ww-timeline-item--selected" : "",
+      `ww-timeline-item--${itemLabelMode}`
+    ]
+      .filter(Boolean)
+      .join(" ")
+  }) as HTMLAttributes<HTMLDivElement> & { key?: React.Key; ref?: unknown };
+  const { key, onPointerDown, onPointerUp, onPointerCancel, ref: itemRef, ...itemProps } = itemPropsAll;
   const contentStyle = {
     "--ww-timeline-clipped-start": `${clippedStartWidth}px`
   } as CSSProperties;
@@ -91,7 +105,7 @@ export function renderCalendarTimelineItem({
         <div {...resizeProps.left} className="ww-timeline-resize ww-timeline-resize--left" />
       ) : null}
       <div
-        className={`ww-timeline-item-content ${visibleItemWidth <= 132 ? "ww-timeline-item-content--marker" : ""}`}
+        className={`ww-timeline-item-content ww-timeline-item-content--${itemLabelMode}`}
         style={contentStyle}
       >
         {presentationMode === "wireframe" ? (

@@ -1,5 +1,19 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-14 calendar zoom label readability)
+
+- Fixed far-zoom calendar events so labels no longer disappear below 132 px.
+  Narrow events now keep a title-only layout, while true sliver-width events
+  place a short title beside the marker.
+- Verified with:
+  - `npm exec --yes tsx -- --test src/components/process-dashboard/calendar/CalendarTimelineItemRenderer.test.ts`
+  - `npm run lint`
+  - `npm run build`
+  - In-app browser at `http://localhost:3000/wireframe/calendar`, 1280x720:
+    route had no console errors or horizontal overflow. Event-level zoom testing
+    remained auth-gated because canonical schedule data was unavailable.
+  - Screenshot: `/tmp/waferwatch-calendar-zoom-label-auth-gated.png`
+
 ## Required verification after every coding change
 
 After every coding change, run both lint and compile/build checks in order:

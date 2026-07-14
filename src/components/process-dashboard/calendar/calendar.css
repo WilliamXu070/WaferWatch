@@ -1397,7 +1397,54 @@
   width: calc(100% - var(--ww-timeline-clipped-start, 0));
 }
 
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content--compact {
+  gap: 0;
+  padding: 10px 8px;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content--compact .ww-timeline-item-badge,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content--compact .ww-timeline-item-person,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content--compact .ww-timeline-item-time {
+  display: none;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item--marker {
+  overflow: visible;
+}
+
 .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content--marker {
+  position: absolute;
+  top: 10px;
+  left: calc(100% + 7px);
+  display: block;
+  width: max-content;
+  max-width: 140px;
+  height: auto;
+  padding: 0;
+  overflow: visible;
+  pointer-events: none;
+  transform: none;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content--marker .ww-timeline-item-title-row {
+  display: block;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content--marker .ww-timeline-item-title-row strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow:
+    0 1px 0 #fbfbf8,
+    1px 0 0 #fbfbf8,
+    0 -1px 0 #fbfbf8,
+    -1px 0 0 #fbfbf8;
+  white-space: nowrap;
+}
+
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content--marker .ww-timeline-item-badge,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content--marker .ww-timeline-item-person,
+.wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content--marker .ww-timeline-item-time {
   display: none;
 }
 
@@ -1448,12 +1495,6 @@
 
 .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-description {
   white-space: normal;
-}
-
-@container (max-width: 132px) {
-  .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content {
-    display: none;
-  }
 }
 
 .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-resize {
