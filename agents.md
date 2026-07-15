@@ -1,5 +1,17 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 restored mobile Process Flow interaction)
+
+- Reverted the three replacement mobile gesture-controller commits after user
+  feedback confirmed the prior Process Flow interaction was the correct behavior.
+  The canvas has returned to its original `pan-x pan-y` touch policy; the separate
+  16px iPhone note-focus zoom fix remains.
+- Verified `src/components/ProcessFlowDiagram.tsx` and its process-flow helpers
+  match `ce2bb66` (the last known-good graph checkpoint), then ran `npm run lint`
+  and `npm run build`. Authenticated 390x844 browser check selected `ALPHA_2_2`,
+  opened Complete, confirmed a focused 16px note at viewport scale 1, no page
+  overflow, and no console errors.
+
 ## Recent development note (2026-07-15 mobile note-focus zoom)
 
 - Fixed iPhone Chrome page zoom when the Process Flow note dialog opened. The
