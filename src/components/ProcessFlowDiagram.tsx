@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { ClipboardEvent, MouseEvent, PointerEvent } from "react";
 import {
-  getBoundedPinchAccumulatorScale,
+  getPinchTargetScale,
   getStableZoomAnchor,
   getTouchDistance,
   getTouchPanScrollPosition,
@@ -38,7 +38,6 @@ import {
   EDGE_ID_PREFIX,
   FIT_VIEW_PADDING,
   MAX_SCALE,
-  MIN_SCALE,
   NAME_DEBOUNCE_MS,
   NODE_HEIGHT,
   NODE_ID_PREFIX,
@@ -135,8 +134,6 @@ type TouchPanState = {
   pointerId: number;
   startClientX: number;
   startClientY: number;
-  lastClientX: number;
-  lastClientY: number;
   startScrollLeft: number;
   startScrollTop: number;
   allowPan: boolean;
@@ -376,8 +373,8 @@ export function ProcessFlowDiagram({
   const [isGraphPending, startGraphTransition] = useTransition();
   const [isWaferMutationPending, startWaferMutationTransition] = useTransition();
   const scaleRef = useRef(1);
-  const pinchLastAppScaleRef = useRef(1);
-  const pinchLastDistanceRef = useRef(1);
+  const pinchInitialAppScaleRef = useRef(1);
+  const pinchInitialDistanceRef = useRef(1);
   const pinchAnchorRef = useRef<{ paneX: number; paneY: number } | null>(null);
   const pendingPinchScaleRef = useRef<number | null>(null);
   const pinchAnimationFrameRef = useRef<number | null>(null);
@@ -1695,8 +1692,8 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    pinchLastAppScaleRef.current = pendingPinchScaleRef.current ?? scaleRef.current;
-    pinchLastDistanceRef.current = initialDistance;
+    pinchInitialAppScaleRef.current = scaleRef.current;
+    pinchInitialDistanceRef.current = initialDistance;
     pinchAnchorRef.current = getPanePoint();
     touchPanStateRef.current = null;
     pendingTouchNodeRef.current = null;
@@ -1732,8 +1729,6 @@ export function ProcessFlowDiagram({
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
-      lastClientX: event.clientX,
-      lastClientY: event.clientY,
       startScrollLeft: frame.scrollLeft,
       startScrollTop: frame.scrollTop,
       allowPan: !target?.closest(".flow-wafer-chip"),
@@ -1763,16 +1758,11 @@ export function ProcessFlowDiagram({
         beginTouchPinch(frame);
       }
       const currentDistance = getTouchDistance(touchPoints[0], touchPoints[1]);
-      const nextAccumulatorScale = getBoundedPinchAccumulatorScale(
-        pinchLastAppScaleRef.current,
-        pinchLastDistanceRef.current,
-        currentDistance,
-        MIN_SCALE,
-        MAX_SCALE
-      );
-      pinchLastAppScaleRef.current = nextAccumulatorScale;
-      pinchLastDistanceRef.current = currentDistance;
-      queueTouchPinchScale(clampScale(nextAccumulatorScale));
+      queueTouchPinchScale(getPinchTargetScale(
+        pinchInitialAppScaleRef.current,
+        pinchInitialDistanceRef.current,
+        currentDistance
+      ));
       return;
     }
 
@@ -1790,8 +1780,7 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    const wasAlreadyMoving = pan.hasMoved;
-    if (!wasAlreadyMoving) {
+    if (!pan.hasMoved) {
       pan.hasMoved = true;
       pendingTouchNodeRef.current = null;
       safelySetPointerCapture(frame, event.pointerId);
@@ -1799,17 +1788,13 @@ export function ProcessFlowDiagram({
     }
 
     const nextScroll = getTouchPanScrollPosition(
-      wasAlreadyMoving ? frame.scrollLeft : pan.startScrollLeft,
-      wasAlreadyMoving ? frame.scrollTop : pan.startScrollTop,
-      wasAlreadyMoving
-        ? { clientX: pan.lastClientX, clientY: pan.lastClientY }
-        : { clientX: pan.startClientX, clientY: pan.startClientY },
+      pan.startScrollLeft,
+      pan.startScrollTop,
+      { clientX: pan.startClientX, clientY: pan.startClientY },
       { clientX: event.clientX, clientY: event.clientY }
     );
     frame.scrollLeft = nextScroll.scrollLeft;
     frame.scrollTop = nextScroll.scrollTop;
-    pan.lastClientX = event.clientX;
-    pan.lastClientY = event.clientY;
   };
 
   const endTouchGesture = (event: PointerEvent<HTMLDivElement>) => {
@@ -1829,8 +1814,7 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    pinchLastDistanceRef.current = 1;
-    pinchLastAppScaleRef.current = pendingPinchScaleRef.current ?? scaleRef.current;
+    pinchInitialDistanceRef.current = 1;
     setIsPanning(false);
 
     const remainingPointer = Array.from(touchPointersRef.current.entries())[0];
@@ -1839,8 +1823,6 @@ export function ProcessFlowDiagram({
           pointerId: remainingPointer[0],
           startClientX: remainingPointer[1].clientX,
           startClientY: remainingPointer[1].clientY,
-          lastClientX: remainingPointer[1].clientX,
-          lastClientY: remainingPointer[1].clientY,
           startScrollLeft: frame.scrollLeft,
           startScrollTop: frame.scrollTop,
           allowPan: true,
@@ -1904,6 +1886,7 @@ export function ProcessFlowDiagram({
 
   const endPan = (event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") {
+      endTouchGesture(event);
       return;
     }
 
