@@ -1,5 +1,17 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 mobile gesture boundary recovery)
+
+- Fixed mobile Process Flow pan and pinch gestures stopping after reaching a
+  scroll or zoom boundary. Touch movement now rebases continuously from the
+  last delivered frame, preserves sub-pixel pinch progress, and ignores touch
+  `pointerleave` as a completion event.
+- Verified with 11 focused gesture tests, `npm run lint`, `npm run build`, and
+  the authenticated `/wireframe/process-flow` route at 390x844. Repeated zoom
+  preserved the scene center within 0.53 scene pixels, canvas scrolling reversed
+  immediately, and the route had no page overflow or console errors. Physical
+  iPhone pinch acceptance remains tracked in issue #23.
+
 ## Recent development note (2026-07-15 mobile process-flow zoom stability)
 
 - Replaced the remaining mixed Safari/native Process Flow gesture path with

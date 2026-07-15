@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getBoundedPinchAccumulatorScale,
   getPinchTargetScale,
   getStableZoomAnchor,
   getTouchDistance,
@@ -9,6 +10,7 @@ import {
   isTouchTapWithinThreshold,
   shouldStartNodePointerInteraction
 } from "./gesture";
+import { clampScale } from "./labels";
 
 test("keeps touch gestures from selecting or dragging process-flow steps", () => {
   assert.equal(shouldStartNodePointerInteraction("touch"), false);
@@ -53,6 +55,46 @@ test("converts one-finger movement into canvas scrolling without native page pan
     scrollLeft: 670,
     scrollTop: 323
   });
+});
+
+test("rebases one-finger scrolling so reversing at a canvas edge responds immediately", () => {
+  const nextScroll = getTouchPanScrollPosition(
+    0,
+    120,
+    { clientX: 250, clientY: 400 },
+    { clientX: 240, clientY: 400 }
+  );
+
+  assert.equal(nextScroll.scrollLeft, 10);
+  assert.equal(nextScroll.scrollTop, 120);
+});
+
+test("rebases bounded pinch zoom so reversing at maximum scale responds immediately", () => {
+  const cappedScale = getBoundedPinchAccumulatorScale(2, 100, 150, 0.35, 2.6);
+  const rebasedReverseScale = getBoundedPinchAccumulatorScale(cappedScale, 150, 140, 0.35, 2.6);
+  const fixedBaselineReverseScale = clampScale(getPinchTargetScale(2, 100, 140));
+
+  assert.equal(cappedScale, 2.6);
+  assert.ok(rebasedReverseScale < cappedScale);
+  assert.equal(fixedBaselineReverseScale, cappedScale);
+});
+
+test("keeps sub-pixel pinch progress between rendered scale updates", () => {
+  let accumulatorScale = 0.35;
+  let previousDistance = 100;
+
+  for (const currentDistance of [101, 102, 103, 104, 105]) {
+    accumulatorScale = getBoundedPinchAccumulatorScale(
+      accumulatorScale,
+      previousDistance,
+      currentDistance,
+      0.35,
+      2.6
+    );
+    previousDistance = currentDistance;
+  }
+
+  assert.equal(clampScale(accumulatorScale), 0.37);
 });
 
 test("keeps the same scene point under the visible pane center while zooming", () => {
