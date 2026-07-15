@@ -40,12 +40,21 @@ type WireframeTemplate = Pick<ProcessTemplate, "id" | "name" | "version" | "is_a
 
 type WireframeStep = Pick<
   ProcessStep,
-  "id" | "template_id" | "name" | "step_order" | "process_area"
+  "id" | "template_id" | "name" | "step_order" | "process_area" | "node_type"
 >;
+
+type WireframeTransition = {
+  template_id: string;
+  from_step_id: string;
+  to_step_id: string;
+  edge_type: string;
+  priority: number;
+  created_at: string;
+};
 
 type WireframeAssignment = Pick<
   WaferProcessAssignment,
-  "id" | "wafer_id" | "template_id" | "assigned_by" | "status" | "assigned_at" | "started_at" | "completed_at"
+  "id" | "wafer_id" | "template_id" | "assigned_by" | "status" | "assigned_at" | "started_at" | "completed_at" | "current_step_id"
 >;
 
 type WireframeExecution = Pick<
@@ -240,6 +249,17 @@ function extractDieLabel(metadata: Json): string {
   return candidate?.trim() || "Unassigned";
 }
 
+function isDicedParent(metadata: Json) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return false;
+  }
+
+  return (
+    (Array.isArray(metadata.diced_child_wafer_ids) && metadata.diced_child_wafer_ids.length > 0) ||
+    (Array.isArray(metadata.diced_child_die_labels) && metadata.diced_child_die_labels.length > 0)
+  );
+}
+
 function stepStatusRank(status: StepStatus) {
   if (status === "running") return 0;
   if (status === "blocked") return 1;
@@ -285,16 +305,18 @@ function pickCurrentExecution(
 
 function getNextStep(
   templateSteps: readonly WireframeStep[],
-  currentStep: WireframeStep | undefined
+  currentStep: WireframeStep | undefined,
+  nextStepIdByStepId: ReadonlyMap<string, string>
 ) {
   if (!currentStep) {
-    return templateSteps.slice().sort((a, b) => a.step_order - b.step_order)[0];
+    return (
+      templateSteps.find((step) => step.node_type === "start") ??
+      templateSteps.slice().sort((a, b) => a.step_order - b.step_order)[0]
+    );
   }
 
-  return templateSteps
-    .slice()
-    .sort((a, b) => a.step_order - b.step_order)
-    .find((step) => step.step_order > currentStep.step_order);
+  const nextStepId = nextStepIdByStepId.get(currentStep.id);
+  return nextStepId ? templateSteps.find((step) => step.id === nextStepId) : undefined;
 }
 
 function workflowStageFor(
@@ -510,6 +532,7 @@ function buildColumns({
   templatesById,
   stepsById,
   stepsByTemplate,
+  transitions,
   executionsByAssignment,
   profileNameById,
   calendarEvents
@@ -519,6 +542,7 @@ function buildColumns({
   templatesById: ReadonlyMap<string, WireframeTemplate>;
   stepsById: ReadonlyMap<string, WireframeStep>;
   stepsByTemplate: ReadonlyMap<string, readonly WireframeStep[]>;
+  transitions: readonly WireframeTransition[];
   executionsByAssignment: ReadonlyMap<string, readonly WireframeExecution[]>;
   profileNameById: ReadonlyMap<string, string>;
   calendarEvents: readonly WireframeCalendarEvent[];
@@ -536,6 +560,15 @@ function buildColumns({
   const stepOrderById = new Map(
     Array.from(stepsById.values()).map((step) => [step.id, step.step_order])
   );
+  const nextStepIdByStepId = new Map<string, string>();
+  for (const transition of transitions
+    .filter((candidate) => candidate.edge_type === "flow")
+    .slice()
+    .sort((a, b) => a.priority - b.priority || Date.parse(a.created_at) - Date.parse(b.created_at))) {
+    if (!nextStepIdByStepId.has(transition.from_step_id)) {
+      nextStepIdByStepId.set(transition.from_step_id, transition.to_step_id);
+    }
+  }
 
   const sortedAssignments = assignments
     .slice()
@@ -548,10 +581,17 @@ function buildColumns({
     }
 
     const assignmentExecutions = executionsByAssignment.get(assignment.id) ?? [];
-    const currentExecution = pickCurrentExecution(assignmentExecutions, stepOrderById);
-    const currentStep = currentExecution ? stepsById.get(currentExecution.process_step_id) : undefined;
+    const inferredExecution = pickCurrentExecution(assignmentExecutions, stepOrderById);
+    const currentStepId = assignment.current_step_id ?? inferredExecution?.process_step_id;
+    const currentExecution = currentStepId
+      ? assignmentExecutions
+          .filter((execution) => execution.process_step_id === currentStepId)
+          .slice()
+          .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))[0] ?? inferredExecution
+      : inferredExecution;
+    const currentStep = currentStepId ? stepsById.get(currentStepId) : undefined;
     const templateSteps = stepsByTemplate.get(assignment.template_id) ?? [];
-    const nextStep = getNextStep(templateSteps, currentStep);
+    const nextStep = getNextStep(templateSteps, currentStep, nextStepIdByStepId);
     const stage = workflowStageFor(assignment, currentExecution, currentStep, nextStep);
     const template = templatesById.get(assignment.template_id);
     const handlerId =
@@ -610,12 +650,14 @@ export function getEmptyWireframeDashboardModel(): DashboardModel {
 }
 
 export async function getWireframeDashboardModel(
-  supabase: WireframeDashboardQueryClient = createSupabaseAdminClient()
+  supabase: WireframeDashboardQueryClient = createSupabaseAdminClient(),
+  processTemplateId?: string
 ): Promise<DashboardModel> {
 
   const [
     templatesResult,
     stepsResult,
+    transitionsResult,
     assignmentsResult,
     wafersResult,
     executionsResult,
@@ -627,11 +669,16 @@ export async function getWireframeDashboardModel(
       .order("name", { ascending: true }),
     supabase
       .from("process_steps")
-      .select("id, template_id, name, step_order, process_area")
+      .select("id, template_id, name, step_order, process_area, node_type")
       .order("step_order", { ascending: true }),
     supabase
+      .from("process_step_transitions")
+      .select("template_id, from_step_id, to_step_id, edge_type, priority, created_at")
+      .order("priority", { ascending: true })
+      .order("created_at", { ascending: true }),
+    supabase
       .from("wafer_process_assignments")
-      .select("id, wafer_id, template_id, assigned_by, status, assigned_at, started_at, completed_at")
+      .select("id, wafer_id, template_id, assigned_by, status, assigned_at, started_at, completed_at, current_step_id")
       .order("assigned_at", { ascending: false }),
     supabase
       .from("wafers")
@@ -652,6 +699,7 @@ export async function getWireframeDashboardModel(
   const queryErrors = [
     templatesResult.error,
     stepsResult.error,
+    transitionsResult.error,
     assignmentsResult.error,
     wafersResult.error,
     executionsResult.error
@@ -665,12 +713,38 @@ export async function getWireframeDashboardModel(
     throw calendarEventsResult.error;
   }
 
-  const templates = (templatesResult.data ?? []) as WireframeTemplate[];
-  const steps = (stepsResult.data ?? []) as WireframeStep[];
-  const assignments = (assignmentsResult.data ?? []) as WireframeAssignment[];
-  const wafers = (wafersResult.data ?? []) as WireframeWafer[];
-  const executions = (executionsResult.data ?? []) as WireframeExecution[];
-  const calendarEvents = (calendarEventsResult.data ?? []) as WireframeCalendarEvent[];
+  const allTemplates = (templatesResult.data ?? []) as WireframeTemplate[];
+  const allSteps = (stepsResult.data ?? []) as WireframeStep[];
+  const allTransitions = (transitionsResult.data ?? []) as WireframeTransition[];
+  const allAssignments = (assignmentsResult.data ?? []) as WireframeAssignment[];
+  const allWafers = (wafersResult.data ?? []) as WireframeWafer[];
+  const allExecutions = (executionsResult.data ?? []) as WireframeExecution[];
+  const allCalendarEvents = (calendarEventsResult.data ?? []) as WireframeCalendarEvent[];
+  const templates = processTemplateId
+    ? allTemplates.filter((template) => template.id === processTemplateId)
+    : allTemplates;
+  const steps = processTemplateId
+    ? allSteps.filter((step) => step.template_id === processTemplateId)
+    : allSteps;
+  const transitions = processTemplateId
+    ? allTransitions.filter((transition) => transition.template_id === processTemplateId)
+    : allTransitions;
+  const candidateAssignments = processTemplateId
+    ? allAssignments.filter((assignment) => assignment.template_id === processTemplateId)
+    : allAssignments;
+  const candidateWaferIds = new Set(candidateAssignments.map((assignment) => assignment.wafer_id));
+  const wafers = allWafers.filter(
+    (wafer) => (!processTemplateId || candidateWaferIds.has(wafer.id)) && !isDicedParent(wafer.metadata as Json)
+  );
+  const visibleWaferIds = new Set(wafers.map((wafer) => wafer.id));
+  const assignments = candidateAssignments.filter((assignment) => visibleWaferIds.has(assignment.wafer_id));
+  const assignmentIds = new Set(assignments.map((assignment) => assignment.id));
+  const executions = processTemplateId
+    ? allExecutions.filter((execution) => assignmentIds.has(execution.assignment_id))
+    : allExecutions;
+  const calendarEvents = processTemplateId
+    ? allCalendarEvents.filter((event) => event.process_template_id === processTemplateId)
+    : allCalendarEvents;
 
   if (templates.length === 0 && assignments.length === 0 && wafers.length === 0 && executions.length === 0) {
     return makeEmptyDashboardModel();
@@ -716,6 +790,9 @@ export async function getWireframeDashboardModel(
     (execution) => execution.status === "blocked" || execution.status === "failed"
   ).length;
   const progress = buildProgress(executions);
+  const processQuery = processTemplateId
+    ? `?processId=${encodeURIComponent(processTemplateId)}`
+    : "";
 
   return {
     activity: buildActivity(executions, calendarEvents),
@@ -726,14 +803,14 @@ export async function getWireframeDashboardModel(
         value: String(activeAssignments.length),
         label: "Active wafers",
         icon: "activity",
-        href: "/process-flow"
+        href: `/process-flow${processQuery}`
       },
       {
         id: "blocked-failed",
         value: String(blockedFailedCount),
         label: "Blocked / failed",
         icon: "warning",
-        href: "/process-flow"
+        href: `/process-flow${processQuery}`
       }
     ],
     columns: buildColumns({
@@ -742,6 +819,7 @@ export async function getWireframeDashboardModel(
       templatesById,
       stepsById,
       stepsByTemplate,
+      transitions,
       executionsByAssignment,
       profileNameById,
       calendarEvents

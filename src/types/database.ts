@@ -16,6 +16,9 @@ export type StepStatus =
   | "queued"
   | "running"
   | "blocked"
+  | "awaiting_checkpoint"
+  | "ready_to_move"
+  | "redo_required"
   | "completed"
   | "skipped"
   | "failed";
@@ -25,6 +28,8 @@ export type IssueSeverity = "low" | "medium" | "high" | "critical";
 export type IssueStatus = "open" | "investigating" | "resolved" | "closed";
 export type ProcessStepNodeType = "start" | "procedure" | "end";
 export type ProcessStepTransitionType = "flow" | "return";
+export type ProcessTemplateLifecycleStatus = "draft" | "published";
+export type CheckpointDecisionValue = "approved" | "redo";
 
 type Row<T> = { Row: T; Insert: Partial<T>; Update: Partial<T>; Relationships: [] };
 
@@ -65,6 +70,10 @@ export type ProcessTemplate = {
   version: string;
   description: string | null;
   is_active: boolean;
+  lifecycle_status: ProcessTemplateLifecycleStatus;
+  source_template_id: string | null;
+  published_at: string | null;
+  published_by: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -86,6 +95,8 @@ export type ProcessStep = {
   requires_recipe: boolean;
   instructions: string | null;
   parameters_schema: Json;
+  required_reviewer_id: string | null;
+  archived_at: string | null;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -191,6 +202,89 @@ export type StepExecution = {
   metadata: Json;
   created_at: string;
   updated_at: string;
+};
+
+export type ProcessStepAttempt = {
+  id: string;
+  assignment_id: string;
+  wafer_id: string;
+  template_id: string;
+  process_step_id: string;
+  step_execution_id: string;
+  attempt_number: number;
+  submitted_by: string | null;
+  submitted_at: string;
+  started_at_snapshot: string | null;
+  submission_notes: string | null;
+  evidence_snapshot: Json;
+  wafer_code_snapshot: string;
+  template_name_snapshot: string;
+  template_version_snapshot: string;
+  process_step_name_snapshot: string;
+  process_step_order_snapshot: number;
+  reviewer_id_snapshot: string | null;
+  reviewer_name_snapshot: string;
+  submitted_by_name_snapshot: string;
+  prior_step_status: StepStatus;
+  client_mutation_id: string;
+  created_at: string;
+};
+
+export type CheckpointDecision = {
+  id: string;
+  attempt_id: string;
+  assignment_id: string;
+  wafer_id: string;
+  template_id: string;
+  process_step_id: string;
+  step_execution_id: string;
+  decision: CheckpointDecisionValue;
+  decided_by: string | null;
+  decided_at: string;
+  decision_notes: string | null;
+  target_step_id: string | null;
+  wafer_code_snapshot: string;
+  process_step_name_snapshot: string;
+  process_step_order_snapshot: number;
+  target_step_name_snapshot: string | null;
+  target_step_order_snapshot: number | null;
+  decided_by_name_snapshot: string;
+  client_mutation_id: string;
+  created_at: string;
+};
+
+export type CheckpointSubmissionWithdrawal = {
+  id: string;
+  attempt_id: string;
+  assignment_id: string;
+  wafer_id: string;
+  template_id: string;
+  process_step_id: string;
+  step_execution_id: string;
+  withdrawn_by: string | null;
+  withdrawn_at: string;
+  withdrawal_reason: string | null;
+  wafer_code_snapshot: string;
+  process_step_name_snapshot: string;
+  withdrawn_by_name_snapshot: string;
+  client_mutation_id: string;
+  created_at: string;
+};
+
+export type CheckpointReviewerReassignment = {
+  id: string;
+  template_id: string;
+  process_step_id: string;
+  previous_reviewer_id: string | null;
+  new_reviewer_id: string;
+  changed_by: string;
+  transaction_id: number;
+  reason: string;
+  previous_reviewer_name_snapshot: string;
+  new_reviewer_name_snapshot: string;
+  changed_by_name_snapshot: string;
+  client_mutation_id: string;
+  changed_at: string;
 };
 
 export type ToolReservation = {
@@ -411,6 +505,10 @@ export interface Database {
       wafers: Row<Wafer>;
       wafer_process_assignments: Row<WaferProcessAssignment>;
       step_executions: Row<StepExecution>;
+      process_step_attempts: Row<ProcessStepAttempt>;
+      checkpoint_decisions: Row<CheckpointDecision>;
+      checkpoint_submission_withdrawals: Row<CheckpointSubmissionWithdrawal>;
+      checkpoint_reviewer_reassignments: Row<CheckpointReviewerReassignment>;
       tool_reservations: Row<ToolReservation>;
       process_people: Row<ProcessPerson>;
       process_calendar_events: Row<ProcessCalendarEvent>;
@@ -489,6 +587,106 @@ export interface Database {
       update_process_step_positions_versioned: {
         Args: { position_updates: Json };
         Returns: ProcessStep[];
+      };
+      duplicate_process_template_version: {
+        Args: { source_template_id: string; next_version: string; next_name?: string | null };
+        Returns: ProcessTemplate;
+      };
+      publish_process_template_version: {
+        Args: { target_template_id: string };
+        Returns: ProcessTemplate;
+      };
+      normalize_draft_process_step_order: {
+        Args: { target_template_id: string; moved_step_id: string; target_position: number };
+        Returns: ProcessStep[];
+      };
+      create_ordered_draft_process_step: {
+        Args: {
+          target_template_id: string;
+          target_position: number;
+          step_name: string;
+          step_slug: string;
+          step_process_area: string;
+          reviewer_id?: string | null;
+          step_expected_duration_minutes?: number | null;
+          step_queue_target_minutes?: number | null;
+          step_required_tool_type?: string | null;
+          step_requires_recipe?: boolean;
+          step_instructions?: string | null;
+          step_parameters_schema?: Json;
+          step_canvas_x?: number | null;
+          step_canvas_y?: number | null;
+        };
+        Returns: ProcessStep;
+      };
+      archive_draft_process_step: {
+        Args: { target_step_id: string };
+        Returns: ProcessStep;
+      };
+      assign_draft_process_step_reviewer: {
+        Args: { target_step_id: string; reviewer_id: string | null };
+        Returns: ProcessStep;
+      };
+      submit_step_checkpoint: {
+        Args: {
+          target_step_execution_id: string;
+          mutation_id: string;
+          notes?: string | null;
+          evidence?: Json;
+        };
+        Returns: ProcessStepAttempt;
+      };
+      withdraw_step_checkpoint_submission: {
+        Args: { target_attempt_id: string; mutation_id: string; reason?: string | null };
+        Returns: CheckpointSubmissionWithdrawal;
+      };
+      review_step_checkpoint: {
+        Args: {
+          target_attempt_id: string;
+          review_decision: CheckpointDecisionValue;
+          mutation_id: string;
+          notes?: string | null;
+          redo_target_step_id?: string | null;
+        };
+        Returns: CheckpointDecision;
+      };
+      review_dicing_step_checkpoint: {
+        Args: {
+          target_attempt_id: string;
+          mutation_id: string;
+          notes?: string | null;
+          child_specs?: Json;
+        };
+        Returns: CheckpointDecision;
+      };
+      reconcile_dicing_checkpoint_split: {
+        Args: {
+          target_decision_id: string;
+          target_child_wafer_ids: string[];
+        };
+        Returns: Json;
+      };
+      reassign_unavailable_checkpoint_reviewer: {
+        Args: {
+          target_step_id: string;
+          replacement_reviewer_id: string;
+          mutation_id: string;
+          reason: string;
+        };
+        Returns: CheckpointReviewerReassignment;
+      };
+      assign_process_step_checkpoint_reviewer: {
+        Args: { target_step_id: string; reviewer_id: string | null };
+        Returns: ProcessStep;
+      };
+      move_approved_checkpoint_assignment: {
+        Args: {
+          target_assignment_id: string;
+          target_step_id: string;
+          mutation_id: string;
+          notes: string;
+        };
+        Returns: Json;
       };
     };
     Enums: {

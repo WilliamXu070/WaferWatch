@@ -1,10 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
-import type { MouseEvent, PointerEvent } from "react";
+import type { ClipboardEvent, MouseEvent, PointerEvent } from "react";
+import {
+  getPinchTargetScale,
+  isTouchTapWithinThreshold,
+  shouldStartNodePointerInteraction
+} from "@/components/process-flow/gesture";
 import { useRouter } from "next/navigation";
 import { WaferDiePreview, type WaferDiePreviewModel } from "@/components/wafer-die-preview";
-import { getNextGreekWaferCode, normalizeWaferCode } from "@/features/process-flows/waferNaming";
+import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
+import {
+  MAX_NOTE_ATTACHMENTS,
+  NOTE_ATTACHMENT_MAX_BYTES,
+  uploadWaferNoteAttachments
+} from "@/features/measurements/noteAttachmentUpload";
+import {
+  getNextGreekWaferCode,
+  getWaferCodeValidationError,
+  normalizeWaferCode
+} from "@/features/process-flows/waferNaming";
+import { mutateTextSurfaceJsonArray } from "@/features/text-surfaces/actions";
+import {
+  getWaferDieStepNotesScopeKey,
+  waferDieNotesSurface
+} from "@/ui/waferwatch-wireframe/components/wafer-die-detail/waferDieDetailData";
 import type { ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
 import { ProcessFlowToolbar } from "./process-flow/ProcessFlowToolbar";
@@ -25,11 +45,16 @@ import {
   TRANSITION_RETRY_DELAY_MS,
   TRANSITION_RETRY_LIMIT,
   WHEEL_ZOOM_STEP,
-  getNodeHeightForWaferCount
+  getNodeHeightForWaferCount,
+  getNodeHeightForWafers
 } from "./process-flow/constants";
 import { getGraphBounds, getSnappedNodePosition, nodeContainsPoint } from "./process-flow/geometry";
 import { findEdgeSplitCandidate, splitEdgeWithNode } from "./process-flow/graphEdit";
 import { hasCrossedWaferDragThreshold } from "./process-flow/interactions";
+import {
+  getAvailableWaferMoveTargets,
+  getSelectedLinkedStepEdge
+} from "./process-flow/mobileActions";
 import {
   clampScale,
   getWaferChipLabel,
@@ -37,7 +62,9 @@ import {
 } from "./process-flow/labels";
 import { applyGraphDisplayOrder, autoLayoutNodes } from "./process-flow/layout";
 import { getInitialGraph } from "./process-flow/graphSeed";
+import { canMoveToAnotherStep, canSubmitCheckpoint } from "./process-flow/checkpointPhase";
 import type {
+  CheckpointReviewerOption,
   ConnectionDraft,
   CreateWaferAtProcessStartAction,
   CreateProcessFlowStepAction,
@@ -50,21 +77,25 @@ import type {
   FlowEdge,
   FlowNode,
   GraphViewportFit,
-  MoveWaferToProcessStepAction,
+  MoveApprovedCheckpointAction,
   NodeDrag,
   PanePoint,
   PendingWaferMove,
   PersistedStepPayload,
   RoleMenu,
+  ReviewStepCheckpointAction,
   ScenePoint,
   SelectionBox,
   SelectionRect,
   SnapGuide,
   UpdateProcessStepNameAction,
+  UpdateStepCheckpointReviewerAction,
   UpdateProcessStepNodeTypeAction,
   UpdateProcessStepPositionsAction,
   WaferDrag,
   WaferPin,
+  SubmitStepCheckpointAction,
+  WithdrawStepCheckpointAction,
   ZoomAnchor
 } from "./process-flow/types";
 
@@ -104,7 +135,72 @@ type CreatedWaferPayload = {
   } | null;
 };
 
+type SelectedFlowWafer = {
+  assignmentId: string;
+  nodeId: string;
+  label: string;
+  isDie: boolean;
+};
+
 const MAX_UNDO_STACK = 30;
+
+function getWaferSelectionLabel(wafers: readonly Pick<SelectedFlowWafer, "label" | "isDie">[]) {
+  if (wafers.length === 1) {
+    return wafers[0].label;
+  }
+
+  const noun = wafers.every((wafer) => wafer.isDie)
+    ? "dies"
+    : wafers.every((wafer) => !wafer.isDie)
+      ? "wafers"
+      : "items";
+  return `${wafers.length} ${noun}`;
+}
+
+function moveWafersBetweenNodes(
+  nodes: FlowNode[],
+  sourceStepId: string,
+  targetStepId: string,
+  assignmentIds: ReadonlySet<string>
+) {
+  if (assignmentIds.size === 0 || sourceStepId === targetStepId) {
+    return nodes;
+  }
+
+  const sourceNode = nodes.find((node) => node.id === sourceStepId);
+  const movingWafers = sourceNode?.wafers.filter((wafer) => assignmentIds.has(wafer.assignmentId)) ?? [];
+  if (movingWafers.length === 0) {
+    return nodes;
+  }
+
+  return nodes.map((node) => {
+    if (node.id === sourceStepId) {
+      const nextWafers = node.wafers.filter((wafer) => !assignmentIds.has(wafer.assignmentId));
+      return {
+        ...node,
+        wafers: nextWafers,
+        height: getNodeHeightForWafers(nextWafers)
+      };
+    }
+
+    if (node.id === targetStepId) {
+      const nextWafers = [
+        ...node.wafers.filter((wafer) => !assignmentIds.has(wafer.assignmentId)),
+        ...movingWafers.map((wafer) => ({
+          ...wafer,
+          currentStepStatus: "queued" as const
+        }))
+      ];
+      return {
+        ...node,
+        wafers: nextWafers,
+        height: getNodeHeightForWafers(nextWafers)
+      };
+    }
+
+    return node;
+  });
+}
 
 function getEdgeConnectionKey(edge: FlowEdge) {
   return `${edge.from}:${edge.to}:${edge.kind}`;
@@ -192,7 +288,13 @@ export function ProcessFlowDiagram({
   onDeleteSteps,
   onDeleteTransitions,
   onDeleteWafer,
-  onMoveWafer,
+  onSubmitCheckpoint,
+  onWithdrawCheckpoint,
+  onReviewCheckpoint,
+  onMoveApprovedWafer,
+  onUpdateStepReviewer,
+  reviewerOptions = [],
+  currentUserId,
   canEdit = true
 }: {
   steps: DiagramStep[];
@@ -209,7 +311,13 @@ export function ProcessFlowDiagram({
   onDeleteSteps?: DeleteProcessStepsAction;
   onDeleteTransitions?: DeleteProcessTransitionsAction;
   onDeleteWafer?: DeleteProcessFlowWaferAction;
-  onMoveWafer?: MoveWaferToProcessStepAction;
+  onSubmitCheckpoint?: SubmitStepCheckpointAction;
+  onWithdrawCheckpoint?: WithdrawStepCheckpointAction;
+  onReviewCheckpoint?: ReviewStepCheckpointAction;
+  onMoveApprovedWafer?: MoveApprovedCheckpointAction;
+  onUpdateStepReviewer?: UpdateStepCheckpointReviewerAction;
+  reviewerOptions?: CheckpointReviewerOption[];
+  currentUserId?: string;
 }) {
 
   const router = useRouter();
@@ -223,17 +331,24 @@ export function ProcessFlowDiagram({
   const [waferDrag, setWaferDrag] = useState<WaferDrag | null>(null);
   const [pendingWaferMove, setPendingWaferMove] = useState<PendingWaferMove | null>(null);
   const [pendingWaferMoveNote, setPendingWaferMoveNote] = useState("");
+  const [pendingWaferMoveFiles, setPendingWaferMoveFiles] = useState<File[]>([]);
+  const [pendingWaferMoveFileError, setPendingWaferMoveFileError] = useState<string | null>(null);
+  const [checkpointReview, setCheckpointReview] = useState<{
+    wafer: WaferPin;
+    node: FlowNode;
+    mode: "review" | "withdraw";
+  } | null>(null);
+  const [checkpointReviewDecision, setCheckpointReviewDecision] = useState<"approved" | "redo">("approved");
+  const [checkpointReviewNote, setCheckpointReviewNote] = useState("");
+  const [checkpointRedoTargetStepId, setCheckpointRedoTargetStepId] = useState("");
   const [waferCreateDraft, setWaferCreateDraft] = useState<WaferCreateDraft | null>(null);
+  const [waferCreateError, setWaferCreateError] = useState<string | null>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [selectedWafer, setSelectedWafer] = useState<{
-    assignmentId: string;
-    nodeId: string;
-    label: string;
-  } | null>(null);
+  const [selectedWafers, setSelectedWafers] = useState<SelectedFlowWafer[]>([]);
   const [waferPreview, setWaferPreview] = useState<WaferDiePreviewModel | null>(null);
   const [undoStepsCount, setUndoStepsCount] = useState(0);
   const setMoveMessage = (msg: string | null) => { if (msg) console.warn("[ProcessFlow]", msg); };
@@ -244,7 +359,17 @@ export function ProcessFlowDiagram({
   const [isGraphPending, startGraphTransition] = useTransition();
   const [isWaferMutationPending, startWaferMutationTransition] = useTransition();
   const scaleRef = useRef(1);
-  const pinchBaseScaleRef = useRef(1);
+  const pinchInitialAppScaleRef = useRef(1);
+  const pinchInitialGestureScaleRef = useRef(1);
+  const pinchAnchorRef = useRef<{ paneX: number; paneY: number } | null>(null);
+  const pendingPinchScaleRef = useRef<number | null>(null);
+  const pinchAnimationFrameRef = useRef<number | null>(null);
+  const pendingTouchNodeRef = useRef<{
+    nodeId: string;
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+  } | null>(null);
   const pendingZoomAnchorRef = useRef<ZoomAnchor | null>(null);
   const pendingGraphFitRef = useRef<GraphViewportFit | null>(null);
   const pendingStepCreateRef = useRef<Map<string, QueuedStepCreate>>(new Map());
@@ -295,33 +420,37 @@ export function ProcessFlowDiagram({
   const scaledWidth = Math.round(sceneBounds.width * s);
   const scaledHeight = Math.round(sceneBounds.height * s);
   const nodeById = useMemo(() => new Map(displayNodes.map((node) => [node.id, node])), [displayNodes]);
-  const selectedWaferAssignmentId = useMemo(() => {
-    if (!selectedWafer) {
-      return null;
-    }
-
-    return displayNodes.some((node) =>
-      node.wafers.some((wafer) => wafer.assignmentId === selectedWafer.assignmentId)
-    )
-      ? selectedWafer.assignmentId
-      : null;
-  }, [displayNodes, selectedWafer]);
-  const directedEdgeByNodePair = useMemo(() => {
-    const map = new Map<string, FlowEdge>();
-    for (const edge of edges) {
-      map.set(`${edge.from}:${edge.to}`, edge);
-    }
-    return map;
-  }, [edges]);
+  const activeSelectedWafers = useMemo(
+    () => selectedWafers.filter((selection) =>
+      nodeById.get(selection.nodeId)?.wafers.some((wafer) => wafer.assignmentId === selection.assignmentId)
+    ),
+    [nodeById, selectedWafers]
+  );
+  const selectedWafer = activeSelectedWafers[activeSelectedWafers.length - 1] ?? null;
+  const selectedWaferPin = selectedWafer
+    ? nodeById.get(selectedWafer.nodeId)?.wafers.find((wafer) => wafer.assignmentId === selectedWafer.assignmentId) ?? null
+    : null;
+  const selectedWaferAssignmentIds = useMemo(
+    () => new Set(activeSelectedWafers.map((wafer) => wafer.assignmentId)),
+    [activeSelectedWafers]
+  );
+  const selectedLinkedStepEdge = useMemo(
+    () => getSelectedLinkedStepEdge(edges, selectedNodeIds),
+    [edges, selectedNodeIds]
+  );
+  const selectedWaferMoveTargets = useMemo(
+    () => selectedWafer && nodeById.get(selectedWafer.nodeId)?.wafers.find((wafer) => wafer.assignmentId === selectedWafer.assignmentId)?.currentStepStatus === "ready_to_move"
+      ? getAvailableWaferMoveTargets(displayNodes, edges, selectedWafer.nodeId)
+      : [],
+    [displayNodes, edges, nodeById, selectedWafer]
+  );
   const waferDropTarget = useMemo(() => {
-    if (!waferDrag?.hasMoved || !onMoveWafer) {
+    if (!waferDrag?.hasMoved) {
       return null;
     }
 
     const source = nodeById.get(waferDrag.sourceStepId);
     const target = displayNodes.find((node) =>
-      node.role === "normal" &&
-      node.id !== waferDrag.sourceStepId &&
       nodeContainsPoint(node, { x: waferDrag.x, y: waferDrag.y })
     );
 
@@ -329,17 +458,18 @@ export function ProcessFlowDiagram({
       return null;
     }
 
-    const hasDirectPath = directedEdgeByNodePair.has(`${source.id}:${target.id}`);
-    const isRevert = !hasDirectPath && target.order < source.order;
-    if (!isRevert && !hasDirectPath) {
-      return null;
-    }
+    const draggedWafers = source.wafers.filter((wafer) => waferDrag.wafers.some((item) => item.assignmentId === wafer.assignmentId));
+    const canSubmit = target.id === source.id && waferDrag.x >= source.x + source.width / 2 &&
+      Boolean(onSubmitCheckpoint) && draggedWafers.every((wafer) => canSubmitCheckpoint(wafer.currentStepStatus));
+    const canMove = target.id !== source.id && Boolean(onMoveApprovedWafer) &&
+      draggedWafers.every((wafer) => canMoveToAnotherStep(wafer.currentStepStatus));
+    if (!canSubmit && !canMove) return null;
 
     return {
       nodeId: target.id,
-      kind: isRevert ? "revert" as const : "advance" as const
+      kind: canSubmit ? "submit" as const : "move" as const
     };
-  }, [directedEdgeByNodePair, displayNodes, nodeById, onMoveWafer, waferDrag]);
+  }, [displayNodes, nodeById, onMoveApprovedWafer, onSubmitCheckpoint, waferDrag]);
   const nodesRef = useRef<FlowNode[]>([]);
   const edgesRef = useRef<FlowEdge[]>([]);
 
@@ -1086,9 +1216,10 @@ export function ProcessFlowDiagram({
     }
 
     const existingWaferCodes = displayNodes.flatMap((node) => node.wafers.map((wafer) => wafer.waferCode));
+    setWaferCreateError(null);
     setWaferCreateDraft({
       waferCode: suggestedWaferCode ?? getNextGreekWaferCode(existingWaferCodes),
-      diameterMm: 100
+      dieCount: 1
     });
   }, [
     canEdit,
@@ -1106,11 +1237,18 @@ export function ProcessFlowDiagram({
 
     const startNode = displayNodes.find((node) => node.role === "start") ?? displayNodes[0];
     const waferCode = normalizeWaferCode(waferCreateDraft.waferCode);
-    if (!startNode || !waferCode) {
+    const validationError = getWaferCodeValidationError(waferCode);
+    if (validationError) {
+      setWaferCreateError(validationError);
+      return;
+    }
+    if (!startNode) {
+      setWaferCreateError("Create a start step before adding wafers.");
       return;
     }
 
     const draft = { ...waferCreateDraft, waferCode };
+    setWaferCreateError(null);
     setWaferCreateDraft(null);
 
     const temporaryAssignmentId = `local-wafer-${Math.random().toString(36).slice(2, 10)}`;
@@ -1138,7 +1276,7 @@ export function ProcessFlowDiagram({
         const result = await onCreateWaferAtProcessStart({
           templateId: processTemplateId,
           waferCode,
-          diameterMm: draft.diameterMm
+          dieCount: draft.dieCount
         });
 
         if (!result.ok) {
@@ -1156,6 +1294,7 @@ export function ProcessFlowDiagram({
             )
           );
           setWaferCreateDraft(draft);
+          setWaferCreateError(result.error);
           setMoveMessage(result.error);
           return;
         }
@@ -1200,13 +1339,29 @@ export function ProcessFlowDiagram({
   ]);
 
   const selectWafer = useCallback((nodeId: string, wafer: WaferPin) => {
+    if (waferDragRef.current?.hasMoved) {
+      return;
+    }
+
     setSelectedNodeIds(new Set());
     setSelectedEdgeId(null);
     setRoleMenu(null);
-    setSelectedWafer({
+    const nextSelection: SelectedFlowWafer = {
       assignmentId: wafer.assignmentId,
       nodeId,
-      label: getWaferChipLabel(wafer)
+      label: getWaferChipLabel(wafer),
+      isDie: Boolean(wafer.dieLabel)
+    };
+    setSelectedWafers((current) => {
+      if (current.some((selection) => selection.assignmentId === wafer.assignmentId)) {
+        return current.filter((selection) => selection.assignmentId !== wafer.assignmentId);
+      }
+
+      if (current.some((selection) => selection.nodeId !== nodeId)) {
+        return [nextSelection];
+      }
+
+      return [...current, nextSelection];
     });
   }, []);
 
@@ -1247,7 +1402,7 @@ export function ProcessFlowDiagram({
     const sourceNode = nodesRef.current.find((node) => node.id === wafer.nodeId);
     const deletedPin = sourceNode?.wafers.find((pin) => pin.assignmentId === wafer.assignmentId);
     if (!deletedPin) {
-      setSelectedWafer(null);
+      setSelectedWafers((current) => current.filter((selection) => selection.assignmentId !== wafer.assignmentId));
       return;
     }
 
@@ -1263,7 +1418,7 @@ export function ProcessFlowDiagram({
           : node
       )
     );
-    setSelectedWafer(null);
+    setSelectedWafers((current) => current.filter((selection) => selection.assignmentId !== wafer.assignmentId));
     setMoveMessage(`Deleting ${wafer.label}...`);
 
     void (async () => {
@@ -1285,7 +1440,11 @@ export function ProcessFlowDiagram({
             };
           })
         );
-        setSelectedWafer(wafer);
+        setSelectedWafers((current) =>
+          current.some((selection) => selection.assignmentId === wafer.assignmentId)
+            ? current
+            : [...current, wafer]
+        );
         setMoveMessage(result.error);
         return;
       }
@@ -1453,7 +1612,7 @@ export function ProcessFlowDiagram({
     setSnapGuides([]);
     setRoleMenu(null);
     setSelectedNodeIds(new Set());
-    setSelectedWafer(null);
+    setSelectedWafers([]);
     setMoveMessage(null);
     setEditingNode(null);
     clearQueuedStepMaps();
@@ -1499,7 +1658,7 @@ export function ProcessFlowDiagram({
 
     setRoleMenu(null);
     setSelectedNodeIds(new Set());
-    setSelectedWafer(null);
+    setSelectedWafers([]);
 
     const frame = frameRef.current;
     if (!frame) {
@@ -1563,7 +1722,7 @@ export function ProcessFlowDiagram({
     commitActiveNodeLabel();
     setRoleMenu(null);
     setSelectedEdgeId(null);
-    setSelectedWafer(null);
+    setSelectedWafers([]);
 
     if (event.pointerType === "touch") {
       setSelectedNodeIds(new Set());
@@ -1636,20 +1795,7 @@ export function ProcessFlowDiagram({
     return true;
   };
 
-  const createNode = (event: MouseEvent<SVGSVGElement>) => {
-    if (event.detail !== 2 || event.button !== 0) {
-      return;
-    }
-
-    if (event.target instanceof Element && event.target.closest(".flow-wafer-chip, .flow-node")) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
+  const createNodeAtPoint = (point: ScenePoint, edgeToSplit: FlowEdge | null) => {
     if (!canEdit) {
       return;
     }
@@ -1661,12 +1807,6 @@ export function ProcessFlowDiagram({
 
     pushUndoSnapshot();
 
-    const point = getScenePoint(event);
-    const splitCandidate = findEdgeSplitCandidate(point, edges, displayNodes);
-    const edgeToSplit =
-      splitCandidate && (splitCandidate.edge.id.startsWith(EDGE_ID_PREFIX) || (onDeleteTransitions && onCreateTransition))
-        ? splitCandidate.edge
-        : null;
     const canvasX = Math.max(24, Math.round(point.x - NODE_WIDTH / 2));
     const canvasY = Math.max(24, Math.round(point.y - NODE_HEIGHT / 2));
     const temporaryStepId = `${NODE_ID_PREFIX}${Math.random().toString(36).slice(2, 10)}`;
@@ -1686,7 +1826,7 @@ export function ProcessFlowDiagram({
     };
 
     setRoleMenu(null);
-    setSelectedWafer(null);
+    setSelectedWafers([]);
     setNodes((currentNodes) => [...currentNodes, fallbackNode]);
     if (edgeToSplit) {
       pendingTransitionCreateRef.current.delete(edgeToSplit.id);
@@ -1729,10 +1869,52 @@ export function ProcessFlowDiagram({
     });
   };
 
+  const createNode = (event: MouseEvent<SVGSVGElement>) => {
+    if (event.detail !== 2 || event.button !== 0) {
+      return;
+    }
+
+    if (event.target instanceof Element && event.target.closest(".flow-wafer-chip, .flow-node")) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const point = getScenePoint(event);
+    const splitCandidate = findEdgeSplitCandidate(point, edges, displayNodes);
+    const edgeToSplit =
+      splitCandidate && (splitCandidate.edge.id.startsWith(EDGE_ID_PREFIX) || (onDeleteTransitions && onCreateTransition))
+        ? splitCandidate.edge
+        : null;
+    createNodeAtPoint(point, edgeToSplit);
+  };
+
+  const createLinkedStep = () => {
+    if (!selectedLinkedStepEdge) {
+      setMoveMessage("Select one step with an outgoing process path first.");
+      return;
+    }
+
+    const source = nodeById.get(selectedLinkedStepEdge.from);
+    const target = nodeById.get(selectedLinkedStepEdge.to);
+    if (!source || !target) {
+      setMoveMessage("The selected process path is no longer available.");
+      return;
+    }
+
+    createNodeAtPoint({
+      x: (source.x + source.width / 2 + target.x + target.width / 2) / 2,
+      y: (source.y + source.height / 2 + target.y + target.height / 2) / 2
+    }, selectedLinkedStepEdge);
+  };
+
   const beginPendingConnection = (event: PointerEvent<SVGGElement>, nodeId: string) => {
     event.stopPropagation();
     setRoleMenu(null);
-    setSelectedWafer(null);
+    setSelectedWafers([]);
 
     const point = getScenePoint(event);
     setPendingConnectionStart({
@@ -1753,6 +1935,16 @@ export function ProcessFlowDiagram({
     }
 
     event.stopPropagation();
+    if (!shouldStartNodePointerInteraction(event.pointerType)) {
+      pendingTouchNodeRef.current = {
+        nodeId: node.id,
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY
+      };
+      return;
+    }
+
     if (editingNodeId && editingNodeId !== node.id) {
       commitActiveNodeLabel();
     }
@@ -1760,7 +1952,7 @@ export function ProcessFlowDiagram({
     if (event.metaKey || event.ctrlKey || event.shiftKey) {
       event.preventDefault();
       setRoleMenu(null);
-      setSelectedWafer(null);
+      setSelectedWafers([]);
       setSelectedNodeIds((current) => {
         const next = new Set(current);
         if (next.has(node.id)) {
@@ -1778,7 +1970,7 @@ export function ProcessFlowDiagram({
     }
 
     setSelectedNodeIds(new Set([node.id]));
-    setSelectedWafer(null);
+    setSelectedWafers([]);
     beginNodeDrag(event, node);
   };
 
@@ -1790,7 +1982,7 @@ export function ProcessFlowDiagram({
     event.preventDefault();
     event.stopPropagation();
     setRoleMenu(null);
-    setSelectedWafer(null);
+    setSelectedWafers([]);
     const selectedIds = selectedNodeIds.has(node.id) ? selectedNodeIds : new Set([node.id]);
     setSelectedNodeIds(selectedIds);
 
@@ -1819,6 +2011,19 @@ export function ProcessFlowDiagram({
   const updateNodeDrag = (event: PointerEvent<SVGGElement>) => {
     if (waferDragRef.current) {
       updateWaferDrag(event as unknown as PointerEvent<SVGSVGElement>);
+      return;
+    }
+
+    const pendingTouchNode = pendingTouchNodeRef.current;
+    if (event.pointerType === "touch" && pendingTouchNode?.pointerId === event.pointerId) {
+      if (!isTouchTapWithinThreshold(
+        pendingTouchNode.startClientX,
+        pendingTouchNode.startClientY,
+        event.clientX,
+        event.clientY
+      )) {
+        pendingTouchNodeRef.current = null;
+      }
       return;
     }
 
@@ -1904,6 +2109,17 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    const pendingTouchNode = pendingTouchNodeRef.current;
+    if (event.pointerType === "touch" && pendingTouchNode?.pointerId === event.pointerId) {
+      pendingTouchNodeRef.current = null;
+      if (event.type === "pointerup") {
+        setRoleMenu(null);
+        setSelectedWafers([]);
+        setSelectedNodeIds(new Set([pendingTouchNode.nodeId]));
+      }
+      return;
+    }
+
     clearDragTouchAction();
     if (pendingConnectionStart && pendingConnectionStart.pointerId === event.pointerId) {
       safelyReleasePointerCapture(event.currentTarget, event.pointerId);
@@ -1942,7 +2158,7 @@ export function ProcessFlowDiagram({
   };
 
   const beginWaferDrag = (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => {
-    if (!canEdit || !onMoveWafer || event.button !== 0 || isMovePending) {
+    if (!canEdit || (!onSubmitCheckpoint && !onMoveApprovedWafer) || event.button !== 0 || isMovePending) {
       return;
     }
 
@@ -1950,11 +2166,27 @@ export function ProcessFlowDiagram({
     setRoleMenu(null);
     setMoveMessage(null);
 
+    const draggedSelection = activeSelectedWafers.some(
+      (selection) => selection.assignmentId === wafer.assignmentId
+    )
+      ? activeSelectedWafers
+      : [{
+          assignmentId: wafer.assignmentId,
+          nodeId: node.id,
+          label: getWaferChipLabel(wafer),
+          isDie: Boolean(wafer.dieLabel)
+        }];
+
     const point = getScenePoint(event);
     const nextDrag = {
       assignmentId: wafer.assignmentId,
       sourceStepId: node.id,
-      waferLabel: getWaferChipLabel(wafer),
+      waferLabel: getWaferSelectionLabel(draggedSelection),
+      wafers: draggedSelection.map((selection) => ({
+        assignmentId: selection.assignmentId,
+        waferLabel: selection.label,
+        isDie: selection.isDie
+      })),
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
@@ -2016,6 +2248,95 @@ export function ProcessFlowDiagram({
     }
   };
 
+  const openWaferMoveDialog = (
+    wafers: readonly SelectedFlowWafer[],
+    sourceStepId: string,
+    targetStepId: string
+  ) => {
+    const sourceNode = nodeById.get(sourceStepId);
+    const target = nodeById.get(targetStepId);
+    if (!sourceNode || !target || sourceStepId === targetStepId) {
+      return;
+    }
+
+    const uniqueWafers = Array.from(
+      new Map(
+        wafers
+          .filter((wafer) => wafer.nodeId === sourceStepId)
+          .map((wafer) => [wafer.assignmentId, wafer])
+      ).values()
+    );
+    if (uniqueWafers.length === 0) {
+      return;
+    }
+    const eligible = sourceNode.wafers.filter((wafer) =>
+      uniqueWafers.some((selected) => selected.assignmentId === wafer.assignmentId)
+    );
+    if (!eligible.every((wafer) => canMoveToAnotherStep(wafer.currentStepStatus))) {
+      setMoveMessage("Checkpoint approval is required before moving to another step.");
+      return;
+    }
+
+    setPendingWaferMove({
+      kind: "move",
+      wafers: uniqueWafers.map((wafer) => ({
+        mutationId: crypto.randomUUID(),
+        assignmentId: wafer.assignmentId,
+        waferLabel: wafer.label,
+        isDie: wafer.isDie
+      })),
+      sourceStepId,
+      sourceLabel: sourceNode.label,
+      targetStepId: target.id,
+      targetLabel: target.label,
+      waferLabel: getWaferSelectionLabel(uniqueWafers),
+      completeSourceStep: false,
+      revertToPriorStep: false
+    });
+    setPendingWaferMoveNote("");
+    setPendingWaferMoveFiles([]);
+    setPendingWaferMoveFileError(null);
+  };
+
+  const openCheckpointSubmitDialog = (
+    wafers: readonly SelectedFlowWafer[],
+    sourceStepId: string
+  ) => {
+    const sourceNode = nodeById.get(sourceStepId);
+    if (!sourceNode) return;
+    const uniqueWafers = Array.from(new Map(
+      wafers.filter((wafer) => wafer.nodeId === sourceStepId).map((wafer) => [wafer.assignmentId, wafer])
+    ).values());
+    const eligible = sourceNode.wafers.filter((wafer) => uniqueWafers.some((selected) => selected.assignmentId === wafer.assignmentId));
+    if (!sourceNode.requiredReviewerId) {
+      setMoveMessage(`Assign a checkpoint reviewer to ${sourceNode.label} before completing work.`);
+      return;
+    }
+    if (!eligible.length || !eligible.every((wafer) => wafer.currentStepExecutionId && canSubmitCheckpoint(wafer.currentStepStatus))) {
+      setMoveMessage("Only work on the Beginning side can be submitted for checkpoint review.");
+      return;
+    }
+    setPendingWaferMove({
+      kind: "submit",
+      wafers: uniqueWafers.map((wafer) => ({
+        mutationId: crypto.randomUUID(),
+        assignmentId: wafer.assignmentId,
+        waferLabel: wafer.label,
+        isDie: wafer.isDie
+      })),
+      sourceStepId,
+      sourceLabel: sourceNode.label,
+      targetStepId: sourceStepId,
+      targetLabel: `${sourceNode.label} · Complete`,
+      waferLabel: getWaferSelectionLabel(uniqueWafers),
+      completeSourceStep: false,
+      revertToPriorStep: false
+    });
+    setPendingWaferMoveNote("");
+    setPendingWaferMoveFiles([]);
+    setPendingWaferMoveFileError(null);
+  };
+
   const finishWaferDrag = (event: PointerEvent<SVGSVGElement>) => {
     const currentDrag = waferDragRef.current;
     if (!currentDrag || currentDrag.pointerId !== event.pointerId) {
@@ -2033,43 +2354,51 @@ export function ProcessFlowDiagram({
     }
 
     const point = getScenePoint(event);
-    const target = displayNodes.find((node) => (
-      node.role === "normal" &&
-      node.id !== finishedDrag.sourceStepId &&
-      nodeContainsPoint(node, point)
-    ));
+    const target = displayNodes.find((node) => nodeContainsPoint(node, point));
 
-    if (!target || !onMoveWafer || !finishedDrag.hasMoved) {
+    if (!target || !finishedDrag.hasMoved) {
       return;
     }
-
-    const sourceNode = nodeById.get(finishedDrag.sourceStepId);
-    if (!sourceNode) {
-      return;
+    const selections = finishedDrag.wafers.map((wafer) => ({
+        assignmentId: wafer.assignmentId,
+        nodeId: finishedDrag.sourceStepId,
+        label: wafer.waferLabel,
+        isDie: wafer.isDie
+      }));
+    if (target.id === finishedDrag.sourceStepId && point.x >= target.x + target.width / 2) {
+      openCheckpointSubmitDialog(selections, finishedDrag.sourceStepId);
+    } else if (target.id !== finishedDrag.sourceStepId) {
+      openWaferMoveDialog(selections, finishedDrag.sourceStepId, target.id);
     }
+  };
 
-    const directedEdge = directedEdgeByNodePair.get(`${finishedDrag.sourceStepId}:${target.id}`);
-    // A configured return edge is an allowed next branch, even when its legacy
-    // numeric step_order is lower than the source. Only unconnected earlier
-    // stages are treated as manual reverts.
-    const isRevertMove = !directedEdge && target.order < sourceNode.order;
-    if (!directedEdge && !isRevertMove) {
-      setMoveMessage(`No direct process path from ${sourceNode.label} to ${target.label}.`);
-      return;
-    }
-
-    setPendingWaferMove({
-      mutationId: crypto.randomUUID(),
-      assignmentId: finishedDrag.assignmentId,
-      sourceStepId: finishedDrag.sourceStepId,
-      sourceLabel: sourceNode.label,
-      targetStepId: target.id,
-      targetLabel: target.label,
-      waferLabel: finishedDrag.waferLabel,
-      completeSourceStep: Boolean(directedEdge && directedEdge.kind === "flow" && !isRevertMove),
-      revertToPriorStep: isRevertMove
+  const appendPendingWaferMoveFiles = (files: readonly File[]) => {
+    const acceptedFiles = files.filter((file) => file.size <= NOTE_ATTACHMENT_MAX_BYTES);
+    setPendingWaferMoveFileError(
+      acceptedFiles.length === files.length ? null : "Images must be 50 MB or smaller."
+    );
+    setPendingWaferMoveFiles((current) => {
+      const keys = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`));
+      const additions = acceptedFiles.filter((file) => {
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (keys.has(key)) {
+          return false;
+        }
+        keys.add(key);
+        return true;
+      });
+      return [...current, ...additions].slice(0, MAX_NOTE_ATTACHMENTS);
     });
-    setPendingWaferMoveNote("");
+  };
+
+  const pastePendingWaferMoveImages = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = getClipboardImageFiles(event.clipboardData);
+    if (!images.length) {
+      return;
+    }
+
+    event.preventDefault();
+    appendPendingWaferMoveFiles(images);
   };
 
   const cancelPendingWaferMove = () => {
@@ -2079,94 +2408,293 @@ export function ProcessFlowDiagram({
 
     setPendingWaferMove(null);
     setPendingWaferMoveNote("");
+    setPendingWaferMoveFiles([]);
+    setPendingWaferMoveFileError(null);
   };
 
   const submitPendingWaferMove = () => {
-    if (!pendingWaferMove || !onMoveWafer || isMovePending) {
+    if (!pendingWaferMove || isMovePending || (pendingWaferMove.kind === "submit" ? !onSubmitCheckpoint : !onMoveApprovedWafer)) {
       return;
     }
 
     const note = pendingWaferMoveNote.trim();
     if (!note) {
-      setMoveMessage("Add a process note before moving this wafer.");
+      setMoveMessage(`Add a process note before moving ${pendingWaferMove.waferLabel}.`);
       return;
     }
 
     const move = pendingWaferMove;
+    const files = pendingWaferMoveFiles;
     const previousNodes = nodesRef.current;
-    const movingWafer =
-      previousNodes
-        .find((node) => node.id === move.sourceStepId)
-        ?.wafers.find((wafer) => wafer.assignmentId === move.assignmentId) ?? null;
-    const optimisticWafer: WaferPin = movingWafer ?? {
-      assignmentId: move.assignmentId,
-      waferCode: move.waferLabel,
-      dieLabel: null,
-      currentStepStatus: "queued"
-    };
-
-    setNodes((currentNodes) =>
-      currentNodes.map((node) => {
-        if (node.id === move.sourceStepId) {
-          const nextWafers = node.wafers.filter((wafer) => wafer.assignmentId !== move.assignmentId);
-          return {
-            ...node,
-            wafers: nextWafers,
-            height: getNodeHeightForWaferCount(nextWafers.length)
-          };
-        }
-
-        if (node.id === move.targetStepId) {
-          const nextWafers: WaferPin[] = [
-            ...node.wafers.filter((wafer) => wafer.assignmentId !== move.assignmentId),
-            {
-              ...optimisticWafer,
-              currentStepStatus: "queued" as const
-            }
-          ];
-          return {
-            ...node,
-            wafers: nextWafers,
-            height: getNodeHeightForWaferCount(nextWafers.length)
-          };
-        }
-
-        return node;
-      })
+    const previousWaferPreview = waferPreview;
+    const moveAssignmentIds = new Set(move.wafers.map((wafer) => wafer.assignmentId));
+    const movingWafers = previousNodes
+      .find((node) => node.id === move.sourceStepId)
+      ?.wafers.filter((wafer) => moveAssignmentIds.has(wafer.assignmentId)) ?? [];
+    const movingWafersByAssignmentId = new Map(
+      movingWafers.map((wafer) => [wafer.assignmentId, wafer])
     );
-    setSelectedWafer(null);
+    const previewMovingWafer = previousWaferPreview
+      ? movingWafers.find((wafer) =>
+          wafer.waferId === previousWaferPreview.waferId &&
+          wafer.dieLabel === previousWaferPreview.dieLabel
+        ) ?? null
+      : null;
+
+    setNodes((currentNodes) => move.kind === "submit"
+      ? currentNodes.map((node) => node.id === move.sourceStepId ? {
+          ...node,
+          wafers: node.wafers.map((wafer) => moveAssignmentIds.has(wafer.assignmentId)
+            ? { ...wafer, currentStepStatus: "awaiting_checkpoint" as const }
+            : wafer),
+          height: getNodeHeightForWafers(node.wafers)
+        } : node)
+      : moveWafersBetweenNodes(currentNodes, move.sourceStepId, move.targetStepId, moveAssignmentIds)
+    );
+    setSelectedWafers([]);
+    if (
+      previousWaferPreview &&
+      previewMovingWafer
+    ) {
+      setWaferPreview({
+        ...previousWaferPreview,
+        stepLabel: move.kind === "submit" ? move.sourceLabel : move.targetLabel
+      });
+    }
     setPendingWaferMove(null);
     setPendingWaferMoveNote("");
+    setPendingWaferMoveFiles([]);
+    setPendingWaferMoveFileError(null);
     setMoveMessage(`Moving ${move.waferLabel} to ${move.targetLabel} in background...`);
 
     startMoveTransition(() => {
       void (async () => {
-        const result = await onMoveWafer({
-          mutationId: move.mutationId,
-          assignmentId: move.assignmentId,
-          sourceStepId: move.sourceStepId,
-          targetStepId: move.targetStepId,
-          note,
-          completeSourceStep: move.completeSourceStep,
-          revertToPriorStep: move.revertToPriorStep
-        });
+        const outcomes = await Promise.all(move.wafers.map(async (waferMove) => {
+          const movingWafer = movingWafersByAssignmentId.get(waferMove.assignmentId) ?? null;
 
-        if (result.ok) {
-          setMoveMessage(
-            move.revertToPriorStep
-              ? `Reverted ${move.waferLabel} to ${move.targetLabel} for redo.`
-              : move.completeSourceStep
-              ? `Completed source step and moved ${move.waferLabel} to ${move.targetLabel}.`
-              : `Moved ${move.waferLabel} to ${move.targetLabel}.`
+          try {
+            const result = move.kind === "submit"
+              ? await onSubmitCheckpoint!({
+                  stepExecutionId: movingWafer?.currentStepExecutionId ?? "",
+                  mutationId: waferMove.mutationId,
+                  notes: note,
+                  evidence: {}
+                })
+              : await onMoveApprovedWafer!({
+                  mutationId: waferMove.mutationId,
+                  assignmentId: waferMove.assignmentId,
+                  sourceStepId: move.sourceStepId,
+                  targetStepId: move.targetStepId,
+                  note
+                });
+            let attachmentError: string | null = null;
+
+            if (result.ok && files.length && movingWafer?.projectId && movingWafer.waferId) {
+              try {
+                const payload = result.data as {
+                  id?: string;
+                  step_execution_id?: string;
+                  metadata?: Record<string, unknown> | null;
+                };
+                const stepId = move.kind === "submit" ? move.sourceStepId : move.targetStepId;
+                const stepExecutionId = move.kind === "submit"
+                  ? movingWafer.currentStepExecutionId ?? null
+                  : payload.id ?? payload.step_execution_id ?? null;
+                const noteId = `execution-note:${stepExecutionId ?? crypto.randomUUID()}`;
+                const attachments = await uploadWaferNoteAttachments({
+                  projectId: movingWafer.projectId,
+                  waferId: movingWafer.waferId,
+                  dieLabel: movingWafer.dieLabel || movingWafer.waferCode,
+                  stepExecutionId,
+                  noteId,
+                  files
+                });
+                const timestamp = new Date().toISOString();
+                const authorId = typeof payload.metadata?.note_author_id === "string"
+                  ? payload.metadata.note_author_id
+                  : null;
+                const author = typeof payload.metadata?.note_author_name === "string"
+                  ? payload.metadata.note_author_name
+                  : "Process move";
+                const noteMutation = await mutateTextSurfaceJsonArray({
+                  projectId: movingWafer.projectId,
+                  scopeType: waferDieNotesSurface.scopeType,
+                  scopeKey: getWaferDieStepNotesScopeKey(
+                    movingWafer.waferId,
+                    movingWafer.dieLabel || movingWafer.waferCode,
+                    stepId
+                  ),
+                  fieldKey: waferDieNotesSurface.fieldKey,
+                  operation: "add",
+                  itemId: noteId,
+                  item: {
+                    id: noteId,
+                    authorId,
+                    author,
+                    body: note,
+                    attachments,
+                    processStepId: stepId,
+                    processStepName: move.kind === "submit" ? move.sourceLabel : move.targetLabel,
+                    createdAt: timestamp,
+                    updatedAt: timestamp
+                  }
+                });
+
+                if (!noteMutation.ok) {
+                  throw new Error(noteMutation.error);
+                }
+              } catch (error) {
+                attachmentError = error instanceof Error
+                  ? error.message
+                  : "The pasted image could not be saved.";
+              }
+            }
+
+            return { waferMove, result, attachmentError };
+          } catch (error) {
+            return {
+              waferMove,
+              result: {
+                ok: false as const,
+                error: error instanceof Error ? error.message : "The wafer move failed."
+              },
+              attachmentError: null
+            };
+          }
+        }));
+
+        const failedOutcomes = outcomes.filter((outcome) => !outcome.result.ok);
+        const successfulOutcomes = outcomes.filter((outcome) => outcome.result.ok);
+
+        if (failedOutcomes.length > 0) {
+          const successfulAssignmentIds = new Set(
+            successfulOutcomes.map((outcome) => outcome.waferMove.assignmentId)
           );
-          scheduleBackgroundRefresh();
+          const failedWafers = failedOutcomes.map((outcome) => outcome.waferMove);
+          const failedSelections: SelectedFlowWafer[] = failedWafers.map((wafer) => ({
+            assignmentId: wafer.assignmentId,
+            nodeId: move.sourceStepId,
+            label: wafer.waferLabel,
+            isDie: wafer.isDie
+          }));
+
+          setNodes(move.kind === "submit"
+            ? previousNodes.map((node) => node.id === move.sourceStepId ? {
+                ...node,
+                wafers: node.wafers.map((wafer) => successfulAssignmentIds.has(wafer.assignmentId)
+                  ? { ...wafer, currentStepStatus: "awaiting_checkpoint" as const }
+                  : wafer),
+                height: getNodeHeightForWafers(node.wafers)
+              } : node)
+            : moveWafersBetweenNodes(previousNodes, move.sourceStepId, move.targetStepId, successfulAssignmentIds));
+          setSelectedWafers(failedSelections);
+          setWaferPreview(
+            previousWaferPreview && previewMovingWafer && successfulAssignmentIds.has(previewMovingWafer.assignmentId)
+              ? { ...previousWaferPreview, stepLabel: move.targetLabel }
+              : previousWaferPreview
+          );
+          setPendingWaferMove({
+            ...move,
+            wafers: failedWafers,
+            waferLabel: getWaferSelectionLabel(failedSelections)
+          });
+          setPendingWaferMoveNote(note);
+          setPendingWaferMoveFiles(files);
+          const firstFailure = failedOutcomes[0];
+          const failureMessage = firstFailure && !firstFailure.result.ok
+            ? firstFailure.result.error
+            : "The selected dies could not be moved.";
+          setMoveMessage(
+            successfulOutcomes.length > 0
+              ? `${successfulOutcomes.length} of ${outcomes.length} moved. ${failedOutcomes.length} remain selected: ${failureMessage}`
+              : failureMessage
+          );
+          if (successfulOutcomes.length > 0) {
+            scheduleBackgroundRefresh();
+          }
           return;
         }
 
-        setNodes(previousNodes);
-        setPendingWaferMove(move);
-        setPendingWaferMoveNote(note);
-        setMoveMessage(result.error);
+        const attachmentFailureCount = outcomes.filter((outcome) => outcome.attachmentError).length;
+        const successMessage = move.kind === "submit"
+          ? `Submitted ${move.waferLabel} for checkpoint review.`
+          : `Moved ${move.waferLabel} to ${move.targetLabel}.`;
+        setMoveMessage(
+          attachmentFailureCount > 0
+            ? `${successMessage} ${attachmentFailureCount} attachment set${attachmentFailureCount === 1 ? "" : "s"} could not be saved.`
+            : successMessage
+        );
+        scheduleBackgroundRefresh();
+      })();
+    });
+  };
+
+  const openCheckpointAction = (mode: "review" | "withdraw") => {
+    if (!selectedWafer || !selectedWaferPin) return;
+    const node = nodeById.get(selectedWafer.nodeId);
+    if (!node || !selectedWaferPin.latestStepAttemptId) return;
+    setCheckpointReview({ wafer: selectedWaferPin, node, mode });
+    setCheckpointReviewDecision("approved");
+    setCheckpointReviewNote("");
+    setCheckpointRedoTargetStepId(node.id);
+  };
+
+  const submitCheckpointAction = () => {
+    if (!checkpointReview || isMovePending) return;
+    const attemptId = checkpointReview.wafer.latestStepAttemptId;
+    if (!attemptId) return;
+    const note = checkpointReviewNote.trim();
+    if (checkpointReview.mode === "withdraw" && !onWithdrawCheckpoint) return;
+    if (checkpointReview.mode === "review" && !onReviewCheckpoint) return;
+    if (checkpointReview.mode === "review" && checkpointReviewDecision === "redo" && (!note || !checkpointRedoTargetStepId)) {
+      setMoveMessage("Redo requires a reason and destination step.");
+      return;
+    }
+    const action = checkpointReview;
+    const decision = checkpointReviewDecision;
+    startMoveTransition(() => {
+      void (async () => {
+        const result = action.mode === "withdraw"
+          ? await onWithdrawCheckpoint!({ attemptId, mutationId: crypto.randomUUID(), reason: note || null })
+          : await onReviewCheckpoint!({
+              attemptId,
+              decision,
+              mutationId: crypto.randomUUID(),
+              notes: note || null,
+              redoTargetStepId: decision === "redo" ? checkpointRedoTargetStepId : null
+            });
+        if (!result.ok) {
+          setMoveMessage(result.error);
+          return;
+        }
+        setCheckpointReview(null);
+        setSelectedWafers([]);
+        setMoveMessage(action.mode === "withdraw"
+          ? "Checkpoint submission withdrawn."
+          : decision === "approved"
+            ? "Checkpoint approved. The item is ready to move."
+            : "Redo requested and returned to Beginning.");
+        scheduleBackgroundRefresh();
+      })();
+    });
+  };
+
+  const updateCheckpointReviewer = (nodeId: string, reviewerId: string | null) => {
+    if (!onUpdateStepReviewer || isGraphPending) return;
+    const reviewerName = reviewerOptions.find((reviewer) => reviewer.id === reviewerId)?.name ?? null;
+    setNodes((current) => current.map((node) => node.id === nodeId
+      ? { ...node, requiredReviewerId: reviewerId, requiredReviewerName: reviewerName }
+      : node));
+    setRoleMenu(null);
+    startGraphTransition(() => {
+      void (async () => {
+        const result = await onUpdateStepReviewer({ stepId: nodeId, reviewerId });
+        if (!result.ok) {
+          setMoveMessage(result.error);
+          scheduleBackgroundRefresh();
+          return;
+        }
+        setMoveMessage(reviewerId ? `Checkpoint reviewer set to ${reviewerName}.` : "Checkpoint reviewer removed.");
       })();
     });
   };
@@ -2475,11 +3003,22 @@ export function ProcessFlowDiagram({
 
     const handleGestureStart = (event: Event) => {
       const gestureEvent = event as Event & { scale?: number };
-      if (gestureEvent.scale && typeof gestureEvent.scale === "number") {
-        pinchBaseScaleRef.current = scaleRef.current / gestureEvent.scale;
-      } else {
-        pinchBaseScaleRef.current = scaleRef.current;
-      }
+      const gestureScale = typeof gestureEvent.scale === "number" && gestureEvent.scale > 0
+        ? gestureEvent.scale
+        : 1;
+      const clientPoint =
+        "clientX" in event && "clientY" in event
+          ? getPanePoint(
+              (event as Event & { clientX: number }).clientX,
+              (event as Event & { clientY: number }).clientY
+            )
+          : getPanePoint();
+
+      pinchInitialAppScaleRef.current = scaleRef.current;
+      pinchInitialGestureScaleRef.current = gestureScale;
+      pinchAnchorRef.current = clientPoint;
+      pendingPinchScaleRef.current = null;
+      pendingTouchNodeRef.current = null;
 
       event.preventDefault();
       event.stopPropagation();
@@ -2492,14 +3031,21 @@ export function ProcessFlowDiagram({
         return;
       }
 
-      const clientPoint =
-        "clientX" in event && "clientY" in event
-          ? getPanePoint(
-              (event as Event & { clientX: number }).clientX,
-              (event as Event & { clientY: number }).clientY
-            )
-          : getPanePoint();
-      applyScaleAtAnchor(pinchBaseScaleRef.current * gestureScale, clientPoint);
+      pendingPinchScaleRef.current = getPinchTargetScale(
+        pinchInitialAppScaleRef.current,
+        pinchInitialGestureScaleRef.current,
+        gestureScale
+      );
+      if (pinchAnimationFrameRef.current === null) {
+        pinchAnimationFrameRef.current = window.requestAnimationFrame(() => {
+          pinchAnimationFrameRef.current = null;
+          const nextScale = pendingPinchScaleRef.current;
+          pendingPinchScaleRef.current = null;
+          if (nextScale !== null) {
+            applyScaleAtAnchor(nextScale, pinchAnchorRef.current);
+          }
+        });
+      }
       event.preventDefault();
       event.stopPropagation();
     };
@@ -2519,6 +3065,10 @@ export function ProcessFlowDiagram({
       frame.removeEventListener("gesturestart", handleGestureStart);
       frame.removeEventListener("gesturechange", handleGestureChange);
       frame.removeEventListener("gestureend", handleGestureEnd);
+      if (pinchAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(pinchAnimationFrameRef.current);
+        pinchAnimationFrameRef.current = null;
+      }
     };
   }, [applyScaleAtAnchor, getPanePoint]);
 
@@ -2527,9 +3077,16 @@ export function ProcessFlowDiagram({
       {waferCreateDraft ? (
         <WaferCreateDialog
           draft={waferCreateDraft}
+          errorMessage={waferCreateError}
           isPending={isWaferMutationPending}
-          onCancel={() => setWaferCreateDraft(null)}
-          onChange={setWaferCreateDraft}
+          onCancel={() => {
+            setWaferCreateDraft(null);
+            setWaferCreateError(null);
+          }}
+          onChange={(draft) => {
+            setWaferCreateDraft(draft);
+            setWaferCreateError(null);
+          }}
           onSubmit={submitWaferCreate}
         />
       ) : null}
@@ -2542,14 +3099,16 @@ export function ProcessFlowDiagram({
             role="dialog"
           >
             <div className="flow-wafer-move-dialog__header">
-              <p className="eyebrow">{pendingWaferMove.revertToPriorStep ? "Redo note required" : "Process note required"}</p>
+              <p className="eyebrow">{pendingWaferMove.kind === "submit" ? "Checkpoint submission" : "Approved movement"}</p>
               <h2 id="flow-wafer-move-title">
-                {pendingWaferMove.revertToPriorStep ? "Revert wafer" : "Move wafer"}
+                {pendingWaferMove.kind === "submit" ? "Complete " : "Move "}
+                {pendingWaferMove.wafers.length > 1 ? pendingWaferMove.waferLabel : "wafer"}
               </h2>
               <p>
-                {pendingWaferMove.revertToPriorStep ? "Add a note explaining why " : "Add a note before moving "}
-                {pendingWaferMove.waferLabel} from {pendingWaferMove.sourceLabel} to{" "}
-                {pendingWaferMove.targetLabel}.
+                {pendingWaferMove.kind === "submit"
+                  ? `Document the completed work for ${pendingWaferMove.waferLabel}. It will wait on Complete until the assigned reviewer decides.`
+                  : `Add a movement note before ${pendingWaferMove.waferLabel} enters ${pendingWaferMove.targetLabel} on Beginning.`}
+                {pendingWaferMove.wafers.length > 1 ? " The same note will be saved to every selected die." : ""}
               </p>
             </div>
             <dl className="flow-wafer-move-dialog__path">
@@ -2567,17 +3126,44 @@ export function ProcessFlowDiagram({
               <textarea
                 autoFocus
                 disabled={isMovePending}
+                id="process-wafer-move-note"
                 maxLength={4000}
+                name="processWaferMoveNote"
                 onChange={(event) => setPendingWaferMoveNote(event.currentTarget.value)}
+                onPaste={pastePendingWaferMoveImages}
                 placeholder={
-                  pendingWaferMove.revertToPriorStep
-                    ? "Why does this wafer need to redo this earlier step?"
-                    : "What changed, what was observed, or why this wafer is moving now?"
+                  pendingWaferMove.kind === "submit"
+                    ? "What work was completed, and what should the reviewer verify?"
+                    : `Why ${pendingWaferMove.wafers.length > 1 ? "are these dies" : "is this wafer"} moving to this step?`
                 }
                 rows={5}
                 value={pendingWaferMoveNote}
               />
             </label>
+            <div className="flow-wafer-move-dialog__attachments">
+              <p>
+                Paste screenshots with Command-V. Up to {MAX_NOTE_ATTACHMENTS} images.
+                {pendingWaferMove.wafers.length > 1 ? " Images will be attached to every selected die." : ""}
+              </p>
+              {pendingWaferMoveFiles.length ? (
+                <div className="flow-wafer-move-dialog__attachment-list">
+                  {pendingWaferMoveFiles.map((file) => (
+                    <span key={`${file.name}:${file.size}:${file.lastModified}`}>
+                      <span title={file.name}>{file.name}</span>
+                      <button
+                        aria-label={`Remove ${file.name}`}
+                        disabled={isMovePending}
+                        onClick={() => setPendingWaferMoveFiles((current) => current.filter((candidate) => candidate !== file))}
+                        type="button"
+                      >
+                        Remove
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {pendingWaferMoveFileError ? <p className="form-error">{pendingWaferMoveFileError}</p> : null}
+            </div>
             <div className="flow-wafer-move-dialog__actions">
               <button
                 className="button ghost-button"
@@ -2593,7 +3179,74 @@ export function ProcessFlowDiagram({
                 onClick={submitPendingWaferMove}
                 type="button"
               >
-                {isMovePending ? "Saving..." : pendingWaferMove.revertToPriorStep ? "Revert wafer" : "Move wafer"}
+                {isMovePending
+                  ? "Saving..."
+                  : `${pendingWaferMove.kind === "submit" ? "Submit" : "Move"} ${
+                      pendingWaferMove.wafers.length > 1 ? pendingWaferMove.waferLabel : "wafer"
+                    }`}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {checkpointReview ? (
+        <div className="flow-wafer-move-dialog-backdrop">
+          <section aria-labelledby="checkpoint-review-title" aria-modal="true" className="flow-wafer-move-dialog" role="dialog">
+            <div className="flow-wafer-move-dialog__header">
+              <p className="eyebrow">{checkpointReview.mode === "withdraw" ? "Withdraw submission" : "Checkpoint review"}</p>
+              <h2 id="checkpoint-review-title">
+                {checkpointReview.mode === "withdraw" ? "Return to Beginning" : checkpointReview.node.label}
+              </h2>
+              <p>
+                {checkpointReview.mode === "withdraw"
+                  ? "Withdraw this undecided submission and return the item to Beginning. The withdrawal remains in its audit history."
+                  : `Review ${getWaferChipLabel(checkpointReview.wafer)} as the assigned checkpoint reviewer.`}
+              </p>
+            </div>
+            {checkpointReview.mode === "review" ? (
+              <div className="checkpoint-review-choice" role="group" aria-label="Checkpoint decision">
+                <button
+                  className={checkpointReviewDecision === "approved" ? "is-active" : ""}
+                  onClick={() => setCheckpointReviewDecision("approved")}
+                  type="button"
+                >Approve</button>
+                <button
+                  className={checkpointReviewDecision === "redo" ? "is-active checkpoint-review-choice__redo" : "checkpoint-review-choice__redo"}
+                  onClick={() => setCheckpointReviewDecision("redo")}
+                  type="button"
+                >Request redo</button>
+              </div>
+            ) : null}
+            {checkpointReview.mode === "review" && checkpointReviewDecision === "redo" ? (
+              <label className="flow-wafer-move-dialog__field">
+                <span>Redo destination</span>
+                <select value={checkpointRedoTargetStepId} onChange={(event) => setCheckpointRedoTargetStepId(event.currentTarget.value)}>
+                  {displayNodes.slice().sort((a, b) => a.order - b.order).map((node) => (
+                    <option key={node.id} value={node.id}>{node.label}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <label className="flow-wafer-move-dialog__field">
+              <span>{checkpointReview.mode === "withdraw" ? "Reason (optional)" : checkpointReviewDecision === "redo" ? "Redo reason" : "Review note (optional)"}</span>
+              <textarea
+                autoFocus
+                disabled={isMovePending}
+                maxLength={4000}
+                onChange={(event) => setCheckpointReviewNote(event.currentTarget.value)}
+                rows={4}
+                value={checkpointReviewNote}
+              />
+            </label>
+            <div className="flow-wafer-move-dialog__actions">
+              <button className="button ghost-button" disabled={isMovePending} onClick={() => setCheckpointReview(null)} type="button">Cancel</button>
+              <button
+                className="button primary-button"
+                disabled={isMovePending || (checkpointReview.mode === "review" && checkpointReviewDecision === "redo" && (!checkpointReviewNote.trim() || !checkpointRedoTargetStepId))}
+                onClick={submitCheckpointAction}
+                type="button"
+              >
+                {isMovePending ? "Saving..." : checkpointReview.mode === "withdraw" ? "Withdraw" : checkpointReviewDecision === "approved" ? "Approve checkpoint" : "Request redo"}
               </button>
             </div>
           </section>
@@ -2607,12 +3260,102 @@ export function ProcessFlowDiagram({
         onZoomIn={zoomIn}
         onCenterView={() => centerView()}
         onOrganize={organizeCanvas}
+        onAddLinkedStep={createLinkedStep}
         onAddWafer={openWaferCreateDialog}
         onUndo={undoLastEdit}
         canUndo={undoStepsCount > 0}
+        canAddLinkedStep={Boolean(
+          canEdit &&
+          processTemplateId &&
+          onCreateStep &&
+          selectedLinkedStepEdge &&
+          (selectedLinkedStepEdge.id.startsWith(EDGE_ID_PREFIX) || (onDeleteTransitions && onCreateTransition))
+        )}
         canAddWafer={Boolean(canEdit && processTemplateId && onCreateWaferAtProcessStart)}
         canEdit={canEdit}
       />
+      {selectedWafer && selectedWaferPin ? (
+        <div
+          aria-label={`Checkpoint actions for ${activeSelectedWafers.map((wafer) => wafer.label).join(", ")}`}
+          className="mx-3 mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-[#e5e5db] bg-[#fafaf4] p-3"
+        >
+          <span
+            className="mr-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#6b6a5f]"
+            title={activeSelectedWafers.map((wafer) => wafer.label).join(", ")}
+          >
+            {getWaferSelectionLabel(activeSelectedWafers)} selected
+          </span>
+          <button
+            className="button ghost-button"
+            disabled={isMovePending}
+            onClick={() => setSelectedWafers([])}
+            type="button"
+          >
+            Clear
+          </button>
+          {activeSelectedWafers.every((selection) => {
+            const wafer = nodeById.get(selection.nodeId)?.wafers.find((item) => item.assignmentId === selection.assignmentId);
+            return wafer && canSubmitCheckpoint(wafer.currentStepStatus);
+          }) ? (
+            <button
+              className="button primary-button"
+              disabled={isMovePending}
+              onClick={() => openCheckpointSubmitDialog(activeSelectedWafers, selectedWafer.nodeId)}
+              type="button"
+            >Complete{activeSelectedWafers.length > 1 ? " selected" : ""}</button>
+          ) : null}
+          {selectedWaferPin.currentStepStatus === "awaiting_checkpoint" && selectedWaferPin.canWithdraw ? (
+            <button className="button button-secondary" disabled={isMovePending} onClick={() => openCheckpointAction("withdraw")} type="button">
+              Withdraw
+            </button>
+          ) : null}
+          {selectedWaferPin.currentStepStatus === "awaiting_checkpoint" && selectedWaferPin.canReview && selectedWaferPin.requiredReviewerId === currentUserId ? (
+            <button className="button primary-button" disabled={isMovePending} onClick={() => openCheckpointAction("review")} type="button">
+              Review
+            </button>
+          ) : null}
+          {selectedWaferMoveTargets.map((target) => (
+            <button
+              className="button button-secondary"
+              disabled={isMovePending}
+              key={target.id}
+              onClick={() => openWaferMoveDialog(
+                activeSelectedWafers,
+                selectedWafer.nodeId,
+                target.id
+              )}
+              type="button"
+            >
+              Move{activeSelectedWafers.length > 1 ? " all" : ""} to {target.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {selectedNodeIds.size > 0 ? (
+        <div
+          aria-label="Selected step actions"
+          className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-[#e5e5db] bg-[#fafaf4] p-3 md:hidden"
+        >
+          <span className="mr-auto text-xs font-semibold uppercase tracking-[0.08em] text-[#6b6a5f]">
+            {selectedNodeIds.size === 1 ? "1 step selected" : `${selectedNodeIds.size} steps selected`}
+          </span>
+          <button
+            className="button ghost-button"
+            onClick={() => setSelectedNodeIds(new Set())}
+            type="button"
+          >
+            Clear
+          </button>
+          <button
+            className="button button-secondary"
+            disabled={isGraphPending}
+            onClick={deleteSelectedNodes}
+            type="button"
+          >
+            {selectedNodeIds.size === 1 ? "Delete step" : "Delete steps"}
+          </button>
+        </div>
+      ) : null}
       <ProcessFlowCanvas
         frameRef={frameRef}
         svgRef={svgRef}
@@ -2631,7 +3374,7 @@ export function ProcessFlowDiagram({
         edges={edges}
         selectedNodeIds={selectedNodeIds}
         selectedEdgeId={selectedEdgeId}
-        selectedWaferAssignmentId={selectedWaferAssignmentId}
+        selectedWaferAssignmentIds={selectedWaferAssignmentIds}
         nodeDrag={nodeDrag}
         selectionRect={getSelectionRect()}
         editingNodeId={editingNodeId}
@@ -2663,7 +3406,7 @@ export function ProcessFlowDiagram({
           setRoleMenu(null);
           setSelectionBox(null);
           setSelectedNodeIds(new Set());
-          setSelectedWafer(null);
+          setSelectedWafers([]);
         }}
         onNodePointerDown={handleNodePointerDown}
         onNodePointerMove={updateNodeDrag}
@@ -2678,9 +3421,11 @@ export function ProcessFlowDiagram({
         onSelectWafer={selectWafer}
         onOpenWaferPreview={scheduleWaferPreview}
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}
+        reviewerOptions={reviewerOptions}
+        onUpdateReviewer={onUpdateStepReviewer ? updateCheckpointReviewer : undefined}
         onEdgeClick={(edgeId) => {
           setSelectedNodeIds(new Set());
-          setSelectedWafer(null);
+          setSelectedWafers([]);
           setSelectedEdgeId(canEdit ? edgeId : null);
         }}
       />

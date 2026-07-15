@@ -617,6 +617,59 @@ textarea {
   box-shadow: 0 0 0 3px rgb(21 21 18 / 12%);
 }
 
+.flow-wafer-move-dialog__attachments {
+  display: grid;
+  gap: 8px;
+}
+
+.flow-wafer-move-dialog__attachments > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.flow-wafer-move-dialog__attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.flow-wafer-move-dialog__attachment-list > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 7px 9px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.flow-wafer-move-dialog__attachment-list > span > span {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-wafer-move-dialog__attachment-list button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.flow-wafer-move-dialog__attachment-list button:hover {
+  color: var(--foreground);
+}
+
 .flow-wafer-move-dialog__actions {
   display: flex;
   justify-content: flex-end;
@@ -625,17 +678,85 @@ textarea {
 
 @media (max-width: 640px) {
   .flow-wafer-move-dialog-backdrop {
-    align-items: end;
+    align-items: center;
     padding: 12px;
   }
 
   .flow-wafer-move-dialog {
-    border-radius: 12px;
-    padding: 18px;
+    width: min(100%, 320px);
+    max-height: min(54svh, 430px);
+    gap: 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 14px;
+    padding: 12px;
   }
 
   .flow-wafer-move-dialog__path {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .flow-wafer-move-dialog__path div {
+    gap: 2px;
+    padding: 8px;
+  }
+
+  .flow-wafer-move-dialog__path dt {
+    font-size: 9px;
+  }
+
+  .flow-wafer-move-dialog__path dd {
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .flow-wafer-move-dialog__header {
+    gap: 3px;
+  }
+
+  .flow-wafer-move-dialog__header h2 {
+    font-size: 18px;
+  }
+
+  .flow-wafer-move-dialog__header p {
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .flow-wafer-move-dialog__field {
+    gap: 5px;
+    font-size: 12px;
+  }
+
+  .flow-wafer-move-dialog__field textarea {
+    min-height: 72px;
+    max-height: 96px;
+    padding: 9px;
+  }
+
+  .flow-wafer-move-dialog__attachments {
+    gap: 5px;
+  }
+
+  .flow-wafer-move-dialog__attachments > p {
+    font-size: 10px;
+    line-height: 1.3;
+  }
+
+  .flow-wafer-move-dialog__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .flow-wafer-move-dialog__actions > * {
+    min-height: 40px;
+    padding-right: 8px;
+    padding-left: 8px;
+    font-size: 12px;
   }
 }
 
@@ -712,6 +833,44 @@ textarea {
 .flow-node--drop-target-revert .flow-node-card {
   fill: #eff6ff;
   stroke: #2563eb;
+}
+
+.flow-node--drop-target-submit .flow-node-card {
+  stroke: #d97706;
+}
+
+.flow-node-phase {
+  pointer-events: none;
+}
+
+.flow-node-phase--beginning {
+  fill: #fbfbf8;
+}
+
+.flow-node-phase--complete {
+  fill: #f7f8f5;
+}
+
+.flow-node-phase-divider {
+  stroke: #deded5;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.flow-node-phase-label {
+  fill: #626158;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.flow-node-reviewer-label {
+  fill: #8a887f;
+  font-size: 9px;
+  font-weight: 650;
+  pointer-events: none;
 }
 
 .flow-node-port {
@@ -870,6 +1029,51 @@ textarea {
   fill: #f8fafc;
 }
 
+.flow-wafer-chip--awaiting-checkpoint rect,
+.flow-wafer-chip--awaiting-checkpoint:nth-child(2n) rect,
+.flow-wafer-chip--awaiting-checkpoint:nth-child(3n) rect,
+.flow-wafer-chip--awaiting-checkpoint:nth-child(4n) rect {
+  fill: #fff8e7;
+  stroke: #d99a24;
+}
+
+.flow-wafer-chip--awaiting-checkpoint text,
+.flow-wafer-chip--awaiting-checkpoint:nth-child(2n) text,
+.flow-wafer-chip--awaiting-checkpoint:nth-child(3n) text,
+.flow-wafer-chip--awaiting-checkpoint:nth-child(4n) text {
+  fill: #825b11;
+}
+
+.flow-wafer-chip--ready-to-move rect,
+.flow-wafer-chip--ready-to-move:nth-child(2n) rect,
+.flow-wafer-chip--ready-to-move:nth-child(3n) rect,
+.flow-wafer-chip--ready-to-move:nth-child(4n) rect {
+  fill: #edf8ef;
+  stroke: #4a9b5c;
+}
+
+.flow-wafer-chip--ready-to-move text,
+.flow-wafer-chip--ready-to-move:nth-child(2n) text,
+.flow-wafer-chip--ready-to-move:nth-child(3n) text,
+.flow-wafer-chip--ready-to-move:nth-child(4n) text {
+  fill: #2f6f3d;
+}
+
+.flow-wafer-chip--redo-required rect,
+.flow-wafer-chip--redo-required:nth-child(2n) rect,
+.flow-wafer-chip--redo-required:nth-child(3n) rect,
+.flow-wafer-chip--redo-required:nth-child(4n) rect {
+  fill: #fff1f0;
+  stroke: #c76359;
+}
+
+.flow-wafer-chip--redo-required text,
+.flow-wafer-chip--redo-required:nth-child(2n) text,
+.flow-wafer-chip--redo-required:nth-child(3n) text,
+.flow-wafer-chip--redo-required:nth-child(4n) text {
+  fill: #8e332c;
+}
+
 .flow-node--active .flow-wafer-chip rect {
   fill: #173a31;
   stroke: #4ea883;
@@ -950,6 +1154,55 @@ textarea {
 
 .flow-role-menu-danger {
   border-top: 1px solid var(--border);
+}
+
+.flow-role-menu-reviewer {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.flow-role-menu-reviewer select,
+.flow-wafer-move-dialog__field select {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--foreground);
+  padding: 7px 9px;
+  font: inherit;
+}
+
+.checkpoint-review-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.checkpoint-review-choice button {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.checkpoint-review-choice button.is-active {
+  border-color: #3f8f51;
+  background: #edf8ef;
+  color: #2f6f3d;
+}
+
+.checkpoint-review-choice button.checkpoint-review-choice__redo.is-active {
+  border-color: #c76359;
+  background: #fff1f0;
+  color: #8e332c;
 }
 
 .flow-empty-state circle {
@@ -3071,9 +3324,9 @@ textarea {
 }
 
 .wireframe-flow-surface .flow-node--active .flow-node-card {
-  fill: #161613;
-  stroke: #2c2c27;
-  filter: drop-shadow(0 12px 18px rgba(20, 20, 20, 0.22));
+  fill: #ffffff;
+  stroke: #b8b8ad;
+  filter: drop-shadow(0 10px 16px rgba(20, 20, 20, 0.12));
 }
 
 .wireframe-flow-surface .flow-node-title {
@@ -3094,7 +3347,7 @@ textarea {
 .wireframe-flow-surface .flow-node--active .flow-node-title,
 .wireframe-flow-surface .flow-node--active .flow-node-subtitle,
 .wireframe-flow-surface .flow-node--active .flow-node-meta {
-  fill: #f8fafc;
+  fill: #151512;
 }
 
 .wireframe-flow-surface .flow-node-icon {
@@ -3542,27 +3795,34 @@ textarea {
 
   .flow-wafer-move-dialog-backdrop {
     z-index: 180;
-    align-items: end;
+    align-items: center;
     padding: 12px;
   }
 
   .flow-wafer-move-dialog {
-    max-height: calc(100svh - 24px);
+    width: min(100%, 320px);
+    max-height: min(54svh, 430px);
+    gap: 10px;
     overflow-y: auto;
-    border-radius: 16px;
-    padding: 16px;
+    overscroll-behavior: contain;
+    border-radius: 14px;
+    padding: 12px;
   }
 
   .flow-wafer-move-dialog__path {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
   }
 
   .flow-wafer-move-dialog__field textarea {
-    min-height: 120px;
+    min-height: 72px;
+    max-height: 96px;
   }
 
   .flow-wafer-move-dialog__actions {
-    grid-template-columns: 1fr;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
   }
 
   .wafer-status-page section[aria-label],

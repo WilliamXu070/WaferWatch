@@ -1,9 +1,11 @@
 import { CheckIcon } from "../../icons";
-import type { WaferStatusProcessStepModel, WaferStatusRevertEvent, WaferStatusTileModel } from "../../types";
+import type { WaferStatusProcessStepModel, WaferStatusTileModel } from "../../types";
+import { buildProcessTimelineRevertEdges } from "./processTimelineReverts";
 
 const ROW_HEIGHT = 104;
 const MAIN_MARKER_X = 22;
 const BRANCH_MARKER_X = 62;
+const CONSECUTIVE_REVERT_OFFSET = 12;
 const BRANCH_COLORS = ["#d78a17", "#3477b8", "#3f8c66", "#a0524a"] as const;
 const TIMELINE_TIME_FORMATTER = new Intl.DateTimeFormat("en", {
   month: "short",
@@ -47,26 +49,6 @@ function formatRevertTime(value: string) {
   return TIMELINE_TIME_FORMATTER.format(date);
 }
 
-type RevertEdge = WaferStatusRevertEvent & {
-  branchNumber: number;
-  color: (typeof BRANCH_COLORS)[number];
-  fromIndex: number;
-  toIndex: number;
-};
-
-function getRevertEdges(processSteps: readonly WaferStatusProcessStepModel[], history: readonly WaferStatusRevertEvent[]) {
-  const indexByStepId = new Map(processSteps.map((step, index) => [step.id, index]));
-  return history
-    .map((event, index) => ({
-      ...event,
-      branchNumber: index + 1,
-      color: BRANCH_COLORS[index % BRANCH_COLORS.length],
-      fromIndex: indexByStepId.get(event.fromStepId),
-      toIndex: indexByStepId.get(event.toStepId)
-    }))
-    .filter((event): event is RevertEdge => event.fromIndex !== undefined && event.toIndex !== undefined);
-}
-
 export function ProcessTimelineTree({
   tile,
   selectedStepId,
@@ -78,8 +60,17 @@ export function ProcessTimelineTree({
 }) {
   const accent = getTimelineAccent(tile);
   const processSteps = tile.processSteps?.length ? tile.processSteps : [];
-  const revertEdges = getRevertEdges(processSteps, tile.revertHistory ?? []);
-  const revertsFromStep = new Map<string, RevertEdge[]>();
+  const revertEdges = buildProcessTimelineRevertEdges(processSteps, tile.revertHistory ?? []).map((event) => ({
+    ...event,
+    color: BRANCH_COLORS[(event.chainIndex + event.chainDepth) % BRANCH_COLORS.length]
+  }));
+  const revertEdgeById = new Map(revertEdges.map((event) => [event.id, event]));
+  const getBranchX = (event: (typeof revertEdges)[number]) => (
+    BRANCH_MARKER_X +
+    (event.chainIndex % 2) * 12 +
+    Math.min(event.chainDepth, 1) * CONSECUTIVE_REVERT_OFFSET
+  );
+  const revertsFromStep = new Map<string, typeof revertEdges>();
   for (const event of revertEdges) {
     revertsFromStep.set(event.fromStepId, [...(revertsFromStep.get(event.fromStepId) ?? []), event]);
   }
@@ -113,15 +104,22 @@ export function ProcessTimelineTree({
           </>
         ) : null}
 
-        {revertEdges.map((event, index) => {
-          const branchX = BRANCH_MARKER_X + (index % 2) * 12;
+        {revertEdges.map((event) => {
+          const branchX = getBranchX(event);
+          const continuedByEvent = event.continuedByEventId
+            ? revertEdgeById.get(event.continuedByEventId)
+            : null;
+          const continuationX = continuedByEvent ? getBranchX(continuedByEvent) : branchX;
           const sourceY = markerY(event.fromIndex);
           const targetY = markerY(event.toIndex);
           const bendY = targetY + Math.sign(sourceY - targetY || 1) * 24;
+          const path = event.continuedByEventId
+            ? `M ${continuationX} ${targetY} C ${continuationX} ${targetY + 20}, ${branchX} ${sourceY - 20}, ${branchX} ${sourceY}`
+            : `M ${MAIN_MARKER_X} ${targetY} C ${branchX} ${targetY}, ${branchX} ${bendY}, ${branchX} ${sourceY}`;
           return (
             <g key={event.id}>
               <path
-                d={`M ${MAIN_MARKER_X} ${targetY} C ${branchX} ${targetY}, ${branchX} ${bendY}, ${branchX} ${sourceY}`}
+                d={path}
                 fill="none"
                 stroke={event.color}
                 strokeWidth="2.5"
@@ -178,7 +176,7 @@ export function ProcessTimelineTree({
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: attempt.color }} aria-hidden />
                     <strong className="truncate text-[11px] font-semibold text-[#34342f]">
-                      Attempt {attempt.branchNumber}
+                      Attempt {attempt.attemptNumber}
                     </strong>
                   </span>
                   <span className="mt-1 block text-[11px] leading-4 text-[#6f6f68]">

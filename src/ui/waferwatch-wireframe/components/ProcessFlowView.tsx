@@ -1,18 +1,27 @@
 "use client";
 
 import { ProcessFlowDiagram } from "@/components/ProcessFlowDiagram";
-import type { ActionResult } from "@/lib/action-result";
 import type { ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
+import type { CheckpointReviewerOption } from "@/components/process-flow/types";
 import type { FlowStatModel } from "../types";
 import { ProcessFlowStatsBar } from "./ProcessFlowStatsBar";
 
 type ProcessFlowWaferModel = {
   assignmentId: string;
   waferId?: string;
+  projectId?: string;
+  currentStepExecutionId?: string | null;
   waferCode: string;
   dieLabel: string | null;
   currentStepStatus: StepStatus | null;
   currentHandlerName?: string | null;
+  latestStepAttemptId?: string | null;
+  latestStepAttemptSubmittedById?: string | null;
+  latestStepAttemptNotes?: string | null;
+  requiredReviewerId?: string | null;
+  requiredReviewerName?: string | null;
+  canReview?: boolean;
+  canWithdraw?: boolean;
 };
 
 type ProcessFlowStepModel = {
@@ -23,6 +32,8 @@ type ProcessFlowStepModel = {
   node_type: ProcessStepNodeType;
   canvas_x: number | null;
   canvas_y: number | null;
+  required_reviewer_id?: string | null;
+  required_reviewer_name?: string | null;
   wafers: ProcessFlowWaferModel[];
 };
 
@@ -35,14 +46,6 @@ type ProcessFlowTransitionModel = {
   priority: number;
 };
 
-type MoveWaferToProcessStepAction = (input: {
-  assignmentId: string;
-  sourceStepId: string;
-  targetStepId: string;
-  note: string;
-  completeSourceStep?: boolean;
-}) => Promise<ActionResult<unknown>>;
-
 type ProcessFlowViewProps = {
   processLabel: string;
   statusLabel?: string;
@@ -54,6 +57,8 @@ type ProcessFlowViewProps = {
   canEdit?: boolean;
   processTemplateId?: string;
   suggestedWaferCode?: string;
+  reviewerOptions?: CheckpointReviewerOption[];
+  currentUserId?: string;
   onCreateStep?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateStep"];
   onCreateWaferAtProcessStart?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateWaferAtProcessStart"];
   onUpdateStepPositions?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepPositions"];
@@ -63,7 +68,11 @@ type ProcessFlowViewProps = {
   onDeleteSteps?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteSteps"];
   onDeleteTransitions?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteTransitions"];
   onDeleteWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteWafer"];
-  onMoveWafer?: MoveWaferToProcessStepAction;
+  onSubmitCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onSubmitCheckpoint"];
+  onWithdrawCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onWithdrawCheckpoint"];
+  onReviewCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onReviewCheckpoint"];
+  onMoveApprovedWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onMoveApprovedWafer"];
+  onUpdateStepReviewer?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepReviewer"];
 };
 
 export function ProcessFlowView({
@@ -77,6 +86,8 @@ export function ProcessFlowView({
   canEdit = true,
   processTemplateId,
   suggestedWaferCode,
+  reviewerOptions,
+  currentUserId,
   onCreateStep,
   onCreateWaferAtProcessStart,
   onUpdateStepPositions,
@@ -86,7 +97,11 @@ export function ProcessFlowView({
   onDeleteSteps,
   onDeleteTransitions,
   onDeleteWafer,
-  onMoveWafer
+  onSubmitCheckpoint,
+  onWithdrawCheckpoint,
+  onReviewCheckpoint,
+  onMoveApprovedWafer,
+  onUpdateStepReviewer
 }: ProcessFlowViewProps) {
   return (
     <div className="process-flow-view flex flex-col gap-4 p-4 md:gap-5 md:p-6">
@@ -120,6 +135,8 @@ export function ProcessFlowView({
             transitions={transitions}
             processTemplateId={processTemplateId}
             suggestedWaferCode={suggestedWaferCode}
+            reviewerOptions={reviewerOptions}
+            currentUserId={currentUserId}
             canEdit={canEdit}
             onCreateStep={onCreateStep}
             onCreateWaferAtProcessStart={onCreateWaferAtProcessStart}
@@ -130,7 +147,11 @@ export function ProcessFlowView({
             onDeleteSteps={onDeleteSteps}
             onDeleteTransitions={onDeleteTransitions}
             onDeleteWafer={onDeleteWafer}
-            onMoveWafer={onMoveWafer}
+            onSubmitCheckpoint={onSubmitCheckpoint}
+            onWithdrawCheckpoint={onWithdrawCheckpoint}
+            onReviewCheckpoint={onReviewCheckpoint}
+            onMoveApprovedWafer={onMoveApprovedWafer}
+            onUpdateStepReviewer={onUpdateStepReviewer}
           />
         </div>
       </section>

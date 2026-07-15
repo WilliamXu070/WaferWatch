@@ -22,6 +22,7 @@
     "wireframe:fixture:seed": "node --env-file=.env.local scripts/wireframe-fixture.mjs seed",
     "wireframe:fixture:verify": "node --env-file=.env.local scripts/wireframe-fixture.mjs verify",
     "collaboration:verify": "node scripts/verify-collaboration-db.mjs",
+    "checkpoint:verify": "node scripts/verify-checkpoint-workflow.mjs",
     "process:seed": "node --env-file=.env.local scripts/current-process-flow.mjs seed",
     "process:verify": "node --env-file=.env.local scripts/current-process-flow.mjs verify",
     "process:clear-wafers": "node --env-file=.env.local scripts/current-process-flow.mjs clear-wafers",

@@ -31,6 +31,7 @@ type CalendarEventEditorProps = {
   onActionModeChange: (mode: ActionMode) => void;
   onAddPerson: (person: ProcessCalendarPersonOption) => void;
   onCancelDraft: () => void;
+  onDeleteSelectedEvent: () => void;
   onDescriptionChange: (value: string) => void;
   onManualActionChange: (value: string) => void;
   onPersonQueryChange: (value: string) => void;
@@ -70,6 +71,7 @@ function EventFields({
   | "selectedEvent"
   | "stepsById"
   | "onCancelDraft"
+  | "onDeleteSelectedEvent"
   | "onResetSelectedEvent"
   | "onSaveDraft"
   | "onSaveSelectedEvent"
@@ -204,6 +206,7 @@ export function CalendarEventEditor(props: CalendarEventEditorProps) {
     selectedEvent,
     stepsById,
     onCancelDraft,
+    onDeleteSelectedEvent,
     onResetSelectedEvent,
     onSaveDraft,
     onSaveSelectedEvent,
@@ -255,9 +258,14 @@ export function CalendarEventEditor(props: CalendarEventEditorProps) {
             Save event
           </button>
           {canEdit ? (
-            <button className="button" type="button" onClick={() => onResetSelectedEvent(selectedEvent)}>
-              Cancel
-            </button>
+            <>
+              <button className="button" disabled={isPending} type="button" onClick={onDeleteSelectedEvent}>
+                Delete event
+              </button>
+              <button className="button" disabled={isPending} type="button" onClick={() => onResetSelectedEvent(selectedEvent)}>
+                Cancel
+              </button>
+            </>
           ) : null}
         </div>
       </>

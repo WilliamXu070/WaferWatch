@@ -1,18 +1,18 @@
 export type WaferCreateDraft = {
   waferCode: string;
-  diameterMm: number;
+  dieCount: number;
 };
-
-const WAFER_SIZE_OPTIONS = [50, 75, 100, 150, 200] as const;
 
 export function WaferCreateDialog({
   draft,
+  errorMessage,
   isPending,
   onCancel,
   onChange,
   onSubmit
 }: {
   draft: WaferCreateDraft;
+  errorMessage?: string | null;
   isPending: boolean;
   onCancel: () => void;
   onChange: (draft: WaferCreateDraft) => void;
@@ -34,28 +34,44 @@ export function WaferCreateDialog({
           <p className="eyebrow">New wafer</p>
           <h2 id="flow-wafer-create-title">Create wafer</h2>
         </div>
-        <label className="field">
+        <label className="field" htmlFor="flow-wafer-create-name">
           <span>Name</span>
           <input
+            aria-describedby={errorMessage ? "flow-wafer-create-error" : undefined}
+            aria-invalid={Boolean(errorMessage)}
             autoFocus
+            autoComplete="off"
             disabled={isPending}
+            id="flow-wafer-create-name"
             maxLength={80}
+            name="waferCode"
             onChange={(event) => onChange({ ...draft, waferCode: event.currentTarget.value })}
             value={draft.waferCode}
           />
         </label>
-        <label className="field">
-          <span>Size</span>
-          <select
+        <label className="field" htmlFor="flow-wafer-create-die-count">
+          <span>Number of dies</span>
+          <input
             disabled={isPending}
-            onChange={(event) => onChange({ ...draft, diameterMm: Number(event.currentTarget.value) })}
-            value={draft.diameterMm}
-          >
-            {WAFER_SIZE_OPTIONS.map((diameter) => (
-              <option key={diameter} value={diameter}>{diameter} mm</option>
-            ))}
-          </select>
+            id="flow-wafer-create-die-count"
+            inputMode="numeric"
+            max={256}
+            min={1}
+            name="dieCount"
+            onChange={(event) => onChange({ ...draft, dieCount: Number(event.currentTarget.value) })}
+            required
+            type="number"
+            value={draft.dieCount}
+          />
+          <small>
+            Creates {draft.dieCount || 0} dies labeled {draft.waferCode.trim() || "WAFER"}_1 through {draft.waferCode.trim() || "WAFER"}_{draft.dieCount || 0}.
+          </small>
         </label>
+        {errorMessage ? (
+          <p className="form-error" id="flow-wafer-create-error" role="alert">
+            {errorMessage}
+          </p>
+        ) : null}
         <div className="flow-wafer-move-dialog__actions">
           <button
             className="button ghost-button"
@@ -67,7 +83,7 @@ export function WaferCreateDialog({
           </button>
           <button
             className="button primary-button"
-            disabled={isPending || !draft.waferCode.trim()}
+            disabled={isPending || !draft.waferCode.trim() || !Number.isInteger(draft.dieCount) || draft.dieCount < 1}
             type="submit"
           >
             {isPending ? "Creating..." : "Create wafer"}

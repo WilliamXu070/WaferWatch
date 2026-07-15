@@ -1,5 +1,5 @@
-export const NODE_WIDTH = 276;
-export const NODE_HEIGHT = 134;
+export const NODE_WIDTH = 392;
+export const NODE_HEIGHT = 176;
 export const SCENE_WIDTH = 4400;
 export const SCENE_HEIGHT = 3200;
 export const MIN_SCALE = 0.35;
@@ -25,9 +25,9 @@ export const EDGE_CURVE_OFFSET = 16;
 export const EDGE_NODE_CLEARANCE = 4;
 export const WAFER_CHIP_WIDTH = 46;
 export const WAFER_CHIP_HEIGHT = 26;
-export const NODE_CHIP_COLUMNS = 4;
-export const WAFER_CHIP_GAP_X = 52;
-export const WAFER_CHIP_GAP_Y = 34;
+export const NODE_CHIP_COLUMNS = 2;
+export const WAFER_CHIP_GAP_X = 70;
+export const WAFER_CHIP_GAP_Y = 38;
 export const FIT_VIEW_PADDING = 96;
 
 export function getNodeHeightForWaferCount(waferCount: number) {
@@ -38,4 +38,14 @@ export function getNodeHeightForWaferCount(waferCount: number) {
   }
 
   return NODE_HEIGHT + (chipRows - 1) * WAFER_CHIP_GAP_Y;
+}
+
+export function getNodeHeightForWafers(
+  wafers: readonly { currentStepStatus?: string | null }[]
+) {
+  const beginningCount = wafers.filter(
+    (wafer) => wafer.currentStepStatus !== "awaiting_checkpoint" && wafer.currentStepStatus !== "ready_to_move"
+  ).length;
+  const completeCount = wafers.length - beginningCount;
+  return getNodeHeightForWaferCount(Math.max(beginningCount, completeCount));
 }

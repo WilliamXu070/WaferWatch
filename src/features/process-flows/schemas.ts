@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { slugSchema, uuidSchema } from "@/lib/validation";
+import { WAFER_CODE_ERROR, WAFER_CODE_PATTERN } from "@/features/process-flows/waferNaming";
 
 export const processStepNodeTypeSchema = z.enum(["start", "procedure", "end"]);
 export const processStepTransitionTypeSchema = z.enum(["flow", "return"]);
@@ -23,13 +24,23 @@ export const processTemplateDeleteSchema = z.object({
   templateId: uuidSchema
 });
 
+export const processTemplateDuplicateSchema = z.object({
+  templateId: uuidSchema,
+  version: z.string().trim().min(1).max(40),
+  name: z.string().trim().min(2).max(180).nullable().optional()
+});
+
+export const processTemplatePublishSchema = z.object({
+  templateId: uuidSchema
+});
+
 export const processFlowWaferCreateSchema = z.object({
   templateId: uuidSchema,
   waferCode: z.string().trim().min(1).max(80).regex(
-    /^[A-Za-z0-9]+(?:[ A-Za-z0-9_.-]*[A-Za-z0-9])?$/,
-    "Use letters, numbers, spaces, periods, underscores, or hyphens."
+    WAFER_CODE_PATTERN,
+    WAFER_CODE_ERROR
   ),
-  diameterMm: z.number().min(1).max(450)
+  dieCount: z.number().int().min(1).max(256).default(1)
 });
 
 export const processFlowWaferDeleteSchema = z.object({
@@ -85,6 +96,11 @@ export const processStepNodeTypeUpdateSchema = z.object({
   nodeType: processStepNodeTypeSchema
 });
 
+export const processStepCheckpointReviewerSchema = z.object({
+  stepId: uuidSchema,
+  reviewerId: uuidSchema.nullable()
+});
+
 export const processStepTransitionCreateSchema = z.object({
   templateId: uuidSchema,
   fromStepId: uuidSchema,
@@ -101,6 +117,43 @@ export const processStepTransitionDeleteSchema = z.object({
 
 export const processStepDeleteSchema = z.object({
   stepIds: z.array(uuidSchema).min(1).max(100)
+});
+
+export const orderedDraftProcessStepCreateSchema = z.object({
+  templateId: uuidSchema,
+  position: z.number().int().positive().max(1000),
+  name: z.string().trim().min(2).max(180),
+  processArea: z.string().trim().min(2).max(120),
+  requiredReviewerId: uuidSchema.nullable().optional(),
+  expectedDurationMinutes: z.number().int().positive().nullable().optional(),
+  queueTargetMinutes: z.number().int().positive().nullable().optional(),
+  requiredToolType: z.string().trim().max(120).nullable().optional(),
+  requiresRecipe: z.boolean().default(false),
+  instructions: z.string().trim().max(4000).nullable().optional(),
+  parametersSchema: z.record(z.string(), z.unknown()).default({}),
+  canvasX: canvasCoordinateSchema.nullable().optional(),
+  canvasY: canvasCoordinateSchema.nullable().optional()
+});
+
+export const draftProcessStepReorderSchema = z.object({
+  stepId: uuidSchema,
+  position: z.number().int().positive().max(1000)
+});
+
+export const draftProcessStepArchiveSchema = z.object({
+  stepId: uuidSchema
+});
+
+export const draftProcessStepReviewerSchema = z.object({
+  stepId: uuidSchema,
+  reviewerId: uuidSchema.nullable()
+});
+
+export const publishedProcessStepReviewerRecoverySchema = z.object({
+  stepId: uuidSchema,
+  reviewerId: uuidSchema,
+  mutationId: uuidSchema,
+  reason: z.string().trim().min(3).max(1000)
 });
 
 export const processAssignmentSchema = z.object({

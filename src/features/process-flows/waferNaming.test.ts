@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { processFlowWaferCreateSchema } from "./schemas";
-import { GREEK_WAFER_FAMILIES, getNextGreekWaferCode, normalizeWaferCode } from "./waferNaming";
+import {
+  GREEK_WAFER_FAMILIES,
+  getNextGreekWaferCode,
+  getWaferCodeValidationError,
+  normalizeWaferCode
+} from "./waferNaming";
 
 test("suggests the next unused Greek wafer family", () => {
   assert.equal(getNextGreekWaferCode([]), "ALPHA");
@@ -14,18 +19,23 @@ test("normalizes custom wafer names before persistence", () => {
   assert.equal(normalizeWaferCode("  custom wafer  "), "CUSTOM WAFER");
 });
 
-test("validates custom wafer name and selected diameter", () => {
+test("returns the server-compatible validation message for invalid custom names", () => {
+  assert.equal(getWaferCodeValidationError("custom/wafer"), "Use letters, numbers, spaces, periods, underscores, or hyphens.");
+  assert.equal(getWaferCodeValidationError("custom wafer"), null);
+});
+
+test("validates custom wafer name and die count", () => {
   const parsed = processFlowWaferCreateSchema.parse({
     templateId: "11111111-1111-4111-8111-111111111103",
     waferCode: "SIGMA",
-    diameterMm: 150
+    dieCount: 12
   });
 
   assert.equal(parsed.waferCode, "SIGMA");
-  assert.equal(parsed.diameterMm, 150);
+  assert.equal(parsed.dieCount, 12);
   assert.throws(() => processFlowWaferCreateSchema.parse({
     templateId: "11111111-1111-4111-8111-111111111103",
     waferCode: "bad/name",
-    diameterMm: 150
+    dieCount: 12
   }));
 });

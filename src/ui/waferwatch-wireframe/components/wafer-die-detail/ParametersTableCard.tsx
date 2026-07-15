@@ -16,17 +16,6 @@ import {
   type WaferDieNote
 } from "./WaferDieNotes";
 
-const recipeDetails = [
-  ["Recipe", "TFA3 .1M 1R1"],
-  ["Performed by", "Saeed / Lai / William"],
-  ["Fabricated by", "Saeed"],
-  ["Stack", "1 mm PPLN on TFLN-3"],
-  ["Electrode", "sharp-sharp"],
-  ["Wafer EBL", "May 28"],
-  ["Poling date", "Pending"],
-  ["Wafer ID", "TFLN-3"]
-] as const;
-
 export const parameterRows = [
   { label: "Voltage (mV)", field: "voltage" },
   { label: "Pulse Width (ms)", field: "width" },
@@ -420,6 +409,12 @@ export function ParametersTableCard({
   const dieCode = useMemo(() => getPersistenceDieCode(tile), [tile]);
   const polingStep = useMemo(() => getPolingStep(tile), [tile]);
   const canPersist = Boolean(canEdit && tile?.waferId && dieCode);
+  const recipeDetails = [
+    ["Wafer", tile?.code || "Not set"],
+    ["Die", dieCode || "Not set"],
+    ["Process step", polingStep?.name || "Not configured"],
+    ["Saved values", dieCode && tile?.diePolingParameters?.[dieCode] ? "Available" : "None yet"]
+  ] as const;
   const polingNotesRef = useRef<WaferDieNote[]>(
     polingStep && tile ? parsePersistedNotes(tile.notesSurfaceValuesByStepId?.[polingStep.id]) ?? [] : []
   );

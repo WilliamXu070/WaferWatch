@@ -7,6 +7,7 @@ import {
   WAFER_CHIP_HEIGHT,
   WAFER_CHIP_WIDTH
 } from "./constants";
+import { getCheckpointPhase, getCheckpointStateLabel } from "./checkpointPhase";
 import {
   getNodeIconPath,
   getWaferChipLabel,
@@ -19,9 +20,9 @@ type FlowNodeCardProps = {
   node: FlowNode;
   isConnecting: boolean;
   isDragging: boolean;
-  dropTargetKind: "advance" | "revert" | null;
+  dropTargetKind: "submit" | "move" | null;
   isSelected: boolean;
-  selectedWaferAssignmentId: string | null;
+  selectedWaferAssignmentIds: ReadonlySet<string>;
   isEditing: boolean;
   editingNodeLabel: string;
   editingInputRef: RefObject<HTMLInputElement | null>;
@@ -45,7 +46,7 @@ export function FlowNodeCard({
   isDragging,
   dropTargetKind,
   isSelected,
-  selectedWaferAssignmentId,
+  selectedWaferAssignmentIds,
   isEditing,
   editingNodeLabel,
   editingInputRef,
@@ -63,6 +64,8 @@ export function FlowNodeCard({
   onOpenWaferPreview
 }: FlowNodeCardProps) {
   const active = hasActiveWafer(node);
+  const beginningWafers = node.wafers.filter((wafer) => getCheckpointPhase(wafer.currentStepStatus) === "beginning");
+  const completeWafers = node.wafers.filter((wafer) => getCheckpointPhase(wafer.currentStepStatus) === "complete");
   const nodeCardRef = useRef<SVGGElement>(null);
 
   useEffect(() => {
@@ -83,7 +86,7 @@ export function FlowNodeCard({
       className={`flow-node flow-node--${node.role} ${active ? "flow-node--active" : ""} ${isConnecting ? "flow-node--connecting" : ""} ${
         isDragging ? "flow-node--dragging" : ""
       } ${dropTargetKind ? "flow-node--drop-target" : ""} ${
-        dropTargetKind === "revert" ? "flow-node--drop-target-revert" : ""
+        dropTargetKind === "submit" ? "flow-node--drop-target-submit" : ""
       } ${isSelected ? "flow-node--selected" : ""}`}
       transform={`translate(${node.x} ${node.y})`}
       onPointerDown={(event) => onNodePointerDown(event, node)}
@@ -98,6 +101,9 @@ export function FlowNodeCard({
     >
       <title>{node.label}</title>
       <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" style={{ touchAction: "none" }} />
+      <rect x="1" y="54" width={(node.width - 2) / 2} height={node.height - 55} className="flow-node-phase flow-node-phase--beginning" />
+      <rect x={node.width / 2} y="54" width={(node.width - 2) / 2} height={node.height - 55} className="flow-node-phase flow-node-phase--complete" />
+      <line x1={node.width / 2} y1="54" x2={node.width / 2} y2={node.height - 1} className="flow-node-phase-divider" />
       <path className="flow-node-icon" d={getNodeIconPath(node.role)} style={{ touchAction: "none" }} />
       <text x="31" y="35" className="flow-node-order" style={{ touchAction: "none" }}>
         {node.order}
@@ -148,20 +154,50 @@ export function FlowNodeCard({
           <text x="28" y="15" style={{ touchAction: "none" }}>Active</text>
         </g>
       ) : null}
-      <g transform="translate(64 58)">
-        {node.wafers.map((wafer, index) => (
+      <text x="18" y="76" className="flow-node-phase-label">Beginning</text>
+      <text x={node.width / 2 + 18} y="76" className="flow-node-phase-label">Complete</text>
+      <text x={node.width - 18} y="76" textAnchor="end" className="flow-node-reviewer-label">
+        {node.requiredReviewerName ? `Reviewer: ${truncateLabel(node.requiredReviewerName, 16)}` : "Reviewer required"}
+      </text>
+      <g transform="translate(18 90)">
+        {beginningWafers.map((wafer, index) => (
           <WaferChip
             key={wafer.assignmentId}
             label={getWaferChipLabel(wafer)}
             x={(index % NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_X}
             y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
-            isSelected={selectedWaferAssignmentId === wafer.assignmentId}
+            isSelected={selectedWaferAssignmentIds.has(wafer.assignmentId)}
+            status={wafer.currentStepStatus}
+            title={`${getWaferChipLabel(wafer)} · ${getCheckpointStateLabel(wafer.currentStepStatus)}`}
             onPointerDown={(event) => {
               event.stopPropagation();
-              onSelectWafer(node.id, wafer);
               onBeginWaferDrag(event, node, wafer);
             }}
-            onPointerUp={() => onOpenWaferPreview(node, wafer)}
+            onPointerUp={() => {
+              onSelectWafer(node.id, wafer);
+              onOpenWaferPreview(node, wafer);
+            }}
+          />
+        ))}
+      </g>
+      <g transform={`translate(${node.width / 2 + 18} 90)`}>
+        {completeWafers.map((wafer, index) => (
+          <WaferChip
+            key={wafer.assignmentId}
+            label={getWaferChipLabel(wafer)}
+            x={(index % NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_X}
+            y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
+            isSelected={selectedWaferAssignmentIds.has(wafer.assignmentId)}
+            status={wafer.currentStepStatus}
+            title={`${getWaferChipLabel(wafer)} · ${getCheckpointStateLabel(wafer.currentStepStatus)}`}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              onBeginWaferDrag(event, node, wafer);
+            }}
+            onPointerUp={() => {
+              onSelectWafer(node.id, wafer);
+              onOpenWaferPreview(node, wafer);
+            }}
           />
         ))}
       </g>
@@ -189,6 +225,8 @@ function WaferChip({
   pointerEvents,
   opacity,
   isSelected = false,
+  status,
+  title,
   onPointerDown,
   onPointerUp
 }: {
@@ -199,6 +237,8 @@ function WaferChip({
   pointerEvents?: "none";
   opacity?: string;
   isSelected?: boolean;
+  status?: string | null;
+  title?: string;
   onPointerDown?: (event: PointerEvent<SVGGElement>) => void;
   onPointerUp?: (event: PointerEvent<SVGGElement>) => void;
 }) {
@@ -223,7 +263,7 @@ function WaferChip({
   return (
     <g
       ref={chipRef}
-      className={`flow-wafer-chip ${isSelected ? "flow-wafer-chip--selected" : ""} ${className}`.trim()}
+      className={`flow-wafer-chip ${status ? `flow-wafer-chip--${status.replaceAll("_", "-")}` : ""} ${isSelected ? "flow-wafer-chip--selected" : ""} ${className}`.trim()}
       pointerEvents={pointerEvents}
       transform={`translate(${x} ${y})`}
       opacity={opacity}
@@ -238,6 +278,7 @@ function WaferChip({
         event.stopPropagation();
       }}
     >
+      {title ? <title>{title}</title> : null}
       <rect x="0" y="0" width={WAFER_CHIP_WIDTH} height={WAFER_CHIP_HEIGHT} rx="7" style={{ touchAction: "none" }} />
       <text
         x={WAFER_CHIP_WIDTH / 2}

@@ -1,5 +1,43 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 restored graph checkpoints)
+
+- Restored the editable Process Flow graph and removed the replacement Run/Setup
+  checkpoint board from the active routes.
+- Split every existing graph node into Beginning and Complete lanes. Submissions
+  wait amber on Complete, approval leaves them green and ready to move, reviewer
+  redo returns them to a selected Beginning lane, and graph edges remain visual.
+- Added the corrective migration for explicit approval-unlocked movement,
+  reviewer selection, withdrawal, dicing children ready on Complete, and direct
+  editing of active processes.
+- Reworked Wafer Status into an event-by-event chronological lifecycle timeline.
+- Verified with `npm run checkpoint:verify`, 16 focused process/timeline tests,
+  `npm run lint`, and `npm run build`.
+- Authenticated in-app browser at `http://127.0.0.1:3013` using 1440x1000 and
+  390x844: eight graph nodes had paired Beginning/Complete lanes, no Run/Setup
+  board or page overflow, reviewer controls appeared in the step context menu,
+  mobile selection exposed Complete, and Process history rendered chronologically
+  with no console errors.
+
+## Recent development note (2026-07-15 checkpoint workflow refactor)
+
+- Replaced the active Process Flow graph with an ordered checkpoint board: work
+  moves from In progress to Awaiting checkpoint, then only the required reviewer
+  can approve the next step or request an explicit redo to the prior step.
+- Added immutable published process versions, draft setup/reordering, audited
+  reviewer recovery, append-only attempts/decisions, and atomic dicing handoff.
+- Replaced die branch history with a chronological checkpoint timeline that keeps
+  redo decisions, inherited pre-dicing history, and labeled legacy transitions.
+- Verified with `npm run checkpoint:verify`, 14 focused checkpoint/timeline/dicing
+  tests, `npm run lint`, and `npm run build`.
+- Authenticated in-app browser at `http://127.0.0.1:3013` using 1440x1000 and
+  390x844: both routes had no console errors or horizontal overflow; wafer status
+  showed seven chronological legacy entries with inherited parent history and no
+  branch controls. The run board shell/setup/filter interactions passed, but live
+  checkpoint rows were migration-gated because the new migrations were not pushed.
+- Screenshots: `/tmp/waferwatch-checkpoint-board-migration-gated.png`,
+  `/tmp/waferwatch-chronological-checkpoint-timeline.png`, and narrow variants.
+
 ## Recent development note (2026-07-14 calendar zoom label readability)
 
 - Fixed far-zoom calendar events so labels no longer disappear below 132 px.
@@ -13,6 +51,20 @@
     route had no console errors or horizontal overflow. Event-level zoom testing
     remained auth-gated because canonical schedule data was unavailable.
   - Screenshot: `/tmp/waferwatch-calendar-zoom-label-auth-gated.png`
+
+## Recent development note (2026-07-14 clipboard image note attachments)
+
+- Fixed Command-V screenshot capture in wafer/die Notes by reading both clipboard
+  item and file collections.
+- Added pasted screenshot previews and persistent step-note attachments to the
+  process movement/revert dialog using the existing `wafer-process-files`,
+  `attachments`, and step-scoped `text_surfaces` paths.
+- Verified with:
+  - `npm run lint`
+  - `npm run build`
+  - In-app browser at `http://localhost:3001/wireframe/process-flow`, 1280x720:
+    route loaded with no console errors or horizontal overflow. Exact movement
+    paste submission was data-gated because no process or wafers were selected.
 
 ## Required verification after every coding change
 

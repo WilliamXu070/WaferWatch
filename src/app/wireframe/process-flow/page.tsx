@@ -1,4 +1,9 @@
-import { moveWaferToProcessStep } from "@/features/runs/actions";
+import {
+  moveApprovedCheckpointWafer,
+  reviewStepCheckpoint,
+  submitStepCheckpoint,
+  withdrawStepCheckpoint
+} from "@/features/runs/actions";
 import {
   createWaferAtProcessStart,
   createProcessFlowStep,
@@ -8,7 +13,8 @@ import {
   deleteProcessStepTransitions,
   updateProcessStepName,
   updateProcessStepNodeType,
-  updateProcessStepPositions
+  updateProcessStepPositions,
+  updateProcessStepCheckpointReviewer
 } from "@/features/process-flows/actions";
 import {
   getProcessDashboardData,
@@ -23,13 +29,9 @@ import type { ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from 
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Process flow wireframe"
-};
+export const metadata = { title: "Process flow wireframe" };
 
-type ProcessFlowSearchParams = {
-  processId?: string | string[];
-};
+type ProcessFlowSearchParams = { processId?: string | string[] };
 
 type DiagramStep = {
   id: string;
@@ -42,11 +44,22 @@ type DiagramStep = {
   wafers: {
     assignmentId: string;
     waferId: string;
+    projectId: string;
+    currentStepExecutionId: string | null;
     waferCode: string;
     dieLabel: string | null;
     currentStepStatus: StepStatus | null;
     currentHandlerName: string | null;
+    latestStepAttemptId: string | null;
+    latestStepAttemptSubmittedById: string | null;
+    latestStepAttemptNotes: string | null;
+    requiredReviewerId: string | null;
+    requiredReviewerName: string | null;
+    canReview: boolean;
+    canWithdraw: boolean;
   }[];
+  required_reviewer_id: string | null;
+  required_reviewer_name: string | null;
 };
 
 type DiagramTransition = {
@@ -62,7 +75,7 @@ function firstSearchValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function toFlowColumns(data: ProcessDashboardData): DiagramStep[] {
+function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null): DiagramStep[] {
   return [...data.process.process_steps]
     .sort((a, b) => a.step_order - b.step_order)
     .map((step) => ({
@@ -73,17 +86,59 @@ function toFlowColumns(data: ProcessDashboardData): DiagramStep[] {
       node_type: step.node_type,
       canvas_x: step.canvas_x,
       canvas_y: step.canvas_y,
+      required_reviewer_id: step.required_reviewer_id,
+      required_reviewer_name: data.activeWaferStates.find((state) => state.currentStepId === step.id)?.requiredReviewerName ?? null,
       wafers: data.activeWaferStates
         .filter((state) => state.currentStepId === step.id)
         .map((state) => ({
           assignmentId: state.assignmentId,
           waferId: state.waferId,
+          projectId: state.projectId,
+          currentStepExecutionId: state.currentStepExecutionId,
           waferCode: state.waferCode,
           dieLabel: state.dieLabel,
           currentStepStatus: state.currentStepStatus,
-          currentHandlerName: state.currentHandlerName
+          currentHandlerName: state.currentHandlerName,
+          latestStepAttemptId: state.latestStepAttemptId,
+          latestStepAttemptSubmittedById: state.latestStepAttemptSubmittedById,
+          latestStepAttemptNotes: state.latestStepAttemptNotes,
+          requiredReviewerId: state.requiredReviewerId,
+          requiredReviewerName: state.requiredReviewerName,
+          canReview: Boolean(currentUserId && currentUserId === state.requiredReviewerId),
+          canWithdraw: Boolean(currentUserId && currentUserId === state.latestStepAttemptSubmittedById)
         }))
     }));
+}
+
+async function getReviewerOptions(data: ProcessDashboardData | null) {
+  if (!data) return [];
+  const supabase = await createServerSupabaseClient();
+  const projectId = data.process.owner_project_id;
+  let eligibleIds: string[] = [];
+
+  if (projectId) {
+    const [projectResult, membersResult] = await Promise.all([
+      supabase.from("projects").select("owner_id").eq("id", projectId).maybeSingle(),
+      supabase.from("project_members").select("user_id, role").eq("project_id", projectId).in("role", ["owner", "editor"])
+    ]);
+    eligibleIds = [
+      projectResult.data?.owner_id,
+      ...(membersResult.data ?? []).map((member) => member.user_id)
+    ].filter((value): value is string => Boolean(value));
+  } else {
+    const { data: admins } = await supabase.from("profiles").select("id").eq("role", "admin").eq("is_active", true);
+    eligibleIds = (admins ?? []).map((profile) => profile.id);
+  }
+
+  if (!eligibleIds.length) return [];
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, display_name, email")
+    .in("id", Array.from(new Set(eligibleIds)))
+    .eq("is_active", true);
+  return (profiles ?? [])
+    .map((profile) => ({ id: profile.id, name: profile.display_name?.trim() || profile.email }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function toFlowTransitions(data: ProcessDashboardData | null): DiagramTransition[] {
@@ -99,8 +154,9 @@ function toFlowTransitions(data: ProcessDashboardData | null): DiagramTransition
 
 function countStatuses(columns: DiagramStep[], statuses: readonly StepStatus[]) {
   return columns.reduce(
-    (total, column) =>
-      total + column.wafers.filter((wafer) => wafer.currentStepStatus && statuses.includes(wafer.currentStepStatus)).length,
+    (total, column) => total + column.wafers.filter(
+      (wafer) => wafer.currentStepStatus && statuses.includes(wafer.currentStepStatus)
+    ).length,
     0
   );
 }
@@ -109,108 +165,45 @@ function toFlowStats(data: ProcessDashboardData | null, columns: DiagramStep[]):
   const activeWaferCount = new Set(columns.flatMap((column) => column.wafers.map((wafer) => wafer.assignmentId))).size;
   const activeStepCount = columns.filter((column) => column.wafers.length > 0).length;
   const runningCount = countStatuses(columns, ["running"]);
-  const blockedCount = countStatuses(columns, ["blocked", "failed"]);
-  const queuedCount = countStatuses(columns, ["queued", "pending"]);
+  const attentionCount = countStatuses(columns, ["blocked", "failed", "redo_required"]);
+  const queuedCount = countStatuses(columns, ["queued", "pending", "awaiting_checkpoint", "ready_to_move"]);
   const totalCalendarEvents = data?.calendarDays.reduce((total, day) => total + day.events.length, 0) ?? 0;
 
   return [
-    {
-      id: "total-steps",
-      icon: "total",
-      label: "Steps",
-      value: String(columns.length),
-      caption: data ? data.process.name : "No process loaded"
-    },
-    {
-      id: "active-wafers",
-      icon: "stack",
-      label: "Active wafers",
-      value: String(activeWaferCount),
-      caption: "From assignments"
-    },
-    {
-      id: "active-steps",
-      icon: "target",
-      label: "Active steps",
-      value: String(activeStepCount),
-      caption: `${columns.length} backend steps`
-    },
-    {
-      id: "running",
-      icon: "handoff",
-      label: "Running",
-      value: String(runningCount),
-      caption: "Step executions"
-    },
-    {
-      id: "blocked",
-      icon: "warning",
-      label: "Blocked",
-      value: String(blockedCount),
-      caption: "Blocked or failed"
-    },
-    {
-      id: "scheduled",
-      icon: "check",
-      label: "Scheduled",
-      value: String(totalCalendarEvents || queuedCount),
-      caption: totalCalendarEvents ? "Calendar events" : "Queued or pending"
-    }
+    { id: "total-steps", icon: "total", label: "Steps", value: String(columns.length), caption: data ? data.process.name : "No process loaded" },
+    { id: "active-wafers", icon: "stack", label: "Active wafers", value: String(activeWaferCount), caption: "From assignments" },
+    { id: "active-steps", icon: "target", label: "Active steps", value: String(activeStepCount), caption: `${columns.length} backend steps` },
+    { id: "running", icon: "handoff", label: "Running", value: String(runningCount), caption: "Step executions" },
+    { id: "blocked", icon: "warning", label: "Needs attention", value: String(attentionCount), caption: "Blocked, failed, or redo" },
+    { id: "scheduled", icon: "check", label: "Scheduled", value: String(totalCalendarEvents || queuedCount), caption: totalCalendarEvents ? "Calendar events" : "Queued or checkpointed" }
   ];
 }
 
 async function loadProcessFlowData(requestedProcessId: string | undefined) {
-  if (!requestedProcessId) {
-    return null;
-  }
-
+  if (!requestedProcessId) return null;
   const supabase = await createServerSupabaseClient();
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-
-  if (claimsError || !claimsData?.claims?.sub) {
-    return null;
-  }
-
+  if (claimsError || !claimsData?.claims?.sub) return null;
   return getProcessDashboardData(requestedProcessId, 14, false).catch(() => null);
 }
 
 async function getCanEditProcessFlow(data: ProcessDashboardData | null) {
-  if (!data) {
-    return false;
-  }
-
+  if (!data) return false;
   const account = await getCurrentAccount();
-  if (!account) {
-    return false;
-  }
-
-  if (data.process.owner_project_id) {
-    return canEditProject(data.process.owner_project_id);
-  }
-
-  return canManageProcessLibrary(account.profile.role);
+  if (!account) return false;
+  return data.process.owner_project_id
+    ? canEditProject(data.process.owner_project_id)
+    : canManageProcessLibrary(account.profile.role);
 }
 
 async function getSuggestedWaferCode(data: ProcessDashboardData | null) {
-  if (!data) {
-    return undefined;
-  }
-
+  if (!data) return undefined;
   const fallbackCodes = data.workspaceWaferStates.map((wafer) => wafer.waferCode);
   const projectId = data.process.owner_project_id ?? data.workspaceWaferStates[0]?.projectId;
-  if (!projectId) {
-    return getNextGreekWaferCode(fallbackCodes);
-  }
-
+  if (!projectId) return getNextGreekWaferCode(fallbackCodes);
   const supabase = await createServerSupabaseClient();
-  const { data: wafers, error } = await supabase
-    .from("wafers")
-    .select("wafer_code")
-    .eq("project_id", projectId);
-
-  return getNextGreekWaferCode(
-    error ? fallbackCodes : (wafers ?? []).map((wafer) => wafer.wafer_code)
-  );
+  const { data: wafers, error } = await supabase.from("wafers").select("wafer_code").eq("project_id", projectId);
+  return getNextGreekWaferCode(error ? fallbackCodes : (wafers ?? []).map((wafer) => wafer.wafer_code));
 }
 
 export default async function ProcessFlowWireframePage({
@@ -220,9 +213,11 @@ export default async function ProcessFlowWireframePage({
 }) {
   const requestedProcessId = firstSearchValue((await searchParams).processId);
   const dashboardData = await loadProcessFlowData(requestedProcessId);
+  const account = await getCurrentAccount();
   const canEdit = await getCanEditProcessFlow(dashboardData);
   const suggestedWaferCode = await getSuggestedWaferCode(dashboardData);
-  const flowColumns = dashboardData ? toFlowColumns(dashboardData) : [];
+  const reviewerOptions = await getReviewerOptions(dashboardData);
+  const flowColumns = dashboardData ? toFlowColumns(dashboardData, account?.userId ?? null) : [];
   const flowTransitions = toFlowTransitions(dashboardData);
   const processLabel = dashboardData
     ? `${dashboardData.process.name}${dashboardData.process.version ? ` · ${dashboardData.process.version}` : ""}`
@@ -238,18 +233,18 @@ export default async function ProcessFlowWireframePage({
       processLabel={processLabel}
       statusLabel={statusLabel}
       emptyTitle={flowColumns.length === 0 ? (requestedProcessId ? "No process flow data" : "No process selected") : undefined}
-      emptyDescription={
-        flowColumns.length === 0
-          ? requestedProcessId
-            ? "Sign in with access to an active process template, or assign wafers to a process. No wireframe fallback data is injected."
-            : "Select a process first. The process flow stays hidden until a process and this sub-view are selected."
-          : undefined
-      }
+      emptyDescription={flowColumns.length === 0
+        ? requestedProcessId
+          ? "Sign in with access to an active process template, or assign wafers to a process. No wireframe fallback data is injected."
+          : "Select a process first. The process flow stays hidden until a process and this sub-view are selected."
+        : undefined}
       steps={flowColumns}
       transitions={flowTransitions}
       stats={toFlowStats(dashboardData, flowColumns)}
       processTemplateId={dashboardData?.process.id}
       suggestedWaferCode={suggestedWaferCode}
+      reviewerOptions={reviewerOptions}
+      currentUserId={account?.userId}
       canEdit={canEdit}
       onCreateStep={canEdit ? createProcessFlowStep : undefined}
       onCreateWaferAtProcessStart={canEdit ? createWaferAtProcessStart : undefined}
@@ -260,7 +255,11 @@ export default async function ProcessFlowWireframePage({
       onDeleteSteps={canEdit ? deleteProcessSteps : undefined}
       onDeleteTransitions={canEdit ? deleteProcessStepTransitions : undefined}
       onDeleteWafer={canEdit ? deleteProcessFlowWafer : undefined}
-      onMoveWafer={canEdit ? moveWaferToProcessStep : undefined}
+      onSubmitCheckpoint={canEdit ? submitStepCheckpoint : undefined}
+      onWithdrawCheckpoint={canEdit ? withdrawStepCheckpoint : undefined}
+      onReviewCheckpoint={canEdit ? reviewStepCheckpoint : undefined}
+      onMoveApprovedWafer={canEdit ? moveApprovedCheckpointWafer : undefined}
+      onUpdateStepReviewer={canEdit ? updateProcessStepCheckpointReviewer : undefined}
     />
   );
 }

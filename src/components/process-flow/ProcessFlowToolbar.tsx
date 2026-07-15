@@ -8,9 +8,11 @@ type ProcessFlowToolbarProps = {
   onZoomIn: () => void;
   onCenterView: () => void;
   onOrganize: () => void;
+  onAddLinkedStep?: () => void;
   onAddWafer?: () => void;
   onUndo: () => void;
   canUndo: boolean;
+  canAddLinkedStep: boolean;
   canAddWafer: boolean;
   canEdit: boolean;
 };
@@ -23,9 +25,11 @@ export function ProcessFlowToolbar({
   onZoomIn,
   onCenterView,
   onOrganize,
+  onAddLinkedStep,
   onAddWafer,
   onUndo,
   canUndo,
+  canAddLinkedStep,
   canAddWafer,
   canEdit
 }: ProcessFlowToolbarProps) {
@@ -66,6 +70,15 @@ export function ProcessFlowToolbar({
               disabled={nodesCount < 2 || isGraphPending}
             >
               Organize
+            </button>
+            <button
+              className="button button-secondary flow-fit-button md:hidden"
+              type="button"
+              onClick={onAddLinkedStep}
+              disabled={!canAddLinkedStep || isGraphPending}
+            >
+              <span aria-hidden="true">+</span>
+              Add linked step
             </button>
             <button
               className="button button-secondary flow-fit-button flow-add-wafer-button"

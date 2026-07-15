@@ -1,4 +1,4 @@
-import { CalendarPinIcon, DotsIcon } from "../icons";
+import { CalendarPinIcon } from "../icons";
 import type { WaferCardModel } from "../types";
 
 export function KanbanCard({ card }: { card: WaferCardModel }) {
@@ -16,17 +16,10 @@ export function KanbanCard({ card }: { card: WaferCardModel }) {
       ].join(" ")}
       aria-current={isSelected ? "true" : undefined}
     >
-      <header className="flex items-start justify-between gap-2">
+      <header className="flex items-start gap-2">
         <h3 className="text-[15px] font-semibold">
           {card.waferCode} · Die {card.dieLabel}
         </h3>
-        <button
-          type="button"
-          aria-label="Card options"
-          className={isDark ? "text-[#8f8e83] hover:text-white" : "text-[#a3a194] hover:text-[#151512]"}
-        >
-          <DotsIcon />
-        </button>
       </header>
 
       <p className={`mt-2.5 text-[13px] leading-relaxed ${isDark ? "text-[#c9c8bd]" : "text-[#6b6a5f]"}`}>

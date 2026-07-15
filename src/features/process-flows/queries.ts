@@ -13,13 +13,30 @@ import type {
 
 type DashboardAssignment = Pick<
   WaferProcessAssignment,
-  "id" | "wafer_id" | "status" | "assigned_at" | "started_at" | "completed_at" | "assigned_by"
+  | "id"
+  | "wafer_id"
+  | "status"
+  | "assigned_at"
+  | "started_at"
+  | "completed_at"
+  | "assigned_by"
+  | "current_step_id"
 >;
 
 type DashboardStepExecution = Pick<
   StepExecution,
   "id" | "assignment_id" | "process_step_id" | "status" | "tool_id" | "operator_id" | "completed_by" | "created_at"
 >;
+
+type DashboardStepAttempt = {
+  id: string;
+  assignment_id: string;
+  process_step_id: string;
+  attempt_number: number;
+  submitted_at: string;
+  submitted_by: string | null;
+  submission_notes: string | null;
+};
 
 export type ProcessTemplateWithSteps = ProcessTemplate & {
   process_steps: ProcessStep[];
@@ -34,6 +51,10 @@ export type ProcessDashboardWaferState = {
   projectId: string;
   dieLabel: string | null;
   currentStepId: string | null;
+  currentStepExecutionId: string | null;
+  latestStepAttemptId: string | null;
+  latestStepAttemptSubmittedById: string | null;
+  latestStepAttemptNotes: string | null;
   currentStepName: string | null;
   currentStepOrder: number | null;
   currentStepStatus: StepStatus | null;
@@ -41,6 +62,8 @@ export type ProcessDashboardWaferState = {
   currentToolId: string | null;
   nextStepName: string | null;
   currentHandlerName: string | null;
+  requiredReviewerId: string | null;
+  requiredReviewerName: string | null;
   dieDescriptions: Record<string, string>;
   diePolingParameters: Record<string, Record<string, Record<string, Record<string, string>>>>;
 };
@@ -111,7 +134,7 @@ export async function listProcessTemplates() {
       .from("process_templates")
       .select("*")
       .order("name", { ascending: true }),
-    supabase.from("process_steps").select("*").order("step_order", { ascending: true }),
+    supabase.from("process_steps").select("*").is("archived_at", null).order("step_order", { ascending: true }),
     supabase
       .from("process_step_transitions")
       .select("*")
@@ -153,6 +176,7 @@ export async function getProcessTemplate(templateId: string) {
       .from("process_steps")
       .select("*")
       .eq("template_id", templateId)
+      .is("archived_at", null)
       .order("step_order", {
         ascending: true
       }),
@@ -189,6 +213,7 @@ export async function getFirstActiveProcessTemplateId() {
     .from("process_templates")
     .select("id")
     .eq("is_active", true)
+    .eq("lifecycle_status", "published")
     .order("updated_at", { ascending: false })
     .order("name", { ascending: true })
     .limit(1)
@@ -291,11 +316,13 @@ function extractDiePolingParameters(metadata: Json): Record<string, Record<strin
 }
 
 function deriveStepStatusRank(status: StepStatus) {
-  if (status === "running") return 0;
-  if (status === "blocked") return 1;
-  if (status === "failed") return 2;
-  if (status === "queued") return 3;
-  if (status === "pending") return 4;
+  if (status === "awaiting_checkpoint") return 0;
+  if (status === "redo_required") return 1;
+  if (status === "running") return 2;
+  if (status === "blocked") return 3;
+  if (status === "failed") return 4;
+  if (status === "queued") return 5;
+  if (status === "pending") return 6;
   return 9;
 }
 
@@ -313,7 +340,7 @@ function pickCurrentStepExecution(
 ) {
   const prioritized = executions
     .filter((execution) =>
-      ["running", "blocked", "failed", "queued", "pending"].includes(execution.status)
+      ["awaiting_checkpoint", "redo_required", "running", "blocked", "failed", "queued", "pending"].includes(execution.status)
     )
     .sort((a, b) => {
       const rankA = deriveStepStatusRank(a.status);
@@ -421,7 +448,7 @@ export async function getProcessDashboardData(
 
   const assignmentsResult = await supabase
     .from("wafer_process_assignments")
-    .select("id, wafer_id, status, assigned_at, started_at, completed_at, assigned_by")
+    .select("id, wafer_id, status, assigned_at, started_at, completed_at, assigned_by, current_step_id")
     .eq("template_id", processTemplateId);
 
   if (assignmentsResult.error) {
@@ -439,18 +466,29 @@ export async function getProcessDashboardData(
         .in("id", waferIds)
     : Promise.resolve({ data: [], error: null } as const);
 
-  const [stepExecutionsResult, assignedWafersResult] = await Promise.all([
+  const [stepExecutionsResult, stepAttemptsResult, assignedWafersResult] = await Promise.all([
     assignmentIds.length
       ? supabase
           .from("step_executions")
           .select("id, assignment_id, process_step_id, status, tool_id, operator_id, completed_by, created_at")
           .in("assignment_id", assignmentIds)
       : Promise.resolve({ data: [], error: null } as const),
+    assignmentIds.length
+      ? supabase
+          .from("process_step_attempts")
+          .select("id, assignment_id, process_step_id, attempt_number, submitted_at, submitted_by, submission_notes")
+          .in("assignment_id", assignmentIds)
+          .order("attempt_number", { ascending: false })
+      : Promise.resolve({ data: [], error: null } as const),
     assignedWafersQuery
   ]);
 
   if (stepExecutionsResult.error) {
     throw stepExecutionsResult.error;
+  }
+
+  if (stepAttemptsResult.error) {
+    throw stepAttemptsResult.error;
   }
 
   if (assignedWafersResult.error) {
@@ -505,7 +543,14 @@ export async function getProcessDashboardData(
   const assignmentWaferIdById = new Map(assignments.map((assignment) => [assignment.id, assignment.wafer_id]));
 
   const stepExecutionsByAssignment = new Map<string, DashboardStepExecution[]>();
+  const latestAttemptByAssignmentStep = new Map<string, DashboardStepAttempt>();
   const handlerProfileIds = new Set<string>();
+
+  for (const step of process.process_steps) {
+    if (step.required_reviewer_id) {
+      handlerProfileIds.add(step.required_reviewer_id);
+    }
+  }
 
   for (const execution of stepExecutionsResult.data ?? []) {
     if (execution.operator_id) {
@@ -520,6 +565,14 @@ export async function getProcessDashboardData(
       entry.push(execution as DashboardStepExecution);
     } else {
       stepExecutionsByAssignment.set(execution.assignment_id, [execution as DashboardStepExecution]);
+    }
+  }
+
+  for (const attempt of stepAttemptsResult.data ?? []) {
+    const key = `${attempt.assignment_id}:${attempt.process_step_id}`;
+    const current = latestAttemptByAssignmentStep.get(key);
+    if (!current || attempt.attempt_number > current.attempt_number) {
+      latestAttemptByAssignmentStep.set(key, attempt as DashboardStepAttempt);
     }
   }
 
@@ -557,11 +610,18 @@ export async function getProcessDashboardData(
     }
 
     const executions = stepExecutionsByAssignment.get(assignment.id) ?? [];
-    const currentExecution = pickCurrentStepExecution(executions, stepOrderById);
-    const currentStepId = currentExecution?.process_step_id ?? startStep?.id ?? null;
+    const inferredCurrentExecution = pickCurrentStepExecution(executions, stepOrderById);
+    const currentStepId =
+      assignment.current_step_id ?? inferredCurrentExecution?.process_step_id ?? startStep?.id ?? null;
+    const currentExecution = currentStepId
+      ? executions.find((execution) => execution.process_step_id === currentStepId) ??
+        (assignment.current_step_id ? undefined : inferredCurrentExecution)
+      : inferredCurrentExecution;
     const currentStepOrder = currentExecution
       ? stepOrderById.get(currentExecution.process_step_id) ?? null
-      : startStep?.step_order ?? null;
+      : currentStepId
+        ? stepOrderById.get(currentStepId) ?? null
+        : startStep?.step_order ?? null;
     const nextStep = currentStepOrder === null
       ? null
       : sortedProcessSteps.find((step) => step.step_order > currentStepOrder) ?? null;
@@ -569,6 +629,12 @@ export async function getProcessDashboardData(
       currentExecution?.operator_id ??
       currentExecution?.completed_by ??
       assignment.assigned_by;
+    const requiredReviewerId = currentStepId
+      ? process.process_steps.find((step) => step.id === currentStepId)?.required_reviewer_id ?? null
+      : null;
+    const latestAttempt = currentStepId
+      ? latestAttemptByAssignmentStep.get(`${assignment.id}:${currentStepId}`) ?? null
+      : null;
 
     const waferState: ProcessDashboardWaferState = {
       assignmentId: assignment.id,
@@ -578,9 +644,11 @@ export async function getProcessDashboardData(
       projectId: wafer.project_id,
       dieLabel: extractDieLabel(wafer.metadata as Json),
       currentStepId,
-      currentStepName: currentExecution
-        ? stepNameById.get(currentExecution.process_step_id) ?? null
-        : startStep?.name ?? null,
+      currentStepExecutionId: currentExecution?.id ?? null,
+      latestStepAttemptId: latestAttempt?.id ?? null,
+      latestStepAttemptSubmittedById: latestAttempt?.submitted_by ?? null,
+      latestStepAttemptNotes: latestAttempt?.submission_notes ?? null,
+      currentStepName: currentStepId ? stepNameById.get(currentStepId) ?? null : null,
       currentStepOrder,
       currentStepStatus: currentExecution ? currentExecution.status : getFallbackStepStatus(assignment.status),
       currentStepArea: currentExecution
@@ -589,6 +657,8 @@ export async function getProcessDashboardData(
       currentToolId: currentExecution?.tool_id ?? null,
       nextStepName: nextStep?.name ?? null,
       currentHandlerName: handlerProfileId ? handlerNameById.get(handlerProfileId) ?? null : null,
+      requiredReviewerId,
+      requiredReviewerName: requiredReviewerId ? handlerNameById.get(requiredReviewerId) ?? null : null,
       dieDescriptions: extractDieDescriptions(wafer.metadata as Json),
       diePolingParameters: extractDiePolingParameters(wafer.metadata as Json)
     };

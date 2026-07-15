@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ActivityIcon, ArrowRightIcon, WarningIcon } from "../icons";
 import type { DashboardModel, DashboardStat } from "../types";
 import { KanbanCard } from "./KanbanCard";
@@ -21,13 +22,13 @@ function StatTile({ stat }: { stat: DashboardStat }) {
           {stat.value}
         </p>
         <p className="mt-2 text-[13px] text-[#8a887b]">{stat.label}</p>
-        <button
-          type="button"
+        <Link
+          href={stat.href}
           className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-[#55534a] hover:text-[#151512]"
         >
           View all
           <ArrowRightIcon />
-        </button>
+        </Link>
       </div>
     </div>
   );

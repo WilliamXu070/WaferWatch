@@ -25,8 +25,18 @@ export const GREEK_WAFER_FAMILIES = [
   "OMEGA"
 ] as const;
 
+export const WAFER_CODE_PATTERN = /^[A-Za-z0-9]+(?:[ A-Za-z0-9_.-]*[A-Za-z0-9])?$/;
+export const WAFER_CODE_ERROR = "Use letters, numbers, spaces, periods, underscores, or hyphens.";
+
 export function normalizeWaferCode(value: string) {
   return value.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+export function getWaferCodeValidationError(value: string) {
+  const normalized = normalizeWaferCode(value);
+  if (!normalized) return "Enter a wafer name.";
+  if (normalized.length > 80) return "Wafer names must be 80 characters or fewer.";
+  return WAFER_CODE_PATTERN.test(normalized) ? null : WAFER_CODE_ERROR;
 }
 
 function getWaferBaseCode(waferCode: string) {

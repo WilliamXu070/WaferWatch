@@ -11,6 +11,21 @@ import { dieDetailTabs, type DieDetailTab } from "./waferDieDetailData";
 import { WaferDieDetailTabs } from "./WaferDieDetailTabs";
 import type { WaferDieNoteViewer } from "./WaferDieNotes";
 
+function formatDetailTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
 export function DieDetailView({
   tile,
   canEdit,
@@ -30,6 +45,11 @@ export function DieDetailView({
 }) {
   const [activeTab, setActiveTab] = useState<DieDetailTab>("overview");
   const displayLabel = tile.dieLabel || tile.code;
+  const currentStep = tile.processSteps?.find((step) => step.id === tile.currentStepId) ?? null;
+  const lastUpdatedAt = currentStep?.completedAt ?? currentStep?.startedAt ?? currentStep?.createdAt ?? null;
+  const lastUpdatedLabel = lastUpdatedAt
+    ? `Last updated ${formatDetailTimestamp(lastUpdatedAt)}${currentStep?.noteAuthorName ? ` by ${currentStep.noteAuthorName}` : ""}`
+    : "No recorded update yet";
 
   return (
     <section className="wafer-die-detail-view grid gap-5 bg-white md:gap-6">
@@ -52,7 +72,7 @@ export function DieDetailView({
             <div className="mt-4 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-[#66665f]">
               <span className="inline-flex items-center gap-1.5 text-[#98968a]">
                 <ClockIcon />
-                Last updated 2h ago by adam
+                {lastUpdatedLabel}
               </span>
             </div>
           </div>

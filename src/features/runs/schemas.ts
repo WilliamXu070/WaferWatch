@@ -20,6 +20,53 @@ export const blockStepSchema = z.object({
   reason: z.string().trim().min(1).max(4000)
 });
 
+export const submitStepCheckpointSchema = z.object({
+  stepExecutionId: uuidSchema,
+  mutationId: uuidSchema,
+  notes: z.string().trim().max(4000).nullable().optional(),
+  evidence: z.record(z.string(), z.unknown()).default({})
+});
+
+export const withdrawStepCheckpointSchema = z.object({
+  attemptId: uuidSchema,
+  mutationId: uuidSchema,
+  reason: z.string().trim().max(4000).nullable().optional()
+});
+
+export const reviewStepCheckpointSchema = z.object({
+  attemptId: uuidSchema,
+  decision: z.enum(["approved", "redo"]),
+  mutationId: uuidSchema,
+  notes: z.string().trim().max(4000).nullable().optional(),
+  redoTargetStepId: uuidSchema.nullable().optional()
+}).superRefine((value, context) => {
+  if (value.decision === "redo" && !value.notes?.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Explain what must be redone.",
+      path: ["notes"]
+    });
+  }
+  if (value.decision === "redo" && !value.redoTargetStepId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Choose the step that must be redone.",
+      path: ["redoTargetStepId"]
+    });
+  }
+});
+
+export const moveApprovedCheckpointSchema = z.object({
+  mutationId: uuidSchema,
+  assignmentId: uuidSchema,
+  sourceStepId: uuidSchema,
+  targetStepId: uuidSchema,
+  note: z.string().trim().min(1).max(4000)
+}).refine((value) => value.sourceStepId !== value.targetStepId, {
+  message: "Choose a different destination step.",
+  path: ["targetStepId"]
+});
+
 export const moveWaferToProcessStepSchema = z.object({
   mutationId: uuidSchema,
   assignmentId: uuidSchema,

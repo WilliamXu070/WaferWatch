@@ -6,28 +6,41 @@ import { assertProjectAccess, requireAccount, requireProcessManager } from "@/li
 import { toErrorMessage } from "@/lib/errors";
 import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 import {
+  draftProcessStepArchiveSchema,
+  draftProcessStepReorderSchema,
+  draftProcessStepReviewerSchema,
+  orderedDraftProcessStepCreateSchema,
   processFlowStepCreateSchema,
   processFlowWaferDeleteSchema,
   processFlowWaferCreateSchema,
+  publishedProcessStepReviewerRecoverySchema,
   processAssignmentSchema,
   processStepDeleteSchema,
   processStepCreateSchema,
   processStepNodeTypeUpdateSchema,
+  processStepCheckpointReviewerSchema,
   processStepPositionsUpdateSchema,
   processStepPositionUpdateSchema,
   processStepTransitionCreateSchema,
   processStepTransitionDeleteSchema,
   processTemplateDeleteSchema,
+  processTemplateDuplicateSchema,
   processTemplateNameUpdateSchema,
+  processTemplatePublishSchema,
   processTemplateCreateSchema,
   processStepNameUpdateSchema
 } from "@/features/process-flows/schemas";
 import { normalizeWaferCode } from "@/features/process-flows/waferNaming";
+import {
+  getWaferFamilyDeleteIds,
+  isLegacyDeletedWaferFamily
+} from "@/features/process-flows/waferDeletion";
 import type { Json, ProcessStep } from "@/types/database";
 
 type ProcessTemplateWriteContext = {
   id: string;
   owner_project_id: string | null;
+  lifecycle_status: "draft" | "published";
 };
 
 const DEFAULT_PROCESS_FLOW_STEPS = [
@@ -76,7 +89,7 @@ async function getTemplateForWrite(templateId: string): Promise<ProcessTemplateW
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("process_templates")
-    .select("id, owner_project_id")
+    .select("id, owner_project_id, lifecycle_status")
     .eq("id", templateId)
     .single();
 
@@ -216,6 +229,96 @@ function revalidateProcessFlow(templateId: string) {
   revalidatePath(`/processes/${templateId}`);
 }
 
+async function rollbackIncompleteWaferCreate(waferId: string) {
+  const adminSupabase = createSupabaseAdminClient();
+  const { error } = await adminSupabase
+    .from("wafers")
+    .delete()
+    .eq("id", waferId);
+
+  return error?.message ?? null;
+}
+
+function appendRollbackError(message: string, rollbackError: string | null) {
+  return rollbackError ? `${message} Cleanup also failed: ${rollbackError}` : message;
+}
+
+async function deleteWaferFamilyRecords({
+  adminSupabase,
+  deleteIds,
+  projectId
+}: {
+  adminSupabase: ReturnType<typeof createSupabaseAdminClient>;
+  deleteIds: string[];
+  projectId: string;
+}) {
+  const uniqueDeleteIds = Array.from(new Set(deleteIds));
+  const [attachmentsResult, inspectionsResult] = await Promise.all([
+    adminSupabase
+      .from("attachments")
+      .select("bucket_name, object_path")
+      .eq("project_id", projectId)
+      .in("wafer_id", uniqueDeleteIds),
+    adminSupabase
+      .from("die_inspections")
+      .select("image_bucket, image_path")
+      .eq("project_id", projectId)
+      .in("wafer_id", uniqueDeleteIds)
+  ]);
+
+  if (attachmentsResult.error) {
+    throw attachmentsResult.error;
+  }
+  if (inspectionsResult.error) {
+    throw inspectionsResult.error;
+  }
+
+  const storagePathsByBucket = new Map<string, Set<string>>();
+  const addStoragePath = (bucket: string, path: string) => {
+    const paths = storagePathsByBucket.get(bucket) ?? new Set<string>();
+    paths.add(path);
+    storagePathsByBucket.set(bucket, paths);
+  };
+  (attachmentsResult.data ?? []).forEach((attachment) => {
+    addStoragePath(attachment.bucket_name, attachment.object_path);
+  });
+  (inspectionsResult.data ?? []).forEach((inspection) => {
+    addStoragePath(inspection.image_bucket, inspection.image_path);
+  });
+
+  for (const [bucket, paths] of storagePathsByBucket) {
+    const { error } = await adminSupabase.storage.from(bucket).remove([...paths]);
+    if (error) {
+      throw error;
+    }
+  }
+
+  for (const waferId of uniqueDeleteIds) {
+    const { error } = await adminSupabase
+      .from("text_surfaces")
+      .delete()
+      .eq("project_id", projectId)
+      .like("scope_key", `${waferId}:%`);
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  const { data, error } = await adminSupabase
+    .from("wafers")
+    .delete()
+    .eq("project_id", projectId)
+    .in("id", uniqueDeleteIds)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((wafer) => wafer.id);
+}
+
 function getMetadataRecord(value: Json): Record<string, Json | undefined> {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -230,12 +333,16 @@ async function getTemplateProjectForWaferCreate(templateId: string) {
   const supabase = await createServerSupabaseClient();
   const { data: template, error: templateError } = await supabase
     .from("process_templates")
-    .select("id, owner_project_id")
+    .select("id, owner_project_id, lifecycle_status")
     .eq("id", templateId)
     .single();
 
   if (templateError) {
     throw templateError;
+  }
+
+  if (template.lifecycle_status !== "published") {
+    throw new Error("Only published process versions can receive wafers.");
   }
 
   if (template.owner_project_id) {
@@ -289,6 +396,7 @@ export async function createWaferAtProcessStart(input: unknown) {
       .from("process_steps")
       .select("*")
       .eq("template_id", parsed.templateId)
+      .is("archived_at", null)
       .order("step_order", { ascending: true });
 
     if (stepsError) {
@@ -303,18 +411,52 @@ export async function createWaferAtProcessStart(input: unknown) {
 
     const { data: existingWafers, error: existingWafersError } = await supabase
       .from("wafers")
-      .select("wafer_code")
+      .select("id, wafer_code, status, metadata, wafer_process_assignments(status)")
       .eq("project_id", projectId);
 
     if (existingWafersError) {
       return fail(existingWafersError.message);
     }
 
-    const existingWaferCodes = (existingWafers ?? []).map((wafer) => wafer.wafer_code);
     const waferCode = normalizeWaferCode(parsed.waferCode);
-    if (existingWaferCodes.some((code) => normalizeWaferCode(code) === waferCode)) {
-      return fail(`A wafer named ${waferCode} already exists.`);
+    const existingWafer = (existingWafers ?? []).find(
+      (wafer) => normalizeWaferCode(wafer.wafer_code) === waferCode
+    );
+    if (existingWafer) {
+      const adminSupabase = createSupabaseAdminClient();
+      const { data: discoveredChildren, error: childLookupError } = await adminSupabase
+        .from("wafers")
+        .select("id")
+        .eq("project_id", projectId)
+        .contains("metadata", { parent_wafer_id: existingWafer.id });
+
+      if (childLookupError) {
+        return fail(childLookupError.message);
+      }
+
+      const discoveredChildIds = (discoveredChildren ?? []).map((child) => child.id);
+      const assignments = Array.isArray(existingWafer.wafer_process_assignments)
+        ? existingWafer.wafer_process_assignments
+        : [];
+      if (!isLegacyDeletedWaferFamily({
+        assignmentStatuses: assignments.map((assignment) => assignment.status),
+        discoveredChildIds,
+        metadata: existingWafer.metadata,
+        waferStatus: existingWafer.status
+      })) {
+        return fail(`A wafer named ${waferCode} already exists.`);
+      }
+
+      const deletedIds = await deleteWaferFamilyRecords({
+        adminSupabase,
+        deleteIds: getWaferFamilyDeleteIds(existingWafer.id, existingWafer.metadata, discoveredChildIds),
+        projectId
+      });
+      if (!deletedIds.includes(existingWafer.id)) {
+        return fail(`The deleted ${waferCode} wafer could not be cleared before recreation.`);
+      }
     }
+    const dieLabels = Array.from({ length: parsed.dieCount }, (_, index) => `${waferCode}_${index + 1}`);
     const now = new Date().toISOString();
     const { data: wafer, error: waferError } = await supabase
       .from("wafers")
@@ -323,13 +465,15 @@ export async function createWaferAtProcessStart(input: unknown) {
         wafer_code: waferCode,
         status: "queued",
         material_stack: null,
-        diameter_mm: parsed.diameterMm,
+        diameter_mm: null,
         notes: null,
         metadata: {
           created_by: account.userId,
           created_from: "process_flow_add_wafer",
           wafer_family: deriveWaferFamily(waferCode),
-          wafer_display_mode: "undiced"
+          wafer_display_mode: "undiced",
+          die_count: parsed.dieCount,
+          die_labels: dieLabels
         }
       })
       .select("*")
@@ -355,7 +499,8 @@ export async function createWaferAtProcessStart(input: unknown) {
       .single();
 
     if (assignmentError) {
-      return fail(assignmentError.message);
+      const rollbackError = await rollbackIncompleteWaferCreate(wafer.id);
+      return fail(appendRollbackError(assignmentError.message, rollbackError));
     }
 
     const executionRows = sortedSteps.map((step, index) => ({
@@ -369,7 +514,8 @@ export async function createWaferAtProcessStart(input: unknown) {
     const { error: executionsError } = await supabase.from("step_executions").insert(executionRows);
 
     if (executionsError) {
-      return fail(executionsError.message);
+      const rollbackError = await rollbackIncompleteWaferCreate(wafer.id);
+      return fail(appendRollbackError(executionsError.message, rollbackError));
     }
 
     await supabase.from("process_events").insert({
@@ -381,7 +527,8 @@ export async function createWaferAtProcessStart(input: unknown) {
       metadata: {
         assignment_id: assignment.id,
         start_step_id: startStep.id,
-        diameter_mm: parsed.diameterMm,
+        die_count: parsed.dieCount,
+        die_labels: dieLabels,
         wafer_metadata: getMetadataRecord(wafer.metadata as Json)
       }
     });
@@ -416,17 +563,39 @@ export async function deleteProcessFlowWafer(input: unknown) {
     await assertProjectAccess(wafer.project_id, "write");
 
     const adminSupabase = createSupabaseAdminClient();
-    const { error: deleteError } = await adminSupabase
+    const waferMetadata = wafer.metadata && typeof wafer.metadata === "object" && !Array.isArray(wafer.metadata)
+      ? wafer.metadata as Record<string, Json | undefined>
+      : {};
+    const parentWaferId = typeof waferMetadata.parent_wafer_id === "string"
+      ? waferMetadata.parent_wafer_id
+      : null;
+    const familyRootId = parentWaferId ?? wafer.id;
+    const { data: discoveredChildren, error: childLookupError } = await adminSupabase
       .from("wafers")
-      .delete()
-      .eq("id", assignment.wafer_id);
+      .select("id")
+      .eq("project_id", wafer.project_id)
+      .contains("metadata", { parent_wafer_id: familyRootId });
 
-    if (deleteError) {
-      return fail(deleteError.message);
+    if (childLookupError) {
+      return fail(childLookupError.message);
+    }
+
+    const deleteIds = getWaferFamilyDeleteIds(
+      wafer.id,
+      wafer.metadata,
+      (discoveredChildren ?? []).map((child) => child.id)
+    );
+    const deletedIds = await deleteWaferFamilyRecords({
+      adminSupabase,
+      deleteIds,
+      projectId: wafer.project_id
+    });
+    if (!deletedIds.includes(assignment.wafer_id)) {
+      return fail("The selected wafer was not deleted from the database.");
     }
 
     revalidateProcessFlow(assignment.template_id);
-    return ok({ deleted: assignment.wafer_id });
+    return ok({ deleted: assignment.wafer_id, deletedWaferIds: deletedIds });
   } catch (error) {
     return fail(toErrorMessage(error));
   }
@@ -451,6 +620,7 @@ export async function createProcessTemplate(input: unknown) {
         description: parsed.description ?? null,
         owner_project_id: ownerProjectId,
         is_active: parsed.isActive,
+        lifecycle_status: "draft",
         created_by: account.userId
       })
       .select("*")
@@ -511,6 +681,189 @@ export async function createProcessTemplate(input: unknown) {
 
     revalidatePath("/", "layout");
     revalidateProcessFlow(data.id);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function duplicateProcessTemplateVersion(input: unknown) {
+  try {
+    await requireProcessManager();
+    const parsed = processTemplateDuplicateSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("duplicate_process_template_version", {
+      source_template_id: parsed.templateId,
+      next_version: parsed.version,
+      next_name: parsed.name ?? null
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(data.id);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function publishProcessTemplateVersion(input: unknown) {
+  try {
+    await requireProcessManager();
+    const parsed = processTemplatePublishSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("publish_process_template_version", {
+      target_template_id: parsed.templateId
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(data.id);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function createOrderedDraftProcessStep(input: unknown) {
+  try {
+    const parsed = orderedDraftProcessStepCreateSchema.parse(input);
+    await getTemplateForWrite(parsed.templateId);
+    const slug = await getAvailableStepSlug(parsed.templateId, parsed.name);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("create_ordered_draft_process_step", {
+      target_template_id: parsed.templateId,
+      target_position: parsed.position,
+      step_name: parsed.name,
+      step_slug: slug,
+      step_process_area: parsed.processArea,
+      reviewer_id: parsed.requiredReviewerId ?? null,
+      step_expected_duration_minutes: parsed.expectedDurationMinutes ?? null,
+      step_queue_target_minutes: parsed.queueTargetMinutes ?? null,
+      step_required_tool_type: parsed.requiredToolType ?? null,
+      step_requires_recipe: parsed.requiresRecipe,
+      step_instructions: parsed.instructions ?? null,
+      step_parameters_schema: parsed.parametersSchema as Json,
+      step_canvas_x: parsed.canvasX ?? null,
+      step_canvas_y: parsed.canvasY ?? null
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(parsed.templateId);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function reorderDraftProcessStep(input: unknown) {
+  try {
+    const parsed = draftProcessStepReorderSchema.parse(input);
+    const step = await getStepForWrite(parsed.stepId);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("normalize_draft_process_step_order", {
+      target_template_id: step.template_id,
+      moved_step_id: step.id,
+      target_position: parsed.position
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(step.template_id);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function archiveDraftProcessStep(input: unknown) {
+  try {
+    const parsed = draftProcessStepArchiveSchema.parse(input);
+    const step = await getStepForWrite(parsed.stepId);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("archive_draft_process_step", {
+      target_step_id: parsed.stepId
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(step.template_id);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateDraftProcessStepReviewer(input: unknown) {
+  try {
+    const parsed = draftProcessStepReviewerSchema.parse(input);
+    const step = await getStepForWrite(parsed.stepId);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("assign_draft_process_step_reviewer", {
+      target_step_id: parsed.stepId,
+      reviewer_id: parsed.reviewerId
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(step.template_id);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateProcessStepCheckpointReviewer(input: unknown) {
+  try {
+    const parsed = processStepCheckpointReviewerSchema.parse(input);
+    const step = await getStepForWrite(parsed.stepId);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("assign_process_step_checkpoint_reviewer", {
+      target_step_id: parsed.stepId,
+      reviewer_id: parsed.reviewerId
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(step.template_id);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function reassignUnavailableCheckpointReviewer(input: unknown) {
+  try {
+    await requireProcessManager();
+    const parsed = publishedProcessStepReviewerRecoverySchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("reassign_unavailable_checkpoint_reviewer", {
+      target_step_id: parsed.stepId,
+      replacement_reviewer_id: parsed.reviewerId,
+      mutation_id: parsed.mutationId,
+      reason: parsed.reason
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(data.template_id);
     return ok(data);
   } catch (error) {
     return fail(toErrorMessage(error));
@@ -960,10 +1313,25 @@ export async function assignProcessToWafer(input: unknown) {
 
     await assertProjectAccess(wafer.project_id, "write");
 
+    const { data: template, error: templateError } = await supabase
+      .from("process_templates")
+      .select("id, lifecycle_status")
+      .eq("id", parsed.templateId)
+      .single();
+
+    if (templateError) {
+      return fail(templateError.message);
+    }
+
+    if (template.lifecycle_status !== "published") {
+      return fail("Only published process versions can be assigned to wafers.");
+    }
+
     const { data: steps, error: stepsError } = await supabase
       .from("process_steps")
       .select("*")
       .eq("template_id", parsed.templateId)
+      .is("archived_at", null)
       .order("step_order", { ascending: true });
 
     if (stepsError) {

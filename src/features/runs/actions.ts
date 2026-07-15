@@ -8,9 +8,13 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   blockStepSchema,
   completeStepSchema,
+  moveApprovedCheckpointSchema,
   moveWaferToProcessStepSchema,
+  reviewStepCheckpointSchema,
   reservationSchema,
-  startStepSchema
+  submitStepCheckpointSchema,
+  startStepSchema,
+  withdrawStepCheckpointSchema
 } from "@/features/runs/schemas";
 import {
   appendDicingMoveNoteToClones,
@@ -21,35 +25,24 @@ import {
 } from "@/features/runs/dicingNoteTransfer";
 import { CURRENT_STEP_STATUSES, getSourceStepExecution } from "@/features/runs/stepExecutionSelection";
 import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
-import type { Json, ProcessStep, ProcessStepTransition, StepExecution } from "@/types/database";
+import type { CheckpointDecision, Json, ProcessStep, ProcessStepTransition, StepExecution } from "@/types/database";
 
 const DIE_COUNT = 8;
 
-function toJsonRecord(value: Json): Record<string, Json | undefined> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+function getStepActorDisplayName(account: { profile: { display_name: string | null }; email: string | null }) {
+  return account.profile.display_name?.trim() || account.email?.trim() || "WaferWatch user";
+}
+
+function toJsonRecord(value: unknown): Record<string, Json | undefined> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, Json | undefined>;
 }
 
 function normalizeProcessText(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
-
-function levenshteinDistance(a: string, b: string) {
-  const rows = Array.from({ length: a.length + 1 }, (_, i) => [i]);
-  for (let j = 1; j <= b.length; j += 1) {
-    rows[0][j] = j;
-  }
-
-  for (let i = 1; i <= a.length; i += 1) {
-    for (let j = 1; j <= b.length; j += 1) {
-      rows[i][j] = Math.min(
-        rows[i - 1][j] + 1,
-        rows[i][j - 1] + 1,
-        rows[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-      );
-    }
-  }
-
-  return rows[a.length][b.length];
 }
 
 function isDicingLikeStep(step: Pick<ProcessStep, "name" | "slug" | "process_area">) {
@@ -60,14 +53,11 @@ function isDicingLikeStep(step: Pick<ProcessStep, "name" | "slug" | "process_are
   ].join(" "));
   const compact = text.replace(/\s+/g, "");
 
-  if (/(dicing|diced|dice|dicng|diciing|dicin|dicingg|singulation|singulate|sawing|sawcut|cutting)/.test(compact)) {
-    return true;
+  if (/(pre|post|after|before)(dicing|diced|dice|singulation|singulate|sawing|sawcut|cutting)/.test(compact)) {
+    return false;
   }
 
-  return text.split(/\s+/).some((token) =>
-    token.length >= 4 &&
-    ["dicing", "diced", "dice"].some((target) => levenshteinDistance(token, target) <= 2)
-  );
+  return /(dicing|diced|dice|dicng|diciing|dicin|dicingg|singulation|singulate|sawing|sawcut|cutting)/.test(compact);
 }
 
 function getWaferFamily(waferCode: string, metadata: Json) {
@@ -87,6 +77,25 @@ function getDieLabelPrefix(waferCode: string, metadata: Json) {
 }
 
 function getDieLabels(waferCode: string, metadata: Json) {
+  const record = toJsonRecord(metadata);
+  const configuredLabels = Array.isArray(record.die_labels)
+    ? record.die_labels
+        .filter((label): label is string => typeof label === "string" && Boolean(label.trim()))
+        .map((label) => label.trim())
+    : [];
+
+  if (configuredLabels.length > 0) {
+    return [...new Set(configuredLabels)];
+  }
+
+  const configuredCount = record.die_count;
+  if (typeof configuredCount === "number" && Number.isFinite(configuredCount) && configuredCount > 0) {
+    return Array.from(
+      { length: Math.floor(configuredCount) },
+      (_, index) => `${waferCode.trim()}_${index + 1}`
+    );
+  }
+
   const prefix = getDieLabelPrefix(waferCode, metadata);
   return Array.from({ length: DIE_COUNT }, (_, index) => `${prefix}${index + 1}`);
 }
@@ -188,11 +197,94 @@ async function getFollowingFlowSteps({
     .sort(compareFlowSteps);
 }
 
+async function cloneDicingNoteSurfaces({
+  accountId,
+  childWafers,
+  currentStep,
+  dicingMoveNote,
+  now,
+  parentWafer,
+  projectId,
+  stepActorName,
+  supabase
+}: {
+  accountId: string;
+  childWafers: Array<{ id: string; metadata: Json }>;
+  currentStep: Pick<ProcessStep, "id" | "name">;
+  dicingMoveNote: string | null;
+  now: string;
+  parentWafer: { id: string; wafer_code: string };
+  projectId: string;
+  stepActorName: string;
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
+}) {
+  const childNoteTargets = childWafers
+    .map((child) => {
+      const dieLabel = toJsonRecord(child.metadata).current_die;
+      return typeof dieLabel === "string" && dieLabel.trim()
+        ? { id: child.id, dieLabel: dieLabel.trim() }
+        : null;
+    })
+    .filter((child): child is NonNullable<typeof child> => Boolean(child));
+  if (childNoteTargets.length !== childWafers.length) {
+    throw new Error("Every diced child needs a die label before notes can be transferred.");
+  }
+
+  const parentNotesScopeKey = getWaferDieNotesScopeKey(parentWafer.id, parentWafer.wafer_code);
+  const { data: parentNoteSurfaces, error: parentNoteSurfacesError } = await supabase
+    .from("text_surfaces")
+    .select("scope_key, value")
+    .eq("project_id", projectId)
+    .eq("scope_type", WAFER_DIE_NOTES_SCOPE_TYPE)
+    .eq("field_key", WAFER_DIE_NOTES_FIELD_KEY)
+    .like("scope_key", `${parentNotesScopeKey}%`);
+
+  if (parentNoteSurfacesError) throw parentNoteSurfacesError;
+
+  const childNoteClones = appendDicingMoveNoteToClones({
+    childWafers: childNoteTargets,
+    clones: buildDicingNoteSurfaceClones({
+      parentScopeKey: parentNotesScopeKey,
+      surfaces: parentNoteSurfaces ?? [],
+      childWafers: childNoteTargets
+    }),
+    dicingStepId: currentStep.id,
+    dicingStepName: currentStep.name,
+    noteBody: dicingMoveNote,
+    noteAuthor: stepActorName,
+    timestamp: now
+  });
+
+  if (childNoteClones.length === 0) return;
+
+  const { error } = await supabase
+    .from("text_surfaces")
+    .upsert(
+      childNoteClones.map((clone) => ({
+        project_id: projectId,
+        scope_type: WAFER_DIE_NOTES_SCOPE_TYPE,
+        scope_key: clone.scopeKey,
+        field_key: WAFER_DIE_NOTES_FIELD_KEY,
+        value: clone.value,
+        updated_by: accountId,
+        updated_at: now
+      })),
+      {
+        onConflict: "project_id,scope_type,scope_key,field_key",
+        ignoreDuplicates: true
+      }
+    );
+
+  if (error) throw error;
+}
+
 async function splitWaferAfterDicing({
   accountId,
   assignmentId,
   currentStep,
+  dicingMutationId,
   dicingMoveNote,
+  stepActorName,
   nextSteps,
   now,
   projectId,
@@ -203,7 +295,9 @@ async function splitWaferAfterDicing({
   accountId: string;
   assignmentId: string;
   currentStep: Pick<ProcessStep, "id" | "name" | "slug" | "process_area">;
+  dicingMutationId?: string;
   dicingMoveNote: string | null;
+  stepActorName: string;
   nextSteps: ProcessStep[];
   now: string;
   projectId: string;
@@ -223,9 +317,95 @@ async function splitWaferAfterDicing({
   }
 
   const parentMetadata = toJsonRecord(wafer.metadata);
+  const reconcileDicingSplit = async (childWaferIds: string[]) => {
+    if (!dicingMutationId) return false;
+
+    const { error } = await supabase.rpc("reconcile_dicing_checkpoint_split", {
+      target_decision_id: dicingMutationId,
+      target_child_wafer_ids: childWaferIds
+    });
+    if (error) throw error;
+    return true;
+  };
+  const ensureDicingEvent = async (childWaferIds: string[], dieLabels: string[]) => {
+    if (dicingMutationId) {
+      const { data: existingEvent, error: existingEventError } = await supabase
+        .from("process_events")
+        .select("id")
+        .eq("client_mutation_id", dicingMutationId)
+        .maybeSingle();
+
+      if (existingEventError) {
+        throw existingEventError;
+      }
+      if (existingEvent) {
+        return;
+      }
+    }
+
+    const { error } = await supabase.from("process_events").insert({
+      project_id: projectId,
+      wafer_id: wafer.id,
+      actor_id: accountId,
+      event_type: "wafer_diced",
+      notes: `Created ${dieLabels.length} die pieces from ${wafer.wafer_code}.`,
+      metadata: {
+        assignment_id: assignmentId,
+        dicing_step_id: currentStep.id,
+        next_step_id: nextStep.id,
+        child_wafer_ids: childWaferIds,
+        die_labels: dieLabels
+      },
+      client_mutation_id: dicingMutationId ?? null
+    });
+
+    if (error && !(dicingMutationId && error.code === "23505")) {
+      throw error;
+    }
+  };
+
+  const finalizeParentAssignment = async () => {
+    const { error } = await supabase
+      .from("wafer_process_assignments")
+      .update({ status: "completed", completed_at: now })
+      .eq("id", assignmentId);
+    if (error) throw error;
+  };
+
+  if (parentMetadata.dicing_completed_at || parentMetadata.diced_child_die_labels) {
+    const completedChildIds = Array.isArray(parentMetadata.diced_child_wafer_ids)
+      ? parentMetadata.diced_child_wafer_ids.filter((value): value is string => typeof value === "string")
+      : [];
+    const completedDieLabels = Array.isArray(parentMetadata.diced_child_die_labels)
+      ? parentMetadata.diced_child_die_labels.filter((value): value is string => typeof value === "string")
+      : [];
+    const { data: completedChildren, error: completedChildrenError } = completedChildIds.length
+      ? await supabase.from("wafers").select("id, metadata").in("id", completedChildIds)
+      : { data: [], error: null };
+    if (completedChildrenError) throw completedChildrenError;
+    if ((completedChildren ?? []).length !== completedChildIds.length) {
+      throw new Error("One or more reconciled dicing children no longer exists.");
+    }
+    await cloneDicingNoteSurfaces({
+      accountId,
+      childWafers: (completedChildren ?? []) as Array<{ id: string; metadata: Json }>,
+      currentStep,
+      dicingMoveNote,
+      now,
+      parentWafer: wafer,
+      projectId,
+      stepActorName,
+      supabase
+    });
+    if (await reconcileDicingSplit(completedChildIds)) {
+      return;
+    }
+    await finalizeParentAssignment();
+    await ensureDicingEvent(completedChildIds, completedDieLabels);
+    return;
+  }
+
   if (
-    parentMetadata.dicing_completed_at ||
-    parentMetadata.diced_child_die_labels ||
     parentMetadata.parent_wafer_id ||
     parentMetadata.current_die ||
     parentMetadata.created_from === "dicing_completion"
@@ -235,7 +415,11 @@ async function splitWaferAfterDicing({
 
   const family = getWaferFamily(wafer.wafer_code, wafer.metadata);
   const dieLabels = getDieLabels(wafer.wafer_code, wafer.metadata);
-  const childCodes = dieLabels.map((dieLabel) => `${wafer.wafer_code}-${dieLabel}`);
+  const childCodes = dieLabels.map((dieLabel) =>
+    dieLabel.toUpperCase().startsWith(`${wafer.wafer_code.trim().toUpperCase()}_`)
+      ? dieLabel
+      : `${wafer.wafer_code}-${dieLabel}`
+  );
   const childRows = dieLabels.map((dieLabel, index) => ({
     project_id: projectId,
     wafer_code: childCodes[index],
@@ -257,7 +441,10 @@ async function splitWaferAfterDicing({
 
   const { error: childUpsertError } = await supabase
     .from("wafers")
-    .upsert(childRows, { onConflict: "project_id,wafer_code" });
+    .upsert(childRows, {
+      onConflict: "project_id,wafer_code",
+      ignoreDuplicates: true
+    });
 
   if (childUpsertError) {
     throw childUpsertError;
@@ -265,7 +452,7 @@ async function splitWaferAfterDicing({
 
   const { data: childWafers, error: childLookupError } = await supabase
     .from("wafers")
-    .select("id, wafer_code")
+    .select("id, wafer_code, metadata")
     .eq("project_id", projectId)
     .in("wafer_code", childCodes);
 
@@ -273,59 +460,44 @@ async function splitWaferAfterDicing({
     throw childLookupError;
   }
 
-  const childWafersByCode = new Map((childWafers ?? []).map((child) => [child.wafer_code, child]));
-  const childWaferIds = (childWafers ?? []).map((child) => child.id);
-  const parentNotesScopeKey = getWaferDieNotesScopeKey(wafer.id, wafer.wafer_code);
-  const { data: parentNoteSurfaces, error: parentNoteSurfacesError } = await supabase
-    .from("text_surfaces")
-    .select("scope_key, value")
-    .eq("project_id", projectId)
-    .eq("scope_type", WAFER_DIE_NOTES_SCOPE_TYPE)
-    .eq("field_key", WAFER_DIE_NOTES_FIELD_KEY)
-    .like("scope_key", `${parentNotesScopeKey}%`);
-
-  if (parentNoteSurfacesError) {
-    throw parentNoteSurfacesError;
+  if ((childWafers ?? []).length !== childCodes.length) {
+    throw new Error("One or more dicing child wafers could not be created.");
   }
 
-  const childNoteTargets = childCodes
-    .map((code, index) => {
-      const child = childWafersByCode.get(code);
-      return child ? { id: child.id, dieLabel: dieLabels[index] } : null;
-    })
-    .filter((child): child is NonNullable<typeof child> => Boolean(child));
-  const childNoteClones = appendDicingMoveNoteToClones({
-    childWafers: childNoteTargets,
-    clones: buildDicingNoteSurfaceClones({
-      parentScopeKey: parentNotesScopeKey,
-      surfaces: parentNoteSurfaces ?? [],
-      childWafers: childNoteTargets
-    }),
-    dicingStepId: currentStep.id,
-    dicingStepName: currentStep.name,
-    noteBody: dicingMoveNote,
-    timestamp: now
+  for (const [index, childCode] of childCodes.entries()) {
+    const existingChild = (childWafers ?? []).find((child) => child.wafer_code === childCode);
+    const childMetadata = toJsonRecord(existingChild?.metadata);
+    if (
+      !existingChild ||
+      childMetadata.parent_wafer_id !== wafer.id ||
+      childMetadata.current_die !== dieLabels[index]
+    ) {
+      throw new Error(
+        `${childCode} already belongs to another wafer or dicing run. Rename the parent wafer or repair that child before retrying.`
+      );
+    }
+  }
+
+  const childWafersByCode = new Map((childWafers ?? []).map((child) => [child.wafer_code, child]));
+  const childWaferIds = (childWafers ?? []).map((child) => child.id);
+  await cloneDicingNoteSurfaces({
+    accountId,
+    childWafers: (childWafers ?? []) as Array<{ id: string; metadata: Json }>,
+    currentStep,
+    dicingMoveNote,
+    now,
+    parentWafer: wafer,
+    projectId,
+    stepActorName,
+    supabase
   });
 
-  if (childNoteClones.length > 0) {
-    const { error: childNoteCloneError } = await supabase
-      .from("text_surfaces")
-      .upsert(
-        childNoteClones.map((clone) => ({
-          project_id: projectId,
-          scope_type: WAFER_DIE_NOTES_SCOPE_TYPE,
-          scope_key: clone.scopeKey,
-          field_key: WAFER_DIE_NOTES_FIELD_KEY,
-          value: clone.value,
-          updated_by: accountId,
-          updated_at: now
-        })),
-        { onConflict: "project_id,scope_type,scope_key,field_key" }
-      );
+  const childIdsByCode = childCodes
+    .map((code) => childWafersByCode.get(code)?.id)
+    .filter((id): id is string => Boolean(id));
 
-    if (childNoteCloneError) {
-      throw childNoteCloneError;
-    }
+  if (await reconcileDicingSplit(childIdsByCode)) {
+    return;
   }
 
   const { data: existingAssignments, error: existingAssignmentsError } = await supabase
@@ -395,9 +567,6 @@ async function splitWaferAfterDicing({
     }
   }
 
-  const childIdsByCode = childCodes
-    .map((code) => childWafersByCode.get(code)?.id)
-    .filter((id): id is string => Boolean(id));
   const nextParentMetadata = {
     ...parentMetadata,
     wafer_display_mode: "undiced",
@@ -418,36 +587,9 @@ async function splitWaferAfterDicing({
     throw parentWaferUpdateError;
   }
 
-  const { error: parentAssignmentUpdateError } = await supabase
-    .from("wafer_process_assignments")
-    .update({
-      status: "completed",
-      completed_at: now
-    })
-    .eq("id", assignmentId);
+  await finalizeParentAssignment();
 
-  if (parentAssignmentUpdateError) {
-    throw parentAssignmentUpdateError;
-  }
-
-  const { error: eventInsertError } = await supabase.from("process_events").insert({
-    project_id: projectId,
-    wafer_id: wafer.id,
-    actor_id: accountId,
-    event_type: "wafer_diced",
-    notes: `Created ${dieLabels.length} die pieces from ${wafer.wafer_code}.`,
-    metadata: {
-      assignment_id: assignmentId,
-      dicing_step_id: currentStep.id,
-      next_step_id: nextStep.id,
-      child_wafer_ids: childIdsByCode,
-      die_labels: dieLabels
-    }
-  });
-
-  if (eventInsertError) {
-    throw eventInsertError;
-  }
+  await ensureDicingEvent(childIdsByCode, dieLabels);
 }
 
 async function getStepExecutionContext(stepExecutionId: string) {
@@ -463,6 +605,130 @@ async function getStepExecutionContext(stepExecutionId: string) {
   }
 
   return data;
+}
+
+function revalidateCheckpointWorkflow() {
+  revalidatePath("/", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/process-flow");
+  revalidatePath("/wafer-status");
+  revalidatePath("/wireframe/dashboard");
+  revalidatePath("/wireframe/process-flow");
+  revalidatePath("/wireframe/wafer-status");
+}
+
+async function getDicingChildSpecsForCheckpoint({
+  attemptId,
+  supabase
+}: {
+  attemptId: string;
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
+}) {
+  const { data: attempt, error: attemptError } = await supabase
+    .from("process_step_attempts")
+    .select("process_step_id, wafer_id")
+    .eq("id", attemptId)
+    .single();
+
+  if (attemptError) throw attemptError;
+
+  const [stepResult, waferResult] = await Promise.all([
+    supabase
+      .from("process_steps")
+      .select("id, name, slug, process_area")
+      .eq("id", attempt.process_step_id)
+      .single(),
+    supabase
+      .from("wafers")
+      .select("id, wafer_code, metadata")
+      .eq("id", attempt.wafer_id)
+      .single()
+  ]);
+
+  if (stepResult.error) throw stepResult.error;
+  if (waferResult.error) throw waferResult.error;
+  if (!isDicingLikeStep(stepResult.data)) return null;
+
+  const dieLabels = getDieLabels(waferResult.data.wafer_code, waferResult.data.metadata as Json);
+  return dieLabels.map((dieLabel) => ({
+    die_label: dieLabel,
+    wafer_code: dieLabel.toUpperCase().startsWith(`${waferResult.data.wafer_code.trim().toUpperCase()}_`)
+      ? dieLabel
+      : `${waferResult.data.wafer_code}-${dieLabel}`
+  }));
+}
+
+async function reconcileApprovedDicingCheckpoint({
+  account,
+  decision,
+  supabase
+}: {
+  account: Awaited<ReturnType<typeof requireAccount>>;
+  decision: CheckpointDecision;
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
+}) {
+  if (decision.decision !== "approved") {
+    return;
+  }
+
+  const [stepResult, executionResult, waferResult] = await Promise.all([
+    supabase.from("process_steps").select("*").eq("id", decision.process_step_id).single(),
+    supabase.from("step_executions").select("run_notes").eq("id", decision.step_execution_id).single(),
+    supabase
+      .from("wafers")
+      .select("id, project_id, wafer_code, material_stack, diameter_mm, metadata")
+      .eq("id", decision.wafer_id)
+      .single()
+  ]);
+
+  if (stepResult.error) {
+    throw stepResult.error;
+  }
+  if (executionResult.error) {
+    throw executionResult.error;
+  }
+  if (waferResult.error) {
+    throw waferResult.error;
+  }
+
+  const currentStep = stepResult.data;
+  if (!isDicingLikeStep(currentStep)) {
+    return;
+  }
+
+  const { data: nextSteps, error: nextStepsError } = await supabase
+    .from("process_steps")
+    .select("*")
+    .eq("template_id", decision.template_id)
+    .is("archived_at", null)
+    .gt("step_order", currentStep.step_order)
+    .order("step_order", { ascending: true });
+
+  if (nextStepsError) {
+    throw nextStepsError;
+  }
+
+  const wafer = waferResult.data;
+  await splitWaferAfterDicing({
+    accountId: account.userId,
+    assignmentId: decision.assignment_id,
+    currentStep,
+    dicingMutationId: decision.id,
+    dicingMoveNote: executionResult.data.run_notes,
+    stepActorName: getStepActorDisplayName(account),
+    nextSteps: (nextSteps ?? []) as ProcessStep[],
+    now: decision.decided_at,
+    projectId: wafer.project_id,
+    supabase,
+    templateId: decision.template_id,
+    wafer: {
+      id: wafer.id,
+      wafer_code: wafer.wafer_code,
+      material_stack: wafer.material_stack,
+      diameter_mm: wafer.diameter_mm,
+      metadata: wafer.metadata as Json
+    }
+  });
 }
 
 export async function startStepExecution(input: unknown) {
@@ -525,6 +791,7 @@ export async function startStepExecution(input: unknown) {
 export async function completeStepExecution(input: unknown) {
   try {
     const account = await requireAccount();
+    const stepActorName = getStepActorDisplayName(account);
     const parsed = completeStepSchema.parse(input);
     const context = await getStepExecutionContext(parsed.stepExecutionId);
     const wafer = Array.isArray(context.wafers) ? context.wafers[0] : context.wafers;
@@ -532,6 +799,30 @@ export async function completeStepExecution(input: unknown) {
     await assertProjectAccess(wafer.project_id, "write");
 
     const supabase = await createServerSupabaseClient();
+    const { data: checkpointStep, error: checkpointStepError } = await supabase
+      .from("process_steps")
+      .select("template_id")
+      .eq("id", context.process_step_id)
+      .single();
+
+    if (checkpointStepError) {
+      return fail(checkpointStepError.message);
+    }
+
+    const { data: checkpointTemplate, error: checkpointTemplateError } = await supabase
+      .from("process_templates")
+      .select("lifecycle_status")
+      .eq("id", checkpointStep.template_id)
+      .single();
+
+    if (checkpointTemplateError) {
+      return fail(checkpointTemplateError.message);
+    }
+
+    if (checkpointTemplate.lifecycle_status === "published") {
+      return fail("Submit this step for checkpoint review instead of completing it directly.");
+    }
+
     const now = new Date().toISOString();
     const { data, error } = await supabase
       .from("step_executions")
@@ -540,7 +831,11 @@ export async function completeStepExecution(input: unknown) {
         completed_at: now,
         completed_by: account.userId,
         run_notes: parsed.notes ?? context.run_notes,
-        metadata: parsed.metadata as Json
+        metadata: {
+          ...toJsonRecord(parsed.metadata),
+          note_author_id: account.userId,
+          note_author_name: stepActorName
+        }
       })
       .eq("id", parsed.stepExecutionId)
       .select("*")
@@ -574,6 +869,7 @@ export async function completeStepExecution(input: unknown) {
           assignmentId: context.assignment_id,
           currentStep,
           dicingMoveNote: data.run_notes,
+          stepActorName,
           nextSteps: followingSteps,
           now,
           projectId: wafer.project_id,
@@ -688,9 +984,144 @@ export async function blockStepExecution(input: unknown) {
   }
 }
 
+export async function submitStepCheckpoint(input: unknown) {
+  try {
+    await requireAccount();
+    const parsed = submitStepCheckpointSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("submit_step_checkpoint", {
+      target_step_execution_id: parsed.stepExecutionId,
+      mutation_id: parsed.mutationId,
+      notes: parsed.notes ?? null,
+      evidence: parsed.evidence as Json
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateCheckpointWorkflow();
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function withdrawStepCheckpoint(input: unknown) {
+  try {
+    await requireAccount();
+    const parsed = withdrawStepCheckpointSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("withdraw_step_checkpoint_submission", {
+      target_attempt_id: parsed.attemptId,
+      mutation_id: parsed.mutationId,
+      reason: parsed.reason ?? null
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateCheckpointWorkflow();
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function reviewStepCheckpoint(input: unknown) {
+  try {
+    const account = await requireAccount();
+    const parsed = reviewStepCheckpointSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const dicingChildSpecs = parsed.decision === "approved"
+      ? await getDicingChildSpecsForCheckpoint({ attemptId: parsed.attemptId, supabase })
+      : null;
+    const { data, error } = dicingChildSpecs
+      ? await supabase.rpc("review_dicing_step_checkpoint", {
+          target_attempt_id: parsed.attemptId,
+          mutation_id: parsed.mutationId,
+          notes: parsed.notes ?? null,
+          child_specs: dicingChildSpecs
+        })
+      : await supabase.rpc("review_step_checkpoint", {
+          target_attempt_id: parsed.attemptId,
+          review_decision: parsed.decision,
+          mutation_id: parsed.mutationId,
+          notes: parsed.notes ?? null,
+          redo_target_step_id: parsed.redoTargetStepId ?? null
+        });
+
+    let decision = data;
+    if (error) {
+      if (!error.message.includes("already decided")) {
+        return fail(error.message);
+      }
+
+      const { data: savedDecision, error: savedDecisionError } = await supabase
+        .from("checkpoint_decisions")
+        .select("*")
+        .eq("attempt_id", parsed.attemptId)
+        .maybeSingle();
+
+      if (
+        savedDecisionError ||
+        !savedDecision ||
+        savedDecision.decision !== parsed.decision ||
+        savedDecision.decided_by !== account.userId
+      ) {
+        return fail(error.message);
+      }
+
+      decision = savedDecision;
+    }
+
+    if (!decision) {
+      return fail("The checkpoint decision was not returned. Refresh and verify its saved state before retrying.");
+    }
+
+    try {
+      await reconcileApprovedDicingCheckpoint({ account, decision, supabase });
+    } catch (splitError) {
+      return fail(
+        `The checkpoint decision was saved, but the dicing split did not finish. Retry the same review action to reconcile it. ${toErrorMessage(splitError)}`
+      );
+    }
+
+    revalidateCheckpointWorkflow();
+    return ok(decision);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function moveApprovedCheckpointWafer(input: unknown) {
+  try {
+    await requireAccount();
+    const parsed = moveApprovedCheckpointSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("move_approved_checkpoint_assignment", {
+      target_assignment_id: parsed.assignmentId,
+      target_step_id: parsed.targetStepId,
+      mutation_id: parsed.mutationId,
+      notes: parsed.note
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateCheckpointWorkflow();
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
 export async function moveWaferToProcessStep(input: unknown) {
   try {
     const account = await requireAccount();
+    const stepActorName = getStepActorDisplayName(account);
     const parsed = moveWaferToProcessStepSchema.parse(input);
     const supabase = await createServerSupabaseClient();
 
@@ -725,9 +1156,23 @@ export async function moveWaferToProcessStep(input: unknown) {
 
     await assertProjectAccess(wafer.project_id, "write");
 
+    const { data: assignmentTemplate, error: assignmentTemplateError } = await supabase
+      .from("process_templates")
+      .select("lifecycle_status")
+      .eq("id", assignment.template_id)
+      .single();
+
+    if (assignmentTemplateError) {
+      return fail(assignmentTemplateError.message);
+    }
+
+    if (assignmentTemplate.lifecycle_status === "published") {
+      return fail("Published workflows advance only through explicit checkpoint decisions.");
+    }
+
     const { data: targetStep, error: targetStepError } = await supabase
       .from("process_steps")
-      .select("id, template_id, name, step_order, process_area, slug")
+      .select("id, template_id, name, step_order, process_area, slug, node_type")
       .eq("id", parsed.targetStepId)
       .single();
 
@@ -854,6 +1299,11 @@ export async function moveWaferToProcessStep(input: unknown) {
       currentStep &&
       allowedTransition?.edge_type === "flow"
     );
+    const shouldCompleteProcess = Boolean(
+      !isRevertMove &&
+      targetStep.node_type === "end" &&
+      allowedTransition?.edge_type === "flow"
+    );
 
     const activeExecutionIds = existingExecutions
       .filter((execution) =>
@@ -944,7 +1394,11 @@ export async function moveWaferToProcessStep(input: unknown) {
           completed_at: now,
           completed_by: account.userId,
           run_notes: parsed.note ?? currentExecution.run_notes,
-          metadata: currentExecution.metadata
+          metadata: {
+            ...toJsonRecord(currentExecution.metadata),
+            note_author_id: account.userId,
+            note_author_name: stepActorName
+          }
         })
         .eq("id", currentExecution.id);
 
@@ -967,6 +1421,7 @@ export async function moveWaferToProcessStep(input: unknown) {
             assignmentId: parsed.assignmentId,
             currentStep,
             dicingMoveNote: parsed.note ?? currentExecution.run_notes,
+            stepActorName,
             nextSteps: followingSteps,
             now,
             projectId: wafer.project_id,
@@ -998,26 +1453,34 @@ export async function moveWaferToProcessStep(input: unknown) {
 
     const targetMetadata = targetExecution ? toJsonRecord(targetExecution.metadata as Json) : {};
     const targetPatch = {
-      status: "queued" as const,
+      status: shouldCompleteProcess ? "completed" as const : "queued" as const,
       queue_started_at: now,
-      started_at: null,
-      completed_at: null,
+      started_at: shouldCompleteProcess ? now : null,
+      completed_at: shouldCompleteProcess ? now : null,
       skipped_at: null,
-      completed_by: null,
-      operator_id: null,
+      completed_by: shouldCompleteProcess ? account.userId : null,
+      operator_id: shouldCompleteProcess ? account.userId : null,
       tool_id: null,
       recipe_id: null,
       planned_end_at: null,
-      run_notes: shouldCompleteSourceStep ? targetExecution?.run_notes ?? null : parsed.note ?? targetExecution?.run_notes ?? null,
+      run_notes: shouldCompleteSourceStep
+        ? targetExecution?.run_notes ?? null
+        : parsed.note ?? targetExecution?.run_notes ?? null,
       metadata: isRevertMove
         ? {
             ...targetMetadata,
+            note_author_id: account.userId,
+            note_author_name: stepActorName,
             revert_target_at: now,
             reverted_from_step_id: currentStep.id,
             reverted_to_step_id: targetStep.id,
             revert_reason: parsed.note
           }
-        : targetMetadata
+        : {
+            ...targetMetadata,
+            note_author_id: account.userId,
+            note_author_name: stepActorName
+          }
     };
 
     const targetExecutionResult = targetExecution
@@ -1045,9 +1508,9 @@ export async function moveWaferToProcessStep(input: unknown) {
     const { error: assignmentUpdateError } = await supabase
       .from("wafer_process_assignments")
       .update({
-        status: "in_progress",
+        status: shouldCompleteProcess ? "completed" : "in_progress",
         started_at: assignment.started_at ?? now,
-        completed_at: null
+        completed_at: shouldCompleteProcess ? now : null
       })
       .eq("id", parsed.assignmentId);
 
@@ -1057,7 +1520,7 @@ export async function moveWaferToProcessStep(input: unknown) {
 
     const { error: waferUpdateError } = await supabase
       .from("wafers")
-      .update({ status: "in_progress" })
+      .update({ status: shouldCompleteProcess ? "completed" : "in_progress" })
       .eq("id", assignment.wafer_id);
 
     if (waferUpdateError) {
@@ -1079,6 +1542,7 @@ export async function moveWaferToProcessStep(input: unknown) {
         reset_step_execution_ids: activeExecutionIds,
         completed_source_step_execution_id: shouldCompleteSourceStep ? currentExecution?.id ?? null : null,
         movement_kind: isRevertMove ? "revert" : "advance",
+        process_completed: shouldCompleteProcess,
         reverted_step_execution_ids: revertedExecutionIds
       },
       client_mutation_id: parsed.mutationId

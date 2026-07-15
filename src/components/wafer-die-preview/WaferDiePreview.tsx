@@ -154,7 +154,7 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
     <aside
       ref={panelRef}
       className={[
-        "pointer-events-none fixed z-40 w-[clamp(300px,30vw,380px)] max-w-[calc(100vw-1.5rem)]",
+        "wafer-die-preview-panel pointer-events-none fixed z-40 w-[224px] max-w-[calc(100vw-1.5rem)] sm:w-[clamp(300px,30vw,380px)]",
         position ? "" : "bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-3 sm:bottom-5 sm:right-5"
       ].join(" ")}
       style={position ? { left: position.left, top: position.top } : undefined}
@@ -164,7 +164,7 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
           type="button"
           aria-label="Move selected wafer information panel"
           className={[
-            "flex w-full touch-none items-start justify-between gap-3 border-b border-[#eeeeea] px-4 py-3 text-left outline-none transition-colors duration-150 hover:bg-[#f8f8f5] focus-visible:bg-[#f3f3ef] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#111111]",
+            "flex w-full touch-none items-start justify-between gap-2 border-b border-[#eeeeea] px-2.5 py-2 text-left outline-none transition-colors duration-150 hover:bg-[#f8f8f5] focus-visible:bg-[#f3f3ef] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#111111] sm:gap-3 sm:px-4 sm:py-3",
             isDragging ? "cursor-grabbing bg-[#f3f3ef]" : "cursor-grab"
           ].join(" ")}
           title="Move panel"
@@ -175,20 +175,20 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
           onPointerUp={finishDrag}
         >
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a887b]">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#8a887b] sm:text-[11px]">
               {isDie ? "Selected die" : "Selected wafer"}
             </p>
-            <div className="mt-1 flex min-w-0 items-baseline gap-2">
-              <h2 className="truncate text-[20px] font-semibold leading-none text-[#111111]">{displayLabel}</h2>
-              <span className="truncate text-xs text-[#77776f]">{preview.waferCode}</span>
+            <div className="mt-0.5 flex min-w-0 items-baseline gap-2 sm:mt-1">
+              <h2 className="truncate text-[15px] font-semibold leading-none text-[#111111] sm:text-[20px]">{displayLabel}</h2>
+              <span className="hidden truncate text-xs text-[#77776f] sm:inline">{preview.waferCode}</span>
             </div>
           </div>
-          <GripHorizontal className="mt-1 size-5 shrink-0 text-[#77776f]" aria-hidden="true" />
+          <GripHorizontal className="mt-0.5 size-4 shrink-0 text-[#77776f] sm:mt-1 sm:size-5" aria-hidden="true" />
         </button>
 
         <Link
           aria-label={`Open status for ${isDie ? "die" : "wafer"} ${displayLabel}`}
-          className="group grid grid-cols-[88px_minmax(0,1fr)] items-center gap-4 px-4 py-3.5 outline-none transition-colors duration-150 hover:bg-[#fafaf8] focus-visible:bg-[#f5f5f1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#111111]"
+          className="group grid grid-cols-[58px_minmax(0,1fr)] items-center gap-2.5 px-2.5 py-2.5 outline-none transition-colors duration-150 hover:bg-[#fafaf8] focus-visible:bg-[#f5f5f1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#111111] sm:grid-cols-[88px_minmax(0,1fr)] sm:gap-4 sm:px-4 sm:py-3.5"
           href={`/wafer-status?${search.toString()}`}
         >
           <div className="grid aspect-square place-items-center border border-[#eeeeea] bg-[#fafaf8] p-2">
@@ -198,22 +198,22 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
               colorSeed={preview.waferCode}
               showDieLabel={false}
               showOnlySelectedDie={isDie}
-              className="max-h-[68px]"
+              className="max-h-[46px] sm:max-h-[68px]"
             />
           </div>
-          <div className="grid min-w-0 gap-3 text-sm">
+          <div className="grid min-w-0 gap-2 text-xs sm:gap-3 sm:text-sm">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a887b]">Current step</p>
+              <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#8a887b] sm:text-[11px]">Current step</p>
               <div className="mt-0.5 flex min-w-0 items-center justify-between gap-2 font-semibold text-[#111111]">
                 <span className="truncate">{preview.stepLabel?.trim() || "Not started"}</span>
                 <ArrowUpRight className="size-4 shrink-0 text-[#77776f] transition-transform duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden="true" />
               </div>
             </div>
-            <div className="border-t border-[#eeeeea] pt-2.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a887b]">Handler</p>
-              <div className="mt-1.5 flex min-w-0 items-center gap-2.5">
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[#efefeb] text-[#55554f]">
-                  <UserRound className="size-3.5" aria-hidden="true" />
+            <div className="border-t border-[#eeeeea] pt-2 sm:pt-2.5">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#8a887b] sm:text-[11px]">Handler</p>
+              <div className="mt-1 flex min-w-0 items-center gap-1.5 sm:mt-1.5 sm:gap-2.5">
+                <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[#efefeb] text-[#55554f] sm:size-7">
+                  <UserRound className="size-3 sm:size-3.5" aria-hidden="true" />
                 </span>
                 <p className="min-w-0 truncate font-semibold text-[#111111]">
                   {preview.handlerName?.trim() || "Unassigned"}

@@ -23,6 +23,7 @@ import { flushSync } from "react-dom";
 import { WaferDiePreview, type WaferDiePreviewModel } from "@/components/wafer-die-preview";
 import {
   createProcessCalendarEvent,
+  deleteProcessCalendarEvent,
   moveProcessCalendarEvent,
   updateProcessCalendarEvent
 } from "@/features/calendar/actions";
@@ -1570,6 +1571,35 @@ export function ProcessCalendarBoard({
     });
   }
 
+  function deleteSelectedEvent() {
+    if (!selectedEvent) {
+      return;
+    }
+
+    setError(null);
+
+    if (persistenceMode === "local") {
+      setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
+      clearSelectedEvent();
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await deleteProcessCalendarEvent({
+        eventId: selectedEvent.id,
+        expectedRevision: selectedEvent.revision
+      });
+
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
+      clearSelectedEvent();
+    });
+  }
+
   useEffect(() => {
     const handleUndo = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") {
@@ -1928,6 +1958,7 @@ export function ProcessCalendarBoard({
           onAddPerson={addPerson}
           onCancelDraft={() => setDraft(null)}
           onDescriptionChange={setDescription}
+          onDeleteSelectedEvent={deleteSelectedEvent}
           onManualActionChange={setManualAction}
           onPersonQueryChange={setPersonQuery}
           onRemovePerson={removePerson}
@@ -1938,7 +1969,9 @@ export function ProcessCalendarBoard({
           onSelectedWaferIdChange={setSelectedWaferId}
         />
       </aside>
-      <WaferDiePreview preview={waferPreview} />
+      <div className={selectedEvent || draft ? "hidden sm:block" : undefined}>
+        <WaferDiePreview preview={waferPreview} />
+      </div>
     </div>
   );
 }

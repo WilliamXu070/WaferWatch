@@ -16,6 +16,26 @@ test("renders the suggested Greek name and selected wafer size", () => {
 
   assert.match(markup, /role="dialog"/);
   assert.match(markup, /value="SIGMA"/);
+  assert.match(markup, /id="flow-wafer-create-name"/);
+  assert.match(markup, /name="waferCode"/);
+  assert.match(markup, /id="flow-wafer-create-size"/);
+  assert.match(markup, /name="diameterMm"/);
   assert.match(markup, /<option value="150" selected="">150 mm<\/option>/);
   assert.match(markup, />Create wafer<\/button>/);
+});
+
+test("renders a create failure inside the dialog", () => {
+  const markup = renderToStaticMarkup(
+    <WaferCreateDialog
+      draft={{ waferCode: "RHO", diameterMm: 100 }}
+      errorMessage="A wafer named RHO already exists."
+      isPending={false}
+      onCancel={() => undefined}
+      onChange={() => undefined}
+      onSubmit={() => undefined}
+    />
+  );
+
+  assert.match(markup, /role="alert"/);
+  assert.match(markup, /A wafer named RHO already exists\./);
 });

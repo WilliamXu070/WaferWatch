@@ -1,4 +1,4 @@
-import { NODE_WIDTH, SCENE_HEIGHT, SCENE_WIDTH, getNodeHeightForWaferCount } from "./constants";
+import { NODE_WIDTH, SCENE_HEIGHT, SCENE_WIDTH, getNodeHeightForWafers } from "./constants";
 import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import { applyGraphDisplayOrder, autoLayoutNodes } from "./layout";
 import { toFlowNodeRole } from "./labels";
@@ -14,9 +14,11 @@ export function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransi
       x: step.canvas_x ?? 0,
       y: step.canvas_y ?? 0,
       width: NODE_WIDTH,
-      height: getNodeHeightForWaferCount(step.wafers.length),
+      height: getNodeHeightForWafers(step.wafers),
       role: toFlowNodeRole(step.node_type),
-      order: index + 1
+      order: index + 1,
+      requiredReviewerId: step.required_reviewer_id ?? null,
+      requiredReviewerName: step.required_reviewer_name ?? null
     }));
 
   const nodeIds = new Set(nodes.map((node) => node.id));

@@ -208,6 +208,8 @@ export type WaferStatusProcessStepModel = {
   stepOrder: number;
   status: StepStatus | "pending";
   executionId: string | null;
+  noteAuthorId: string | null;
+  noteAuthorName: string | null;
   runNote: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -222,6 +224,78 @@ export type WaferStatusRevertEvent = {
   occurredAt: string;
   reason: string | null;
 };
+
+export type WaferStatusTimelineActor = {
+  id: string | null;
+  name: string | null;
+};
+
+export type WaferStatusTimelineInheritance = {
+  waferId: string;
+  waferCode: string;
+};
+
+export type WaferStatusCheckpointSubmission = {
+  id: string;
+  occurredAt: string;
+  actor: WaferStatusTimelineActor;
+  note: string | null;
+};
+
+export type WaferStatusCheckpointWithdrawal = {
+  id: string;
+  occurredAt: string;
+  actor: WaferStatusTimelineActor;
+  note: string | null;
+};
+
+export type WaferStatusCheckpointDecision = {
+  id: string;
+  outcome: "approve" | "redo";
+  occurredAt: string;
+  actor: WaferStatusTimelineActor;
+  note: string | null;
+  destinationStepId: string | null;
+  destinationStepName: string | null;
+  supersedesDecisionId: string | null;
+  isEffective: boolean;
+};
+
+export type WaferStatusCheckpointAttemptEntry = {
+  kind: "attempt";
+  id: string;
+  inheritedFromParent?: WaferStatusTimelineInheritance;
+  stepId: string;
+  stepName: string;
+  attemptNumber: number;
+  state: "in_progress" | "awaiting_checkpoint" | "approved" | "redo_required" | "withdrawn";
+  occurredAt: string;
+  startedAt: string | null;
+  submission: WaferStatusCheckpointSubmission | null;
+  withdrawals: readonly WaferStatusCheckpointWithdrawal[];
+  decisions: readonly WaferStatusCheckpointDecision[];
+  effectiveDecision: WaferStatusCheckpointDecision | null;
+};
+
+export type WaferStatusLegacyTimelineEntry = {
+  kind: "legacy_transition";
+  id: string;
+  inheritedFromParent?: WaferStatusTimelineInheritance;
+  sourceEventId: string | null;
+  legacyType: "step_execution" | "wafer_step_moved" | "wafer_step_reverted" | "checkpoint_step_entered";
+  occurredAt: string;
+  actor: WaferStatusTimelineActor;
+  note: string | null;
+  fromStepId: string | null;
+  fromStepName: string | null;
+  toStepId: string | null;
+  toStepName: string | null;
+  recordedStatus: string | null;
+};
+
+export type WaferStatusCheckpointHistoryEntry =
+  | WaferStatusCheckpointAttemptEntry
+  | WaferStatusLegacyTimelineEntry;
 
 export type WaferStatusTileModel = {
   id: string;
@@ -240,6 +314,7 @@ export type WaferStatusTileModel = {
   currentStepExecutionId?: string | null;
   processSteps?: readonly WaferStatusProcessStepModel[];
   revertHistory?: readonly WaferStatusRevertEvent[];
+  checkpointHistory?: readonly WaferStatusCheckpointHistoryEntry[];
   mode?: WaferDisplayMode;
   isUndiced?: boolean;
   isSelected?: boolean;

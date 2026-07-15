@@ -28,11 +28,11 @@ type ProcessFlowCanvasProps = {
   nodeById: Map<string, FlowNode>;
   connectionDraft: ConnectionDraft | null;
   waferDrag: WaferDrag | null;
-  waferDropTarget: { nodeId: string; kind: "advance" | "revert" } | null;
+  waferDropTarget: { nodeId: string; kind: "submit" | "move" } | null;
   edges: FlowEdge[];
   selectedNodeIds: Set<string>;
   selectedEdgeId: string | null;
-  selectedWaferAssignmentId: string | null;
+  selectedWaferAssignmentIds: ReadonlySet<string>;
   connectionNodeId: string | null;
   roleMenu: RoleMenu | null;
   roleMenuNode: FlowNode | null;
@@ -66,6 +66,8 @@ type ProcessFlowCanvasProps = {
   onOpenWaferPreview: (node: FlowNode, wafer: WaferPin) => void;
   onDeleteNodes: (nodeIds: string[]) => void;
   onEdgeClick: (edgeId: string) => void;
+  reviewerOptions: Array<{ id: string; name: string }>;
+  onUpdateReviewer?: (nodeId: string, reviewerId: string | null) => void;
 };
 
 export function ProcessFlowCanvas({
@@ -85,7 +87,7 @@ export function ProcessFlowCanvas({
   edges,
   selectedNodeIds,
   selectedEdgeId,
-  selectedWaferAssignmentId,
+  selectedWaferAssignmentIds,
   connectionNodeId,
   roleMenu,
   roleMenuNode,
@@ -118,7 +120,9 @@ export function ProcessFlowCanvas({
   onSelectWafer,
   onOpenWaferPreview,
   onDeleteNodes,
-  onEdgeClick
+  onEdgeClick,
+  reviewerOptions,
+  onUpdateReviewer
 }: ProcessFlowCanvasProps) {
   const draftSourceNode = connectionDraft ? nodeById.get(connectionDraft.from) : null;
   const draftPath = draftSourceNode
@@ -248,7 +252,7 @@ export function ProcessFlowCanvas({
             isDragging={nodeDrag?.nodeStartPositions.some((position) => position.nodeId === node.id) ?? false}
             dropTargetKind={waferDropTarget?.nodeId === node.id ? waferDropTarget.kind : null}
             isSelected={selectedNodeIds.has(node.id)}
-            selectedWaferAssignmentId={selectedWaferAssignmentId}
+            selectedWaferAssignmentIds={selectedWaferAssignmentIds}
             isEditing={editingNodeId === node.id}
             editingNodeLabel={editingNodeLabel}
             editingInputRef={editingInputRef}
@@ -277,6 +281,18 @@ export function ProcessFlowCanvas({
           role="menu"
           aria-label={`${roleMenuNode.label} actions`}
         >
+          <label className="flow-role-menu-reviewer">
+            <span>Checkpoint reviewer</span>
+            <select
+              value={roleMenuNode.requiredReviewerId ?? ""}
+              onChange={(event) => onUpdateReviewer?.(roleMenuNode.id, event.currentTarget.value || null)}
+            >
+              <option value="">No reviewer</option>
+              {reviewerOptions.map((reviewer) => (
+                <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             role="menuitem"

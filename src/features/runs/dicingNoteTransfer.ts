@@ -79,7 +79,8 @@ export function appendDicingMoveNoteToClones({
   dicingStepId,
   dicingStepName,
   noteBody,
-  timestamp
+  timestamp,
+  noteAuthor = "Unknown user"
 }: {
   childWafers: readonly DicingChildWaferInput[];
   clones: readonly DicingNoteSurfaceClone[];
@@ -87,6 +88,7 @@ export function appendDicingMoveNoteToClones({
   dicingStepName: string;
   noteBody: string | null | undefined;
   timestamp: string;
+  noteAuthor?: string;
 }): DicingNoteSurfaceClone[] {
   const body = noteBody?.trim();
   if (!body) {
@@ -99,7 +101,7 @@ export function appendDicingMoveNoteToClones({
     const existingNotes = parseNoteArray(clonesByScopeKey.get(childStepScopeKey) ?? "[]");
     const note: DicingMoveNote = {
       id: `dicing-move-note:${dicingStepId}`,
-      author: "Process move",
+      author: noteAuthor.trim() || "Unknown user",
       body,
       attachments: [],
       processStepId: dicingStepId,

@@ -4,10 +4,19 @@ import type { ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from 
 export type WaferPin = {
   assignmentId: string;
   waferId?: string;
+  projectId?: string;
+  currentStepExecutionId?: string | null;
   waferCode: string;
   dieLabel: string | null;
   currentStepStatus: StepStatus | null;
   currentHandlerName?: string | null;
+  latestStepAttemptId?: string | null;
+  latestStepAttemptSubmittedById?: string | null;
+  latestStepAttemptNotes?: string | null;
+  requiredReviewerId?: string | null;
+  requiredReviewerName?: string | null;
+  canReview?: boolean;
+  canWithdraw?: boolean;
 };
 
 export type DiagramStep = {
@@ -18,6 +27,8 @@ export type DiagramStep = {
   node_type?: ProcessStepNodeType;
   canvas_x?: number | null;
   canvas_y?: number | null;
+  required_reviewer_id?: string | null;
+  required_reviewer_name?: string | null;
   wafers: WaferPin[];
 };
 
@@ -62,7 +73,14 @@ export type FlowNode = {
   height: number;
   role: FlowNodeRole;
   order: number;
+  requiredReviewerId?: string | null;
+  requiredReviewerName?: string | null;
   isOptimistic?: boolean;
+};
+
+export type CheckpointReviewerOption = {
+  id: string;
+  name: string;
 };
 
 export type FlowEdge = {
@@ -118,6 +136,11 @@ export type WaferDrag = {
   assignmentId: string;
   sourceStepId: string;
   waferLabel: string;
+  wafers: Array<{
+    assignmentId: string;
+    waferLabel: string;
+    isDie: boolean;
+  }>;
   pointerId: number;
   startClientX: number;
   startClientY: number;
@@ -129,8 +152,13 @@ export type WaferDrag = {
 };
 
 export type PendingWaferMove = {
-  mutationId: string;
-  assignmentId: string;
+  kind: "submit" | "move";
+  wafers: Array<{
+    mutationId: string;
+    assignmentId: string;
+    waferLabel: string;
+    isDie: boolean;
+  }>;
   sourceStepId: string;
   sourceLabel: string;
   targetStepId: string;
@@ -187,10 +215,44 @@ export type MoveWaferToProcessStepAction = (input: {
   revertToPriorStep?: boolean;
 }) => Promise<ActionResult<unknown>>;
 
+export type SubmitStepCheckpointAction = (input: {
+  stepExecutionId: string;
+  mutationId: string;
+  notes?: string | null;
+  evidence?: Record<string, unknown>;
+}) => Promise<ActionResult<unknown>>;
+
+export type WithdrawStepCheckpointAction = (input: {
+  attemptId: string;
+  mutationId: string;
+  reason?: string | null;
+}) => Promise<ActionResult<unknown>>;
+
+export type ReviewStepCheckpointAction = (input: {
+  attemptId: string;
+  decision: "approved" | "redo";
+  mutationId: string;
+  notes?: string | null;
+  redoTargetStepId?: string | null;
+}) => Promise<ActionResult<unknown>>;
+
+export type MoveApprovedCheckpointAction = (input: {
+  mutationId: string;
+  assignmentId: string;
+  sourceStepId: string;
+  targetStepId: string;
+  note: string;
+}) => Promise<ActionResult<unknown>>;
+
+export type UpdateStepCheckpointReviewerAction = (input: {
+  stepId: string;
+  reviewerId: string | null;
+}) => Promise<ActionResult<unknown>>;
+
 export type CreateWaferAtProcessStartAction = (input: {
   templateId: string;
   waferCode: string;
-  diameterMm: number;
+  dieCount: number;
 }) => Promise<ActionResult<unknown>>;
 
 export type DeleteProcessFlowWaferAction = (input: {

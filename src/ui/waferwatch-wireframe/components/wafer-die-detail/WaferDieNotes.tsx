@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  type ClipboardEvent as ReactClipboardEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -13,13 +12,14 @@ import {
   getAttachmentDownloadUrl,
   registerAttachment
 } from "@/features/measurements/actions";
+import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
 import { isGeneratedDicedPieceNote } from "@/features/runs/dicingNoteTransfer";
 import { mutateTextSurfaceJsonArray } from "@/features/text-surfaces/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
 import { StepFileIcon } from "../../icons";
 import { DetailCard } from "./DetailCard";
-import { ProcessTimelineTree } from "./ProcessTimelineTree";
+import { SequentialStepPicker } from "./SequentialStepPicker";
 import { createTiffPngPreview, isTiffImage } from "./tiffPreview";
 import {
   getWaferDieNotesScopeKey,
@@ -170,13 +170,6 @@ function isImageAttachment(attachment: WaferDieNoteAttachment) {
   return attachment.mimeType?.startsWith("image/") ?? /\.(?:avif|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(attachment.fileName);
 }
 
-function getClipboardImageFiles(event: ReactClipboardEvent<HTMLTextAreaElement>) {
-  return Array.from(event.clipboardData.items)
-    .filter((item) => item.type.startsWith("image/"))
-    .map((item) => item.getAsFile())
-    .filter((file): file is File => Boolean(file));
-}
-
 function coerceAttachment(value: unknown): WaferDieNoteAttachment | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -286,7 +279,8 @@ export function getInitialWaferDieNotesForStep(tile: WaferStatusTileModel, stepI
   const executionNote = step?.runNote?.trim()
     ? {
         id: `execution-note:${step.executionId ?? step.id}`,
-        author: "Process move",
+        authorId: step.noteAuthorId,
+        author: step.noteAuthorName ?? "Unknown user",
         body: step.runNote.trim().slice(0, MAX_NOTE_LENGTH),
         attachments: [],
         processStepId: stepId,
@@ -810,7 +804,7 @@ export function WaferDieNotesDashboard({
     <div className="grid gap-4 xl:grid-cols-[440px_minmax(0,1fr)]">
       <DetailCard title="Process timeline" className="min-h-[520px]">
         {processSteps.length ? (
-          <ProcessTimelineTree tile={tile} selectedStepId={selectedStep?.id} onSelectStep={setSelectedStepId} />
+          <SequentialStepPicker tile={tile} selectedStepId={selectedStep?.id} onSelectStep={setSelectedStepId} />
         ) : null}
       </DetailCard>
 
@@ -970,6 +964,8 @@ export function WaferDieNotesDashboard({
         {canEdit ? (
         <div className="border-t border-[#e6e6e0] bg-white p-3">
           <textarea
+            id={`wafer-die-note-${selectedStep?.id ?? "none"}`}
+            name="waferDieNote"
             value={selectedDraft}
             onChange={(event) => selectedStep && setDraftByStepId((current) => ({
               ...current,
@@ -982,7 +978,7 @@ export function WaferDieNotesDashboard({
                 return;
               }
 
-              const pastedImages = getClipboardImageFiles(event);
+              const pastedImages = getClipboardImageFiles(event.clipboardData);
               if (pastedImages.length > 0) {
                 event.preventDefault();
                 appendDraftFiles(selectedStep.id, pastedImages);

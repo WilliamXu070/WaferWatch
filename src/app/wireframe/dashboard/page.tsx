@@ -11,7 +11,20 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function WireframeDashboardPage() {
+type DashboardSearchParams = {
+  processId?: string | string[];
+};
+
+function firstSearchValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function WireframeDashboardPage({
+  searchParams
+}: {
+  searchParams: Promise<DashboardSearchParams>;
+}) {
+  const requestedProcessId = firstSearchValue((await searchParams).processId);
   const supabase = await createServerSupabaseClient();
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
 
@@ -25,7 +38,7 @@ export default async function WireframeDashboardPage() {
     );
   }
 
-  const dashboard = await getWireframeDashboardModel(supabase);
+  const dashboard = await getWireframeDashboardModel(supabase, requestedProcessId);
 
   return <DashboardView dashboard={dashboard} />;
 }
