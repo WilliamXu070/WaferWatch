@@ -3,8 +3,6 @@ import test from "node:test";
 import {
   getPinchTargetScale,
   getStableZoomAnchor,
-  getTouchDistance,
-  getTouchPanScrollPosition,
   getZoomScrollPosition,
   isTouchTapWithinThreshold,
   shouldStartNodePointerInteraction
@@ -23,36 +21,6 @@ test("calculates pinch zoom symmetrically from one stable gesture baseline", () 
   assert.equal(getPinchTargetScale(1, 1, 1.25), 1.25);
   assert.equal(getPinchTargetScale(1, 1, 0.8), 0.8);
   assert.equal(getPinchTargetScale(0.8, 0.8, 1), 1);
-});
-
-test("derives physical pinch scale from the distance between two touch pointers", () => {
-  const initialDistance = getTouchDistance(
-    { clientX: 120, clientY: 300 },
-    { clientX: 220, clientY: 300 }
-  );
-  const expandedDistance = getTouchDistance(
-    { clientX: 95, clientY: 300 },
-    { clientX: 245, clientY: 300 }
-  );
-  const contractedDistance = getTouchDistance(
-    { clientX: 145, clientY: 300 },
-    { clientX: 195, clientY: 300 }
-  );
-
-  assert.equal(getPinchTargetScale(0.5, initialDistance, expandedDistance), 0.75);
-  assert.equal(getPinchTargetScale(0.5, initialDistance, contractedDistance), 0.25);
-});
-
-test("converts one-finger movement into canvas scrolling without native page pan", () => {
-  assert.deepEqual(getTouchPanScrollPosition(
-    620,
-    263,
-    { clientX: 195, clientY: 500 },
-    { clientX: 145, clientY: 440 }
-  ), {
-    scrollLeft: 670,
-    scrollTop: 323
-  });
 });
 
 test("keeps the same scene point under the visible pane center while zooming", () => {

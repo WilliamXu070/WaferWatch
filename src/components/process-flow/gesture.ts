@@ -1,10 +1,5 @@
 import type { PanePoint, ZoomAnchor } from "./types";
 
-export type TouchPoint = {
-  clientX: number;
-  clientY: number;
-};
-
 export function shouldStartNodePointerInteraction(pointerType: string) {
   return pointerType !== "touch";
 }
@@ -48,22 +43,6 @@ export function getPinchTargetScale(
     : safeInitialGestureScale;
 
   return initialAppScale * (safeCurrentGestureScale / safeInitialGestureScale);
-}
-
-export function getTouchDistance(first: TouchPoint, second: TouchPoint) {
-  return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
-}
-
-export function getTouchPanScrollPosition(
-  startScrollLeft: number,
-  startScrollTop: number,
-  startPoint: TouchPoint,
-  currentPoint: TouchPoint
-) {
-  return {
-    scrollLeft: startScrollLeft - (currentPoint.clientX - startPoint.clientX),
-    scrollTop: startScrollTop - (currentPoint.clientY - startPoint.clientY)
-  };
 }
 
 export function isTouchTapWithinThreshold(
