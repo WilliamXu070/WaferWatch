@@ -57,7 +57,6 @@ import { findEdgeSplitCandidate, splitEdgeWithNode } from "./process-flow/graphE
 import { hasCrossedWaferDragThreshold } from "./process-flow/interactions";
 import {
   getAvailableWaferMoveTargets,
-  getMobileMoveReadyWafers,
   getSelectedLinkedStepEdge
 } from "./process-flow/mobileActions";
 import {
@@ -445,27 +444,11 @@ export function ProcessFlowDiagram({
     () => getSelectedLinkedStepEdge(edges, selectedNodeIds),
     [edges, selectedNodeIds]
   );
-  const mobileSelectedStep = useMemo(() => {
-    if (selectedNodeIds.size !== 1) {
-      return null;
-    }
-
-    const selectedNodeId = selectedNodeIds.values().next().value;
-    return selectedNodeId ? nodeById.get(selectedNodeId) ?? null : null;
-  }, [nodeById, selectedNodeIds]);
-  const mobileMoveReadyWafers = useMemo(
-    () => getMobileMoveReadyWafers(mobileSelectedStep),
-    [mobileSelectedStep]
-  );
   const selectedWaferMoveTargets = useMemo(
-    () => selectedWafer && activeSelectedWafers.length > 0 && activeSelectedWafers.every((selection) =>
-      canMoveToAnotherStep(
-        nodeById.get(selection.nodeId)?.wafers.find((wafer) => wafer.assignmentId === selection.assignmentId)?.currentStepStatus
-      )
-    )
+    () => selectedWafer && nodeById.get(selectedWafer.nodeId)?.wafers.find((wafer) => wafer.assignmentId === selectedWafer.assignmentId)?.currentStepStatus === "ready_to_move"
       ? getAvailableWaferMoveTargets(displayNodes, edges, selectedWafer.nodeId)
       : [],
-    [activeSelectedWafers, displayNodes, edges, nodeById, selectedWafer]
+    [displayNodes, edges, nodeById, selectedWafer]
   );
   const waferDropTarget = useMemo(() => {
     if (!waferDrag?.hasMoved) {
@@ -3489,45 +3472,26 @@ export function ProcessFlowDiagram({
       {selectedNodeIds.size > 0 ? (
         <div
           aria-label="Selected step actions"
-          className="mx-3 mb-2 grid gap-3 rounded-xl border border-[#e5e5db] bg-[#fafaf4] p-3 md:hidden"
+          className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-[#e5e5db] bg-[#fafaf4] p-3 md:hidden"
         >
-          <div className="flex items-center gap-2">
-            <span className="mr-auto text-xs font-semibold uppercase tracking-[0.08em] text-[#6b6a5f]">
-              {selectedNodeIds.size === 1 ? "1 step selected" : `${selectedNodeIds.size} steps selected`}
-            </span>
-            <button
-              className="button ghost-button"
-              onClick={() => setSelectedNodeIds(new Set())}
-              type="button"
-            >
-              Clear
-            </button>
-            <button
-              className="button button-secondary"
-              disabled={isGraphPending}
-              onClick={deleteSelectedNodes}
-              type="button"
-            >
-              {selectedNodeIds.size === 1 ? "Delete step" : "Delete steps"}
-            </button>
-          </div>
-          {mobileSelectedStep && mobileMoveReadyWafers.length > 0 ? (
-            <div aria-label={`Approved Complete wafers in ${mobileSelectedStep.label}`} className="grid gap-2 border-t border-[#e5e5db] pt-3">
-              <span className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6b6a5f]">Ready to move</span>
-              <div className="flex flex-wrap gap-2">
-                {mobileMoveReadyWafers.map((wafer) => (
-                  <button
-                    className="button button-secondary"
-                    key={wafer.assignmentId}
-                    onClick={() => selectWafer(mobileSelectedStep.id, wafer)}
-                    type="button"
-                  >
-                    {getWaferChipLabel(wafer)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          <span className="mr-auto text-xs font-semibold uppercase tracking-[0.08em] text-[#6b6a5f]">
+            {selectedNodeIds.size === 1 ? "1 step selected" : `${selectedNodeIds.size} steps selected`}
+          </span>
+          <button
+            className="button ghost-button"
+            onClick={() => setSelectedNodeIds(new Set())}
+            type="button"
+          >
+            Clear
+          </button>
+          <button
+            className="button button-secondary"
+            disabled={isGraphPending}
+            onClick={deleteSelectedNodes}
+            type="button"
+          >
+            {selectedNodeIds.size === 1 ? "Delete step" : "Delete steps"}
+          </button>
         </div>
       ) : null}
       <ProcessFlowCanvas

@@ -1,5 +1,20 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 restored direct Complete wafer movement)
+
+- Removed the phone-only `Ready to move` picker introduced in `79440ef` and
+  restored the previous selected-wafer move-target logic. Complete-side wafers
+  again use the existing chip `onBeginWaferDrag` path and `WaferDragPreview`
+  animation; no replacement movement controls were added.
+- Added an invisible narrow-screen touch area around existing Complete chips.
+  It resolves to the nearest rendered chip and calls the same select/drag
+  callbacks, while the Delete wafer/die action from `79440ef` remains available.
+- Verified with 7 focused gesture/checkpoint tests, `npm run lint`, and
+  `npm run build`. Authenticated `/wireframe/process-flow` at 390x844 selected
+  `ALPHA_2_3` from outside its 16x9 rendered chip, showed the existing Delete
+  and move actions, rendered no Ready-to-move picker, had no horizontal overflow,
+  and logged no console errors. Physical iPhone drag remains the final gesture check.
+
 ## Recent development note (2026-07-15 mobile Process Flow wafer actions)
 
 - Added an explicit Delete wafer/die control to the selected-wafer action tray.

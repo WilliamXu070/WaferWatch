@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  getAvailableWaferMoveTargets,
-  getMobileMoveReadyWafers,
-  getSelectedLinkedStepEdge
-} from "./mobileActions";
+import { getAvailableWaferMoveTargets, getSelectedLinkedStepEdge } from "./mobileActions";
 import type { FlowEdge, FlowNode } from "./types";
 
 const nodes: FlowNode[] = [
@@ -28,21 +24,4 @@ test("offers every other step because graph edges are visual only", () => {
 test("finds the outgoing flow edge for one selected step", () => {
   assert.equal(getSelectedLinkedStepEdge(edges, new Set(["dicing"]))?.id, "dicing-complete");
   assert.equal(getSelectedLinkedStepEdge(edges, new Set(["start", "dicing"])), null);
-});
-
-test("offers only approved Complete-side wafers in the phone movement picker", () => {
-  const node: FlowNode = {
-    ...nodes[1],
-    wafers: [
-      { assignmentId: "queued", waferCode: "ALPHA_1", currentStepStatus: "queued" },
-      { assignmentId: "review", waferCode: "ALPHA_2", currentStepStatus: "awaiting_checkpoint" },
-      { assignmentId: "approved", waferCode: "ALPHA_3", currentStepStatus: "ready_to_move" }
-    ]
-  };
-
-  assert.deepEqual(
-    getMobileMoveReadyWafers(node).map((wafer) => wafer.assignmentId),
-    ["approved"]
-  );
-  assert.deepEqual(getMobileMoveReadyWafers(null), []);
 });
