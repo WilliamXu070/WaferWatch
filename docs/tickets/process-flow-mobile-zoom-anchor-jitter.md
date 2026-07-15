@@ -12,30 +12,33 @@ On a phone, zooming the Process Flow canvas pulls the graph toward the top-left 
 
 ## Diagnosis
 
-The WebKit `gesturestart` path conditionally trusts `clientX` and `clientY`. Mobile Safari can expose those properties with unusable zero coordinates, which turns the intended pinch anchor into the frame's top-left corner.
+The first correction fixed two real anchor bugs but did not fix the user's physical iPhone repro. Mobile Safari could expose unusable zero coordinates to the WebKit gesture path, and consecutive React frames could combine a new scale with stale DOM scroll offsets.
 
-`applyScaleAtAnchor` also recalculates its scene anchor from `scrollLeft`, `scrollTop`, and `scaleRef` on every gesture animation frame. When a second frame arrives before React has committed the previous scale and its layout effect has corrected scrolling, those values describe different viewport states. That mismatch moves the scene anchor and produces jitter.
+The remaining root cause was a second, competing movement owner. Mobile CSS explicitly used `touch-action: pan-x pan-y`, delegating canvas movement to Safari, while the WebKit gesture handler simultaneously changed React scale and container scroll. Button zoom was stable because it never entered that mixed native/custom path. A physical pinch could still let Safari move the container toward its origin while the app applied scale.
 
 ## Plan
 
-1. Use the visible pane center as the stable WebKit gesture anchor.
-2. Derive pending zoom calculations from the effective pending viewport instead of stale DOM scroll offsets.
-3. Add focused regression tests for center anchoring and consecutive pre-commit zoom frames.
-4. Run lint, build, and mobile browser verification on Process Flow.
+1. Disable native touch handling and browser scroll anchoring only inside the Process Flow canvas.
+2. Own touch movement with pointer events: one finger pans the canvas; two fingers calculate scale from their distance around one fixed visible-center anchor.
+3. Keep WebKit gesture listeners only to cancel Safari's native gesture, not to apply a second scale path.
+4. Preserve touch taps and single-wafer drag behavior until a pan or second pointer is detected.
+5. Add focused regressions for touch distance scaling, manual pan offsets, center anchoring, and consecutive pre-commit frames.
+6. Run lint, build, and authenticated phone-size browser verification.
 
 ## Verification
 
-- `npm exec --yes tsx -- --test src/components/process-flow/gesture.test.ts`: 6/6 pass, including stable center anchoring and consecutive pre-commit gesture frames.
+- `npm exec --yes tsx -- --test src/components/process-flow/gesture.test.ts src/components/process-flow/interactions.test.ts`: 10/10 pass, including physical pointer-distance scaling, manual one-finger pan offsets, stable center anchoring, consecutive pre-commit frames, and wafer tap/drag thresholds.
 - `npm run lint`: pass.
 - `npm run build`: pass.
 - Authenticated in-app browser at `http://localhost:3001/wireframe/process-flow?processId=9fb7de9e-31b8-4b5a-aea7-8ee64eedb699`, 390x844:
-  - repeated phone zoom moved from 35% to 71%; the scene coordinate under the viewport center changed by only 0.60 px horizontally and 0.42 px vertically;
+  - computed `touch-action` is `none` on both the frame and SVG, and `overflow-anchor` is `none`;
+  - repeated zoom moved from 35% to 59%; the scene coordinate under the viewport center changed by only 0.49 px horizontally and 0.34 px vertically;
   - no horizontal page overflow;
   - no browser console errors;
-  - screenshot: `/tmp/waferwatch-mobile-center-zoom.png`.
+  - screenshot: `/tmp/waferwatch-mobile-controlled-pinch-v2.png`.
 
-The in-app browser cannot synthesize Safari's proprietary `gesturestart`/`gesturechange` event, so physical iPhone pinch input is covered by the pure consecutive-frame regression rather than a browser-emitted Safari event.
+The in-app browser cannot emit a physical two-finger Safari pointer sequence. The exact user workflow therefore remains the final acceptance gate after deployment; issue #23 stays open until the user confirms it on the iPhone.
 
 ## Status
 
-Fixed and verified locally.
+Revised implementation verified locally; awaiting physical iPhone confirmation.

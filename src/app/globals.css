@@ -498,6 +498,7 @@ textarea {
   cursor: crosshair;
   touch-action: none;
   overscroll-behavior: contain;
+  overflow-anchor: none;
 }
 
 .flow-map-frame::-webkit-scrollbar {
@@ -3740,11 +3741,11 @@ textarea {
     border-radius: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    touch-action: pan-x pan-y;
+    touch-action: none;
   }
 
   .waferwatch-wireframe .wireframe-flow-surface .flow-map-canvas {
-    touch-action: pan-x pan-y;
+    touch-action: none;
   }
 
   .flow-selected-wafer-actions {

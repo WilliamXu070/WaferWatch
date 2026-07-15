@@ -5,8 +5,11 @@ import type { ClipboardEvent, MouseEvent, PointerEvent } from "react";
 import {
   getPinchTargetScale,
   getStableZoomAnchor,
+  getTouchDistance,
+  getTouchPanScrollPosition,
   isTouchTapWithinThreshold,
-  shouldStartNodePointerInteraction
+  shouldStartNodePointerInteraction,
+  type TouchPoint
 } from "@/components/process-flow/gesture";
 import { useRouter } from "next/navigation";
 import { WaferDiePreview, type WaferDiePreviewModel } from "@/components/wafer-die-preview";
@@ -125,6 +128,16 @@ type GraphSnapshot = {
   scale: number;
   scrollLeft: number;
   scrollTop: number;
+};
+
+type TouchPanState = {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startScrollLeft: number;
+  startScrollTop: number;
+  allowPan: boolean;
+  hasMoved: boolean;
 };
 
 type CreatedWaferPayload = {
@@ -361,10 +374,12 @@ export function ProcessFlowDiagram({
   const [isWaferMutationPending, startWaferMutationTransition] = useTransition();
   const scaleRef = useRef(1);
   const pinchInitialAppScaleRef = useRef(1);
-  const pinchInitialGestureScaleRef = useRef(1);
+  const pinchInitialDistanceRef = useRef(1);
   const pinchAnchorRef = useRef<{ paneX: number; paneY: number } | null>(null);
   const pendingPinchScaleRef = useRef<number | null>(null);
   const pinchAnimationFrameRef = useRef<number | null>(null);
+  const touchPointersRef = useRef<Map<number, TouchPoint>>(new Map());
+  const touchPanStateRef = useRef<TouchPanState | null>(null);
   const pendingTouchNodeRef = useRef<{
     nodeId: string;
     pointerId: number;
@@ -1650,7 +1665,177 @@ export function ProcessFlowDiagram({
     pendingGraphFitRef.current = null;
   }, [applyGraphFit, scale, scaledHeight, scaledWidth]);
 
+  const queueTouchPinchScale = (nextScale: number) => {
+    pendingPinchScaleRef.current = nextScale;
+    if (pinchAnimationFrameRef.current !== null) {
+      return;
+    }
+
+    pinchAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      pinchAnimationFrameRef.current = null;
+      const queuedScale = pendingPinchScaleRef.current;
+      pendingPinchScaleRef.current = null;
+      if (queuedScale !== null) {
+        applyScaleAtAnchor(queuedScale, pinchAnchorRef.current);
+      }
+    });
+  };
+
+  const beginTouchPinch = (frame: HTMLDivElement) => {
+    const pointerEntries = Array.from(touchPointersRef.current.entries()).slice(0, 2);
+    if (pointerEntries.length < 2) {
+      return;
+    }
+
+    const initialDistance = getTouchDistance(pointerEntries[0][1], pointerEntries[1][1]);
+    if (initialDistance <= 0) {
+      return;
+    }
+
+    pinchInitialAppScaleRef.current = scaleRef.current;
+    pinchInitialDistanceRef.current = initialDistance;
+    pinchAnchorRef.current = getPanePoint();
+    touchPanStateRef.current = null;
+    pendingTouchNodeRef.current = null;
+    waferDragRef.current = null;
+    setWaferDrag(null);
+    setIsPanning(false);
+    pointerEntries.forEach(([pointerId]) => safelySetPointerCapture(frame, pointerId));
+  };
+
+  const beginTouchGesture = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+
+    const frame = frameRef.current;
+    if (!frame) {
+      return;
+    }
+
+    event.preventDefault();
+    touchPointersRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY
+    });
+
+    if (touchPointersRef.current.size >= 2) {
+      beginTouchPinch(frame);
+      return;
+    }
+
+    const target = event.target instanceof Element ? event.target : null;
+    touchPanStateRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startScrollLeft: frame.scrollLeft,
+      startScrollTop: frame.scrollTop,
+      allowPan: !target?.closest(".flow-wafer-chip"),
+      hasMoved: false
+    };
+  };
+
+  const updateTouchGesture = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "touch" || !touchPointersRef.current.has(event.pointerId)) {
+      return;
+    }
+
+    const frame = frameRef.current;
+    if (!frame) {
+      return;
+    }
+
+    event.preventDefault();
+    touchPointersRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY
+    });
+
+    const touchPoints = Array.from(touchPointersRef.current.values()).slice(0, 2);
+    if (touchPoints.length >= 2) {
+      if (!pinchAnchorRef.current) {
+        beginTouchPinch(frame);
+      }
+      const currentDistance = getTouchDistance(touchPoints[0], touchPoints[1]);
+      queueTouchPinchScale(getPinchTargetScale(
+        pinchInitialAppScaleRef.current,
+        pinchInitialDistanceRef.current,
+        currentDistance
+      ));
+      return;
+    }
+
+    const pan = touchPanStateRef.current;
+    if (!pan || pan.pointerId !== event.pointerId || !pan.allowPan) {
+      return;
+    }
+
+    if (!pan.hasMoved && isTouchTapWithinThreshold(
+      pan.startClientX,
+      pan.startClientY,
+      event.clientX,
+      event.clientY
+    )) {
+      return;
+    }
+
+    if (!pan.hasMoved) {
+      pan.hasMoved = true;
+      pendingTouchNodeRef.current = null;
+      safelySetPointerCapture(frame, event.pointerId);
+      setIsPanning(true);
+    }
+
+    const nextScroll = getTouchPanScrollPosition(
+      pan.startScrollLeft,
+      pan.startScrollTop,
+      { clientX: pan.startClientX, clientY: pan.startClientY },
+      { clientX: event.clientX, clientY: event.clientY }
+    );
+    frame.scrollLeft = nextScroll.scrollLeft;
+    frame.scrollTop = nextScroll.scrollTop;
+  };
+
+  const endTouchGesture = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "touch" || !touchPointersRef.current.has(event.pointerId)) {
+      return;
+    }
+
+    const frame = frameRef.current;
+    event.preventDefault();
+    touchPointersRef.current.delete(event.pointerId);
+    if (frame) {
+      safelyReleasePointerCapture(frame, event.pointerId);
+    }
+
+    if (frame && touchPointersRef.current.size >= 2) {
+      beginTouchPinch(frame);
+      return;
+    }
+
+    pinchInitialDistanceRef.current = 1;
+    setIsPanning(false);
+
+    const remainingPointer = Array.from(touchPointersRef.current.entries())[0];
+    touchPanStateRef.current = frame && remainingPointer
+      ? {
+          pointerId: remainingPointer[0],
+          startClientX: remainingPointer[1].clientX,
+          startClientY: remainingPointer[1].clientY,
+          startScrollLeft: frame.scrollLeft,
+          startScrollTop: frame.scrollTop,
+          allowPan: true,
+          hasMoved: false
+        }
+      : null;
+  };
+
   const beginPan = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") {
+      return;
+    }
+
     const isMiddleMousePan = event.button === 1;
     const isModifiedLeftPan = event.button === 0 && event.altKey;
 
@@ -1680,6 +1865,10 @@ export function ProcessFlowDiagram({
   };
 
   const updatePan = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") {
+      return;
+    }
+
     if (!isPanning || !panStateRef.current || connectionDraft || nodeDrag || waferDrag) {
       return;
     }
@@ -1696,6 +1885,11 @@ export function ProcessFlowDiagram({
   };
 
   const endPan = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") {
+      endTouchGesture(event);
+      return;
+    }
+
     if (!isPanning) {
       return;
     }
@@ -1938,6 +2132,10 @@ export function ProcessFlowDiagram({
 
     event.stopPropagation();
     if (!shouldStartNodePointerInteraction(event.pointerType)) {
+      if (touchPointersRef.current.size >= 2) {
+        pendingTouchNodeRef.current = null;
+        return;
+      }
       pendingTouchNodeRef.current = {
         nodeId: node.id,
         pointerId: event.pointerId,
@@ -2161,6 +2359,10 @@ export function ProcessFlowDiagram({
 
   const beginWaferDrag = (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => {
     if (!canEdit || (!onSubmitCheckpoint && !onMoveApprovedWafer) || event.button !== 0 || isMovePending) {
+      return;
+    }
+
+    if (event.pointerType === "touch" && touchPointersRef.current.size >= 2) {
       return;
     }
 
@@ -3003,63 +3205,21 @@ export function ProcessFlowDiagram({
       applyScaleAtAnchor(scaleRef.current + delta, getPanePoint(event.clientX, event.clientY));
     };
 
-    const handleGestureStart = (event: Event) => {
-      const gestureEvent = event as Event & { scale?: number };
-      const gestureScale = typeof gestureEvent.scale === "number" && gestureEvent.scale > 0
-        ? gestureEvent.scale
-        : 1;
-
-      pinchInitialAppScaleRef.current = scaleRef.current;
-      pinchInitialGestureScaleRef.current = gestureScale;
-      pinchAnchorRef.current = getPanePoint();
-      pendingPinchScaleRef.current = null;
-      pendingTouchNodeRef.current = null;
-
-      event.preventDefault();
-      event.stopPropagation();
-    };
-
-    const handleGestureChange = (event: Event) => {
-      const gestureEvent = event as Event & { scale?: number };
-      const gestureScale = gestureEvent.scale;
-      if (gestureScale === undefined) {
-        return;
-      }
-
-      pendingPinchScaleRef.current = getPinchTargetScale(
-        pinchInitialAppScaleRef.current,
-        pinchInitialGestureScaleRef.current,
-        gestureScale
-      );
-      if (pinchAnimationFrameRef.current === null) {
-        pinchAnimationFrameRef.current = window.requestAnimationFrame(() => {
-          pinchAnimationFrameRef.current = null;
-          const nextScale = pendingPinchScaleRef.current;
-          pendingPinchScaleRef.current = null;
-          if (nextScale !== null) {
-            applyScaleAtAnchor(nextScale, pinchAnchorRef.current);
-          }
-        });
-      }
-      event.preventDefault();
-      event.stopPropagation();
-    };
-
-    const handleGestureEnd = (event: Event) => {
+    const preventNativeGesture = (event: Event) => {
       event.preventDefault();
       event.stopPropagation();
     };
 
     frame.addEventListener("wheel", handleWheelFallback, { passive: false });
-    frame.addEventListener("gesturestart", handleGestureStart, { passive: false });
-    frame.addEventListener("gesturechange", handleGestureChange, { passive: false });
-    frame.addEventListener("gestureend", handleGestureEnd, { passive: false });
+    frame.addEventListener("gesturestart", preventNativeGesture, { passive: false });
+    frame.addEventListener("gesturechange", preventNativeGesture, { passive: false });
+    frame.addEventListener("gestureend", preventNativeGesture, { passive: false });
 
     return () => {
       frame.removeEventListener("wheel", handleWheelFallback);
-      frame.removeEventListener("gesturestart", handleGestureStart);
-      frame.removeEventListener("gesturechange", handleGestureChange);
-      frame.removeEventListener("gestureend", handleGestureEnd);
+      frame.removeEventListener("gesturestart", preventNativeGesture);
+      frame.removeEventListener("gesturechange", preventNativeGesture);
+      frame.removeEventListener("gestureend", preventNativeGesture);
       if (pinchAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(pinchAnimationFrameRef.current);
         pinchAnimationFrameRef.current = null;
@@ -3382,6 +3542,9 @@ export function ProcessFlowDiagram({
         onFramePointerUp={endPan}
         onFramePointerCancel={endPan}
         onFramePointerLeave={endPan}
+        onFrameTouchPointerDownCapture={beginTouchGesture}
+        onFrameTouchPointerMoveCapture={updateTouchGesture}
+        onFrameTouchPointerEndCapture={endTouchGesture}
         onCanvasPointerMove={updateConnection}
         onCanvasPointerUp={finishConnection}
         onCanvasPointerCancel={() => {
