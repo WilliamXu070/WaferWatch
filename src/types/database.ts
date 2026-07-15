@@ -165,6 +165,8 @@ export type Wafer = {
   status: FabricationStatus;
   notes: string | null;
   metadata: Json;
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -179,6 +181,8 @@ export type WaferProcessAssignment = {
   started_at: string | null;
   completed_at: string | null;
   current_step_id: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
   revision: number;
 };
 
@@ -687,6 +691,13 @@ export interface Database {
           notes: string;
         };
         Returns: Json;
+      };
+      soft_delete_process_flow_wafer_family: {
+        Args: {
+          target_project_id: string;
+          target_wafer_ids: string[];
+        };
+        Returns: { wafer_id: string }[];
       };
     };
     Enums: {

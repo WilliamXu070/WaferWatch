@@ -682,6 +682,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
         .from("wafer_process_assignments")
         .select("id, wafer_id, template_id, status, assigned_at, started_at, completed_at, current_step_id")
         .eq("template_id", processTemplateId)
+        .is("deleted_at", null)
         .order("assigned_at", { ascending: false })
     : null;
 
@@ -701,6 +702,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   const wafersQuery = supabase
     .from("wafers")
     .select("id, project_id, wafer_code, status, notes, metadata, created_at")
+    .is("deleted_at", null)
     .order("wafer_code", { ascending: true });
 
   const wafersResult = scopedWaferIds ? await wafersQuery.in("id", scopedWaferIds) : await wafersQuery;
@@ -760,6 +762,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
         .from("wafer_process_assignments")
         .select("id, wafer_id, template_id, status, assigned_at, started_at, completed_at, current_step_id")
         .in("wafer_id", waferIds)
+        .is("deleted_at", null)
         .in("status", ACTIVE_ASSIGNMENT_STATUSES)
         .order("assigned_at", { ascending: false });
 
@@ -772,6 +775,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
         .from("wafer_process_assignments")
         .select("id, wafer_id, template_id, status, assigned_at, started_at, completed_at, current_step_id")
         .in("wafer_id", parentWaferIds)
+        .is("deleted_at", null)
         .order("assigned_at", { ascending: false })
     : null;
 
@@ -1189,6 +1193,7 @@ export async function listWafers(projectId: string) {
     .from("wafers")
     .select("*, wafer_lots(*)")
     .eq("project_id", projectId)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -1204,6 +1209,7 @@ export async function getWafer(waferId: string) {
     .from("wafers")
     .select("*, wafer_lots(*), wafer_process_assignments(*)")
     .eq("id", waferId)
+    .is("deleted_at", null)
     .single();
 
   if (error) {

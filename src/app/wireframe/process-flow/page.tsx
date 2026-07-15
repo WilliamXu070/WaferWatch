@@ -202,7 +202,11 @@ async function getSuggestedWaferCode(data: ProcessDashboardData | null) {
   const projectId = data.process.owner_project_id ?? data.workspaceWaferStates[0]?.projectId;
   if (!projectId) return getNextGreekWaferCode(fallbackCodes);
   const supabase = await createServerSupabaseClient();
-  const { data: wafers, error } = await supabase.from("wafers").select("wafer_code").eq("project_id", projectId);
+  const { data: wafers, error } = await supabase
+    .from("wafers")
+    .select("wafer_code")
+    .eq("project_id", projectId)
+    .is("deleted_at", null);
   return getNextGreekWaferCode(error ? fallbackCodes : (wafers ?? []).map((wafer) => wafer.wafer_code));
 }
 

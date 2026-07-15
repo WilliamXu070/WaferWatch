@@ -81,6 +81,7 @@ export async function getWireframeShellModel(): Promise<WireframeShellDto> {
           .from("wafer_process_assignments")
           .select("template_id")
           .in("template_id", templateIds)
+          .is("deleted_at", null)
           .in("status", [...ACTIVE_ASSIGNMENT_STATUSES])
       : Promise.resolve({ data: [], error: null }),
     activeTemplate
@@ -217,6 +218,7 @@ export async function getWireframeWaferViewerData(
       .from("wafers")
       .select("id, project_id, wafer_code, status, notes, metadata, created_at")
       .eq("project_id", projectId)
+      .is("deleted_at", null)
       .order("wafer_code", { ascending: true }),
     supabase
       .from("text_surfaces")

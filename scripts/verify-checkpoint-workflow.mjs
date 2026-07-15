@@ -79,7 +79,8 @@ const id = {
   correctionDicingExecution: "10000000-0000-4000-8000-000000000073",
   correctionDicingFutureExecution: "10000000-0000-4000-8000-000000000074",
   correctionDicingSubmit: "10000000-0000-4000-8000-000000000075",
-  correctionDicingApprove: "10000000-0000-4000-8000-000000000076"
+  correctionDicingApprove: "10000000-0000-4000-8000-000000000076",
+  correctionReplacementWafer: "10000000-0000-4000-8000-000000000077"
 };
 
 await db.exec(`
@@ -1008,6 +1009,87 @@ const correctedChildren = await db.query(
 assert.equal(correctedChildren.rows.length, 2);
 assert.ok(correctedChildren.rows.every((row) => row.current_step_id === id.dicingStep && row.status === "ready_to_move"));
 
+const softDeleteMigration = await readFile(
+  new URL("../supabase/migrations/202607150005_soft_delete_checkpoint_wafers.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(softDeleteMigration);
+const uniqueSoftDeleteTombstoneMigration = await readFile(
+  new URL("../supabase/migrations/202607150006_unique_soft_delete_wafer_tombstones.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(uniqueSoftDeleteTombstoneMigration);
+
+const checkpointHistoryBeforeDelete = await db.query(
+  `select
+     (select count(*)::integer from public.process_step_attempts where assignment_id = $1) as attempts,
+     (select count(*)::integer from public.checkpoint_decisions where assignment_id = $1) as decisions,
+     (select count(*)::integer from public.checkpoint_submission_withdrawals where assignment_id = $1) as withdrawals`,
+  [id.correctionAssignment]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+await db.exec(`set role authenticated`);
+const softDeleted = await db.query(
+  `select wafer_id from public.soft_delete_process_flow_wafer_family($1, array[$2]::uuid[])`,
+  [id.project, id.correctionWafer]
+);
+await db.exec(`reset role`);
+assert.deepEqual(softDeleted.rows, [{ wafer_id: id.correctionWafer }]);
+
+const deletedOperationalRows = await db.query(
+  `select
+     wafer.deleted_at is not null as wafer_deleted,
+     wafer.status as wafer_status,
+     wafer.wafer_code,
+     wafer.metadata ->> 'process_flow_deleted_wafer_code' as original_wafer_code,
+     assignment.deleted_at is not null as assignment_deleted,
+     assignment.status as assignment_status,
+     assignment.current_step_id
+   from public.wafers wafer
+   join public.wafer_process_assignments assignment on assignment.wafer_id = wafer.id
+   where wafer.id = $1`,
+  [id.correctionWafer]
+);
+assert.equal(deletedOperationalRows.rows[0].wafer_deleted, true);
+assert.equal(deletedOperationalRows.rows[0].wafer_status, "scrapped");
+assert.equal(
+  deletedOperationalRows.rows[0].wafer_code,
+  `CORRECTED-1__deleted__${id.correctionWafer.replaceAll("-", "")}`
+);
+assert.equal(deletedOperationalRows.rows[0].original_wafer_code, "CORRECTED-1");
+assert.equal(deletedOperationalRows.rows[0].assignment_deleted, true);
+assert.equal(deletedOperationalRows.rows[0].assignment_status, "scrapped");
+assert.equal(deletedOperationalRows.rows[0].current_step_id, id.correctionEnd);
+
+const checkpointHistoryAfterDelete = await db.query(
+  `select
+     (select count(*)::integer from public.process_step_attempts where assignment_id = $1) as attempts,
+     (select count(*)::integer from public.checkpoint_decisions where assignment_id = $1) as decisions,
+     (select count(*)::integer from public.checkpoint_submission_withdrawals where assignment_id = $1) as withdrawals`,
+  [id.correctionAssignment]
+);
+assert.deepEqual(checkpointHistoryAfterDelete.rows, checkpointHistoryBeforeDelete.rows);
+await db.query(
+  `insert into public.wafers (id, project_id, wafer_code) values ($1, $2, 'CORRECTED-1')`,
+  [id.correctionReplacementWafer, id.project]
+);
+await db.exec(`set role authenticated`);
+await db.query(
+  `select wafer_id from public.soft_delete_process_flow_wafer_family($1, array[$2]::uuid[])`,
+  [id.project, id.correctionReplacementWafer]
+);
+await db.exec(`reset role`);
+const replacementDelete = await db.query(
+  `select wafer_code, deleted_at is not null as wafer_deleted
+   from public.wafers
+   where id = $1`,
+  [id.correctionReplacementWafer]
+);
+assert.deepEqual(replacementDelete.rows, [{
+  wafer_code: `CORRECTED-1__deleted__${id.correctionReplacementWafer.replaceAll("-", "")}`,
+  wafer_deleted: true
+}]);
+
 console.log(JSON.stringify({
   migration: "applied",
   legacyBackfill: "published with eligible project-owner reviewer",
@@ -1024,6 +1106,7 @@ console.log(JSON.stringify({
   authenticatedRole: "trigger helpers and reviewer-history RLS work without exposing mutation helpers",
   versioning: "legacy versioning remains compatible while active graph editing is restored",
   graphMovement: "approved move reaches a disconnected active step and begins queued",
+  checkpointedDelete: "history stays append-only and reused codes can be deleted repeatedly without tombstone collisions",
   attempts: 4
 }, null, 2));
 

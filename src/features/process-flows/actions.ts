@@ -412,7 +412,8 @@ export async function createWaferAtProcessStart(input: unknown) {
     const { data: existingWafers, error: existingWafersError } = await supabase
       .from("wafers")
       .select("id, wafer_code, status, metadata, wafer_process_assignments(status)")
-      .eq("project_id", projectId);
+      .eq("project_id", projectId)
+      .is("deleted_at", null);
 
     if (existingWafersError) {
       return fail(existingWafersError.message);
@@ -428,6 +429,7 @@ export async function createWaferAtProcessStart(input: unknown) {
         .from("wafers")
         .select("id")
         .eq("project_id", projectId)
+        .is("deleted_at", null)
         .contains("metadata", { parent_wafer_id: existingWafer.id });
 
       if (childLookupError) {
@@ -549,6 +551,7 @@ export async function deleteProcessFlowWafer(input: unknown) {
       .from("wafer_process_assignments")
       .select("id, template_id, wafer_id, wafers(*)")
       .eq("id", parsed.assignmentId)
+      .is("deleted_at", null)
       .single();
 
     if (assignmentError) {
@@ -574,6 +577,7 @@ export async function deleteProcessFlowWafer(input: unknown) {
       .from("wafers")
       .select("id")
       .eq("project_id", wafer.project_id)
+      .is("deleted_at", null)
       .contains("metadata", { parent_wafer_id: familyRootId });
 
     if (childLookupError) {
@@ -585,17 +589,27 @@ export async function deleteProcessFlowWafer(input: unknown) {
       wafer.metadata,
       (discoveredChildren ?? []).map((child) => child.id)
     );
-    const deletedIds = await deleteWaferFamilyRecords({
-      adminSupabase,
-      deleteIds,
-      projectId: wafer.project_id
-    });
+    const { data: deletedRows, error: deleteError } = await supabase.rpc(
+      "soft_delete_process_flow_wafer_family",
+      {
+        target_project_id: wafer.project_id,
+        target_wafer_ids: deleteIds
+      }
+    );
+    if (deleteError) {
+      return fail(deleteError.message);
+    }
+
+    const deletedIds = (deletedRows ?? []).map((row) => row.wafer_id);
     if (!deletedIds.includes(assignment.wafer_id)) {
-      return fail("The selected wafer was not deleted from the database.");
+      return fail("The selected wafer was not deleted from the active process.");
     }
 
     revalidateProcessFlow(assignment.template_id);
-    return ok({ deleted: assignment.wafer_id, deletedWaferIds: deletedIds });
+    return ok({
+      deleted: assignment.wafer_id,
+      deletedWaferIds: deletedIds
+    });
   } catch (error) {
     return fail(toErrorMessage(error));
   }

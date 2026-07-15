@@ -120,7 +120,7 @@ export async function getDashboardSnapshot() {
       .select("id, name, tool_type, location, status")
       .order("name", { ascending: true }),
     supabase.from("projects").select("id", { count: "exact", head: true }),
-    supabase.from("wafers").select("id", { count: "exact", head: true }),
+    supabase.from("wafers").select("id", { count: "exact", head: true }).is("deleted_at", null),
     supabase
       .from("step_executions")
       .select("id", { count: "exact", head: true })
@@ -679,10 +679,12 @@ export async function getWireframeDashboardModel(
     supabase
       .from("wafer_process_assignments")
       .select("id, wafer_id, template_id, assigned_by, status, assigned_at, started_at, completed_at, current_step_id")
+      .is("deleted_at", null)
       .order("assigned_at", { ascending: false }),
     supabase
       .from("wafers")
       .select("id, wafer_code, project_id, metadata")
+      .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     supabase
       .from("step_executions")

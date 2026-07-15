@@ -1411,6 +1411,7 @@ export function ProcessFlowDiagram({
       setSelectedWafers((current) => current.filter((selection) => selection.assignmentId !== wafer.assignmentId));
       return;
     }
+    const deletedPreview = waferPreview?.waferId === deletedPin.waferId ? waferPreview : null;
 
     pendingWaferDeleteIdsRef.current.add(wafer.assignmentId);
     setNodes((currentNodes) =>
@@ -1425,6 +1426,9 @@ export function ProcessFlowDiagram({
       )
     );
     setSelectedWafers((current) => current.filter((selection) => selection.assignmentId !== wafer.assignmentId));
+    if (deletedPreview) {
+      setWaferPreview(null);
+    }
     setMoveMessage(`Deleting ${wafer.label}...`);
 
     void (async () => {
@@ -1451,6 +1455,9 @@ export function ProcessFlowDiagram({
             ? current
             : [...current, wafer]
         );
+        if (deletedPreview) {
+          setWaferPreview(deletedPreview);
+        }
         setMoveMessage(result.error);
         return;
       }
@@ -1458,7 +1465,7 @@ export function ProcessFlowDiagram({
       setMoveMessage(`Deleted ${wafer.label}.`);
       scheduleBackgroundRefresh();
     })();
-  }, [canEdit, onDeleteWafer, scheduleBackgroundRefresh, selectedWafer]);
+  }, [canEdit, onDeleteWafer, scheduleBackgroundRefresh, selectedWafer, waferPreview]);
 
   const restoreFromSnapshot = useCallback((snapshot: GraphSnapshot) => {
     clearTimers();

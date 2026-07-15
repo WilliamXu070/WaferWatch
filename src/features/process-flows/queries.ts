@@ -404,6 +404,7 @@ export async function getActiveAssignmentForWafer(waferId: string) {
     .from("wafer_process_assignments")
     .select("*, process_templates(*)")
     .eq("wafer_id", waferId)
+    .is("deleted_at", null)
     .in("status", ["planned", "queued", "in_progress", "on_hold"])
     .order("assigned_at", { ascending: false })
     .limit(1)
@@ -449,7 +450,8 @@ export async function getProcessDashboardData(
   const assignmentsResult = await supabase
     .from("wafer_process_assignments")
     .select("id, wafer_id, status, assigned_at, started_at, completed_at, assigned_by, current_step_id")
-    .eq("template_id", processTemplateId);
+    .eq("template_id", processTemplateId)
+    .is("deleted_at", null);
 
   if (assignmentsResult.error) {
     throw assignmentsResult.error;
@@ -463,6 +465,7 @@ export async function getProcessDashboardData(
     ? supabase
         .from("wafers")
         .select("id, wafer_code, project_id, metadata")
+        .is("deleted_at", null)
         .in("id", waferIds)
     : Promise.resolve({ data: [], error: null } as const);
 

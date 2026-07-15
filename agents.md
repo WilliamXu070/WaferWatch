@@ -1,5 +1,23 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 checkpoint-safe wafer deletion)
+
+- Replaced Process Flow wafer/die hard deletion with an authorized audited soft
+  delete so append-only checkpoint attempts, decisions, withdrawals, execution
+  history, and attachments remain intact while deleted items disappear from
+  active Process Flow, Wafer Status, dashboard, and wireframe queries.
+- Released the original wafer code for reuse with a unique full-UUID audit
+  tombstone. Added a corrective follow-up migration after authenticated testing
+  caught repeated deletes of the same reused code sharing a UUID prefix.
+- Clearing a deleted selection now also closes its wafer detail preview, while a
+  failed delete restores both the chip selection and preview.
+- Verified repeated same-code deletion with `npm run checkpoint:verify`, then ran
+  `npm run lint` and `npm run build`. Authenticated
+  `/wireframe/process-flow` at 390x844 deleted only disposable fixture wafers;
+  the chip, action tray, and preview cleared with no horizontal overflow or
+  console errors. Both corrective migrations were applied to production, and
+  the deterministic fixture was cleared back to zero rows.
+
 ## Recent development note (2026-07-15 identical Beginning/Complete selection)
 
 - Removed the narrow-screen Complete-only touch overlay. Beginning and Complete
