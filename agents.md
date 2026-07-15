@@ -1,5 +1,17 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 mobile Process Flow wafer actions)
+
+- Added an explicit Delete wafer/die control to the selected-wafer action tray.
+  On phones, selecting a process step now exposes its approved Complete-side
+  wafers as normal-sized `Ready to move` buttons; choosing one opens the existing
+  Move-to-step actions. Awaiting-checkpoint wafers remain unavailable for movement.
+- Verified with focused mobile/checkpoint tests, `npm run lint`, and `npm run build`.
+  Authenticated `/wireframe/process-flow` at 390x844: selected Cleaning, chose
+  `ALPHA_2_3` from Ready to move, confirmed Delete die plus seven destination
+  actions, no horizontal overflow, and no console errors. Deletion itself was not
+  executed against the live test die.
+
 ## Recent development note (2026-07-15 hybrid mobile Process Flow pinch)
 
 - Kept the restored native one-finger Process Flow pan behavior and added a
