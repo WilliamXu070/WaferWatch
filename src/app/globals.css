@@ -513,6 +513,15 @@ textarea {
   display: block;
   min-width: 100%;
   min-height: 820px;
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+}
+
+.flow-map-canvas .flow-node-title-input {
+  user-select: text;
+  -webkit-user-select: text;
+  -ms-user-select: text;
 }
 
 .flow-map-canvas--editable {
