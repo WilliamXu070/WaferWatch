@@ -11,21 +11,6 @@
   note was 16px with visual viewport scale `1`, no horizontal overflow, and no
   console errors. Also ran `npm run lint` and `npm run build`.
 
-## Recent development note (2026-07-15 mobile process-flow zoom stability)
-
-- Fixed phone Process Flow zoom anchoring to the visible canvas center instead of
-  trusting unreliable WebKit gesture coordinates that could resolve to the
-  top-left corner.
-- Removed pinch jitter by calculating consecutive gesture frames from the
-  effective pending viewport rather than stale DOM scroll offsets.
-- Verified with the focused 6-test gesture suite, `npm run lint`, and
-  `npm run build`.
-- Authenticated in-app browser at
-  `http://localhost:3001/wireframe/process-flow?processId=9fb7de9e-31b8-4b5a-aea7-8ee64eedb699`,
-  390x844: repeated zoom from 35% to 71% kept the center within 0.61 scene px,
-  with no horizontal overflow or console errors.
-- Screenshot: `/tmp/waferwatch-mobile-center-zoom.png`.
-
 ## Recent development note (2026-07-15 restored graph checkpoints)
 
 - Restored the editable Process Flow graph and removed the replacement Run/Setup

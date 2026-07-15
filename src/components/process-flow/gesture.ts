@@ -1,33 +1,5 @@
-import type { PanePoint, ZoomAnchor } from "./types";
-
 export function shouldStartNodePointerInteraction(pointerType: string) {
   return pointerType !== "touch";
-}
-
-export function getZoomScrollPosition(anchor: ZoomAnchor, scale: number) {
-  return {
-    scrollLeft: anchor.sceneX * scale - anchor.paneX,
-    scrollTop: anchor.sceneY * scale - anchor.paneY
-  };
-}
-
-export function getStableZoomAnchor(
-  currentScale: number,
-  scrollLeft: number,
-  scrollTop: number,
-  panePoint: PanePoint,
-  pendingAnchor: ZoomAnchor | null = null
-): ZoomAnchor {
-  const effectiveScroll = pendingAnchor
-    ? getZoomScrollPosition(pendingAnchor, currentScale)
-    : { scrollLeft, scrollTop };
-
-  return {
-    paneX: panePoint.paneX,
-    paneY: panePoint.paneY,
-    sceneX: (effectiveScroll.scrollLeft + panePoint.paneX) / currentScale,
-    sceneY: (effectiveScroll.scrollTop + panePoint.paneY) / currentScale
-  };
 }
 
 export function getPinchTargetScale(
