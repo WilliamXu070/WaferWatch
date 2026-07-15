@@ -1,5 +1,16 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 mobile note-focus zoom)
+
+- Fixed iPhone Chrome page zoom when the Process Flow note dialog opened. The
+  auto-focused textarea inherited the mobile field's 12px font size, so iOS
+  zoomed the page to make it readable. Mobile note textareas and selects now
+  render at 16px while dialog labels and layout stay compact.
+- Verified in the authenticated `/wireframe/process-flow` route at 390x844 by
+  selecting `ALPHA_2_2`, opening Complete, and checking that the focused Process
+  note was 16px with visual viewport scale `1`, no horizontal overflow, and no
+  console errors. Also ran `npm run lint` and `npm run build`.
+
 ## Recent development note (2026-07-15 mobile gesture boundary recovery)
 
 - Fixed mobile Process Flow pan and pinch gestures stopping after reaching a

@@ -3818,6 +3818,12 @@ textarea {
   .flow-wafer-move-dialog__field textarea {
     min-height: 72px;
     max-height: 96px;
+    /* iPhone Chrome zooms the page when a focused editable control is under 16px. */
+    font-size: 16px;
+  }
+
+  .flow-wafer-move-dialog__field select {
+    font-size: 16px;
   }
 
   .flow-wafer-move-dialog__actions {
