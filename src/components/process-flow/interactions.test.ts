@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasCrossedWaferDragThreshold } from "./interactions";
+import {
+  getNearestWaferGridIndex,
+  hasCrossedWaferDragThreshold,
+  shouldCommitWaferDrop
+} from "./interactions";
 
 test("keeps stationary and jittering wafer presses as clicks", () => {
   assert.equal(hasCrossedWaferDragThreshold({
@@ -24,4 +28,19 @@ test("starts a wafer drag after intentional physical movement", () => {
     clientX: 110,
     clientY: 100
   }), true);
+});
+
+test("maps either phone lane to the nearest existing wafer chip", () => {
+  assert.equal(getNearestWaferGridIndex({ x: 20, y: 12, waferCount: 4 }), 0);
+  assert.equal(getNearestWaferGridIndex({ x: 88, y: 12, waferCount: 4 }), 1);
+  assert.equal(getNearestWaferGridIndex({ x: 20, y: 52, waferCount: 4 }), 2);
+  assert.equal(getNearestWaferGridIndex({ x: 88, y: 52, waferCount: 4 }), 3);
+  assert.equal(getNearestWaferGridIndex({ x: 20, y: 90, waferCount: 3 }), 2);
+  assert.equal(getNearestWaferGridIndex({ x: 20, y: 12, waferCount: 0 }), null);
+});
+
+test("commits a wafer drop only from a completed pointer-up gesture", () => {
+  assert.equal(shouldCommitWaferDrop("pointerup", true), true);
+  assert.equal(shouldCommitWaferDrop("pointerup", false), false);
+  assert.equal(shouldCommitWaferDrop("pointercancel", true), false);
 });

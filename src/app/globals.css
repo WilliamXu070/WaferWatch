@@ -986,6 +986,18 @@ textarea {
   dominant-baseline: middle;
 }
 
+.flow-node-wafer-touch-target {
+  fill: transparent;
+  pointer-events: none;
+  touch-action: none;
+}
+
+@media (max-width: 767px) {
+  .flow-node-wafer-touch-target {
+    pointer-events: all;
+  }
+}
+
 .flow-wafer-chip:nth-child(2n) rect {
   fill: #eef8ef;
   stroke: #8ac79a;

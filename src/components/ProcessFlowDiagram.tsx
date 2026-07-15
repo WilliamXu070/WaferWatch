@@ -54,7 +54,10 @@ import {
 } from "./process-flow/constants";
 import { getGraphBounds, getSnappedNodePosition, nodeContainsPoint } from "./process-flow/geometry";
 import { findEdgeSplitCandidate, splitEdgeWithNode } from "./process-flow/graphEdit";
-import { hasCrossedWaferDragThreshold } from "./process-flow/interactions";
+import {
+  hasCrossedWaferDragThreshold,
+  shouldCommitWaferDrop
+} from "./process-flow/interactions";
 import {
   getAvailableWaferMoveTargets,
   getSelectedLinkedStepEdge
@@ -1814,6 +1817,11 @@ export function ProcessFlowDiagram({
   };
 
   const updatePan = (event: PointerEvent<HTMLDivElement>) => {
+    if (waferDragRef.current) {
+      updateWaferDrag(event as unknown as PointerEvent<Element>);
+      return;
+    }
+
     if (!isPanning || !panStateRef.current || connectionDraft || nodeDrag || waferDrag) {
       return;
     }
@@ -1830,6 +1838,11 @@ export function ProcessFlowDiagram({
   };
 
   const endPan = (event: PointerEvent<HTMLDivElement>) => {
+    if (waferDragRef.current) {
+      finishWaferDrag(event as unknown as PointerEvent<Element>);
+      return;
+    }
+
     if (!isPanning) {
       return;
     }
@@ -2342,7 +2355,7 @@ export function ProcessFlowDiagram({
     safelySetPointerCapture(event.currentTarget, event.pointerId);
   };
 
-  const updateWaferDrag = (event: PointerEvent<SVGSVGElement>) => {
+  const updateWaferDrag = (event: PointerEvent<Element>) => {
     const currentDrag = waferDragRef.current;
     if (!currentDrag || currentDrag.pointerId !== event.pointerId) {
       return;
@@ -2366,6 +2379,9 @@ export function ProcessFlowDiagram({
     waferDragRef.current = nextDrag;
     if (hasMoved) {
       if (!currentDrag.hasMoved) {
+        if (frameRef.current) {
+          safelySetPointerCapture(frameRef.current, event.pointerId);
+        }
         setDragTouchAction();
       }
       setWaferDrag(nextDrag);
@@ -2491,7 +2507,7 @@ export function ProcessFlowDiagram({
     setPendingWaferMoveFileError(null);
   };
 
-  const finishWaferDrag = (event: PointerEvent<SVGSVGElement>) => {
+  const finishWaferDrag = (event: PointerEvent<Element>) => {
     const currentDrag = waferDragRef.current;
     if (!currentDrag || currentDrag.pointerId !== event.pointerId) {
       return;
@@ -2507,10 +2523,14 @@ export function ProcessFlowDiagram({
       ignoreWaferPreviewUntilRef.current = Date.now() + 250;
     }
 
+    if (!shouldCommitWaferDrop(event.type, finishedDrag.hasMoved)) {
+      return;
+    }
+
     const point = getScenePoint(event);
     const target = displayNodes.find((node) => nodeContainsPoint(node, point));
 
-    if (!target || !finishedDrag.hasMoved) {
+    if (!target) {
       return;
     }
     const selections = finishedDrag.wafers.map((wafer) => ({

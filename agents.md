@@ -1,5 +1,22 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 mobile Complete drag target)
+
+- Fixed phone drag initiation for Complete wafers without adding movement
+  buttons. Beginning and Complete now share the same nearest-chip mobile touch
+  layer, so the 35%-fit 16x9 chip has a usable lane hit area while still using
+  the existing chip selection, drag preview, and movement-note workflow.
+- After the 10px drag threshold, pointer capture moves to the HTML flow frame
+  to avoid iPhone SVG/native-pan cancellation. Pointer-cancel can no longer
+  commit a drop.
+- Verified 17 focused process-flow tests, `npm run checkpoint:verify`,
+  `npm run lint`, and `npm run build`. Authenticated
+  `/wireframe/process-flow` at 390x844 measured a 68.6x35.7 Complete touch
+  target around the 16.1x9.1 chip; a drag starting 18px outside the visible
+  chip activated `WaferDragPreview`, with no overflow or console errors. The
+  available browser profile was not the checkpoint reviewer, so its rejected
+  destination was the expected reviewer-only authorization behavior.
+
 ## Recent development note (2026-07-15 reviewer-routed Complete wafers)
 
 - Removed the selected-wafer Withdraw and Review controls. An awaiting Complete

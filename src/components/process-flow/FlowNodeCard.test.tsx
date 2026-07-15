@@ -62,5 +62,8 @@ test("renders Beginning and Complete selection through the same wafer chip compo
   assert.equal((markup.match(/flow-wafer-chip--selected/g) ?? []).length, 2);
   assert.match(markup, /flow-wafer-chip--queued flow-wafer-chip--selected/);
   assert.match(markup, /flow-wafer-chip--ready-to-move flow-wafer-chip--selected/);
+  assert.equal((markup.match(/flow-node-wafer-touch-layer/g) ?? []).length, 2);
+  assert.match(markup, /data-checkpoint-phase="beginning"/);
+  assert.match(markup, /data-checkpoint-phase="complete"/);
   assert.doesNotMatch(markup, /flow-node-complete-touch-layer/);
 });
