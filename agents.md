@@ -1,5 +1,19 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 identical Beginning/Complete selection)
+
+- Removed the narrow-screen Complete-only touch overlay. Beginning and Complete
+  wafers now render through one shared `WaferChip` function with identical
+  selection, preview, multi-selection, and drag handlers.
+- Moved the selected chip styling after checkpoint and active-state styling with
+  sufficient specificity, so amber/green Complete statuses no longer hide the
+  black selected state. Kept the mobile Delete wafer/die action unchanged.
+- Verified with 7 focused process-flow tests, `npm run lint`, and `npm run build`.
+  Authenticated `/wireframe/process-flow` at 390x844 selected Complete
+  `ALPHA_2_4` and Beginning `ALPHA_2_3`; both rendered `rgb(21, 21, 18)` fills,
+  `rgb(248, 250, 252)` text, and the selected action tray. No Complete overlay,
+  horizontal overflow, or console errors remained.
+
 ## Recent development note (2026-07-15 restored direct Complete wafer movement)
 
 - Removed the phone-only `Ready to move` picker introduced in `79440ef` and

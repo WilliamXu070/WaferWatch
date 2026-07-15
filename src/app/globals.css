@@ -986,17 +986,6 @@ textarea {
   dominant-baseline: middle;
 }
 
-.flow-node-complete-touch-target {
-  fill: transparent;
-  pointer-events: none;
-}
-
-@media (max-width: 767px) {
-  .flow-node-complete-touch-target {
-    pointer-events: all;
-  }
-}
-
 .flow-wafer-chip:nth-child(2n) rect {
   fill: #eef8ef;
   stroke: #8ac79a;
@@ -1022,22 +1011,6 @@ textarea {
 
 .flow-wafer-chip:nth-child(4n) text {
   fill: #745522;
-}
-
-.flow-wafer-chip--selected rect,
-.flow-wafer-chip--selected:nth-child(2n) rect,
-.flow-wafer-chip--selected:nth-child(3n) rect,
-.flow-wafer-chip--selected:nth-child(4n) rect {
-  fill: #151512;
-  stroke: #151512;
-  stroke-width: 2;
-}
-
-.flow-wafer-chip--selected text,
-.flow-wafer-chip--selected:nth-child(2n) text,
-.flow-wafer-chip--selected:nth-child(3n) text,
-.flow-wafer-chip--selected:nth-child(4n) text {
-  fill: #f8fafc;
 }
 
 .flow-wafer-chip--awaiting-checkpoint rect,
@@ -1092,6 +1065,22 @@ textarea {
 
 .flow-node--active .flow-wafer-chip text {
   fill: #75d5ad;
+}
+
+.flow-wafer-chip.flow-wafer-chip--selected rect,
+.flow-wafer-chip.flow-wafer-chip--selected:nth-child(2n) rect,
+.flow-wafer-chip.flow-wafer-chip--selected:nth-child(3n) rect,
+.flow-wafer-chip.flow-wafer-chip--selected:nth-child(4n) rect {
+  fill: #151512;
+  stroke: #151512;
+  stroke-width: 2;
+}
+
+.flow-wafer-chip.flow-wafer-chip--selected text,
+.flow-wafer-chip.flow-wafer-chip--selected:nth-child(2n) text,
+.flow-wafer-chip.flow-wafer-chip--selected:nth-child(3n) text,
+.flow-wafer-chip.flow-wafer-chip--selected:nth-child(4n) text {
+  fill: #f8fafc;
 }
 
 .flow-edge {

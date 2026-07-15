@@ -14,10 +14,7 @@ import {
   hasActiveWafer,
   truncateLabel
 } from "./labels";
-import { getNearestWaferGridIndex } from "./interactions";
 import type { FlowNode, WaferDrag, WaferPin } from "./types";
-
-const MOBILE_WAFER_TOUCH_RADIUS_PX = 28;
 
 type FlowNodeCardProps = {
   node: FlowNode;
@@ -70,38 +67,6 @@ export function FlowNodeCard({
   const beginningWafers = node.wafers.filter((wafer) => getCheckpointPhase(wafer.currentStepStatus) === "beginning");
   const completeWafers = node.wafers.filter((wafer) => getCheckpointPhase(wafer.currentStepStatus) === "complete");
   const nodeCardRef = useRef<SVGGElement>(null);
-  const completeLanePointerWafersRef = useRef<Map<number, WaferPin>>(new Map());
-
-  const getCompleteLaneWafer = (event: PointerEvent<SVGGElement>) => {
-    const svg = event.currentTarget.ownerSVGElement;
-    const matrix = event.currentTarget.getScreenCTM();
-    if (!svg || !matrix) {
-      return completeWafers[0] ?? null;
-    }
-
-    const point = svg.createSVGPoint();
-    point.x = event.clientX;
-    point.y = event.clientY;
-    const localPoint = point.matrixTransform(matrix.inverse());
-    const waferIndex = getNearestWaferGridIndex({
-      x: localPoint.x,
-      y: localPoint.y,
-      waferCount: completeWafers.length
-    });
-    if (waferIndex === null) {
-      return null;
-    }
-
-    const chipCenter = svg.createSVGPoint();
-    chipCenter.x = (waferIndex % NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_X + WAFER_CHIP_WIDTH / 2;
-    chipCenter.y = Math.floor(waferIndex / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y + WAFER_CHIP_HEIGHT / 2;
-    const screenChipCenter = chipCenter.matrixTransform(matrix);
-    if (Math.hypot(event.clientX - screenChipCenter.x, event.clientY - screenChipCenter.y) > MOBILE_WAFER_TOUCH_RADIUS_PX) {
-      return null;
-    }
-
-    return completeWafers[waferIndex] ?? null;
-  };
 
   useEffect(() => {
     const el = nodeCardRef.current;
@@ -114,6 +79,26 @@ export function FlowNodeCard({
     el.addEventListener("touchstart", preventScroll, { passive: false });
     return () => el.removeEventListener("touchstart", preventScroll);
   }, []);
+
+  const renderWaferChip = (wafer: WaferPin, index: number) => (
+    <WaferChip
+      key={wafer.assignmentId}
+      label={getWaferChipLabel(wafer)}
+      x={(index % NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_X}
+      y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
+      isSelected={selectedWaferAssignmentIds.has(wafer.assignmentId)}
+      status={wafer.currentStepStatus}
+      title={`${getWaferChipLabel(wafer)} · ${getCheckpointStateLabel(wafer.currentStepStatus)}`}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onBeginWaferDrag(event, node, wafer);
+      }}
+      onPointerUp={() => {
+        onSelectWafer(node.id, wafer);
+        onOpenWaferPreview(node, wafer);
+      }}
+    />
+  );
 
   return (
     <g
@@ -195,84 +180,11 @@ export function FlowNodeCard({
         {node.requiredReviewerName ? `Reviewer: ${truncateLabel(node.requiredReviewerName, 16)}` : "Reviewer required"}
       </text>
       <g transform="translate(18 90)">
-        {beginningWafers.map((wafer, index) => (
-          <WaferChip
-            key={wafer.assignmentId}
-            label={getWaferChipLabel(wafer)}
-            x={(index % NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_X}
-            y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
-            isSelected={selectedWaferAssignmentIds.has(wafer.assignmentId)}
-            status={wafer.currentStepStatus}
-            title={`${getWaferChipLabel(wafer)} · ${getCheckpointStateLabel(wafer.currentStepStatus)}`}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              onBeginWaferDrag(event, node, wafer);
-            }}
-            onPointerUp={() => {
-              onSelectWafer(node.id, wafer);
-              onOpenWaferPreview(node, wafer);
-            }}
-          />
-        ))}
+        {beginningWafers.map(renderWaferChip)}
       </g>
       <g transform={`translate(${node.width / 2 + 18} 90)`}>
-        {completeWafers.map((wafer, index) => (
-          <WaferChip
-            key={wafer.assignmentId}
-            label={getWaferChipLabel(wafer)}
-            x={(index % NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_X}
-            y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
-            isSelected={selectedWaferAssignmentIds.has(wafer.assignmentId)}
-            status={wafer.currentStepStatus}
-            title={`${getWaferChipLabel(wafer)} · ${getCheckpointStateLabel(wafer.currentStepStatus)}`}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              onBeginWaferDrag(event, node, wafer);
-            }}
-            onPointerUp={() => {
-              onSelectWafer(node.id, wafer);
-              onOpenWaferPreview(node, wafer);
-            }}
-          />
-        ))}
+        {completeWafers.map(renderWaferChip)}
       </g>
-      {completeWafers.length > 0 ? (
-        <g
-          className="flow-node-complete-touch-layer"
-          transform={`translate(${node.width / 2 + 18} 90)`}
-          onPointerDown={(event) => {
-            const wafer = getCompleteLaneWafer(event);
-            if (!wafer) return;
-            completeLanePointerWafersRef.current.set(event.pointerId, wafer);
-            onBeginWaferDrag(event, node, wafer);
-          }}
-          onPointerUp={(event) => {
-            const wafer = completeLanePointerWafersRef.current.get(event.pointerId);
-            completeLanePointerWafersRef.current.delete(event.pointerId);
-            if (!wafer) return;
-            onSelectWafer(node.id, wafer);
-            onOpenWaferPreview(node, wafer);
-          }}
-          onPointerCancel={(event) => {
-            completeLanePointerWafersRef.current.delete(event.pointerId);
-          }}
-          onClick={(event) => {
-            event.stopPropagation();
-          }}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-        >
-          <rect
-            className="flow-node-complete-touch-target"
-            x={-18}
-            y={-16}
-            width={node.width / 2}
-            height={node.height - 74}
-          />
-        </g>
-      ) : null}
     </g>
   );
 }
