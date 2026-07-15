@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import type { ClipboardEvent, MouseEvent, PointerEvent } from "react";
 import {
   getPinchTargetScale,
+  getStableZoomAnchor,
   isTouchTapWithinThreshold,
   shouldStartNodePointerInteraction
 } from "@/components/process-flow/gesture";
@@ -1120,12 +1121,13 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    pendingZoomAnchorRef.current = {
-      paneX: anchor.paneX,
-      paneY: anchor.paneY,
-      sceneX: (frame.scrollLeft + anchor.paneX) / currentScale,
-      sceneY: (frame.scrollTop + anchor.paneY) / currentScale
-    };
+    pendingZoomAnchorRef.current = getStableZoomAnchor(
+      currentScale,
+      frame.scrollLeft,
+      frame.scrollTop,
+      anchor,
+      pendingZoomAnchorRef.current
+    );
 
     scaleRef.current = boundedScale;
     setScale(boundedScale);
@@ -3006,17 +3008,10 @@ export function ProcessFlowDiagram({
       const gestureScale = typeof gestureEvent.scale === "number" && gestureEvent.scale > 0
         ? gestureEvent.scale
         : 1;
-      const clientPoint =
-        "clientX" in event && "clientY" in event
-          ? getPanePoint(
-              (event as Event & { clientX: number }).clientX,
-              (event as Event & { clientY: number }).clientY
-            )
-          : getPanePoint();
 
       pinchInitialAppScaleRef.current = scaleRef.current;
       pinchInitialGestureScaleRef.current = gestureScale;
-      pinchAnchorRef.current = clientPoint;
+      pinchAnchorRef.current = getPanePoint();
       pendingPinchScaleRef.current = null;
       pendingTouchNodeRef.current = null;
 
