@@ -69,8 +69,7 @@ type ProcessFlowViewProps = {
   onDeleteTransitions?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteTransitions"];
   onDeleteWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteWafer"];
   onSubmitCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onSubmitCheckpoint"];
-  onWithdrawCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onWithdrawCheckpoint"];
-  onReviewCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onReviewCheckpoint"];
+  onRouteCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onRouteCheckpoint"];
   onMoveApprovedWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onMoveApprovedWafer"];
   onUpdateStepReviewer?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepReviewer"];
 };
@@ -98,8 +97,7 @@ export function ProcessFlowView({
   onDeleteTransitions,
   onDeleteWafer,
   onSubmitCheckpoint,
-  onWithdrawCheckpoint,
-  onReviewCheckpoint,
+  onRouteCheckpoint,
   onMoveApprovedWafer,
   onUpdateStepReviewer
 }: ProcessFlowViewProps) {
@@ -148,8 +146,7 @@ export function ProcessFlowView({
             onDeleteTransitions={onDeleteTransitions}
             onDeleteWafer={onDeleteWafer}
             onSubmitCheckpoint={onSubmitCheckpoint}
-            onWithdrawCheckpoint={onWithdrawCheckpoint}
-            onReviewCheckpoint={onReviewCheckpoint}
+            onRouteCheckpoint={onRouteCheckpoint}
             onMoveApprovedWafer={onMoveApprovedWafer}
             onUpdateStepReviewer={onUpdateStepReviewer}
           />

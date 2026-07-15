@@ -1176,35 +1176,6 @@ textarea {
   font: inherit;
 }
 
-.checkpoint-review-choice {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.checkpoint-review-choice button {
-  min-height: 42px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--foreground);
-  font: inherit;
-  font-weight: 750;
-  cursor: pointer;
-}
-
-.checkpoint-review-choice button.is-active {
-  border-color: #3f8f51;
-  background: #edf8ef;
-  color: #2f6f3d;
-}
-
-.checkpoint-review-choice button.checkpoint-review-choice__redo.is-active {
-  border-color: #c76359;
-  background: #fff1f0;
-  color: #8e332c;
-}
-
 .flow-empty-state circle {
   fill: var(--panel);
   stroke: var(--border);

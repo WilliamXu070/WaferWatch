@@ -692,6 +692,17 @@ export interface Database {
         };
         Returns: Json;
       };
+      route_checkpoint_submission: {
+        Args: {
+          target_attempt_id: string;
+          target_step_id: string;
+          decision_mutation_id: string;
+          movement_mutation_id: string;
+          notes: string;
+          child_specs?: Json;
+        };
+        Returns: Json;
+      };
       soft_delete_process_flow_wafer_family: {
         Args: {
           target_project_id: string;

@@ -10,6 +10,7 @@ import {
   completeStepSchema,
   moveApprovedCheckpointSchema,
   moveWaferToProcessStepSchema,
+  routeCheckpointSubmissionSchema,
   reviewStepCheckpointSchema,
   reservationSchema,
   submitStepCheckpointSchema,
@@ -1105,6 +1106,39 @@ export async function moveApprovedCheckpointWafer(input: unknown) {
       target_step_id: parsed.targetStepId,
       mutation_id: parsed.mutationId,
       notes: parsed.note
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateCheckpointWorkflow();
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function routeCheckpointSubmission(input: unknown) {
+  try {
+    await requireAccount();
+    const parsed = routeCheckpointSubmissionSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const dicingChildSpecs = await getDicingChildSpecsForCheckpoint({
+      attemptId: parsed.attemptId,
+      supabase
+    });
+    const childSpecs = (dicingChildSpecs ?? []).map((spec) => ({
+      ...spec,
+      movement_mutation_id: crypto.randomUUID()
+    }));
+    const { data, error } = await supabase.rpc("route_checkpoint_submission", {
+      target_attempt_id: parsed.attemptId,
+      target_step_id: parsed.targetStepId,
+      decision_mutation_id: parsed.decisionMutationId,
+      movement_mutation_id: parsed.movementMutationId,
+      notes: parsed.note,
+      child_specs: childSpecs as Json
     });
 
     if (error) {

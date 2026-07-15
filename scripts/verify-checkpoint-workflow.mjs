@@ -80,7 +80,30 @@ const id = {
   correctionDicingFutureExecution: "10000000-0000-4000-8000-000000000074",
   correctionDicingSubmit: "10000000-0000-4000-8000-000000000075",
   correctionDicingApprove: "10000000-0000-4000-8000-000000000076",
-  correctionReplacementWafer: "10000000-0000-4000-8000-000000000077"
+  correctionReplacementWafer: "10000000-0000-4000-8000-000000000077",
+  routeWafer: "10000000-0000-4000-8000-000000000078",
+  routeAssignment: "10000000-0000-4000-8000-000000000079",
+  routeFirstExecution: "10000000-0000-4000-8000-000000000080",
+  routeEndExecution: "10000000-0000-4000-8000-000000000081",
+  routeDisconnectedExecution: "10000000-0000-4000-8000-000000000082",
+  routeSubmitForward: "10000000-0000-4000-8000-000000000083",
+  routeDecisionForward: "10000000-0000-4000-8000-000000000084",
+  routeMoveForward: "10000000-0000-4000-8000-000000000085",
+  routeSubmitBack: "10000000-0000-4000-8000-000000000086",
+  routeDecisionBack: "10000000-0000-4000-8000-000000000087",
+  routeMoveBack: "10000000-0000-4000-8000-000000000088",
+  routeSubmitSame: "10000000-0000-4000-8000-000000000089",
+  routeDecisionSame: "10000000-0000-4000-8000-000000000090",
+  routeMoveSame: "10000000-0000-4000-8000-000000000091",
+  routeDicingWafer: "10000000-0000-4000-8000-000000000092",
+  routeDicingAssignment: "10000000-0000-4000-8000-000000000093",
+  routeDicingExecution: "10000000-0000-4000-8000-000000000094",
+  routeDicingFutureExecution: "10000000-0000-4000-8000-000000000095",
+  routeDicingSubmit: "10000000-0000-4000-8000-000000000096",
+  routeDicingDecision: "10000000-0000-4000-8000-000000000097",
+  routeDicingAggregate: "10000000-0000-4000-8000-000000000098",
+  routeDicingChildMoveOne: "10000000-0000-4000-8000-000000000099",
+  routeDicingChildMoveTwo: "10000000-0000-4000-8000-000000000100"
 };
 
 await db.exec(`
@@ -1020,6 +1043,202 @@ const uniqueSoftDeleteTombstoneMigration = await readFile(
 );
 await db.exec(uniqueSoftDeleteTombstoneMigration);
 
+const reviewerRouteMigration = await readFile(
+  new URL("../supabase/migrations/202607150007_reviewer_routes_completed_wafers.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(reviewerRouteMigration);
+
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+await db.query(`insert into public.wafers (id, project_id, wafer_code) values ($1, $2, 'ROUTED-1')`, [id.routeWafer, id.project]);
+await db.query(
+  `insert into public.wafer_process_assignments
+   (id, wafer_id, template_id, assigned_by, status, current_step_id)
+   values ($1, $2, $3, $4, 'queued', $5)`,
+  [id.routeAssignment, id.routeWafer, id.correctionTemplate, id.submitter, id.correctionFirst]
+);
+await db.query(
+  `insert into public.step_executions
+   (id, assignment_id, wafer_id, process_step_id, status, queue_started_at)
+   values ($1, $2, $3, $4, 'queued', now()),
+          ($5, $2, $3, $6, 'pending', null),
+          ($7, $2, $3, $8, 'pending', null)`,
+  [
+    id.routeFirstExecution,
+    id.routeAssignment,
+    id.routeWafer,
+    id.correctionFirst,
+    id.routeEndExecution,
+    id.correctionEnd,
+    id.routeDisconnectedExecution,
+    id.correctionDisconnected
+  ]
+);
+const routeForwardAttempt = await db.query(
+  `select id from public.submit_step_checkpoint($1, $2, 'route forward', '{}'::jsonb)`,
+  [id.routeFirstExecution, id.routeSubmitForward]
+);
+await assert.rejects(
+  db.query(
+    `select public.route_checkpoint_submission($1, $2, $3, $4, 'unauthorized route', '[]'::jsonb)`,
+    [routeForwardAttempt.rows[0].id, id.correctionDisconnected, id.routeDecisionForward, id.routeMoveForward]
+  ),
+  /assigned checkpoint reviewer/i
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.reviewer]);
+await db.query(
+  `select public.route_checkpoint_submission($1, $2, $3, $4, 'approved and routed forward', '[]'::jsonb)`,
+  [routeForwardAttempt.rows[0].id, id.correctionDisconnected, id.routeDecisionForward, id.routeMoveForward]
+);
+await db.query(
+  `select public.route_checkpoint_submission($1, $2, $3, $4, 'approved and routed forward', '[]'::jsonb)`,
+  [routeForwardAttempt.rows[0].id, id.correctionDisconnected, id.routeDecisionForward, id.routeMoveForward]
+);
+const forwardRoute = await db.query(
+  `select assignment.current_step_id, source.status as source_status, destination.status as destination_status,
+          decision.decision, count(event.id)::integer as movement_events
+   from public.wafer_process_assignments assignment
+   join public.step_executions source on source.id = $2
+   join public.step_executions destination on destination.id = $3
+   join public.checkpoint_decisions decision on decision.client_mutation_id = $4
+   left join public.process_events event on event.client_mutation_id = $5
+   where assignment.id = $1
+   group by assignment.current_step_id, source.status, destination.status, decision.decision`,
+  [id.routeAssignment, id.routeFirstExecution, id.routeDisconnectedExecution, id.routeDecisionForward, id.routeMoveForward]
+);
+assert.deepEqual(forwardRoute.rows[0], {
+  current_step_id: id.correctionDisconnected,
+  source_status: "completed",
+  destination_status: "queued",
+  decision: "approved",
+  movement_events: 1
+});
+
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+const routeBackAttempt = await db.query(
+  `select id from public.submit_step_checkpoint($1, $2, 'route backward', '{}'::jsonb)`,
+  [id.routeDisconnectedExecution, id.routeSubmitBack]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.reviewer]);
+await db.query(
+  `select public.route_checkpoint_submission($1, $2, $3, $4, 'redo at first step', '[]'::jsonb)`,
+  [routeBackAttempt.rows[0].id, id.correctionFirst, id.routeDecisionBack, id.routeMoveBack]
+);
+const backwardRoute = await db.query(
+  `select assignment.current_step_id, execution.status, decision.decision, event.event_type
+   from public.wafer_process_assignments assignment
+   join public.step_executions execution on execution.id = $2
+   join public.checkpoint_decisions decision on decision.client_mutation_id = $3
+   join public.process_events event on event.client_mutation_id = $4
+   where assignment.id = $1`,
+  [id.routeAssignment, id.routeFirstExecution, id.routeDecisionBack, id.routeMoveBack]
+);
+assert.deepEqual(backwardRoute.rows[0], {
+  current_step_id: id.correctionFirst,
+  status: "redo_required",
+  decision: "redo",
+  event_type: "checkpoint_step_entered"
+});
+
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+const routeSameAttempt = await db.query(
+  `select id from public.submit_step_checkpoint($1, $2, 'repeat this step', '{}'::jsonb)`,
+  [id.routeFirstExecution, id.routeSubmitSame]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.reviewer]);
+await db.query(
+  `select public.route_checkpoint_submission($1, $2, $3, $4, 'redo in the same step', '[]'::jsonb)`,
+  [routeSameAttempt.rows[0].id, id.correctionFirst, id.routeDecisionSame, id.routeMoveSame]
+);
+const sameStepRoute = await db.query(
+  `select assignment.current_step_id, execution.status, decision.decision
+   from public.wafer_process_assignments assignment
+   join public.step_executions execution on execution.id = $2
+   join public.checkpoint_decisions decision on decision.client_mutation_id = $3
+   where assignment.id = $1`,
+  [id.routeAssignment, id.routeFirstExecution, id.routeDecisionSame]
+);
+assert.deepEqual(sameStepRoute.rows[0], {
+  current_step_id: id.correctionFirst,
+  status: "redo_required",
+  decision: "redo"
+});
+
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+await db.query(
+  `insert into public.wafers (id, project_id, wafer_code, metadata)
+   values ($1, $2, 'DICE-ROUTE', jsonb_build_object(
+     'die_labels', jsonb_build_array('DICE-ROUTE_1', 'DICE-ROUTE_2')
+   ))`,
+  [id.routeDicingWafer, id.project]
+);
+await db.query(
+  `insert into public.wafer_process_assignments
+   (id, wafer_id, template_id, assigned_by, status, current_step_id)
+   values ($1, $2, $3, $4, 'queued', $5)`,
+  [id.routeDicingAssignment, id.routeDicingWafer, id.dicingTemplate, id.submitter, id.dicingStep]
+);
+await db.query(
+  `insert into public.step_executions
+   (id, assignment_id, wafer_id, process_step_id, status, queue_started_at)
+   values ($1, $2, $3, $4, 'queued', now()), ($5, $2, $3, $6, 'pending', null)`,
+  [
+    id.routeDicingExecution,
+    id.routeDicingAssignment,
+    id.routeDicingWafer,
+    id.dicingStep,
+    id.routeDicingFutureExecution,
+    id.postDicingStep
+  ]
+);
+const routeDicingAttempt = await db.query(
+  `select id from public.submit_step_checkpoint($1, $2, 'split and route', '{}'::jsonb)`,
+  [id.routeDicingExecution, id.routeDicingSubmit]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.reviewer]);
+await db.query(
+  `select public.route_checkpoint_submission(
+    $1, $2, $3, $4, 'approved split route',
+    jsonb_build_array(
+      jsonb_build_object(
+        'wafer_code', 'DICE-ROUTE_1', 'die_label', 'DICE-ROUTE_1', 'movement_mutation_id', $5::text
+      ),
+      jsonb_build_object(
+        'wafer_code', 'DICE-ROUTE_2', 'die_label', 'DICE-ROUTE_2', 'movement_mutation_id', $6::text
+      )
+    )
+  )`,
+  [
+    routeDicingAttempt.rows[0].id,
+    id.postDicingStep,
+    id.routeDicingDecision,
+    id.routeDicingAggregate,
+    id.routeDicingChildMoveOne,
+    id.routeDicingChildMoveTwo
+  ]
+);
+const routedChildren = await db.query(
+  `select assignment.current_step_id, execution.status
+   from public.wafers child
+   join public.wafer_process_assignments assignment on assignment.wafer_id = child.id
+   join public.step_executions execution on execution.assignment_id = assignment.id
+     and execution.process_step_id = assignment.current_step_id
+   where child.metadata ->> 'parent_wafer_id' = $1
+   order by child.wafer_code`,
+  [id.routeDicingWafer]
+);
+assert.equal(routedChildren.rows.length, 2);
+assert.ok(routedChildren.rows.every((row) => row.current_step_id === id.postDicingStep && row.status === "queued"));
+const dicingRouteEvents = await db.query(
+  `select event_type, metadata ->> 'target_step_id' as target_step_id
+   from public.process_events where client_mutation_id = $1`,
+  [id.routeDicingAggregate]
+);
+assert.deepEqual(dicingRouteEvents.rows, [{
+  event_type: "checkpoint_dicing_children_routed",
+  target_step_id: id.postDicingStep
+}]);
+
 const checkpointHistoryBeforeDelete = await db.query(
   `select
      (select count(*)::integer from public.process_step_attempts where assignment_id = $1) as attempts,
@@ -1100,12 +1319,12 @@ console.log(JSON.stringify({
   redo: "reviewer-selected destination returns to Beginning",
   history: "append-only",
   directBypass: "assignment movement, late starts, and completed inserts rejected",
-  dicing: "atomic children remain Complete and independently ready to move",
+  dicing: "reviewer drop atomically creates children and enters each destination Beginning",
   attemptSnapshots: "start time remains append-only across redo",
   reviewerRecovery: "audited, idempotent handoff lets current reviewer decide an older submission",
   authenticatedRole: "trigger helpers and reviewer-history RLS work without exposing mutation helpers",
   versioning: "legacy versioning remains compatible while active graph editing is restored",
-  graphMovement: "approved move reaches a disconnected active step and begins queued",
+  graphMovement: "reviewer drop approves later steps, marks same or earlier steps redo, and always begins at the destination",
   checkpointedDelete: "history stays append-only and reused codes can be deleted repeatedly without tombstone collisions",
   attempts: 4
 }, null, 2));

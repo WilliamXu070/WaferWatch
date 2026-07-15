@@ -155,6 +155,7 @@ export type PendingWaferMove = {
   kind: "submit" | "move";
   wafers: Array<{
     mutationId: string;
+    checkpointMutationId: string;
     assignmentId: string;
     waferLabel: string;
     isDie: boolean;
@@ -222,18 +223,12 @@ export type SubmitStepCheckpointAction = (input: {
   evidence?: Record<string, unknown>;
 }) => Promise<ActionResult<unknown>>;
 
-export type WithdrawStepCheckpointAction = (input: {
+export type RouteCheckpointAction = (input: {
   attemptId: string;
-  mutationId: string;
-  reason?: string | null;
-}) => Promise<ActionResult<unknown>>;
-
-export type ReviewStepCheckpointAction = (input: {
-  attemptId: string;
-  decision: "approved" | "redo";
-  mutationId: string;
-  notes?: string | null;
-  redoTargetStepId?: string | null;
+  targetStepId: string;
+  decisionMutationId: string;
+  movementMutationId: string;
+  note: string;
 }) => Promise<ActionResult<unknown>>;
 
 export type MoveApprovedCheckpointAction = (input: {

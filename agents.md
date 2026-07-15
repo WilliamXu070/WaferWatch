@@ -1,5 +1,22 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 reviewer-routed Complete wafers)
+
+- Removed the selected-wafer Withdraw and Review controls. An awaiting Complete
+  wafer now uses the existing chip selection, drag preview, and movement-note
+  interaction; only its assigned reviewer can route it.
+- The reviewer drop is the checkpoint decision: a later step records approval,
+  while the same or an earlier step records redo. Every destination starts on
+  Beginning, graph edges do not restrict routing, and dicing approval creates
+  and routes child dies atomically.
+- Applied corrective migration `202607150007_reviewer_routes_completed_wafers.sql`.
+  Verified the transaction workflow with `npm run checkpoint:verify`, 15 focused
+  selection/gesture/checkpoint tests, `npm run lint`, and `npm run build`.
+  Authenticated `/wireframe/process-flow` selected the awaiting `ALPHA` chip on
+  desktop and at 390x844 with only Clear/Delete visible, no replacement move
+  controls, no overflow, and no console errors. Physical iPhone drag remains the
+  final touch-gesture check.
+
 ## Recent development note (2026-07-15 checkpoint-safe wafer deletion)
 
 - Replaced Process Flow wafer/die hard deletion with an authorized audited soft

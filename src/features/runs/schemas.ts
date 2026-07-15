@@ -67,6 +67,14 @@ export const moveApprovedCheckpointSchema = z.object({
   path: ["targetStepId"]
 });
 
+export const routeCheckpointSubmissionSchema = z.object({
+  attemptId: uuidSchema,
+  targetStepId: uuidSchema,
+  decisionMutationId: uuidSchema,
+  movementMutationId: uuidSchema,
+  note: z.string().trim().min(1).max(4000)
+});
+
 export const moveWaferToProcessStepSchema = z.object({
   mutationId: uuidSchema,
   assignmentId: uuidSchema,

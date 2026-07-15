@@ -1,8 +1,7 @@
 import {
   moveApprovedCheckpointWafer,
-  reviewStepCheckpoint,
+  routeCheckpointSubmission,
   submitStepCheckpoint,
-  withdrawStepCheckpoint
 } from "@/features/runs/actions";
 import {
   createWaferAtProcessStart,
@@ -260,8 +259,7 @@ export default async function ProcessFlowWireframePage({
       onDeleteTransitions={canEdit ? deleteProcessStepTransitions : undefined}
       onDeleteWafer={canEdit ? deleteProcessFlowWafer : undefined}
       onSubmitCheckpoint={canEdit ? submitStepCheckpoint : undefined}
-      onWithdrawCheckpoint={canEdit ? withdrawStepCheckpoint : undefined}
-      onReviewCheckpoint={canEdit ? reviewStepCheckpoint : undefined}
+      onRouteCheckpoint={canEdit ? routeCheckpointSubmission : undefined}
       onMoveApprovedWafer={canEdit ? moveApprovedCheckpointWafer : undefined}
       onUpdateStepReviewer={canEdit ? updateProcessStepCheckpointReviewer : undefined}
     />
