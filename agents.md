@@ -1,5 +1,17 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 hybrid mobile Process Flow pinch)
+
+- Kept the restored native one-finger Process Flow pan behavior and added a
+  separate two-touch pointer-distance pinch path. While that path is active,
+  legacy WebKit gesture events are ignored so the canvas cannot scale twice.
+  The pinch accumulator rebases at min/max zoom boundaries without taking over
+  normal panning.
+- Verified with 5 focused gesture tests, `npm run lint`, `npm run build`, and
+  the authenticated 390x844 Process Flow route. Native canvas pan moved from
+  scrollLeft 620 to 380 with no horizontal overflow or console errors. Physical
+  iPhone pinch remains the final acceptance check.
+
 ## Recent development note (2026-07-15 restored mobile Process Flow interaction)
 
 - Reverted the three replacement mobile gesture-controller commits after user

@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { ClipboardEvent, MouseEvent, PointerEvent } from "react";
 import {
+  getBoundedPinchAccumulatorScale,
   getPinchTargetScale,
+  getTouchDistance,
   isTouchTapWithinThreshold,
-  shouldStartNodePointerInteraction
+  shouldStartNodePointerInteraction,
+  type TouchPoint
 } from "@/components/process-flow/gesture";
 import { useRouter } from "next/navigation";
 import { WaferDiePreview, type WaferDiePreviewModel } from "@/components/wafer-die-preview";
@@ -34,6 +37,7 @@ import {
   EDGE_ID_PREFIX,
   FIT_VIEW_PADDING,
   MAX_SCALE,
+  MIN_SCALE,
   NAME_DEBOUNCE_MS,
   NODE_HEIGHT,
   NODE_ID_PREFIX,
@@ -361,6 +365,8 @@ export function ProcessFlowDiagram({
   const scaleRef = useRef(1);
   const pinchInitialAppScaleRef = useRef(1);
   const pinchInitialGestureScaleRef = useRef(1);
+  const pointerPinchRef = useRef({ active: false, lastDistance: 1, rawScale: 1 });
+  const touchPointersRef = useRef<Map<number, TouchPoint>>(new Map());
   const pinchAnchorRef = useRef<{ paneX: number; paneY: number } | null>(null);
   const pendingPinchScaleRef = useRef<number | null>(null);
   const pinchAnimationFrameRef = useRef<number | null>(null);
@@ -1677,6 +1683,114 @@ export function ProcessFlowDiagram({
     safelySetPointerCapture(frame, event.pointerId);
   };
 
+  const queuePinchScale = useCallback((nextScale: number) => {
+    pendingPinchScaleRef.current = nextScale;
+    if (pinchAnimationFrameRef.current !== null) {
+      return;
+    }
+
+    pinchAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      pinchAnimationFrameRef.current = null;
+      const queuedScale = pendingPinchScaleRef.current;
+      pendingPinchScaleRef.current = null;
+      if (queuedScale !== null) {
+        applyScaleAtAnchor(queuedScale, pinchAnchorRef.current);
+      }
+    });
+  }, [applyScaleAtAnchor]);
+
+  const beginTouchPinch = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+
+    const frame = frameRef.current;
+    if (!frame) {
+      return;
+    }
+
+    touchPointersRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY
+    });
+
+    const pointers = Array.from(touchPointersRef.current.entries()).slice(0, 2);
+    if (pointers.length < 2) {
+      return;
+    }
+
+    const distance = getTouchDistance(pointers[0][1], pointers[1][1]);
+    if (distance <= 0) {
+      return;
+    }
+
+    pointerPinchRef.current = {
+      active: true,
+      lastDistance: distance,
+      rawScale: scaleRef.current
+    };
+    pinchAnchorRef.current = getPanePoint();
+    pendingTouchNodeRef.current = null;
+    safelySetPointerCapture(frame, pointers[0][0]);
+    safelySetPointerCapture(frame, pointers[1][0]);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const updateTouchPinch = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "touch" || !touchPointersRef.current.has(event.pointerId)) {
+      return;
+    }
+
+    touchPointersRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY
+    });
+
+    const pinch = pointerPinchRef.current;
+    const pointers = Array.from(touchPointersRef.current.values()).slice(0, 2);
+    if (!pinch.active || pointers.length < 2) {
+      return;
+    }
+
+    const distance = getTouchDistance(pointers[0], pointers[1]);
+    if (distance <= 0) {
+      return;
+    }
+
+    const nextRawScale = getBoundedPinchAccumulatorScale(
+      pinch.rawScale,
+      pinch.lastDistance,
+      distance,
+      MIN_SCALE,
+      MAX_SCALE
+    );
+    pointerPinchRef.current = {
+      active: true,
+      lastDistance: distance,
+      rawScale: nextRawScale
+    };
+    queuePinchScale(clampScale(nextRawScale));
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const endTouchPinch = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "touch" || !touchPointersRef.current.has(event.pointerId)) {
+      return;
+    }
+
+    const frame = frameRef.current;
+    touchPointersRef.current.delete(event.pointerId);
+    if (frame) {
+      safelyReleasePointerCapture(frame, event.pointerId);
+    }
+
+    if (touchPointersRef.current.size < 2) {
+      pointerPinchRef.current = { active: false, lastDistance: 1, rawScale: scaleRef.current };
+    }
+  };
+
   const updatePan = (event: PointerEvent<HTMLDivElement>) => {
     if (!isPanning || !panStateRef.current || connectionDraft || nodeDrag || waferDrag) {
       return;
@@ -1975,6 +2089,9 @@ export function ProcessFlowDiagram({
   };
 
   const beginNodeDrag = (event: PointerEvent<SVGGElement>, node: FlowNode) => {
+    if (event.pointerType === "touch" && pointerPinchRef.current.active) {
+      return;
+    }
     if (!canEdit || event.button !== 0 || connectionDraft) {
       return;
     }
@@ -2158,6 +2275,9 @@ export function ProcessFlowDiagram({
   };
 
   const beginWaferDrag = (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => {
+    if (event.pointerType === "touch" && pointerPinchRef.current.active) {
+      return;
+    }
     if (!canEdit || (!onSubmitCheckpoint && !onMoveApprovedWafer) || event.button !== 0 || isMovePending) {
       return;
     }
@@ -3002,6 +3122,12 @@ export function ProcessFlowDiagram({
     };
 
     const handleGestureStart = (event: Event) => {
+      if (pointerPinchRef.current.active) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
       const gestureEvent = event as Event & { scale?: number };
       const gestureScale = typeof gestureEvent.scale === "number" && gestureEvent.scale > 0
         ? gestureEvent.scale
@@ -3025,32 +3151,34 @@ export function ProcessFlowDiagram({
     };
 
     const handleGestureChange = (event: Event) => {
+      if (pointerPinchRef.current.active) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
       const gestureEvent = event as Event & { scale?: number };
       const gestureScale = gestureEvent.scale;
       if (gestureScale === undefined) {
         return;
       }
 
-      pendingPinchScaleRef.current = getPinchTargetScale(
+      queuePinchScale(getPinchTargetScale(
         pinchInitialAppScaleRef.current,
         pinchInitialGestureScaleRef.current,
         gestureScale
-      );
-      if (pinchAnimationFrameRef.current === null) {
-        pinchAnimationFrameRef.current = window.requestAnimationFrame(() => {
-          pinchAnimationFrameRef.current = null;
-          const nextScale = pendingPinchScaleRef.current;
-          pendingPinchScaleRef.current = null;
-          if (nextScale !== null) {
-            applyScaleAtAnchor(nextScale, pinchAnchorRef.current);
-          }
-        });
-      }
+      ));
       event.preventDefault();
       event.stopPropagation();
     };
 
     const handleGestureEnd = (event: Event) => {
+      if (pointerPinchRef.current.active) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
       event.preventDefault();
       event.stopPropagation();
     };
@@ -3070,7 +3198,7 @@ export function ProcessFlowDiagram({
         pinchAnimationFrameRef.current = null;
       }
     };
-  }, [applyScaleAtAnchor, getPanePoint]);
+  }, [applyScaleAtAnchor, getPanePoint, queuePinchScale]);
 
   return (
     <section className="flow-map-shell">
@@ -3387,6 +3515,9 @@ export function ProcessFlowDiagram({
         onFramePointerUp={endPan}
         onFramePointerCancel={endPan}
         onFramePointerLeave={endPan}
+        onFrameTouchPointerDownCapture={beginTouchPinch}
+        onFrameTouchPointerMoveCapture={updateTouchPinch}
+        onFrameTouchPointerEndCapture={endTouchPinch}
         onCanvasPointerMove={updateConnection}
         onCanvasPointerUp={finishConnection}
         onCanvasPointerCancel={() => {

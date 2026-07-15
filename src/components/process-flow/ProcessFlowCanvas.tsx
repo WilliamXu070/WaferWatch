@@ -46,6 +46,9 @@ type ProcessFlowCanvasProps = {
   onFramePointerUp: (event: PointerEvent<HTMLDivElement>) => void;
   onFramePointerCancel: (event: PointerEvent<HTMLDivElement>) => void;
   onFramePointerLeave: (event: PointerEvent<HTMLDivElement>) => void;
+  onFrameTouchPointerDownCapture: (event: PointerEvent<HTMLDivElement>) => void;
+  onFrameTouchPointerMoveCapture: (event: PointerEvent<HTMLDivElement>) => void;
+  onFrameTouchPointerEndCapture: (event: PointerEvent<HTMLDivElement>) => void;
   onCanvasPointerMove: (event: PointerEvent<SVGSVGElement>) => void;
   onCanvasPointerUp: (event: PointerEvent<SVGSVGElement>) => void;
   onCanvasPointerCancel: () => void;
@@ -101,6 +104,9 @@ export function ProcessFlowCanvas({
   onFramePointerUp,
   onFramePointerCancel,
   onFramePointerLeave,
+  onFrameTouchPointerDownCapture,
+  onFrameTouchPointerMoveCapture,
+  onFrameTouchPointerEndCapture,
   onCanvasPointerMove,
   onCanvasPointerUp,
   onCanvasPointerCancel,
@@ -138,6 +144,10 @@ export function ProcessFlowCanvas({
       onPointerUp={onFramePointerUp}
       onPointerCancel={onFramePointerCancel}
       onPointerLeave={onFramePointerLeave}
+      onPointerDownCapture={onFrameTouchPointerDownCapture}
+      onPointerMoveCapture={onFrameTouchPointerMoveCapture}
+      onPointerUpCapture={onFrameTouchPointerEndCapture}
+      onPointerCancelCapture={onFrameTouchPointerEndCapture}
     >
       <svg
         ref={svgRef}
