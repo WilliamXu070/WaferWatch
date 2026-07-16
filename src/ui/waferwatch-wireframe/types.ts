@@ -223,6 +223,7 @@ export type WaferStatusProcessStepModel = {
   id: string;
   name: string;
   processArea: string;
+  executionMode: "main" | "anytime";
   stepOrder: number;
   status: StepStatus | "pending";
   executionId: string | null;

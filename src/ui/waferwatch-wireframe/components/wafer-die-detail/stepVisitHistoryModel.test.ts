@@ -1,0 +1,64 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { WaferStatusTileModel } from "../../types";
+import { buildStepVisitHistory } from "./stepVisitHistoryModel";
+
+function tile(overrides: Partial<WaferStatusTileModel> = {}): WaferStatusTileModel {
+  return {
+    id: "die-a4",
+    projectId: "project-1",
+    waferId: "wafer-a4",
+    code: "A4",
+    family: "ALPHA",
+    dieLabel: "A4",
+    stepLabel: "Pad Formation",
+    status: "queued",
+    waferStateName: "post-dice",
+    currentStepId: "pad",
+    processSteps: [
+      { id: "dice", name: "Dicing", processArea: "Dicing", executionMode: "main", stepOrder: 1, status: "completed", executionId: "exec-dice-child", noteAuthorId: null, noteAuthorName: null, runNote: null, startedAt: null, completedAt: "2026-07-16T15:34:00Z", createdAt: "2026-07-16T15:34:00Z" },
+      { id: "clean", name: "Cleaning", processArea: "Clean", executionMode: "main", stepOrder: 2, status: "completed", executionId: "exec-clean", noteAuthorId: null, noteAuthorName: null, runNote: "Completed Cleaning", startedAt: "2026-07-16T15:34:00Z", completedAt: "2026-07-16T15:35:00Z", createdAt: "2026-07-16T15:34:00Z" },
+      { id: "piranha", name: "Piranha", processArea: "Clean", executionMode: "anytime", stepOrder: 3, status: "completed", executionId: "exec-piranha", noteAuthorId: null, noteAuthorName: null, runNote: "done", startedAt: "2026-07-16T17:28:00Z", completedAt: "2026-07-16T17:28:30Z", createdAt: "2026-07-16T17:28:00Z" },
+      { id: "pad", name: "Pad Formation", processArea: "Lithography", executionMode: "main", stepOrder: 4, status: "queued", executionId: "exec-pad", noteAuthorId: null, noteAuthorName: null, runNote: null, startedAt: null, completedAt: null, createdAt: "2026-07-16T17:28:31Z" }
+    ],
+    checkpointHistory: [
+      { kind: "attempt", id: "attempt-dice", inheritedFromParent: { waferId: "parent", waferCode: "ALPHA" }, stepId: "dice", stepName: "Dicing", attemptNumber: 1, state: "approved", occurredAt: "2026-07-16T15:30:00Z", startedAt: "2026-07-16T15:30:00Z", submission: { id: "submission-dice", occurredAt: "2026-07-16T15:34:00Z", actor: { id: "user-1", name: "William" }, note: "Diced well" }, withdrawals: [], decisions: [], effectiveDecision: null },
+      { kind: "legacy_transition", id: "legacy-child-dice", sourceEventId: null, legacyType: "step_execution", occurredAt: "2026-07-16T15:34:00Z", actor: { id: null, name: null }, note: null, fromStepId: null, fromStepName: null, toStepId: "dice", toStepName: "Dicing", recordedStatus: "completed" },
+      { kind: "attempt", id: "attempt-clean", stepId: "clean", stepName: "Cleaning", attemptNumber: 1, state: "approved", occurredAt: "2026-07-16T15:34:00Z", startedAt: "2026-07-16T15:34:00Z", submission: { id: "submission-clean", occurredAt: "2026-07-16T15:35:00Z", actor: { id: "user-1", name: "William" }, note: "Completed Cleaning" }, withdrawals: [], decisions: [], effectiveDecision: null },
+      { kind: "legacy_transition", id: "move-clean", sourceEventId: "event-1", legacyType: "checkpoint_step_entered", occurredAt: "2026-07-16T15:34:01Z", actor: { id: "user-1", name: "William" }, note: "Moved to Cleaning", fromStepId: "dice", fromStepName: "Dicing", toStepId: "clean", toStepName: "Cleaning", recordedStatus: "checkpoint_move" },
+      { kind: "attempt", id: "attempt-piranha", stepId: "piranha", stepName: "Piranha", attemptNumber: 1, state: "approved", occurredAt: "2026-07-16T17:28:00Z", startedAt: "2026-07-16T17:28:00Z", submission: { id: "submission-piranha", occurredAt: "2026-07-16T17:28:30Z", actor: { id: "user-1", name: "William" }, note: "done" }, withdrawals: [], decisions: [], effectiveDecision: null }
+    ],
+    ...overrides
+  };
+}
+
+test("reduces audit events to one row per performed step plus the current step", () => {
+  const visits = buildStepVisitHistory(tile());
+
+  assert.deepEqual(visits.map((visit) => visit.stepName), ["Dicing", "Cleaning", "Piranha", "Pad Formation"]);
+  assert.equal(visits[0]?.completionNote, "Diced well");
+  assert.equal(visits[3]?.state, "current");
+});
+
+test("keeps repeated visits separate and assigns parameter records to the matching visit", () => {
+  const base = tile();
+  const cleaningStep = base.processSteps?.find((step) => step.id === "clean");
+  if (!cleaningStep) throw new Error("Missing cleaning step fixture");
+  const repeated = tile({
+    processSteps: base.processSteps?.map((step) => step.id === "clean" ? {
+      ...step,
+      parameterRecords: [
+        { id: "record-1", movementMutationId: "move-1", recordedAt: "2026-07-16T15:34:10Z", recordedById: null, recordedByName: null, notes: null, values: [] },
+        { id: "record-2", movementMutationId: "move-2", recordedAt: "2026-07-16T18:00:10Z", recordedById: null, recordedByName: null, notes: null, values: [] }
+      ]
+    } : step),
+    checkpointHistory: [
+      ...(base.checkpointHistory ?? []),
+      { kind: "attempt", id: "attempt-clean-2", stepId: "clean", stepName: "Cleaning", attemptNumber: 2, state: "approved", occurredAt: "2026-07-16T18:00:00Z", startedAt: "2026-07-16T18:00:00Z", submission: { id: "submission-clean-2", occurredAt: "2026-07-16T18:05:00Z", actor: { id: "user-1", name: "William" }, note: "Cleaned again" }, withdrawals: [], decisions: [], effectiveDecision: null }
+    ]
+  });
+
+  const cleaningVisits = buildStepVisitHistory(repeated).filter((visit) => visit.stepId === "clean");
+  assert.deepEqual(cleaningVisits.map((visit) => visit.visitNumber), [1, 2]);
+  assert.deepEqual(cleaningVisits.map((visit) => visit.parameterRecords.map((record) => record.id)), [["record-1"], ["record-2"]]);
+});

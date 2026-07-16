@@ -9,7 +9,6 @@ import {
 import { DieAppearanceCard } from "./DieAppearanceCard";
 import { DetailCard } from "./DetailCard";
 import { ParametersTableCard } from "./ParametersTableCard";
-import { ProcessTimelineCard } from "./ProcessTimelineCard";
 import { ResultsReviewBoard } from "./ResultsReviewBoard";
 import {
   flattenStepNotes,
@@ -54,31 +53,9 @@ function DieOverviewTab({
       <div className="grid gap-4 lg:grid-cols-2">
         <DieAppearanceCard tile={tile} canEdit={canEdit} />
         <CurrentStepCard tile={tile} />
-        <ProcessTimelineCard tile={tile} />
       </div>
       <aside className="grid content-start gap-4">
         <KeyResultsCard />
-        <NotesCard notes={notes} currentUser={currentUser} onOpenNotes={onOpenNotes} />
-      </aside>
-    </div>
-  );
-}
-
-function DieHistoryTab({
-  tile,
-  notes,
-  currentUser,
-  onOpenNotes
-}: {
-  tile: WaferStatusTileModel;
-  notes: readonly WaferDieNote[];
-  currentUser?: WaferDieNoteViewer | null;
-  onOpenNotes: () => void;
-}) {
-  return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <ProcessTimelineCard tile={tile} />
-      <aside className="grid content-start gap-4">
         <NotesCard notes={notes} currentUser={currentUser} onOpenNotes={onOpenNotes} />
       </aside>
     </div>
@@ -169,7 +146,6 @@ export function WaferDieDetailTabs({
     }));
   };
 
-  if (activeTab === "history") return <DieHistoryTab tile={tile} notes={notes} currentUser={currentUser} onOpenNotes={onOpenNotes} />;
   if (activeTab === "parameters") return <DieParametersTab tile={tile} canEdit={canEdit} onPolingNotesChange={setStepNotes} />;
   if (activeTab === "results") return <DieResultsTab tile={tile} canEdit={canEdit} />;
   if (activeTab === "notes") {

@@ -30,15 +30,17 @@ function formatStepStatus(status: string | undefined, fallbackStatus: WaferStatu
 
 export function CurrentStepCard({ tile }: { tile: WaferStatusTileModel }) {
   const processSteps = tile.processSteps ?? [];
-  const currentStepIndex = processSteps.findIndex((step) =>
+  const currentStep = processSteps.find((step) =>
     step.id === tile.currentStepId || (!tile.currentStepId && step.name === tile.stepLabel)
-  );
-  const currentStep = currentStepIndex >= 0 ? processSteps[currentStepIndex] : null;
-  const totalSteps = processSteps.length;
-  const stepNumber = currentStepIndex >= 0 ? currentStepIndex + 1 : 0;
+  ) ?? null;
+  const mainSteps = processSteps.filter((step) => step.executionMode === "main");
+  const currentMainStepIndex = currentStep ? mainSteps.findIndex((step) => step.id === currentStep.id) : -1;
+  const totalSteps = mainSteps.length;
+  const completedMainSteps = mainSteps.filter((step) => ["completed", "skipped"].includes(step.status)).length;
+  const stepNumber = currentMainStepIndex >= 0 ? currentMainStepIndex + 1 : completedMainSteps;
   const progressPercent = totalSteps ? Math.round((stepNumber / totalSteps) * 100) : 0;
   const details = [
-    ["Started", formatStepTimestamp(currentStep?.startedAt ?? currentStep?.createdAt)],
+    ["Started", formatStepTimestamp(currentStep?.startedAt)],
     ["Completed", formatStepTimestamp(currentStep?.completedAt)],
     ["Operator", currentStep?.noteAuthorName ?? "Unassigned"]
   ];

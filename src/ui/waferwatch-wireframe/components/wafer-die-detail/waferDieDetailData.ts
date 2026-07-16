@@ -2,8 +2,7 @@ export const dieDetailTabs = [
   { id: "overview", label: "Overview" },
   { id: "parameters", label: "Parameters" },
   { id: "results", label: "Results" },
-  { id: "notes", label: "Notes" },
-  { id: "history", label: "Process history" }
+  { id: "notes", label: "Notes" }
 ] as const;
 
 export type DieDetailTab = (typeof dieDetailTabs)[number]["id"];

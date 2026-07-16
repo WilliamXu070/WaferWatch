@@ -21,6 +21,7 @@ import { StepFileIcon } from "../../icons";
 import { DetailCard } from "./DetailCard";
 import { SequentialStepPicker } from "./SequentialStepPicker";
 import { StepParameterHistory } from "./StepParameterHistory";
+import { buildStepVisitHistory } from "./stepVisitHistoryModel";
 import { createTiffPngPreview, isTiffImage } from "./tiffPreview";
 import {
   getWaferDieNotesScopeKey,
@@ -45,6 +46,7 @@ export type WaferDieNote = {
   attachments?: WaferDieNoteAttachment[];
   processStepId?: string | null;
   processStepName?: string | null;
+  processVisitId?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -228,6 +230,7 @@ function coerceNote(value: unknown): WaferDieNote | null {
     attachments,
     processStepId: typeof note.processStepId === "string" && note.processStepId ? note.processStepId : null,
     processStepName: typeof note.processStepName === "string" && note.processStepName ? note.processStepName : null,
+    processVisitId: typeof note.processVisitId === "string" && note.processVisitId ? note.processVisitId : null,
     createdAt: timestamp,
     updatedAt: typeof note.updatedAt === "string" && note.updatedAt ? note.updatedAt : timestamp
   };
@@ -277,35 +280,16 @@ export function getInitialWaferDieNotes(tile: WaferStatusTileModel): WaferDieNot
 
 export function getInitialWaferDieNotesForStep(tile: WaferStatusTileModel, stepId: string): WaferDieNote[] {
   const step = tile.processSteps?.find((candidate) => candidate.id === stepId);
-  const executionNote = step?.runNote?.trim()
-    ? {
-        id: `execution-note:${step.executionId ?? step.id}`,
-        authorId: step.noteAuthorId,
-        author: step.noteAuthorName ?? "Unknown user",
-        body: step.runNote.trim().slice(0, MAX_NOTE_LENGTH),
-        attachments: [],
-        processStepId: stepId,
-        processStepName: step.name,
-        createdAt: step.completedAt ?? step.startedAt ?? step.createdAt ?? "unknown",
-        updatedAt: step.completedAt ?? step.startedAt ?? step.createdAt ?? "unknown"
-      }
-    : null;
   const persistedNotes = parsePersistedNotes(tile.notesSurfaceValuesByStepId?.[stepId]);
   if (persistedNotes) {
-    const notes = persistedNotes.map((note) => ({
+    return persistedNotes.map((note) => ({
       ...note,
       processStepId: note.processStepId ?? stepId,
       processStepName: note.processStepName ?? step?.name ?? null
     }));
-
-    if (executionNote && !notes.some((note) => note.id === executionNote.id || note.body === executionNote.body)) {
-      notes.push(executionNote);
-    }
-
-    return notes;
   }
 
-  return executionNote ? [executionNote] : [];
+  return [];
 }
 
 export function getInitialWaferDieNotesByStep(tile: WaferStatusTileModel): Record<string, WaferDieNote[]> {
@@ -488,14 +472,9 @@ export function WaferDieNotesDashboard({
   notesByStepId: Record<string, readonly WaferDieNote[]>;
   onNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
 }) {
-  const processSteps = tile.processSteps?.length ? tile.processSteps : [];
-  const stageRows = processSteps.length
-    ? processSteps
-    : [{ id: "die", name: "Die notes", stepOrder: 1 }];
-  const [selectedStepId, setSelectedStepId] = useState(() =>
-    tile.currentStepId && stageRows.some((step) => step.id === tile.currentStepId)
-      ? tile.currentStepId
-      : stageRows.find((step) => (notesByStepId[step.id]?.length ?? 0) > 0)?.id ?? stageRows[0]?.id ?? "die"
+  const visits = useMemo(() => buildStepVisitHistory(tile), [tile]);
+  const [selectedVisitId, setSelectedVisitId] = useState(() =>
+    [...visits].reverse().find((visit) => visit.state === "current")?.id ?? visits.at(-1)?.id ?? "die"
   );
   const [draftByStepId, setDraftByStepId] = useState<Record<string, string>>({});
   const [draftFilesByStepId, setDraftFilesByStepId] = useState<Record<string, File[]>>({});
@@ -674,10 +653,15 @@ export function WaferDieNotesDashboard({
     });
   }, []);
 
-  const addNote = async (stepId: string, stepName: string, stepExecutionId: string | null | undefined) => {
-    const draft = draftByStepId[stepId] ?? "";
+  const addNote = async (
+    stepId: string,
+    stepName: string,
+    stepExecutionId: string | null | undefined,
+    visitId: string
+  ) => {
+    const draft = draftByStepId[visitId] ?? "";
     const body = draft.trim();
-    const files = draftFilesByStepId[stepId] ?? [];
+    const files = draftFilesByStepId[visitId] ?? [];
     if (!canEdit || (!body && files.length === 0) || isSaving) {
       return;
     }
@@ -707,13 +691,14 @@ export function WaferDieNotesDashboard({
         attachments,
         processStepId: stepId === "die" ? null : stepId,
         processStepName: stepId === "die" ? null : stepName,
+        processVisitId: visitId === "die" ? null : visitId,
         createdAt: timestamp,
         updatedAt: timestamp
       }
     ];
 
-    setDraftByStepId((current) => ({ ...current, [stepId]: "" }));
-    setDraftFilesByStepId((current) => ({ ...current, [stepId]: [] }));
+    setDraftByStepId((current) => ({ ...current, [visitId]: "" }));
+    setDraftFilesByStepId((current) => ({ ...current, [visitId]: [] }));
     const addedNote = nextNotes[nextNotes.length - 1];
     await persistNoteMutation({
       stepId,
@@ -786,29 +771,35 @@ export function WaferDieNotesDashboard({
     });
   };
 
-  const selectedStep = stageRows.find((step) => step.id === selectedStepId) ?? stageRows[0];
-  const selectedNotes = selectedStep ? notesByStepId[selectedStep.id] ?? EMPTY_NOTES : EMPTY_NOTES;
-  const visibleNotes = [...selectedNotes].sort((first, second) => {
+  const selectedVisit = visits.find((visit) => visit.id === selectedVisitId) ?? visits.at(-1) ?? null;
+  const selectedStepId = selectedVisit?.stepId ?? "die";
+  const selectedStepName = selectedVisit?.stepName ?? "Die notes";
+  const selectedNotes = notesByStepId[selectedStepId] ?? EMPTY_NOTES;
+  const latestVisitForSelectedStep = [...visits].reverse().find((visit) => visit.stepId === selectedStepId) ?? null;
+  const visibleNotes = selectedNotes.filter((note) =>
+    note.processVisitId
+      ? note.processVisitId === selectedVisit?.id
+      : latestVisitForSelectedStep?.id === selectedVisit?.id || !selectedVisit
+  ).sort((first, second) => {
     const difference = getNoteTimeValue(first) - getNoteTimeValue(second);
     return difference;
   });
-  const selectedDraft = selectedStep ? draftByStepId[selectedStep.id] ?? "" : "";
-  const selectedDraftFiles = selectedStep ? draftFilesByStepId[selectedStep.id] ?? [] : [];
-  const selectedStepExecutionId =
-    selectedStep &&
-    "executionId" in selectedStep &&
-    typeof selectedStep.executionId === "string"
-      ? selectedStep.executionId
-      : null;
-  const selectedProcessStep = selectedStep ? processSteps.find((step) => step.id === selectedStep.id) : null;
-  const selectedStepParameterRecords = selectedProcessStep?.parameterRecords ?? [];
+  const selectedDraftKey = selectedVisit?.id ?? "die";
+  const selectedDraft = draftByStepId[selectedDraftKey] ?? "";
+  const selectedDraftFiles = draftFilesByStepId[selectedDraftKey] ?? [];
+  const selectedStepExecutionId = selectedVisit?.executionId ?? null;
+  const selectedStepParameterRecords = selectedVisit?.parameterRecords ?? [];
 
   return (
     <div className="grid gap-4 xl:grid-cols-[440px_minmax(0,1fr)]">
-      <DetailCard title="Process timeline" className="min-h-[520px]">
-        {processSteps.length ? (
-          <SequentialStepPicker tile={tile} selectedStepId={selectedStep?.id} onSelectStep={setSelectedStepId} />
-        ) : null}
+      <DetailCard title="Step history" className="min-h-[520px]">
+        {visits.length ? (
+          <SequentialStepPicker visits={visits} selectedVisitId={selectedVisit?.id} onSelectVisit={setSelectedVisitId} />
+        ) : (
+          <p className="rounded-lg border border-dashed border-[#ddddda] bg-white px-4 py-5 text-[13px] font-medium text-[#777770]">
+            No step history has been recorded.
+          </p>
+        )}
       </DetailCard>
 
       <section className="overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
@@ -816,9 +807,12 @@ export function WaferDieNotesDashboard({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <span className="h-2.5 w-2.5 rounded-full bg-[#1fa69a]" aria-hidden />
-              <h3 className="truncate text-[15px] font-semibold text-[#111111]">{selectedStep?.name ?? "Notes"}</h3>
+              <h3 className="truncate text-[15px] font-semibold text-[#111111]">{selectedStepName}</h3>
+              {selectedVisit?.visitNumber && selectedVisit.visitNumber > 1 ? (
+                <span className="text-[12px] font-semibold text-[#777770]">Visit {selectedVisit.visitNumber}</span>
+              ) : null}
               <span className="text-[13px] font-semibold text-[#8a8a83]">
-                {selectedNotes.length} {selectedNotes.length === 1 ? "note" : "notes"}
+                {visibleNotes.length} {visibleNotes.length === 1 ? "note" : "notes"}
               </span>
             </div>
             <span className={error ? "text-[12px] font-semibold text-[#a33a2b]" : "text-[12px] font-semibold text-[#777770]"}>
@@ -826,6 +820,35 @@ export function WaferDieNotesDashboard({
             </span>
           </div>
         </div>
+
+        {selectedVisit ? (
+          <section className="border-b border-[#eeeeea] bg-[#fbfbf8] px-4 py-3" aria-label="Step completion record">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#777770]">
+                {selectedVisit.state === "current" ? "Current visit" : "Completion note"}
+              </h4>
+              <span className="text-[11px] font-medium text-[#8a8a83]">
+                {selectedVisit.completedAt
+                  ? formatNoteTime(selectedVisit.completedAt)
+                  : selectedVisit.startedAt
+                    ? `Started ${formatNoteTime(selectedVisit.startedAt)}`
+                    : "Time not recorded"}
+              </span>
+            </div>
+            {selectedVisit.completionNote ? (
+              <p className="mt-2 max-w-[75ch] whitespace-pre-wrap text-[14px] leading-6 text-[#3f3f3a]">
+                {selectedVisit.completionNote}
+              </p>
+            ) : (
+              <p className="mt-2 text-[12px] font-medium text-[#8a8a83]">
+                {selectedVisit.state === "current" ? "This step is currently in progress." : "No completion note was added."}
+              </p>
+            )}
+            {selectedVisit.completionActor.name ? (
+              <p className="mt-1 text-[11px] font-medium text-[#92928a]">Recorded by {selectedVisit.completionActor.name}</p>
+            ) : null}
+          </section>
+        ) : null}
 
         <StepParameterHistory records={selectedStepParameterRecords} />
 
@@ -889,8 +912,8 @@ export function WaferDieNotesDashboard({
                     )}
                     <button
                       type="button"
-                      onClick={() => selectedStep ? void deleteNote(selectedStep.id, note.id) : undefined}
-                      disabled={isSaving || !selectedStep}
+                      onClick={() => void deleteNote(selectedStepId, note.id)}
+                      disabled={isSaving}
                       className="h-8 rounded-md border border-[#e1e1dc] bg-white px-3 text-[12px] font-semibold text-[#8a3b30] hover:bg-[#fff7f4] disabled:opacity-50"
                     >
                       Delete
@@ -909,8 +932,8 @@ export function WaferDieNotesDashboard({
                     <div className="flex items-center justify-end gap-2">
                       <button
                         type="button"
-                        onClick={() => selectedStep ? void saveEdit(selectedStep.id, note.id) : undefined}
-                        disabled={!editValue.trim() || isSaving || !selectedStep}
+                        onClick={() => void saveEdit(selectedStepId, note.id)}
+                        disabled={!editValue.trim() || isSaving}
                         className="h-9 rounded-lg bg-[#111111] px-4 text-[13px] font-semibold text-white hover:bg-[#333333] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
                       >
                         Save edit
@@ -969,24 +992,20 @@ export function WaferDieNotesDashboard({
         {canEdit ? (
         <div className="border-t border-[#e6e6e0] bg-white p-3">
           <textarea
-            id={`wafer-die-note-${selectedStep?.id ?? "none"}`}
+            id={`wafer-die-note-${selectedDraftKey}`}
             name="waferDieNote"
             value={selectedDraft}
-            onChange={(event) => selectedStep && setDraftByStepId((current) => ({
+            onChange={(event) => setDraftByStepId((current) => ({
               ...current,
-              [selectedStep.id]: event.target.value.slice(0, MAX_NOTE_LENGTH)
+              [selectedDraftKey]: event.target.value.slice(0, MAX_NOTE_LENGTH)
             }))}
-            placeholder={selectedStep ? `Write a note for ${selectedStep.name}...` : "Write a note..."}
+            placeholder={`Write a note for ${selectedStepName}...`}
             className="min-h-[88px] w-full resize-y rounded-lg border border-[#e6e6e0] bg-[#fbfbf8] px-3 py-3 text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94] focus:border-[#111111]"
             onPaste={(event) => {
-              if (!selectedStep) {
-                return;
-              }
-
               const pastedImages = getClipboardImageFiles(event.clipboardData);
               if (pastedImages.length > 0) {
                 event.preventDefault();
-                appendDraftFiles(selectedStep.id, pastedImages);
+                appendDraftFiles(selectedDraftKey, pastedImages);
               }
             }}
           />
@@ -1001,9 +1020,9 @@ export function WaferDieNotesDashboard({
                   <span className="text-[#8a8a83]">{formatFileSize(file.size)}</span>
                   <button
                     type="button"
-                    onClick={() => selectedStep && setDraftFilesByStepId((current) => ({
+                    onClick={() => setDraftFilesByStepId((current) => ({
                       ...current,
-                      [selectedStep.id]: (current[selectedStep.id] ?? []).filter((candidate) => candidate !== file)
+                      [selectedDraftKey]: (current[selectedDraftKey] ?? []).filter((candidate) => candidate !== file)
                     }))}
                     className="text-[#8a3b30]"
                   >
@@ -1027,13 +1046,9 @@ export function WaferDieNotesDashboard({
                   className="sr-only"
                   disabled={isSaving}
                   onChange={(event) => {
-                    if (!selectedStep) {
-                      return;
-                    }
-
                     const selectedFiles = Array.from(event.currentTarget.files ?? []);
                     event.currentTarget.value = "";
-                    appendDraftFiles(selectedStep.id, selectedFiles);
+                    appendDraftFiles(selectedDraftKey, selectedFiles);
                   }}
                 />
               </label>
@@ -1046,13 +1061,9 @@ export function WaferDieNotesDashboard({
                   className="sr-only"
                   disabled={isSaving}
                   onChange={(event) => {
-                    if (!selectedStep) {
-                      return;
-                    }
-
                     const selectedFiles = Array.from(event.currentTarget.files ?? []);
                     event.currentTarget.value = "";
-                    appendDraftFiles(selectedStep.id, selectedFiles);
+                    appendDraftFiles(selectedDraftKey, selectedFiles);
                   }}
                 />
               </label>
@@ -1065,13 +1076,9 @@ export function WaferDieNotesDashboard({
                   className="sr-only"
                   disabled={isSaving}
                   onChange={(event) => {
-                    if (!selectedStep) {
-                      return;
-                    }
-
                     const selectedFiles = Array.from(event.currentTarget.files ?? []);
                     event.currentTarget.value = "";
-                    appendDraftFiles(selectedStep.id, selectedFiles);
+                    appendDraftFiles(selectedDraftKey, selectedFiles);
                   }}
                 />
               </label>
@@ -1080,12 +1087,8 @@ export function WaferDieNotesDashboard({
               <button
                 type="button"
                 onClick={() => {
-                  if (!selectedStep) {
-                    return;
-                  }
-
-                  setDraftByStepId((current) => ({ ...current, [selectedStep.id]: "" }));
-                  setDraftFilesByStepId((current) => ({ ...current, [selectedStep.id]: [] }));
+                  setDraftByStepId((current) => ({ ...current, [selectedDraftKey]: "" }));
+                  setDraftFilesByStepId((current) => ({ ...current, [selectedDraftKey]: [] }));
                 }}
                 className="h-10 rounded-lg border border-transparent px-4 text-[14px] font-semibold text-[#55554f] hover:bg-[#fafafa]"
               >
@@ -1093,8 +1096,8 @@ export function WaferDieNotesDashboard({
               </button>
               <button
                 type="button"
-                onClick={() => selectedStep ? void addNote(selectedStep.id, selectedStep.name, selectedStepExecutionId) : undefined}
-                disabled={(!selectedDraft.trim() && selectedDraftFiles.length === 0) || isSaving || !selectedStep}
+                onClick={() => void addNote(selectedStepId, selectedStepName, selectedStepExecutionId, selectedDraftKey)}
+                disabled={(!selectedDraft.trim() && selectedDraftFiles.length === 0) || isSaving}
                 className="h-10 rounded-lg bg-[#2d74f0] px-5 text-[14px] font-semibold text-white hover:bg-[#1f60d1] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
               >
                 Add note

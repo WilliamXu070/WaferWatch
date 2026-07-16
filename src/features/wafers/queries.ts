@@ -87,7 +87,10 @@ type WaferStatusExecutionRow = Pick<
   | "metadata"
 >;
 
-type WaferStatusStepRow = Pick<ProcessStep, "id" | "template_id" | "name" | "process_area" | "step_order" | "node_type">;
+type WaferStatusStepRow = Pick<
+  ProcessStep,
+  "id" | "template_id" | "name" | "process_area" | "step_order" | "node_type" | "execution_mode"
+>;
 type WaferStatusTransitionRow = Pick<ProcessStepTransition, "from_step_id" | "to_step_id" | "edge_type" | "priority" | "created_at">;
 type WaferStatusProcessEventRow = {
   id: string;
@@ -648,6 +651,7 @@ function mapWafersToStatusModel({
           id: step.id,
           name: step.name,
           processArea: step.process_area,
+          executionMode: step.execution_mode,
           stepOrder: index + 1,
           status: timelineStatus,
           executionId: execution?.id ?? null,
@@ -979,13 +983,13 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   const stepsResult = processTemplateId
     ? await supabase
         .from("process_steps")
-        .select("id, template_id, name, process_area, step_order, node_type")
+        .select("id, template_id, name, process_area, step_order, node_type, execution_mode")
         .eq("template_id", processTemplateId)
         .order("step_order", { ascending: true })
     : executionStepIds.length
       ? await supabase
           .from("process_steps")
-          .select("id, template_id, name, process_area, step_order, node_type")
+          .select("id, template_id, name, process_area, step_order, node_type, execution_mode")
           .in("id", executionStepIds)
           .order("step_order", { ascending: true })
       : ({ data: [], error: null } as const);

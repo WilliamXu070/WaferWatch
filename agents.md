@@ -1,5 +1,19 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 step-focused die history)
+
+- Replaced the Wafer / Die Status checkpoint-event feed with a Notes-tab step
+  history. Each performed visit now appears once and opens its completion note,
+  visit-scoped parameter record, persistent notes, and attachments; repeated
+  visits remain separate while movement, arrival, approval, and inherited child
+  Dicing audit rows stay hidden from the operator view.
+- Removed the duplicate Process history tab and overview event feed. Corrected
+  Current step so anytime steps do not inflate main-flow progress and a queued
+  step is not reported as started from its creation timestamp.
+- Verified the focused A4/repeated-visit model tests, `npm run lint`, and
+  `npm run build`. Browser verification at 1280x720 was auth-gated because the
+  saved session redirected to Login; no account or wafer data was mutated.
+
 ## Recent development note (2026-07-16 Beginning-to-anytime drag)
 
 - Fixed anytime steps rejecting wafers and dies on a main step's Beginning side.
