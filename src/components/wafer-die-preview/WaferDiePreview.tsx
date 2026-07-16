@@ -3,6 +3,7 @@
 import { ArrowUpRight, GripHorizontal, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { formatDieDisplayLabel } from "@/features/wafers/dieDisplayLabel";
 import { WaferGeometryPreview } from "@/ui/waferwatch-wireframe/components/WaferGeometryPreview";
 
 const PANEL_MARGIN = 12;
@@ -30,7 +31,9 @@ export type WaferDiePreviewModel = {
 };
 
 function getDisplayLabel(preview: WaferDiePreviewModel) {
-  return preview.dieLabel?.trim() || preview.waferCode;
+  return preview.dieLabel?.trim()
+    ? formatDieDisplayLabel(preview.dieLabel)
+    : preview.waferCode;
 }
 
 function clampPanelPosition(left: number, top: number, width: number, height: number): PanelPosition {
@@ -68,6 +71,9 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
   }
 
   const displayLabel = getDisplayLabel(preview);
+  const secondaryLabel = preview.waferCode === preview.dieLabel
+    ? null
+    : preview.waferCode;
   const isDie = Boolean(preview.dieLabel?.trim());
   const search = new URLSearchParams({ processId: preview.processId, waferId: preview.waferId });
   if (preview.dieLabel?.trim()) {
@@ -180,7 +186,9 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
             </p>
             <div className="mt-0.5 flex min-w-0 items-baseline gap-2 sm:mt-1">
               <h2 className="truncate text-[15px] font-semibold leading-none text-[#111111] sm:text-[20px]">{displayLabel}</h2>
-              <span className="hidden truncate text-xs text-[#77776f] sm:inline">{preview.waferCode}</span>
+              {secondaryLabel ? (
+                <span className="hidden truncate text-xs text-[#77776f] sm:inline">{secondaryLabel}</span>
+              ) : null}
             </div>
           </div>
           <GripHorizontal className="mt-0.5 size-4 shrink-0 text-[#77776f] sm:mt-1 sm:size-5" aria-hidden="true" />

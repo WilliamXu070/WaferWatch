@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatDieDisplayLabel } from "@/features/wafers/dieDisplayLabel";
 import type { WaferStatusTileModel } from "../../types";
 import {
   ChevronLeftIcon,
@@ -44,7 +45,7 @@ export function DieDetailView({
   canNavigateForward: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<DieDetailTab>("overview");
-  const displayLabel = tile.dieLabel || tile.code;
+  const displayLabel = formatDieDisplayLabel(tile.dieLabel || tile.code);
   const currentStep = tile.processSteps?.find((step) => step.id === tile.currentStepId) ?? null;
   const lastUpdatedAt = currentStep?.completedAt ?? currentStep?.startedAt ?? currentStep?.createdAt ?? null;
   const lastUpdatedLabel = lastUpdatedAt

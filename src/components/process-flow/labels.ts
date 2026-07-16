@@ -1,4 +1,5 @@
 import type { ProcessStepNodeType } from "@/types/database";
+import { formatDieDisplayLabel } from "@/features/wafers/dieDisplayLabel";
 import { MAX_SCALE, MIN_SCALE } from "./constants";
 import type { FlowNode, FlowNodeRole, WaferPin } from "./types";
 
@@ -48,7 +49,9 @@ function normalizeDisplayText(value: string) {
 }
 
 export function getWaferChipLabel(wafer: WaferPin) {
-  return wafer.dieLabel?.trim() || wafer.waferCode;
+  return wafer.dieLabel?.trim()
+    ? formatDieDisplayLabel(wafer.dieLabel)
+    : wafer.waferCode;
 }
 
 export function getNodeIconPath(role: FlowNodeRole) {

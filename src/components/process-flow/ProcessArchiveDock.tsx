@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { PointerEvent, RefObject } from "react";
 import { Archive, RotateCcw, X } from "lucide-react";
+import { formatDieDisplayLabel } from "@/features/wafers/dieDisplayLabel";
 import type { FlowNode, ProcessArchiveItem } from "./types";
 
 type ProcessArchiveDockProps = {
@@ -64,7 +65,9 @@ export function ProcessArchiveDock({
           </p>
           <div className="flow-archive-list">
             {archiveItems.length ? archiveItems.map((item) => {
-              const label = item.dieLabel ?? item.waferCode;
+              const label = item.dieLabel
+                ? formatDieDisplayLabel(item.dieLabel)
+                : item.waferCode;
               const selectedStepId = restoreStepByWafer[item.waferId] ?? steps[0]?.id ?? "";
               return (
                 <article className="flow-archive-item" key={item.waferId}>

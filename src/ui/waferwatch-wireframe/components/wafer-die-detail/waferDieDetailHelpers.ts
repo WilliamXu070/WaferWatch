@@ -1,4 +1,5 @@
 import type { WaferStatusTileModel } from "../../types";
+import { formatDieDisplayLabel } from "@/features/wafers/dieDisplayLabel";
 
 function parseDieLabelIndex(value: string): number | undefined {
   const normalized = value.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
@@ -28,7 +29,9 @@ export function getSelectedDieLabel(tile: WaferStatusTileModel) {
 }
 
 export function getWaferDisplayLabel(tile: WaferStatusTileModel, isUndiced: boolean) {
-  return isUndiced ? tile.family : tile.code;
+  return isUndiced
+    ? tile.family
+    : formatDieDisplayLabel(tile.dieLabel || tile.code);
 }
 
 export function isUndicedMode(tile: WaferStatusTileModel) {

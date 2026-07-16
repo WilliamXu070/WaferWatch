@@ -1,5 +1,15 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 compact post-dicing labels)
+
+- Shortened generated die identifiers for display only, so `ALPHA_1`,
+  `ALPHA_2`, and later pieces render as `A1`, `A2`, and so on while persistence
+  continues using the full identifiers.
+- Applied the compact label across Process Flow chips/archive, Wafer Status,
+  die detail, and wafer/die previews. Verified focused tests, `npm run lint`,
+  and `npm run build`. Authenticated Process Flow and Wafer Status at 1280x720
+  rendered `A1` / `Die A1` with no horizontal overflow or console errors.
+
 ## Recent development note (2026-07-15 input-specific Process Flow zoom)
 
 - Restored desktop trackpad behavior so ordinary two-finger gestures pan the
