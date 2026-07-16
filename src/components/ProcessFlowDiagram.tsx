@@ -32,6 +32,7 @@ import {
   waferDieNotesSurface
 } from "@/ui/waferwatch-wireframe/components/wafer-die-detail/waferDieDetailData";
 import type { ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
+import { readDeletedWaferIds } from "@/features/process-flows/waferDeletion";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
 import { ProcessFlowToolbar } from "./process-flow/ProcessFlowToolbar";
 import { WaferCreateDialog, type WaferCreateDraft } from "./process-flow/WaferCreateDialog";
@@ -1480,6 +1481,30 @@ export function ProcessFlowDiagram({
         );
         setMoveMessage(result.error);
         return;
+      }
+
+      const deletedWaferIds = new Set(readDeletedWaferIds(result.data));
+      if (deletedWaferIds.size > 0) {
+        const deletedAssignmentIds = new Set(
+          nodesRef.current.flatMap((node) =>
+            node.wafers
+              .filter((pin) => Boolean(pin.waferId && deletedWaferIds.has(pin.waferId)))
+              .map((pin) => pin.assignmentId)
+          )
+        );
+        setNodes((currentNodes) => currentNodes.map((node) => {
+          const remainingWafers = node.wafers.filter((pin) => !pin.waferId || !deletedWaferIds.has(pin.waferId));
+          return remainingWafers.length === node.wafers.length
+            ? node
+            : {
+                ...node,
+                wafers: remainingWafers,
+                height: getNodeHeightForWaferCount(remainingWafers.length)
+              };
+        }));
+        setSelectedWafers((current) =>
+          current.filter((selection) => !deletedAssignmentIds.has(selection.assignmentId))
+        );
       }
 
       setMoveMessage(`Deleted ${wafer.label}.`);

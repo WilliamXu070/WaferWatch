@@ -25,6 +25,26 @@ export function getWaferFamilyDeleteIds(
   return Array.from(new Set([waferId, ...recordedChildIds, ...discoveredChildIds]));
 }
 
+export function keepExistingWaferFamilyDeleteIds(candidateIds: string[], existingIds: string[]) {
+  const existingIdSet = new Set(existingIds);
+  return Array.from(new Set(candidateIds)).filter((candidateId) => existingIdSet.has(candidateId));
+}
+
+export function readDeletedWaferIds(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  const deletedWaferIds = (value as { deletedWaferIds?: unknown }).deletedWaferIds;
+  if (!Array.isArray(deletedWaferIds)) {
+    return [];
+  }
+
+  return Array.from(new Set(
+    deletedWaferIds.filter((waferId): waferId is string => typeof waferId === "string" && waferId.length > 0)
+  ));
+}
+
 export function isLegacyDeletedWaferFamily({
   assignmentStatuses,
   discoveredChildIds,

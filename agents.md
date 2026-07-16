@@ -1,5 +1,19 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 idempotent wafer-family deletion)
+
+- Fixed Process Flow deletion when a final die also removes its hidden parent:
+  every server-confirmed family member now disappears immediately, and a stale
+  retry against an already-deleted assignment is treated as success.
+- Active family IDs are resolved against current database rows before the strict
+  soft-delete RPC, so obsolete `diced_child_wafer_ids` metadata cannot block a
+  valid parent deletion. Checkpoint and assignment history remains soft-deleted.
+- Verified 11 focused deletion/gesture tests, `npm run checkpoint:verify`,
+  `npm run lint`, and `npm run build`. Authenticated Process Flow deleted the
+  previously failing BETA through the selected-wafer keyboard path; BETA stayed
+  absent after reload, the database recorded one shared deletion timestamp, and
+  the 1280x720 route had no overflow or console errors. Tracking: GitHub issue #27.
+
 ## Recent development note (2026-07-15 completed-wafer archive schema release)
 
 - Fixed the Process Flow runtime `42703` failure caused by archive-aware queries

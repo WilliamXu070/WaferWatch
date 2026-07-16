@@ -33,7 +33,8 @@ import {
 import { normalizeWaferCode } from "@/features/process-flows/waferNaming";
 import {
   getWaferFamilyDeleteIds,
-  isLegacyDeletedWaferFamily
+  isLegacyDeletedWaferFamily,
+  keepExistingWaferFamilyDeleteIds
 } from "@/features/process-flows/waferDeletion";
 import type { Json, ProcessStep } from "@/types/database";
 
@@ -549,18 +550,29 @@ export async function deleteProcessFlowWafer(input: unknown) {
     const supabase = await createServerSupabaseClient();
     const { data: assignment, error: assignmentError } = await supabase
       .from("wafer_process_assignments")
-      .select("id, template_id, wafer_id, wafers(*)")
+      .select("id, template_id, wafer_id, deleted_at, wafers(*)")
       .eq("id", parsed.assignmentId)
-      .is("deleted_at", null)
-      .single();
+      .maybeSingle();
 
     if (assignmentError) {
       return fail(assignmentError.message);
+    }
+    if (!assignment) {
+      return ok({ deleted: null, deletedWaferIds: [], alreadyDeleted: true });
     }
 
     const wafer = Array.isArray(assignment.wafers) ? assignment.wafers[0] : assignment.wafers;
     if (!wafer) {
       return fail("The selected wafer no longer exists.");
+    }
+
+    if (assignment.deleted_at || wafer.deleted_at) {
+      revalidateProcessFlow(assignment.template_id);
+      return ok({
+        deleted: assignment.wafer_id,
+        deletedWaferIds: [assignment.wafer_id],
+        alreadyDeleted: true
+      });
     }
 
     await assertProjectAccess(wafer.project_id, "write");
@@ -584,11 +596,34 @@ export async function deleteProcessFlowWafer(input: unknown) {
       return fail(childLookupError.message);
     }
 
-    const deleteIds = getWaferFamilyDeleteIds(
+    const candidateDeleteIds = getWaferFamilyDeleteIds(
       wafer.id,
       wafer.metadata,
       (discoveredChildren ?? []).map((child) => child.id)
     );
+    const { data: existingDeleteRows, error: existingDeleteError } = await adminSupabase
+      .from("wafers")
+      .select("id")
+      .eq("project_id", wafer.project_id)
+      .is("deleted_at", null)
+      .in("id", candidateDeleteIds);
+
+    if (existingDeleteError) {
+      return fail(existingDeleteError.message);
+    }
+
+    const deleteIds = keepExistingWaferFamilyDeleteIds(
+      candidateDeleteIds,
+      (existingDeleteRows ?? []).map((candidate) => candidate.id)
+    );
+    if (!deleteIds.includes(wafer.id)) {
+      revalidateProcessFlow(assignment.template_id);
+      return ok({
+        deleted: assignment.wafer_id,
+        deletedWaferIds: [assignment.wafer_id],
+        alreadyDeleted: true
+      });
+    }
     const { data: deletedRows, error: deleteError } = await supabase.rpc(
       "soft_delete_process_flow_wafer_family",
       {
