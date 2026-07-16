@@ -4,8 +4,10 @@ import type { SetStateAction } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   StepParameterEntryDialog,
+  saveStepParametersForEntries,
   updateDraftParameterFromInput,
-  type DraftParameter
+  type DraftParameter,
+  type PendingStepParameterEntry
 } from "./StepParameterEntryDialog";
 
 function makeDraftParameter(): DraftParameter {
@@ -44,7 +46,7 @@ test("captures local row input before React clears the event target", () => {
 test("renders the moved item, global template values, and local parameter controls", () => {
   const markup = renderToStaticMarkup(
     <StepParameterEntryDialog
-      entry={{
+      entries={[{
         assignmentId: "00000000-0000-4000-8000-000000000001",
         movementMutationId: "00000000-0000-4000-8000-000000000002",
         waferLabel: "GAMMA_2_1",
@@ -63,8 +65,7 @@ test("renders the moved item, global template values, and local parameter contro
             defaultValue: "12000"
           }]
         }
-      }}
-      total={1}
+      }]}
       onSave={async () => ({ ok: false, error: "Not submitted during render" })}
       onComplete={() => undefined}
       onSkipAll={() => undefined}
@@ -80,4 +81,68 @@ test("renders the moved item, global template values, and local parameter contro
   assert.match(markup, /Additional notes/);
   assert.match(markup, /Add row/);
   assert.doesNotMatch(markup, /Edit template/);
+});
+
+test("one shared submission saves the same parameters for every moved die", async () => {
+  const entries: PendingStepParameterEntry[] = Array.from({ length: 8 }, (_, index) => ({
+    assignmentId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    movementMutationId: `10000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    waferLabel: `A${index + 1}`,
+    stepId: "20000000-0000-4000-8000-000000000001",
+    stepName: "Chromium Deposition",
+    parametersSchema: {}
+  }));
+  const savedInputs: Array<Parameters<NonNullable<React.ComponentProps<typeof StepParameterEntryDialog>["onSave"]>>[0]> = [];
+
+  const result = await saveStepParametersForEntries(entries, {
+    globalValues: { pressure: 12 },
+    localParameters: [{
+      id: "30000000-0000-4000-8000-000000000001",
+      key: "temperature",
+      label: "Temperature",
+      type: "number",
+      unit: "C",
+      value: 425,
+      notes: "After settling",
+      scope: "local"
+    }],
+    notes: "Shared batch note"
+  }, async (input) => {
+    savedInputs.push(input);
+    return { ok: true, data: {} as never };
+  });
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(savedInputs.length, 8);
+  assert.deepEqual(savedInputs.map((input) => input.assignmentId), entries.map((entry) => entry.assignmentId));
+  assert.deepEqual(savedInputs.map((input) => input.movementMutationId), entries.map((entry) => entry.movementMutationId));
+  for (const input of savedInputs) {
+    assert.deepEqual(input.globalValues, { pressure: 12 });
+    assert.equal(input.notes, "Shared batch note");
+    assert.equal(input.localParameters[0].value, 425);
+  }
+});
+
+test("renders one form that explicitly applies to every moved item", () => {
+  const entries: PendingStepParameterEntry[] = ["A7", "A8", "A9", "A10"].map((waferLabel, index) => ({
+    assignmentId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    movementMutationId: `10000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    waferLabel,
+    stepId: "20000000-0000-4000-8000-000000000001",
+    stepName: "Chromium Deposition",
+    parametersSchema: {}
+  }));
+  const markup = renderToStaticMarkup(
+    <StepParameterEntryDialog
+      entries={entries}
+      onSave={async () => ({ ok: false, error: "Not submitted during render" })}
+      onComplete={() => undefined}
+      onSkipAll={() => undefined}
+    />
+  );
+
+  assert.match(markup, /Applies to all 4 moved items/);
+  assert.match(markup, /Record once for A7, A8, A9, A10/);
+  assert.match(markup, /Save for all 4/);
+  assert.doesNotMatch(markup, /moved items remaining/);
 });

@@ -31,6 +31,36 @@ export type PendingStepParameterEntry = {
 
 export type DraftParameter = RecordedLocalStepParameter & { valueText: string };
 
+type SharedStepParameterValues = Omit<
+  Parameters<SaveStepParameterRecordAction>[0],
+  "assignmentId" | "stepId" | "movementMutationId"
+>;
+
+export async function saveStepParametersForEntries(
+  entries: PendingStepParameterEntry[],
+  values: SharedStepParameterValues,
+  onSave: SaveStepParameterRecordAction
+) {
+  const results = await Promise.all(entries.map((entry) => onSave({
+    assignmentId: entry.assignmentId,
+    stepId: entry.stepId,
+    movementMutationId: entry.movementMutationId,
+    ...values
+  })));
+  const failedResults = results.filter((result) => !result.ok);
+
+  if (failedResults.length > 0) {
+    return {
+      ok: false as const,
+      error: failedResults.length === 1
+        ? failedResults[0].error
+        : `${failedResults.length} moved items could not be saved. ${failedResults[0].error}`
+    };
+  }
+
+  return { ok: true as const };
+}
+
 export function updateDraftParameterFromInput(
   setParameters: Dispatch<SetStateAction<DraftParameter[]>>,
   parameterId: string,
@@ -102,18 +132,18 @@ function ParameterValueInput({
 }
 
 export function StepParameterEntryDialog({
-  entry,
-  total,
+  entries,
   onSave,
   onComplete,
   onSkipAll
 }: {
-  entry: PendingStepParameterEntry;
-  total: number;
+  entries: PendingStepParameterEntry[];
   onSave: SaveStepParameterRecordAction;
   onComplete: (message: string) => void;
   onSkipAll: () => void;
 }) {
+  const entry = entries[0];
+  const total = entries.length;
   const definitions = useMemo(() => readStepParameterDefinitions(entry.parametersSchema), [entry.parametersSchema]);
   const [globalValues, setGlobalValues] = useState<Record<string, string>>(() => Object.fromEntries(
     definitions.map((definition) => [definition.key, definition.defaultValue ?? ""])
@@ -144,10 +174,7 @@ export function StepParameterEntryDialog({
     }
 
     startTransition(async () => {
-      const result = await onSave({
-        assignmentId: entry.assignmentId,
-        stepId: entry.stepId,
-        movementMutationId: entry.movementMutationId,
+      const result = await saveStepParametersForEntries(entries, {
         notes: additionalNotes.trim() || null,
         globalValues: Object.fromEntries(
           definitions.map((definition) => [definition.key, parseValue(definition.type, globalValues[definition.key] ?? "")])
@@ -156,13 +183,15 @@ export function StepParameterEntryDialog({
           ...parameter,
           value: parseValue(parameter.type, valueText)
         }))
-      });
+      }, onSave);
 
       if (!result.ok) {
         setMessage(result.error);
         return;
       }
-      onComplete(`Parameters saved for ${entry.waferLabel}.`);
+      onComplete(total > 1
+        ? `Parameters saved for all ${total} moved items.`
+        : `Parameters saved for ${entry.waferLabel}.`);
     });
   };
 
@@ -171,12 +200,16 @@ export function StepParameterEntryDialog({
       <form className="flow-wafer-move-dialog process-flow-parameter-dialog" role="dialog" aria-modal="true" aria-labelledby="step-parameter-entry-title" onSubmit={submit}>
         <header className="border-b border-[#e8e8e1] px-5 py-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#85857d]">
-            {total > 1 ? `${total} moved items remaining` : "Step parameters"}
+            {total > 1 ? `Applies to all ${total} moved items` : "Step parameters"}
           </p>
           <h2 id="step-parameter-entry-title" className="mt-1 text-[20px] font-semibold tracking-[-0.02em] text-[#171714]">
             {entry.stepName}
           </h2>
-          <p className="mt-1 text-[13px] text-[#6f6f68]">Record the values for {entry.waferLabel}.</p>
+          <p className="mt-1 text-[13px] text-[#6f6f68]">
+            {total > 1
+              ? `Record once for ${entries.map((candidate) => candidate.waferLabel).join(", ")}.`
+              : `Record the values for ${entry.waferLabel}.`}
+          </p>
         </header>
 
         <div className="grid max-h-[min(68vh,650px)] gap-4 overflow-y-auto px-5 py-4">
@@ -297,7 +330,7 @@ export function StepParameterEntryDialog({
             <textarea
               className="min-h-20 resize-y rounded-lg border border-[#dcdcd5] bg-white px-3 py-2.5 text-[14px] font-normal text-[#171714] outline-none focus:border-[#171714]"
               maxLength={4000}
-              placeholder="Add any context for this wafer or die"
+              placeholder={total > 1 ? "Add context for all moved items" : "Add any context for this wafer or die"}
               value={additionalNotes}
               onChange={(event) => setAdditionalNotes(event.currentTarget.value)}
             />
@@ -311,7 +344,7 @@ export function StepParameterEntryDialog({
             Skip for now
           </button>
           <button type="submit" className="h-10 rounded-lg bg-[#171714] px-4 text-[13px] font-semibold text-white hover:bg-[#30302b] disabled:opacity-50" disabled={isPending}>
-            {isPending ? "Saving…" : total > 1 ? "Save and continue" : "Save parameters"}
+            {isPending ? "Saving…" : total > 1 ? `Save for all ${total}` : "Save parameters"}
           </button>
         </footer>
       </form>

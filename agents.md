@@ -1,5 +1,16 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 batch step parameters)
+
+- Fixed multi-die movement opening the same step-parameter form once per die.
+  One shared form now applies its template values, added rows, and notes to every
+  successfully moved item while preserving one movement-scoped record per die.
+- Added an eight-die A1-A8 regression plus explicit batch-form copy coverage.
+  Verified four focused tests, `npm run lint`, and `npm run build`.
+  `/wireframe/process-flow?processId=9fb7de9e-31b8-4b5a-aea7-8ee64eedb699`
+  at 1280x720 had no horizontal overflow or console errors; active process data
+  was unavailable, so no live production wafer movement was submitted.
+
 ## Recent development note (2026-07-16 queued parameter input crash)
 
 - Fixed the post-movement parameter dialog crashing while editing local Value or

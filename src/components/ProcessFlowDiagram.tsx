@@ -3650,12 +3650,16 @@ export function ProcessFlowDiagram({
     <section className="flow-map-shell">
       {!pendingWaferMove && pendingStepParameterEntries[0] && onSaveStepParameters ? (
         <StepParameterEntryDialog
-          key={pendingStepParameterEntries[0].movementMutationId}
-          entry={pendingStepParameterEntries[0]}
-          total={pendingStepParameterEntries.length}
+          key={pendingStepParameterEntries.map((entry) => entry.movementMutationId).join(":")}
+          entries={pendingStepParameterEntries}
           onSave={onSaveStepParameters}
           onComplete={(message) => {
-            setPendingStepParameterEntries((current) => current.slice(1));
+            const completedMutationIds = new Set(
+              pendingStepParameterEntries.map((entry) => entry.movementMutationId)
+            );
+            setPendingStepParameterEntries((current) => current.filter(
+              (entry) => !completedMutationIds.has(entry.movementMutationId)
+            ));
             setMoveMessage(message);
           }}
           onSkipAll={() => setPendingStepParameterEntries([])}
