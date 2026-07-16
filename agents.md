@@ -1,5 +1,26 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 scoped Supabase Broadcast realtime)
+
+- Replaced every application `postgres_changes` subscription with private,
+  process-scoped Supabase Broadcast invalidations. One authenticated bridge now
+  listens to library plus the selected process, coalesces change bursts, and
+  shares targeted events with notes/results components; Team Messages uses its
+  own private Broadcast topic.
+- Added migrations `202607150008_scoped_workflow_broadcast.sql` and
+  `202607150009_process_event_idempotency_constraint.sql`. They authorize private
+  topics, emit compact trigger payloads, remove canonical tables from the public
+  Realtime publication, restore default replica identity, and fix the invalid
+  checkpoint process-event conflict target. Selected-process Dashboard and
+  Calendar reads are now filtered in SQL.
+- Verified realtime helper tests, `npm run collaboration:verify`,
+  `npm run checkpoint:verify`, `npm run lint`, and `npm run build`. Authenticated
+  Calendar and Process Flow at `http://127.0.0.1:3013`, 1440x1000, rendered the
+  selected process and eight flow nodes with no overflow or console errors.
+  Team Messages correctly remains `Reconnecting` against production until the
+  two pending migrations are released. Deploy app code before migration
+  `202607150008`, then reload clients and run the two-browser/CPU follow-up.
+
 ## Recent development note (2026-07-15 mobile Complete drag target)
 
 - Fixed phone drag initiation for Complete wafers without adding movement

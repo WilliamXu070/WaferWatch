@@ -6,8 +6,8 @@ import { ImagePlus } from "lucide-react";
 import { getAttachmentDownloadUrl } from "@/features/measurements/actions";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
 import { NOTE_ATTACHMENT_MAX_BYTES, uploadWaferNoteAttachments } from "@/features/measurements/noteAttachmentUpload";
+import { isWorkflowEventFor, WORKFLOW_REALTIME_EVENT } from "@/features/collaboration/realtime";
 import { getTextSurface, upsertTextSurface } from "@/features/text-surfaces/actions";
-import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
 import { DetailCard } from "./DetailCard";
 import { getWaferDieNotesScopeKey, waferDieNotesSurface } from "./waferDieDetailData";
@@ -66,25 +66,18 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
   }, [loadAppearance]);
 
   useEffect(() => {
-    const supabase = createClient();
-    const channel = supabase
-      .channel(`die-appearance:${tile.projectId}:${scopeKey}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "text_surfaces",
-          filter: `project_id=eq.${tile.projectId}`
-        },
-        () => void loadAppearance()
-      )
-      .subscribe();
+    const handleRealtimeChange = (event: Event) => {
+      if (isWorkflowEventFor({ event, table: "text_surfaces", projectId: tile.projectId })) {
+        void loadAppearance();
+      }
+    };
+
+    window.addEventListener(WORKFLOW_REALTIME_EVENT, handleRealtimeChange);
 
     return () => {
-      void supabase.removeChannel(channel);
+      window.removeEventListener(WORKFLOW_REALTIME_EVENT, handleRealtimeChange);
     };
-  }, [loadAppearance, scopeKey, tile.projectId]);
+  }, [loadAppearance, tile.projectId]);
 
   const uploadImage = useCallback(async (file: File) => {
     if (!canEdit || isBusy) {

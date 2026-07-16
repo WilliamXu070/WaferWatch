@@ -18,15 +18,54 @@ const ids = {
 };
 
 await db.exec(`
+  create role anon;
+  create role authenticated;
   create schema auth;
+  create schema realtime;
   create function auth.uid() returns uuid language sql stable as $$ select '${ids.user}'::uuid $$;
+  create function auth.role() returns text language sql stable as $$ select 'authenticated'::text $$;
   create function public.can_edit_project(uuid) returns boolean language sql stable as $$ select true $$;
+  create function public.can_access_project(uuid) returns boolean language sql stable as $$ select true $$;
+  create function public.can_manage_process_library() returns boolean language sql stable as $$ select true $$;
+
+  create table realtime.messages (
+    id uuid primary key default gen_random_uuid(),
+    topic text not null,
+    extension text not null default 'broadcast',
+    event text not null,
+    payload jsonb not null,
+    private boolean not null default true,
+    inserted_at timestamptz not null default now()
+  );
+  create function realtime.topic() returns text language sql stable
+    as $$ select current_setting('realtime.topic', true) $$;
+  create function realtime.send(jsonb, text, text, boolean default true)
+  returns void
+  language sql
+  as $$
+    insert into realtime.messages (payload, event, topic, private)
+    values ($1, $2, $3, $4)
+  $$;
+
+  create table public.profiles (
+    id uuid primary key,
+    display_name text,
+    email text,
+    is_active boolean not null default true,
+    role text not null default 'operator'
+  );
+  insert into public.profiles (id, display_name) values ('${ids.user}', 'Test User');
 
   create table public.process_templates (
     id uuid primary key,
     owner_project_id uuid,
     name text,
+    is_active boolean not null default true,
     updated_at timestamptz default now()
+  );
+  create table public.process_people (
+    id uuid primary key,
+    profile_id uuid references public.profiles(id)
   );
   create table public.process_steps (
     id uuid primary key,
@@ -51,7 +90,8 @@ await db.exec(`
     status text,
     assigned_at timestamptz default now(),
     started_at timestamptz,
-    completed_at timestamptz
+    completed_at timestamptz,
+    deleted_at timestamptz
   );
   create table public.step_executions (
     id uuid primary key,
@@ -105,15 +145,36 @@ await db.exec(`
     updated_at timestamptz default now(),
     unique (project_id, scope_type, scope_key, field_key)
   );
-  create table public.die_inspections (id uuid primary key);
+  create table public.die_inspections (
+    id uuid primary key,
+    project_id uuid not null,
+    wafer_id uuid not null references public.wafers(id)
+  );
+  create table public.team_messages (
+    id uuid primary key default gen_random_uuid(),
+    author_id uuid not null references public.profiles(id),
+    author_name text not null,
+    body text not null,
+    created_at timestamptz not null default now()
+  );
   create publication supabase_realtime;
 `);
 
-const migration = await readFile(
+const collaborationMigration = await readFile(
   new URL("../supabase/migrations/202607130001_collaboration_foundation.sql", import.meta.url),
   "utf8"
 );
-await db.exec(migration);
+const broadcastMigration = await readFile(
+  new URL("../supabase/migrations/202607150008_scoped_workflow_broadcast.sql", import.meta.url),
+  "utf8"
+);
+const idempotencyMigration = await readFile(
+  new URL("../supabase/migrations/202607150009_process_event_idempotency_constraint.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(collaborationMigration);
+await db.exec(broadcastMigration);
+await db.exec(idempotencyMigration);
 
 await db.query(
   `insert into public.process_templates (id, name) values ($1, 'Test flow')`,
@@ -241,8 +302,38 @@ const publicationRows = await db.query(
   `select tablename from pg_publication_tables where pubname = 'supabase_realtime' order by tablename`
 );
 for (const table of ["process_calendar_events", "process_steps", "text_surfaces", "wafers", "die_inspections"]) {
-  assert(publicationRows.rows.some((row) => row.tablename === table), `${table} is not published`);
+  assert(!publicationRows.rows.some((row) => row.tablename === table), `${table} is still published`);
 }
+
+const broadcastRows = await db.query(
+  `select topic, event, payload from realtime.messages order by inserted_at, id`
+);
+assert(
+  broadcastRows.rows.some((row) =>
+    row.topic === `workflow:process:${ids.template}` &&
+    row.event === "workflow_changed" &&
+    row.payload.table === "process_steps"
+  ),
+  "process step change did not emit a process-scoped broadcast"
+);
+
+await db.query(
+  `insert into public.team_messages (author_id, author_name, body) values ($1, 'Test User', 'Broadcast test')`,
+  [ids.user]
+);
+const teamBroadcast = await db.query(
+  `select payload from realtime.messages where topic = 'team:messages' and event = 'team_message_inserted' order by inserted_at desc limit 1`
+);
+assert.equal(teamBroadcast.rows[0].payload.record.body, "Broadcast test");
+
+const topicAccess = await db.query(
+  `select
+     public.can_receive_waferwatch_broadcast($1) as process_allowed,
+     public.can_receive_waferwatch_broadcast('workflow:process:not-a-uuid') as malformed_denied`,
+  [`workflow:process:${ids.template}`]
+);
+assert.equal(topicAccess.rows[0].process_allowed, true);
+assert.equal(topicAccess.rows[0].malformed_denied, false);
 
 console.log(JSON.stringify({
   notes: "two concurrent adds preserved; retry idempotent",
@@ -251,6 +342,7 @@ console.log(JSON.stringify({
   calendar: "stale revision update rejected",
   processFlow: "stale batch rejected atomically",
   history: "duplicate client mutation rejected",
+  realtime: "private process-scoped Broadcast payloads verified",
   realtimeTables: publicationRows.rows.length
 }, null, 2));
 

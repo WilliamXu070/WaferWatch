@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { sendTeamMessage } from "@/features/team-messages/actions";
 import { mergeTeamMessages } from "@/features/team-messages/merge";
+import {
+  getBroadcastRecord,
+  TEAM_MESSAGE_BROADCAST_EVENT,
+  TEAM_MESSAGES_TOPIC
+} from "@/features/collaboration/realtime";
 import { createClient } from "@/lib/supabase/client";
 import type { TeamMessage } from "@/types/database";
 import type { WireframeShellDto } from "@/features/wireframe/types";
@@ -46,24 +51,29 @@ export function TeamMessages({ currentUser }: { currentUser: CurrentUser }) {
   useEffect(() => {
     let active = true;
     const channel = supabase
-      .channel(`team-messages-${currentUser.id}`)
+      .channel(TEAM_MESSAGES_TOPIC, { config: { private: true } })
       .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "team_messages" },
-        (payload) => {
+        "broadcast",
+        { event: TEAM_MESSAGE_BROADCAST_EVENT },
+        (message) => {
           if (!active) return;
-          const incoming = payload.new as TeamMessage;
+          const incoming = getBroadcastRecord<TeamMessage>(message.payload);
+          if (!incoming) return;
           setMessages((current) => mergeTeamMessages(current, [incoming]));
           if (!isOpenRef.current && incoming.author_id !== currentUser.id) {
             setUnreadCount((count) => count + 1);
           }
         }
-      )
-      .subscribe((status) => {
+      );
+
+    void supabase.realtime.setAuth().then(() => {
+      if (!active) return;
+      channel.subscribe((status) => {
         if (!active) return;
         if (status === "SUBSCRIBED") setConnection("live");
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setConnection("error");
       });
+    });
 
     void supabase
       .from("team_messages")

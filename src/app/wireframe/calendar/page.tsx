@@ -1,6 +1,10 @@
 import { CalendarView } from "@/ui/waferwatch-wireframe";
 import { getProcessCalendarSchedule, type ProcessCalendarLocation } from "@/features/calendar/queries";
-import { getProcessDashboardData, getProcessTemplate, listProcessTemplates } from "@/features/process-flows/queries";
+import {
+  getFirstActiveProcessTemplateId,
+  getProcessDashboardData,
+  getProcessTemplate
+} from "@/features/process-flows/queries";
 import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -83,20 +87,12 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
     return { status: "unauthenticated" };
   }
 
-  const templates = await listProcessTemplates();
-  const fallbackTemplate = templates
-    .slice()
-    .sort((a, b) => {
-      const aTime = new Date(a.updated_at ?? a.created_at ?? 0).getTime();
-      const bTime = new Date(b.updated_at ?? b.created_at ?? 0).getTime();
-      return bTime - aTime;
-    })[0] ?? templates.find((template) => template.is_active) ?? templates[0];
-
-  if (!fallbackTemplate) {
+  const processId = requestedProcessId ?? await getFirstActiveProcessTemplateId();
+  if (!processId) {
     return { status: "no-process" };
   }
 
-  const process = requestedProcessId ? await getProcessTemplate(requestedProcessId) : fallbackTemplate;
+  const process = await getProcessTemplate(processId);
   const canEdit = process.owner_project_id
     ? await canEditProject(process.owner_project_id)
     : canManageProcessLibrary(account.profile.role);

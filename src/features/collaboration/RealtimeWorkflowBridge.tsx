@@ -1,27 +1,21 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import {
+  getWorkflowProcessTopic,
+  isWorkflowBroadcastPayload,
+  WORKFLOW_BROADCAST_EVENT,
+  WORKFLOW_LIBRARY_TOPIC,
+  WORKFLOW_REALTIME_EVENT
+} from "./realtime";
 
-const REALTIME_WORKFLOW_TABLES = [
-  "process_templates",
-  "process_steps",
-  "process_step_transitions",
-  "process_calendar_events",
-  "process_calendar_event_people",
-  "wafer_process_assignments",
-  "step_executions",
-  "wafers",
-  "process_events",
-  "text_surfaces",
-  "die_inspections"
-] as const;
-
-const REFRESH_DEBOUNCE_MS = 120;
+const REFRESH_DEBOUNCE_MS = 350;
 
 export function RealtimeWorkflowBridge({ enabled = true }: { enabled?: boolean }) {
   const router = useRouter();
+  const processTemplateId = useSearchParams().get("processId");
   const refreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -30,9 +24,11 @@ export function RealtimeWorkflowBridge({ enabled = true }: { enabled?: boolean }
     }
 
     const supabase = createClient();
-    let channel = supabase.channel(`workflow-state:${crypto.randomUUID()}`);
-    const scheduleRefresh = (table: string) => {
-      window.dispatchEvent(new CustomEvent("waferwatch:realtime-change", { detail: { table } }));
+    const channels: ReturnType<typeof supabase.channel>[] = [];
+    let active = true;
+    const scheduleRefresh = (payload: unknown) => {
+      if (!isWorkflowBroadcastPayload(payload)) return;
+      window.dispatchEvent(new CustomEvent(WORKFLOW_REALTIME_EVENT, { detail: payload }));
       if (refreshTimerRef.current) {
         window.clearTimeout(refreshTimerRef.current);
       }
@@ -42,24 +38,37 @@ export function RealtimeWorkflowBridge({ enabled = true }: { enabled?: boolean }
       }, REFRESH_DEBOUNCE_MS);
     };
 
-    for (const table of REALTIME_WORKFLOW_TABLES) {
-      channel = channel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table },
-        () => scheduleRefresh(table)
-      );
-    }
+    const topics = [
+      WORKFLOW_LIBRARY_TOPIC,
+      ...(processTemplateId ? [getWorkflowProcessTopic(processTemplateId)] : [])
+    ];
 
-    channel.subscribe();
+    void supabase.realtime.setAuth().then(() => {
+      if (!active) return;
+      for (const topic of topics) {
+        const channel = supabase
+          .channel(topic, { config: { private: true } })
+          .on(
+            "broadcast",
+            { event: WORKFLOW_BROADCAST_EVENT },
+            (message) => scheduleRefresh(message.payload)
+          )
+          .subscribe();
+        channels.push(channel);
+      }
+    });
 
     return () => {
+      active = false;
       if (refreshTimerRef.current) {
         window.clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
       }
-      void supabase.removeChannel(channel);
+      for (const channel of channels) {
+        void supabase.removeChannel(channel);
+      }
     };
-  }, [enabled, router]);
+  }, [enabled, processTemplateId, router]);
 
   return null;
 }

@@ -19,6 +19,7 @@ import {
   listDieInspectionsForDie,
   type DieInspectionRecord
 } from "@/features/inspections/actions";
+import { isWorkflowEventFor, WORKFLOW_REALTIME_EVENT } from "@/features/collaboration/realtime";
 import { getTextSurface, upsertTextSurface } from "@/features/text-surfaces/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
@@ -950,43 +951,36 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
   }, [sampleMetricScopeKey, selectedSample.uniformityPercent, tile.projectId, uniformityBySample]);
 
   useEffect(() => {
-    const supabase = createClient();
-    const channel = supabase
-      .channel(`result-metric:${tile.projectId}:${sampleMetricScopeKey}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "text_surfaces",
-          filter: `project_id=eq.${tile.projectId}`
-        },
-        () => {
-          void getTextSurface({
-            projectId: tile.projectId,
-            scopeType: RESULT_SAMPLE_SCOPE_TYPE,
-            scopeKey: sampleMetricScopeKey,
-            fieldKey: RESULT_SAMPLE_UNIFORMITY_FIELD
-          }).then((result) => {
-            if (!result.ok) {
-              setUniformityError(result.error);
-              return;
-            }
+    const handleRealtimeChange = (event: Event) => {
+      if (!isWorkflowEventFor({ event, table: "text_surfaces", projectId: tile.projectId })) {
+        return;
+      }
 
-            const value = result.data?.value ?? selectedSample.uniformityPercent;
-            setUniformityBySample((current) => ({ ...current, [sampleMetricScopeKey]: value }));
-            setSavedUniformityBySample((current) => ({ ...current, [sampleMetricScopeKey]: value }));
-            setUniformityVersionBySample((current) => ({
-              ...current,
-              [sampleMetricScopeKey]: result.data?.version ?? 0
-            }));
-          });
+      void getTextSurface({
+        projectId: tile.projectId,
+        scopeType: RESULT_SAMPLE_SCOPE_TYPE,
+        scopeKey: sampleMetricScopeKey,
+        fieldKey: RESULT_SAMPLE_UNIFORMITY_FIELD
+      }).then((result) => {
+        if (!result.ok) {
+          setUniformityError(result.error);
+          return;
         }
-      )
-      .subscribe();
+
+        const value = result.data?.value ?? selectedSample.uniformityPercent;
+        setUniformityBySample((current) => ({ ...current, [sampleMetricScopeKey]: value }));
+        setSavedUniformityBySample((current) => ({ ...current, [sampleMetricScopeKey]: value }));
+        setUniformityVersionBySample((current) => ({
+          ...current,
+          [sampleMetricScopeKey]: result.data?.version ?? 0
+        }));
+      });
+    };
+
+    window.addEventListener(WORKFLOW_REALTIME_EVENT, handleRealtimeChange);
 
     return () => {
-      void supabase.removeChannel(channel);
+      window.removeEventListener(WORKFLOW_REALTIME_EVENT, handleRealtimeChange);
     };
   }, [sampleMetricScopeKey, selectedSample.uniformityPercent, tile.projectId]);
 
@@ -1027,37 +1021,30 @@ export function ResultsReviewBoard({ tile, canEdit = true }: { tile: WaferStatus
       return;
     }
 
-    const supabase = createClient();
-    const channel = supabase
-      .channel(`die-results:${tile.waferId}:${dieCode}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "die_inspections",
-          filter: `wafer_id=eq.${tile.waferId}`
-        },
-        () => {
-          void listDieInspectionsForDie({ waferId: tile.waferId, dieCode }).then((result) => {
-            if (!result.ok) {
-              setImageError(result.error);
-              return;
-            }
+    const handleRealtimeChange = (event: Event) => {
+      if (!isWorkflowEventFor({ event, table: "die_inspections", waferId: tile.waferId })) {
+        return;
+      }
 
-            const nextBySample: SampleInspectionMap = {};
-            for (const inspection of result.data) {
-              const key = getSampleInspectionKey(inspection.row, inspection.column);
-              nextBySample[key] = mergeUniqueInspections(nextBySample[key] ?? [], [inspection]);
-            }
-            setInspectionsBySample(nextBySample);
-          });
+      void listDieInspectionsForDie({ waferId: tile.waferId, dieCode }).then((result) => {
+        if (!result.ok) {
+          setImageError(result.error);
+          return;
         }
-      )
-      .subscribe();
+
+        const nextBySample: SampleInspectionMap = {};
+        for (const inspection of result.data) {
+          const key = getSampleInspectionKey(inspection.row, inspection.column);
+          nextBySample[key] = mergeUniqueInspections(nextBySample[key] ?? [], [inspection]);
+        }
+        setInspectionsBySample(nextBySample);
+      });
+    };
+
+    window.addEventListener(WORKFLOW_REALTIME_EVENT, handleRealtimeChange);
 
     return () => {
-      void supabase.removeChannel(channel);
+      window.removeEventListener(WORKFLOW_REALTIME_EVENT, handleRealtimeChange);
     };
   }, [dieCode, tile.waferId]);
 
