@@ -6,7 +6,7 @@ export type TouchPoint = {
 };
 
 const PINCH_ZOOM_EXPONENT = 0.72;
-const WHEEL_ZOOM_SENSITIVITY = 0.0012;
+const WHEEL_ZOOM_SENSITIVITY = 0.011;
 const MAX_WHEEL_DELTA = 48;
 
 export function shouldStartNodePointerInteraction(pointerType: string) {

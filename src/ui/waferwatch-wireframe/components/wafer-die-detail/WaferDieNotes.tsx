@@ -20,6 +20,7 @@ import type { WaferStatusTileModel } from "../../types";
 import { StepFileIcon } from "../../icons";
 import { DetailCard } from "./DetailCard";
 import { SequentialStepPicker } from "./SequentialStepPicker";
+import { StepParameterHistory } from "./StepParameterHistory";
 import { createTiffPngPreview, isTiffImage } from "./tiffPreview";
 import {
   getWaferDieNotesScopeKey,
@@ -799,6 +800,8 @@ export function WaferDieNotesDashboard({
     typeof selectedStep.executionId === "string"
       ? selectedStep.executionId
       : null;
+  const selectedProcessStep = selectedStep ? processSteps.find((step) => step.id === selectedStep.id) : null;
+  const selectedStepParameterRecords = selectedProcessStep?.parameterRecords ?? [];
 
   return (
     <div className="grid gap-4 xl:grid-cols-[440px_minmax(0,1fr)]">
@@ -823,6 +826,8 @@ export function WaferDieNotesDashboard({
             </span>
           </div>
         </div>
+
+        <StepParameterHistory records={selectedStepParameterRecords} />
 
         <div className="grid max-h-[540px] min-h-[300px] gap-3 overflow-y-auto bg-[#fbfbf8] p-3">
           {visibleNotes.length ? (

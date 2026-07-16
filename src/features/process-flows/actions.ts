@@ -30,8 +30,15 @@ import {
   processTemplateNameUpdateSchema,
   processTemplatePublishSchema,
   processTemplateCreateSchema,
-  processStepNameUpdateSchema
+  processStepNameUpdateSchema,
+  processStepParametersUpdateSchema,
+  stepParameterRecordSaveSchema
 } from "@/features/process-flows/schemas";
+import {
+  mergeStepParameterDefinitions,
+  readStepParameterDefinitions,
+  type StepParameterDefinition
+} from "@/features/process-flows/stepParameters";
 import { normalizeWaferCode } from "@/features/process-flows/waferNaming";
 import {
   getWaferFamilyDeleteIds,
@@ -1234,6 +1241,159 @@ export async function updateProcessStepName(input: unknown) {
 
     revalidateProcessFlow(step.template_id);
     return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateProcessStepParameters(input: unknown) {
+  try {
+    const parsed = processStepParametersUpdateSchema.parse(input);
+    const step = await getStepForWrite(parsed.stepId);
+    const supabase = await createServerSupabaseClient();
+
+    const { data, error } = await supabase
+      .from("process_steps")
+      .update({ parameters_schema: parsed.parametersSchema as Json })
+      .eq("id", parsed.stepId)
+      .eq("revision", parsed.expectedRevision)
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    if (!data) {
+      return fail("This step was updated by another collaborator. Reload the page before saving again.");
+    }
+
+    revalidateProcessFlow(step.template_id);
+    revalidatePath(`/process-flow/steps/${step.id}/parameters`);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function saveStepParameterRecord(input: unknown) {
+  try {
+    const parsed = stepParameterRecordSaveSchema.parse(input);
+    const account = await requireAccount();
+    const supabase = await createServerSupabaseClient();
+    const { data: movementEvent, error: movementError } = await supabase
+      .from("process_events")
+      .select("id, project_id, wafer_id, step_execution_id, metadata")
+      .eq("client_mutation_id", parsed.movementMutationId)
+      .maybeSingle();
+
+    if (movementError) {
+      return fail(movementError.message);
+    }
+    if (!movementEvent?.project_id || !movementEvent.wafer_id) {
+      return fail("The movement event for these parameters could not be found.");
+    }
+
+    const eventMetadata = movementEvent.metadata && typeof movementEvent.metadata === "object" && !Array.isArray(movementEvent.metadata)
+      ? movementEvent.metadata
+      : {};
+    if (
+      eventMetadata.assignment_id !== parsed.assignmentId ||
+      eventMetadata.target_step_id !== parsed.stepId
+    ) {
+      return fail("These parameters do not match the recorded wafer movement.");
+    }
+
+    await assertProjectAccess(movementEvent.project_id, "write");
+    const [{ data: assignment, error: assignmentError }, { data: step, error: stepError }] = await Promise.all([
+      supabase
+        .from("wafer_process_assignments")
+        .select("id, wafer_id, template_id")
+        .eq("id", parsed.assignmentId)
+        .single(),
+      supabase
+        .from("process_steps")
+        .select("id, template_id, parameters_schema, revision")
+        .eq("id", parsed.stepId)
+        .single()
+    ]);
+
+    if (assignmentError) return fail(assignmentError.message);
+    if (stepError) return fail(stepError.message);
+    if (
+      assignment.wafer_id !== movementEvent.wafer_id ||
+      assignment.template_id !== step.template_id
+    ) {
+      return fail("The destination step is not part of this wafer process.");
+    }
+
+    const globalAdditions = parsed.localParameters.filter((parameter) => parameter.scope === "global");
+    let schemaSnapshot = step.parameters_schema;
+    if (globalAdditions.length > 0) {
+      await requireProcessManager();
+      const definitions: StepParameterDefinition[] = globalAdditions.map((parameter) => ({
+        id: parameter.id,
+        key: parameter.key,
+        label: parameter.label,
+        type: parameter.type,
+        unit: parameter.unit,
+        required: false,
+        description: "",
+        defaultValue: null
+      }));
+      const nextSchema = mergeStepParameterDefinitions(step.parameters_schema, definitions);
+      const { data: updatedStep, error: updateStepError } = await supabase
+        .from("process_steps")
+        .update({ parameters_schema: nextSchema as Json })
+        .eq("id", step.id)
+        .eq("revision", step.revision)
+        .select("parameters_schema")
+        .maybeSingle();
+
+      if (updateStepError) return fail(updateStepError.message);
+      if (!updatedStep) {
+        return fail("The step template changed while these parameters were open. Reload and try again.");
+      }
+      schemaSnapshot = updatedStep.parameters_schema;
+    }
+
+    const allowedGlobalKeys = new Set(readStepParameterDefinitions(schemaSnapshot).map((field) => field.key));
+    const combinedGlobalValues = {
+      ...Object.fromEntries(
+        Object.entries(parsed.globalValues).filter(([key]) => allowedGlobalKeys.has(key))
+      ),
+      ...Object.fromEntries(
+        globalAdditions.map((parameter) => [parameter.key, parameter.value])
+      )
+    };
+    const localParameters = parsed.localParameters.filter((parameter) => parameter.scope === "local");
+    const { data: record, error: recordError } = await supabase
+      .from("step_parameter_records")
+      .upsert({
+        project_id: movementEvent.project_id,
+        wafer_id: movementEvent.wafer_id,
+        assignment_id: assignment.id,
+        process_step_id: step.id,
+        step_execution_id: movementEvent.step_execution_id,
+        process_event_id: movementEvent.id,
+        movement_mutation_id: parsed.movementMutationId,
+        schema_snapshot: schemaSnapshot,
+        global_values: combinedGlobalValues as Json,
+        local_parameters: localParameters as Json,
+        notes: parsed.notes,
+        recorded_by: account.userId
+      }, { onConflict: "movement_mutation_id" })
+      .select("*")
+      .single();
+
+    if (recordError) {
+      return fail(recordError.message);
+    }
+
+    revalidateProcessFlow(step.template_id);
+    revalidatePath("/wafer-status");
+    revalidatePath("/wireframe/wafer-status");
+    return ok(record);
   } catch (error) {
     return fail(toErrorMessage(error));
   }

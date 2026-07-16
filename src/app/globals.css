@@ -965,6 +965,14 @@ textarea {
   box-shadow: 0 24px 80px rgb(21 21 18 / 20%);
 }
 
+.flow-wafer-move-dialog.process-flow-parameter-dialog {
+  width: min(100%, 780px);
+  max-height: min(90svh, 820px);
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
 .flow-wafer-move-dialog__header {
   display: grid;
   gap: 6px;
@@ -1136,6 +1144,12 @@ textarea {
     overscroll-behavior: contain;
     border-radius: 14px;
     padding: 12px;
+  }
+
+  .flow-wafer-move-dialog.process-flow-parameter-dialog {
+    width: min(100%, 420px);
+    max-height: min(88svh, 760px);
+    padding: 0;
   }
 
   .flow-wafer-move-dialog__path {
@@ -3596,15 +3610,20 @@ textarea {
 
 /* Contain and neutralize the reused flow canvas within its wrapper. */
 .wireframe-flow-surface .flow-map-shell {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
   gap: 0;
 }
 
 .wireframe-flow-surface .flow-map-toolbar {
   display: flex;
-  min-height: 104px;
-  align-items: start;
-  gap: 16px;
-  padding: 24px 24px 18px;
+  min-height: 58px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
   background: #f9fafb;
 }
 
@@ -3695,7 +3714,9 @@ textarea {
 }
 
 .wireframe-flow-surface .flow-map-frame {
-  height: clamp(600px, 62vh, 680px);
+  height: auto;
+  min-height: 0;
+  flex: 1 1 0;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   background:
@@ -3706,7 +3727,7 @@ textarea {
 }
 
 .wireframe-flow-surface .flow-map-canvas {
-  min-height: 690px;
+  min-height: 100%;
 }
 
 .wireframe-flow-surface .flow-node-card {
@@ -4015,6 +4036,36 @@ textarea {
     -webkit-overflow-scrolling: touch;
   }
 
+  .waferwatch-wireframe .wireframe-main:has(> .process-flow-view) {
+    position: fixed;
+    top: calc(58px + env(safe-area-inset-top));
+    right: 0;
+    bottom: calc(69px + env(safe-area-inset-bottom));
+    left: 0;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .process-flow-view {
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  .process-flow-heading > p:first-child,
+  .process-flow-empty p:last-child {
+    display: none;
+  }
+
+  .process-flow-stats {
+    min-height: 58px;
+  }
+
+  .process-flow-stat {
+    min-height: 28px;
+  }
+
   .wireframe-mobile-topbar {
     position: fixed;
     z-index: 120;
@@ -4139,8 +4190,12 @@ textarea {
     width: 100%;
     margin-left: 0;
     justify-content: flex-start;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 6px;
+  }
+
+  .waferwatch-wireframe .wireframe-flow-surface :is(.flow-undo-button, .flow-auto-layout-button) {
+    display: none;
   }
 
   .waferwatch-wireframe .wireframe-flow-surface .flow-map-actions .button {
@@ -4170,8 +4225,9 @@ textarea {
   }
 
   .waferwatch-wireframe .wireframe-flow-surface .flow-map-frame {
-    height: min(610px, calc(100svh - 198px));
-    min-height: 500px;
+    height: auto;
+    min-height: 0;
+    flex: 1 1 0;
     border-right: 0;
     border-left: 0;
     border-radius: 0;

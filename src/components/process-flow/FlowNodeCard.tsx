@@ -14,7 +14,7 @@ import {
   hasActiveWafer,
   truncateLabel
 } from "./labels";
-import { getNearestWaferGridIndex } from "./interactions";
+import { getNearestWaferGridIndex, getStepDoubleClickAction } from "./interactions";
 import type { FlowNode, WaferDrag, WaferPin } from "./types";
 
 const MOBILE_WAFER_TOUCH_RADIUS_PX = 28;
@@ -41,6 +41,7 @@ type FlowNodeCardProps = {
   onBeginWaferDrag: (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => void;
   onSelectWafer: (nodeId: string, wafer: WaferPin) => void;
   onOpenWaferDetails: (wafer: WaferPin) => void;
+  onOpenStepParameters: (nodeId: string) => void;
 };
 
 export function FlowNodeCard({
@@ -64,7 +65,8 @@ export function FlowNodeCard({
   onCancelLabelEdit,
   onBeginWaferDrag,
   onSelectWafer,
-  onOpenWaferDetails
+  onOpenWaferDetails,
+  onOpenStepParameters
 }: FlowNodeCardProps) {
   const active = hasActiveWafer(node);
   const phaseClipId = `flow-node-phase-clip-${node.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -173,6 +175,8 @@ export function FlowNodeCard({
         const wafer = getLaneWafer(event, wafers);
         if (wafer) {
           onOpenWaferDetails(wafer);
+        } else {
+          onOpenStepParameters(node.id);
         }
       }}
     >
@@ -190,6 +194,7 @@ export function FlowNodeCard({
   return (
     <g
       ref={nodeCardRef}
+      data-node-id={node.id}
       className={`flow-node flow-node--${node.role} ${active ? "flow-node--active" : ""} ${isConnecting ? "flow-node--connecting" : ""} ${
         isDragging ? "flow-node--dragging" : ""
       } ${dropTargetKind ? "flow-node--drop-target" : ""} ${
@@ -204,7 +209,22 @@ export function FlowNodeCard({
       onContextMenu={(event) => onNodeContextMenu(event, node.id)}
       onDoubleClick={(event) => {
         event.stopPropagation();
-        onBeginLabelEdit(node.id);
+        const svg = event.currentTarget.ownerSVGElement;
+        const matrix = event.currentTarget.getScreenCTM();
+        if (!svg || !matrix) {
+          onOpenStepParameters(node.id);
+          return;
+        }
+
+        const point = svg.createSVGPoint();
+        point.x = event.clientX;
+        point.y = event.clientY;
+        const localPoint = point.matrixTransform(matrix.inverse());
+        if (getStepDoubleClickAction({ x: localPoint.x, y: localPoint.y, nodeWidth: node.width }) === "rename") {
+          onBeginLabelEdit(node.id);
+        } else {
+          onOpenStepParameters(node.id);
+        }
       }}
     >
       <title>{node.label}</title>
@@ -234,6 +254,7 @@ export function FlowNodeCard({
           width={Math.max(150, node.width - 104)}
           height="26"
           onPointerDown={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
         >
           <div className="flow-node-title-input-frame">
             <input

@@ -1,7 +1,7 @@
 "use client";
 
 import { ProcessFlowDiagram } from "@/components/ProcessFlowDiagram";
-import type { ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
+import type { Json, ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
 import type { CheckpointReviewerOption } from "@/components/process-flow/types";
 import type { FlowStatModel } from "../types";
 import { ProcessFlowStatsBar } from "./ProcessFlowStatsBar";
@@ -34,6 +34,7 @@ type ProcessFlowStepModel = {
   canvas_y: number | null;
   required_reviewer_id?: string | null;
   required_reviewer_name?: string | null;
+  parameters_schema?: Json;
   wafers: ProcessFlowWaferModel[];
 };
 
@@ -74,6 +75,7 @@ type ProcessFlowViewProps = {
   onSubmitCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onSubmitCheckpoint"];
   onRouteCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onRouteCheckpoint"];
   onMoveApprovedWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onMoveApprovedWafer"];
+  onSaveStepParameters?: Parameters<typeof ProcessFlowDiagram>[0]["onSaveStepParameters"];
   onUpdateStepReviewer?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepReviewer"];
 };
 
@@ -105,31 +107,32 @@ export function ProcessFlowView({
   onSubmitCheckpoint,
   onRouteCheckpoint,
   onMoveApprovedWafer,
+  onSaveStepParameters,
   onUpdateStepReviewer
 }: ProcessFlowViewProps) {
   return (
-    <div className="process-flow-view flex flex-col gap-4 p-4 md:gap-5 md:p-6">
-      <section className="rounded-2xl border border-[#e5e5db] bg-[#fafaf4] p-2 md:rounded-3xl md:p-3">
-        <div className="wireframe-flow-surface rounded-2xl bg-white">
-          <div className="flex flex-col gap-1 border-b border-[#eeeee4] px-4 py-4 md:px-6 md:py-5">
+    <div className="process-flow-view flex h-full min-h-0 flex-col gap-2 p-2 md:gap-3 md:p-4">
+      <section className="process-flow-workspace min-h-0 flex-1 rounded-2xl border border-[#e5e5db] bg-[#fafaf4] p-1.5 md:rounded-3xl md:p-2">
+        <div className="wireframe-flow-surface flex h-full min-h-0 flex-col overflow-hidden rounded-[14px] bg-white md:rounded-2xl">
+          <div className="process-flow-heading flex shrink-0 flex-col gap-0.5 border-b border-[#eeeee4] px-3 py-2.5 md:px-4 md:py-3">
             <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#8a887f]">
               {processLabel}
             </p>
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h1 className="text-xl font-semibold text-[#151512]">Process flow</h1>
+                <h1 className="text-lg font-semibold leading-tight text-[#151512]">Process flow</h1>
                 {statusLabel ? (
-                  <p className="mt-1 text-sm text-[#7b796f]">{statusLabel}</p>
+                  <p className="mt-0.5 truncate text-xs text-[#7b796f]">{statusLabel}</p>
                 ) : null}
               </div>
             </div>
           </div>
 
           {emptyTitle ? (
-            <div className="mx-6 mt-5 rounded-2xl border border-dashed border-[#d8d6ca] bg-[#fbfbf7] p-4">
-              <p className="text-sm font-semibold text-[#151512]">{emptyTitle}</p>
+            <div className="process-flow-empty mx-3 mt-2 shrink-0 rounded-xl border border-dashed border-[#d8d6ca] bg-[#fbfbf7] px-3 py-2 md:mx-4">
+              <p className="text-xs font-semibold text-[#151512]">{emptyTitle}</p>
               {emptyDescription ? (
-                <p className="mt-1 max-w-3xl text-sm text-[#7b796f]">{emptyDescription}</p>
+                <p className="mt-0.5 max-w-3xl truncate text-xs text-[#7b796f]">{emptyDescription}</p>
               ) : null}
             </div>
           ) : null}
@@ -157,6 +160,7 @@ export function ProcessFlowView({
             onSubmitCheckpoint={onSubmitCheckpoint}
             onRouteCheckpoint={onRouteCheckpoint}
             onMoveApprovedWafer={onMoveApprovedWafer}
+            onSaveStepParameters={onSaveStepParameters}
             onUpdateStepReviewer={onUpdateStepReviewer}
           />
         </div>

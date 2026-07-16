@@ -212,6 +212,25 @@ export type StepExecution = {
   updated_at: string;
 };
 
+export type StepParameterRecord = {
+  id: string;
+  project_id: string;
+  wafer_id: string;
+  assignment_id: string;
+  process_step_id: string;
+  step_execution_id: string | null;
+  process_event_id: string;
+  movement_mutation_id: string;
+  schema_snapshot: Json;
+  global_values: Json;
+  local_parameters: Json;
+  notes: string | null;
+  recorded_by: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ProcessStepAttempt = {
   id: string;
   assignment_id: string;
@@ -513,6 +532,7 @@ export interface Database {
       wafers: Row<Wafer>;
       wafer_process_assignments: Row<WaferProcessAssignment>;
       step_executions: Row<StepExecution>;
+      step_parameter_records: Row<StepParameterRecord>;
       process_step_attempts: Row<ProcessStepAttempt>;
       checkpoint_decisions: Row<CheckpointDecision>;
       checkpoint_submission_withdrawals: Row<CheckpointSubmissionWithdrawal>;

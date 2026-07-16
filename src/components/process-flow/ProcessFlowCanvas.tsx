@@ -68,6 +68,7 @@ type ProcessFlowCanvasProps = {
   onBeginWaferDrag: (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => void;
   onSelectWafer: (nodeId: string, wafer: WaferPin) => void;
   onOpenWaferDetails: (wafer: WaferPin) => void;
+  onOpenStepParameters: (nodeId: string) => void;
   onDeleteNodes: (nodeIds: string[]) => void;
   onEdgeClick: (edgeId: string) => void;
   reviewerOptions: Array<{ id: string; name: string }>;
@@ -127,6 +128,7 @@ export function ProcessFlowCanvas({
   onBeginWaferDrag,
   onSelectWafer,
   onOpenWaferDetails,
+  onOpenStepParameters,
   onDeleteNodes,
   onEdgeClick,
   reviewerOptions,
@@ -282,6 +284,7 @@ export function ProcessFlowCanvas({
             onBeginWaferDrag={onBeginWaferDrag}
             onSelectWafer={onSelectWafer}
             onOpenWaferDetails={onOpenWaferDetails}
+            onOpenStepParameters={onOpenStepParameters}
           />
         ))}
 

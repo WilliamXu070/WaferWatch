@@ -201,6 +201,24 @@ export type DiePolingCellValues = Partial<Record<DiePolingParameterField, string
 
 export type DiePolingRows = Record<string, Record<string, DiePolingCellValues>>;
 
+export type WaferStatusStepParameterValue = {
+  key: string;
+  label: string;
+  value: string | number | boolean | null;
+  unit: string;
+  scope: "global" | "local";
+};
+
+export type WaferStatusStepParameterRecord = {
+  id: string;
+  movementMutationId: string;
+  recordedAt: string;
+  recordedById: string | null;
+  recordedByName: string | null;
+  notes: string | null;
+  values: WaferStatusStepParameterValue[];
+};
+
 export type WaferStatusProcessStepModel = {
   id: string;
   name: string;
@@ -214,6 +232,7 @@ export type WaferStatusProcessStepModel = {
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string | null;
+  parameterRecords?: WaferStatusStepParameterRecord[];
   branchLabel?: string | null;
 };
 

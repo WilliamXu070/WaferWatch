@@ -37,7 +37,7 @@ export function ProcessFlowToolbar({
     <div className="flow-map-toolbar" aria-label="Flow map controls">
       <div className="flow-map-actions" role="group" aria-label="Canvas controls">
         {canEdit ? (
-          <button className="button button-secondary flow-fit-button" type="button" onClick={onUndo} disabled={!canUndo || isGraphPending}>
+          <button className="button button-secondary flow-fit-button flow-undo-button" type="button" onClick={onUndo} disabled={!canUndo || isGraphPending}>
             Undo
           </button>
         ) : null}

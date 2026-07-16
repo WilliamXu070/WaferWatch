@@ -1,5 +1,20 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 step parameter records)
+
+- Added persistent, movement-scoped step parameter records with global template
+  fields, wafer/die-local rows, optional notes, default values, and chronological
+  history in Wafer / Die Status. Ordinary moves now open the parameter entry
+  table without requiring a movement note; checkpoint notes remain unchanged.
+- Reworked the step template editor and post-movement dialog into the compact
+  Parameter / Value / Notes table, and removed the duplicate Edit template link
+  from the entry dialog.
+- Applied migrations `202607150011` and `202607150012`. Verified focused
+  parameter, history, movement, and node tests, `npm run lint`, and
+  `npm run build`. Authenticated parameter editor at 1280x720 rendered without
+  overflow or console errors; no live wafer movement was submitted for the final
+  dialog-only check.
+
 ## Recent development note (2026-07-16 hidden dicing parent)
 
 - Fixed Process Flow leaving the completed parent wafer visible after Dicing

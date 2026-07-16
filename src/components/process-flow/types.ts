@@ -1,5 +1,5 @@
 import type { ActionResult } from "@/lib/action-result";
-import type { ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
+import type { Json, ProcessStepNodeType, ProcessStepTransitionType, StepStatus, StepParameterRecord } from "@/types/database";
 
 export type WaferPin = {
   assignmentId: string;
@@ -40,6 +40,7 @@ export type DiagramStep = {
   canvas_y?: number | null;
   required_reviewer_id?: string | null;
   required_reviewer_name?: string | null;
+  parameters_schema?: Json;
   wafers: WaferPin[];
 };
 
@@ -86,8 +87,27 @@ export type FlowNode = {
   order: number;
   requiredReviewerId?: string | null;
   requiredReviewerName?: string | null;
+  parametersSchema: Json;
   isOptimistic?: boolean;
 };
+
+export type SaveStepParameterRecordAction = (input: {
+  assignmentId: string;
+  stepId: string;
+  movementMutationId: string;
+  globalValues: Record<string, string | number | boolean | null>;
+  notes: string | null;
+  localParameters: Array<{
+    id: string;
+    key: string;
+    label: string;
+    type: "text" | "number" | "boolean" | "select";
+    unit: string;
+    value: string | number | boolean | null;
+    notes: string;
+    scope: "local" | "global";
+  }>;
+}) => Promise<ActionResult<StepParameterRecord>>;
 
 export type CheckpointReviewerOption = {
   id: string;

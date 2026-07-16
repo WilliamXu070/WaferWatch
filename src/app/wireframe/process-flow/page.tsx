@@ -15,7 +15,8 @@ import {
   updateProcessStepName,
   updateProcessStepNodeType,
   updateProcessStepPositions,
-  updateProcessStepCheckpointReviewer
+  updateProcessStepCheckpointReviewer,
+  saveStepParameterRecord
 } from "@/features/process-flows/actions";
 import {
   getProcessArchiveItems,
@@ -27,7 +28,7 @@ import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/li
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ProcessFlowView } from "@/ui/waferwatch-wireframe";
 import type { FlowStatModel } from "@/ui/waferwatch-wireframe/types";
-import type { ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
+import type { Json, ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,7 @@ type DiagramStep = {
   }[];
   required_reviewer_id: string | null;
   required_reviewer_name: string | null;
+  parameters_schema: Json;
 };
 
 type DiagramTransition = {
@@ -92,6 +94,7 @@ function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null)
       canvas_y: step.canvas_y,
       required_reviewer_id: step.required_reviewer_id,
       required_reviewer_name: flowStates.find((state) => state.currentStepId === step.id)?.requiredReviewerName ?? null,
+      parameters_schema: step.parameters_schema,
       wafers: flowStates
         .filter((state) => state.currentStepId === step.id)
         .map((state) => ({
@@ -273,6 +276,7 @@ export default async function ProcessFlowWireframePage({
       onSubmitCheckpoint={canEdit ? submitStepCheckpoint : undefined}
       onRouteCheckpoint={canEdit ? routeCheckpointSubmission : undefined}
       onMoveApprovedWafer={canEdit ? moveApprovedCheckpointWafer : undefined}
+      onSaveStepParameters={canEdit ? saveStepParameterRecord : undefined}
       onUpdateStepReviewer={canEdit ? updateProcessStepCheckpointReviewer : undefined}
     />
   );

@@ -1,10 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getProcessMoveActionNote,
+  getStepDoubleClickAction,
   getNearestWaferGridIndex,
   hasCrossedWaferDragThreshold,
   shouldCommitWaferDrop
 } from "./interactions";
+
+test("keeps title double-clicks for rename and routes the rest of a step to parameters", () => {
+  assert.equal(getStepDoubleClickAction({ x: 80, y: 32, nodeWidth: 392 }), "rename");
+  assert.equal(getStepDoubleClickAction({ x: 20, y: 32, nodeWidth: 392 }), "parameters");
+  assert.equal(getStepDoubleClickAction({ x: 180, y: 74, nodeWidth: 392 }), "parameters");
+  assert.equal(getStepDoubleClickAction({ x: 360, y: 32, nodeWidth: 392 }), "parameters");
+});
+
+test("allows destination moves without an operator note while keeping checkpoint notes explicit", () => {
+  assert.equal(getProcessMoveActionNote("move", "", "Cleaning"), "Moved to Cleaning.");
+  assert.equal(getProcessMoveActionNote("move", "  custom context  ", "Cleaning"), "custom context");
+  assert.equal(getProcessMoveActionNote("submit", "", "Cleaning · Complete"), "");
+});
 
 test("keeps stationary and jittering wafer presses as clicks", () => {
   assert.equal(hasCrossedWaferDragThreshold({

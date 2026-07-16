@@ -1,6 +1,7 @@
 import "server-only";
 
 import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
+import { readStepParameterDefinitions } from "@/features/process-flows/stepParameters";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
   Json,
@@ -20,6 +21,7 @@ import type {
   WaferStatusMetric,
   WaferStatusModel,
   WaferStatusRevertEvent,
+  WaferStatusStepParameterRecord,
   WaferStatusTileModel,
   WaferTileStatus
 } from "@/ui/waferwatch-wireframe/types";
@@ -153,6 +155,41 @@ function getUnknownString(record: UnknownRow, key: string) {
 function getUnknownNumber(record: UnknownRow, key: string) {
   const value = record[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getStepParameterRecordMapKey(assignmentId: string, stepId: string) {
+  return `${assignmentId}:${stepId}`;
+}
+
+function readStepParameterRecordValues(row: UnknownRow) {
+  const schema = (row.schema_snapshot ?? {}) as Json;
+  const globalValues = asUnknownRow(row.global_values) ?? {};
+  const templateValues = readStepParameterDefinitions(schema).map((definition) => ({
+    key: definition.key,
+    label: definition.label,
+    value: (globalValues[definition.key] ?? null) as string | number | boolean | null,
+    unit: definition.unit,
+    scope: "global" as const
+  }));
+  const localRows = Array.isArray(row.local_parameters) ? row.local_parameters : [];
+  const localValues = localRows.flatMap((value) => {
+    const parameter = asUnknownRow(value);
+    const key = parameter ? getUnknownString(parameter, "key") : null;
+    const label = parameter ? getUnknownString(parameter, "label") : null;
+    if (!parameter || !key || !label) return [];
+    const rawValue = parameter.value;
+    return [{
+      key,
+      label,
+      value: typeof rawValue === "string" || typeof rawValue === "number" || typeof rawValue === "boolean"
+        ? rawValue
+        : null,
+      unit: getUnknownString(parameter, "unit") ?? "",
+      scope: "local" as const
+    }];
+  });
+
+  return [...templateValues, ...localValues];
 }
 
 function isMissingRelationError(error: OptionalTableError) {
@@ -506,7 +543,8 @@ function mapWafersToStatusModel({
   stepOccurrenceById,
   textSurfacesByKey,
   revertHistoryByWaferId,
-  checkpointHistoryByAssignmentId
+  checkpointHistoryByAssignmentId,
+  stepParameterRecordsByAssignmentStep
 }: {
   wafers: WaferStatusWaferRow[];
   assignmentsByWaferId: Map<string, WaferStatusAssignmentRow>;
@@ -517,6 +555,7 @@ function mapWafersToStatusModel({
   textSurfacesByKey: Map<string, WaferStatusTextSurfaceRow>;
   revertHistoryByWaferId: Map<string, WaferStatusRevertEvent[]>;
   checkpointHistoryByAssignmentId: Map<string, WaferStatusCheckpointHistoryEntry[]>;
+  stepParameterRecordsByAssignmentStep: Map<string, WaferStatusStepParameterRecord[]>;
 }): WaferStatusModel {
   const familyBuckets = new Map<string, { wafers: WaferStatusWaferRow[]; tiles: WaferStatusTileModel[] }>();
   const tiles: WaferStatusTileModel[] = [];
@@ -618,6 +657,9 @@ function mapWafersToStatusModel({
           startedAt: execution?.started_at ?? null,
           completedAt: execution?.completed_at ?? null,
           createdAt: execution?.created_at ?? null,
+          parameterRecords: assignment
+            ? stepParameterRecordsByAssignmentStep.get(getStepParameterRecordMapKey(assignment.id, step.id)) ?? []
+            : [],
           branchLabel: null
         };
       }),
@@ -838,7 +880,13 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     ...waferIds,
     ...Array.from(parentLineageByAssignmentId.values()).map(({ wafer }) => wafer.id)
   ]));
-  const [executionsResult, checkpointAttemptRows, checkpointDecisionRows, checkpointWithdrawalRows] = await Promise.all([
+  const [
+    executionsResult,
+    checkpointAttemptRows,
+    checkpointDecisionRows,
+    checkpointWithdrawalRows,
+    stepParameterRecordRows
+  ] = await Promise.all([
     assignmentIds.length
       ? supabase
         .from("step_executions")
@@ -860,6 +908,11 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     listOptionalCheckpointRows({
       client: supabase,
       table: "checkpoint_submission_withdrawals",
+      assignmentIds
+    }),
+    listOptionalCheckpointRows({
+      client: supabase,
+      table: "step_parameter_records",
       assignmentIds
     })
   ]);
@@ -988,6 +1041,10 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     const actorId = getUnknownString(row, "withdrawn_by");
     if (actorId) actorIds.add(actorId);
   }
+  for (const row of stepParameterRecordRows) {
+    const actorId = getUnknownString(row, "recorded_by");
+    if (actorId) actorIds.add(actorId);
+  }
 
   const profilesResult = actorIds.size
     ? await supabase
@@ -1006,6 +1063,25 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
       profile.display_name?.trim() || profile.email
     ])
   );
+  const stepParameterRecordsByAssignmentStep = new Map<string, WaferStatusStepParameterRecord[]>();
+  for (const row of stepParameterRecordRows) {
+    const id = getUnknownString(row, "id");
+    const assignmentId = getUnknownString(row, "assignment_id");
+    const stepId = getUnknownString(row, "process_step_id");
+    const movementMutationId = getUnknownString(row, "movement_mutation_id");
+    const recordedAt = getUnknownString(row, "updated_at") ?? getUnknownString(row, "created_at");
+    if (!id || !assignmentId || !stepId || !movementMutationId || !recordedAt) continue;
+    const recordedById = getUnknownString(row, "recorded_by");
+    appendGrouped(stepParameterRecordsByAssignmentStep, getStepParameterRecordMapKey(assignmentId, stepId), {
+      id,
+      movementMutationId,
+      recordedAt,
+      recordedById,
+      recordedByName: recordedById ? profileNameById.get(recordedById) ?? null : null,
+      notes: getUnknownString(row, "notes"),
+      values: readStepParameterRecordValues(row)
+    });
+  }
   const executionsById = new Map(executions.map((execution) => [execution.id, execution]));
   const attemptsByAssignmentId = new Map<string, CheckpointTimelineAttemptSource[]>();
   const decisionsByAssignmentId = new Map<string, CheckpointTimelineDecisionSource[]>();
@@ -1187,7 +1263,8 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     stepOccurrenceById,
     textSurfacesByKey,
     revertHistoryByWaferId,
-    checkpointHistoryByAssignmentId
+    checkpointHistoryByAssignmentId,
+    stepParameterRecordsByAssignmentStep
   });
 }
 

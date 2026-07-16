@@ -18,7 +18,8 @@ export function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransi
       role: toFlowNodeRole(step.node_type),
       order: index + 1,
       requiredReviewerId: step.required_reviewer_id ?? null,
-      requiredReviewerName: step.required_reviewer_name ?? null
+      requiredReviewerName: step.required_reviewer_name ?? null,
+      parametersSchema: step.parameters_schema ?? {}
     }));
 
   const nodeIds = new Set(nodes.map((node) => node.id));

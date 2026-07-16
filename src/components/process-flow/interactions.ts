@@ -8,6 +8,25 @@ import {
 
 export const WAFER_DRAG_THRESHOLD_PX = 10;
 
+export function getStepDoubleClickAction({
+  x,
+  y,
+  nodeWidth
+}: {
+  x: number;
+  y: number;
+  nodeWidth: number;
+}): "rename" | "parameters" {
+  const isNearTitle = x >= 50 && x <= nodeWidth - 88 && y >= 8 && y <= 52;
+  return isNearTitle ? "rename" : "parameters";
+}
+
+export function getProcessMoveActionNote(kind: "submit" | "move", note: string, targetLabel: string) {
+  const trimmedNote = note.trim();
+  if (trimmedNote || kind === "submit") return trimmedNote;
+  return `Moved to ${targetLabel}.`;
+}
+
 export function hasCrossedWaferDragThreshold({
   startClientX,
   startClientY,

@@ -103,6 +103,39 @@ export const processStepNameUpdateSchema = z.object({
   expectedName: z.string().trim().min(2).max(180)
 });
 
+export const processStepParametersUpdateSchema = z.object({
+  stepId: uuidSchema,
+  expectedRevision: z.number().int().nonnegative(),
+  parametersSchema: z.record(z.string(), z.unknown())
+});
+
+const stepParameterValueSchema = z.union([
+  z.string().max(4000),
+  z.number().finite(),
+  z.boolean(),
+  z.null()
+]);
+
+const recordedLocalStepParameterSchema = z.object({
+  id: uuidSchema,
+  key: z.string().trim().regex(/^[a-z][a-z0-9_]{0,79}$/),
+  label: z.string().trim().min(1).max(160),
+  type: z.enum(["text", "number", "boolean", "select"]),
+  unit: z.string().trim().max(40),
+  value: stepParameterValueSchema,
+  notes: z.string().trim().max(4000),
+  scope: z.enum(["local", "global"])
+});
+
+export const stepParameterRecordSaveSchema = z.object({
+  assignmentId: uuidSchema,
+  stepId: uuidSchema,
+  movementMutationId: uuidSchema,
+  globalValues: z.record(z.string(), stepParameterValueSchema),
+  notes: z.string().trim().max(4000).nullable(),
+  localParameters: z.array(recordedLocalStepParameterSchema).max(100)
+});
+
 export const processStepPositionUpdateSchema = z.object({
   stepId: uuidSchema,
   canvasX: canvasCoordinateSchema,
