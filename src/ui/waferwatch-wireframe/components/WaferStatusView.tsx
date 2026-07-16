@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import {
   ActivityIcon,
-  ChevronRightIcon,
   StackIcon,
   TargetIcon,
   WaferLogoIcon
@@ -59,16 +58,9 @@ function FamilySection({
   selectedTile: WaferStatusTileModel | null;
   onSelect: (tile: WaferStatusTileModel) => void;
 }) {
-  const [open, setOpen] = useState(true);
-
   return (
     <section className="wafer-status-family border-b border-[#e7e7e2] bg-white">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-center gap-3 px-2 py-4 text-left"
-      >
+      <div className="wafer-status-family__header flex w-full items-center gap-3 px-2 py-4">
         <span
           className={[
             "h-2.5 w-2.5 rounded-full",
@@ -81,27 +73,19 @@ function FamilySection({
         <span className="rounded-md border border-[#e4e4df] bg-white px-2 py-0.5 text-[12px] font-semibold text-[#5d5d56]">
           {family.tiles.length}
         </span>
-        <ChevronRightIcon
-          className={[
-            "ml-auto text-[#8a887b] transition-transform",
-            open ? "rotate-90" : "rotate-0"
-          ].join(" ")}
-        />
-      </button>
+      </div>
 
-      {open ? (
-        <div className="wafer-status-family__tiles grid gap-3 pb-5">
-          {family.tiles.map((tile) => (
-            <WaferStatusTile
-              key={tile.id}
-              tile={tile}
-              isUndiced={isUndicedMode(tile)}
-              selected={selectedTile?.id === tile.id}
-              onSelect={() => onSelect(tile)}
-            />
-          ))}
-        </div>
-      ) : null}
+      <div className="wafer-status-family__tiles grid gap-3 pb-5">
+        {family.tiles.map((tile) => (
+          <WaferStatusTile
+            key={tile.id}
+            tile={tile}
+            isUndiced={isUndicedMode(tile)}
+            selected={selectedTile?.id === tile.id}
+            onSelect={() => onSelect(tile)}
+          />
+        ))}
+      </div>
     </section>
   );
 }

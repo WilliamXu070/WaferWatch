@@ -3480,6 +3480,15 @@ textarea {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
 }
 
+.wafer-status-family-list {
+  align-content: start;
+  grid-auto-rows: max-content;
+}
+
+.wafer-status-family {
+  align-self: start;
+}
+
 .wafer-status-family__tiles {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
 }
@@ -3856,12 +3865,12 @@ textarea {
     min-width: 0;
   }
 
-  .wafer-status-family > button {
+  .wafer-status-family__header {
     padding-top: 12px;
     padding-bottom: 12px;
   }
 
-  .wafer-status-family > button span:nth-child(2) {
+  .wafer-status-family__header span:nth-child(2) {
     font-size: 20px;
   }
 
