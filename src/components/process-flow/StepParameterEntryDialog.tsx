@@ -1,7 +1,15 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import { FormEvent, useMemo, useState, useTransition } from "react";
+import {
+  FormEvent,
+  useMemo,
+  useState,
+  useTransition,
+  type ChangeEvent,
+  type Dispatch,
+  type SetStateAction
+} from "react";
 import {
   normalizeStepParameterKey,
   readStepParameterDefinitions,
@@ -21,7 +29,19 @@ export type PendingStepParameterEntry = {
   parametersSchema: Json;
 };
 
-type DraftParameter = RecordedLocalStepParameter & { valueText: string };
+export type DraftParameter = RecordedLocalStepParameter & { valueText: string };
+
+export function updateDraftParameterFromInput(
+  setParameters: Dispatch<SetStateAction<DraftParameter[]>>,
+  parameterId: string,
+  key: "valueText" | "notes",
+  event: Pick<ChangeEvent<HTMLInputElement>, "currentTarget">
+) {
+  const value = event.currentTarget.value;
+  setParameters((current) => current.map((parameter) => parameter.id === parameterId
+    ? { ...parameter, [key]: value }
+    : parameter));
+}
 
 const inputClassName = "h-10 w-full min-w-0 border border-transparent bg-transparent px-3 text-[13px] text-[#171714] outline-none hover:bg-[#f8f8f4] focus:border-[#77776f] focus:bg-white focus:ring-1 focus:ring-inset focus:ring-[#77776f]";
 
@@ -222,9 +242,12 @@ export function StepParameterEntryDialog({
                             aria-label={`${parameter.label || `Parameter ${index + 1}`} value`}
                             placeholder="Enter value"
                             value={parameter.valueText}
-                            onChange={(event) => setLocalParameters((current) => current.map((candidate) => candidate.id === parameter.id
-                              ? { ...candidate, valueText: event.currentTarget.value }
-                              : candidate))}
+                            onChange={(event) => updateDraftParameterFromInput(
+                              setLocalParameters,
+                              parameter.id,
+                              "valueText",
+                              event
+                            )}
                           />
                         </td>
                         <td className="border-r border-[#e5e5df] p-0">
@@ -233,9 +256,12 @@ export function StepParameterEntryDialog({
                             aria-label={`${parameter.label || `Parameter ${index + 1}`} notes`}
                             placeholder="Add a note"
                             value={parameter.notes}
-                            onChange={(event) => setLocalParameters((current) => current.map((candidate) => candidate.id === parameter.id
-                              ? { ...candidate, notes: event.currentTarget.value }
-                              : candidate))}
+                            onChange={(event) => updateDraftParameterFromInput(
+                              setLocalParameters,
+                              parameter.id,
+                              "notes",
+                              event
+                            )}
                           />
                         </td>
                         <td className="p-0 text-center">

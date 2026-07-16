@@ -1,7 +1,45 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { SetStateAction } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { StepParameterEntryDialog } from "./StepParameterEntryDialog";
+import {
+  StepParameterEntryDialog,
+  updateDraftParameterFromInput,
+  type DraftParameter
+} from "./StepParameterEntryDialog";
+
+function makeDraftParameter(): DraftParameter {
+  return {
+    id: "local-parameter",
+    key: "temperature",
+    label: "Temperature",
+    type: "text",
+    unit: "",
+    value: "",
+    valueText: "",
+    notes: "",
+    scope: "local"
+  };
+}
+
+test("captures local row input before React clears the event target", () => {
+  for (const [key, value] of [["valueText", "425"], ["notes", "Measured after settling"]] as const) {
+    let queuedUpdate: SetStateAction<DraftParameter[]> | null = null;
+    const event: { currentTarget: { value: string } | null } = { currentTarget: { value } };
+
+    updateDraftParameterFromInput(
+      (update) => { queuedUpdate = update; },
+      "local-parameter",
+      key,
+      event as { currentTarget: HTMLInputElement }
+    );
+    event.currentTarget = null;
+
+    assert.equal(typeof queuedUpdate, "function");
+    const next = (queuedUpdate as (current: DraftParameter[]) => DraftParameter[])([makeDraftParameter()]);
+    assert.equal(next[0][key], value);
+  }
+});
 
 test("renders the moved item, global template values, and local parameter controls", () => {
   const markup = renderToStaticMarkup(

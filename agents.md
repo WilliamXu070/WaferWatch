@@ -1,5 +1,18 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 queued parameter input crash)
+
+- Fixed the post-movement parameter dialog crashing while editing local Value or
+  Notes cells across a queued multi-die move. The handlers now capture the input
+  string before React clears the synthetic event target, then apply the queued
+  functional state update without retaining the event object.
+- Added regression coverage that explicitly clears `currentTarget` before the
+  delayed updater runs. Verified an eight-entry A1-A8 dialog queue end to end,
+  14 focused tests, `npm run lint`, and `npm run build`.
+- Authenticated Process Flow at 1280x720 loaded the real eight-active-die state
+  with no horizontal overflow or console errors. No production wafer data was
+  mutated during verification. Tracking: GitHub issue #30.
+
 ## Recent development note (2026-07-16 step parameter records)
 
 - Added persistent, movement-scoped step parameter records with global template
