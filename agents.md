@@ -1,5 +1,15 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 rounded Process Flow node lanes)
+
+- Clipped the Beginning/Complete SVG lane backgrounds to each node's inner
+  rounded rectangle, preventing the lane fills from covering the outline and
+  leaving square white cuts at the lower corners.
+- Verified the focused `FlowNodeCard` test, `npm run lint`, and `npm run build`.
+  Authenticated `/wireframe/process-flow` at 1440x1000 and 390x844 rendered all
+  nine nodes with matching phase clips, no horizontal overflow, and no console
+  errors.
+
 ## Recent development note (2026-07-15 fixed Wafer Status family sizing)
 
 - Removed the Wafer Status family collapse controls so every wafer family and

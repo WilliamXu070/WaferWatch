@@ -66,4 +66,6 @@ test("renders Beginning and Complete selection through the same wafer chip compo
   assert.match(markup, /data-checkpoint-phase="beginning"/);
   assert.match(markup, /data-checkpoint-phase="complete"/);
   assert.doesNotMatch(markup, /flow-node-complete-touch-layer/);
+  assert.match(markup, /clipPath id="flow-node-phase-clip-cleaning"/);
+  assert.match(markup, /clip-path="url\(#flow-node-phase-clip-cleaning\)"/);
 });

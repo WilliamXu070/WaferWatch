@@ -67,6 +67,7 @@ export function FlowNodeCard({
   onOpenWaferPreview
 }: FlowNodeCardProps) {
   const active = hasActiveWafer(node);
+  const phaseClipId = `flow-node-phase-clip-${node.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const beginningWafers = node.wafers.filter((wafer) => getCheckpointPhase(wafer.currentStepStatus) === "beginning");
   const completeWafers = node.wafers.filter((wafer) => getCheckpointPhase(wafer.currentStepStatus) === "complete");
   const nodeCardRef = useRef<SVGGElement>(null);
@@ -200,10 +201,17 @@ export function FlowNodeCard({
       }}
     >
       <title>{node.label}</title>
+      <defs>
+        <clipPath id={phaseClipId}>
+          <rect x="1" y="1" width={node.width - 2} height={node.height - 2} rx="9" />
+        </clipPath>
+      </defs>
       <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" style={{ touchAction: "none" }} />
-      <rect x="1" y="54" width={(node.width - 2) / 2} height={node.height - 55} className="flow-node-phase flow-node-phase--beginning" />
-      <rect x={node.width / 2} y="54" width={(node.width - 2) / 2} height={node.height - 55} className="flow-node-phase flow-node-phase--complete" />
-      <line x1={node.width / 2} y1="54" x2={node.width / 2} y2={node.height - 1} className="flow-node-phase-divider" />
+      <g clipPath={`url(#${phaseClipId})`}>
+        <rect x="1" y="54" width={(node.width - 2) / 2} height={node.height - 55} className="flow-node-phase flow-node-phase--beginning" />
+        <rect x={node.width / 2} y="54" width={(node.width - 2) / 2} height={node.height - 55} className="flow-node-phase flow-node-phase--complete" />
+        <line x1={node.width / 2} y1="54" x2={node.width / 2} y2={node.height - 1} className="flow-node-phase-divider" />
+      </g>
       <path className="flow-node-icon" d={getNodeIconPath(node.role)} style={{ touchAction: "none" }} />
       <text x="31" y="35" className="flow-node-order" style={{ touchAction: "none" }}>
         {node.order}
