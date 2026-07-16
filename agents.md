@@ -1,5 +1,15 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 fixed Wafer Status family sizing)
+
+- Removed the Wafer Status family collapse controls so every wafer family and
+  tile remains visible. Family sections now size to their content instead of
+  stretching into tall empty bands beside the selected-wafer preview.
+- Verified `npm run lint` and `npm run build`. Authenticated
+  `/wireframe/wafer-status` at 1440x1000 and 390x844 rendered ALPHA and GAMMA
+  at equal content-sized heights with no family toggle buttons, horizontal
+  overflow, or console errors.
+
 ## Recent development note (2026-07-15 phone-only wafer action tray)
 
 - Limited the Process Flow selected-wafer action tray (Clear, Delete, Complete,
