@@ -1,5 +1,15 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 concise movement note dialog)
+
+- Simplified every required Process Flow movement-note dialog into a compact
+  checkpoint or movement note with a single From-to route, concise placeholder,
+  screenshot hint, and clear confirmation action. Removed the redundant
+  `Complete wafer` heading and checkpoint explanation.
+- Verified `npm run lint` and `npm run build`. Authenticated checkpoint dialog
+  verification at 1440x1000 and 390x844 showed no overflow or console errors;
+  no live checkpoint submission was performed.
+
 ## Recent development note (2026-07-15 denser readable Process Flow steps)
 
 - Widened Process Flow steps from 392 to 480 scene pixels while reducing the
