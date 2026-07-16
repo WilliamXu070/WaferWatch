@@ -11,7 +11,6 @@ import {
   type TouchPoint
 } from "@/components/process-flow/gesture";
 import { useRouter } from "next/navigation";
-import { WaferDiePreview, type WaferDiePreviewModel } from "@/components/wafer-die-preview";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
 import {
   MAX_NOTE_ATTACHMENTS,
@@ -362,7 +361,6 @@ export function ProcessFlowDiagram({
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [selectedWafers, setSelectedWafers] = useState<SelectedFlowWafer[]>([]);
-  const [waferPreview, setWaferPreview] = useState<WaferDiePreviewModel | null>(null);
   const [undoStepsCount, setUndoStepsCount] = useState(0);
   const setMoveMessage = (msg: string | null) => { if (msg) console.warn("[ProcessFlow]", msg); };
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
@@ -398,7 +396,6 @@ export function ProcessFlowDiagram({
   const pendingNameUpdateRef = useRef<Map<string, { name: string; expectedName: string }>>(new Map());
   const pendingWaferDeleteIdsRef = useRef<Set<string>>(new Set());
   const waferDragRef = useRef<WaferDrag | null>(null);
-  const ignoreWaferPreviewUntilRef = useRef(0);
   const undoRecoveredNodeIdsRef = useRef<Set<string>>(new Set());
   const undoRecoveredEdgeIdsRef = useRef<Set<string>>(new Set());
   const undoStackRef = useRef<GraphSnapshot[]>([]);
@@ -1389,24 +1386,20 @@ export function ProcessFlowDiagram({
     });
   }, []);
 
-  const openWaferPreview = useCallback((node: FlowNode, wafer: WaferPin) => {
-    if (!processTemplateId || !wafer.waferId || Date.now() < ignoreWaferPreviewUntilRef.current) {
+  const openWaferDetails = useCallback((wafer: WaferPin) => {
+    if (!processTemplateId || !wafer.waferId) {
       return;
     }
 
-    setWaferPreview({
+    const search = new URLSearchParams({
       processId: processTemplateId,
-      waferId: wafer.waferId,
-      waferCode: wafer.waferCode,
-      dieLabel: wafer.dieLabel,
-      stepLabel: node.label,
-      handlerName: wafer.currentHandlerName
+      waferId: wafer.waferId
     });
-  }, [processTemplateId]);
-
-  const scheduleWaferPreview = useCallback((node: FlowNode, wafer: WaferPin) => {
-    window.setTimeout(() => openWaferPreview(node, wafer), 0);
-  }, [openWaferPreview]);
+    if (wafer.dieLabel?.trim()) {
+      search.set("dieLabel", wafer.dieLabel.trim());
+    }
+    router.push(`/wafer-status?${search.toString()}`);
+  }, [processTemplateId, router]);
 
   const deleteSelectedWafer = useCallback(() => {
     if (!canEdit || !selectedWafer) {
@@ -1429,8 +1422,6 @@ export function ProcessFlowDiagram({
       setSelectedWafers((current) => current.filter((selection) => selection.assignmentId !== wafer.assignmentId));
       return;
     }
-    const deletedPreview = waferPreview?.waferId === deletedPin.waferId ? waferPreview : null;
-
     pendingWaferDeleteIdsRef.current.add(wafer.assignmentId);
     setNodes((currentNodes) =>
       currentNodes.map((node) =>
@@ -1444,9 +1435,6 @@ export function ProcessFlowDiagram({
       )
     );
     setSelectedWafers((current) => current.filter((selection) => selection.assignmentId !== wafer.assignmentId));
-    if (deletedPreview) {
-      setWaferPreview(null);
-    }
     setMoveMessage(`Deleting ${wafer.label}...`);
 
     void (async () => {
@@ -1473,9 +1461,6 @@ export function ProcessFlowDiagram({
             ? current
             : [...current, wafer]
         );
-        if (deletedPreview) {
-          setWaferPreview(deletedPreview);
-        }
         setMoveMessage(result.error);
         return;
       }
@@ -1483,7 +1468,7 @@ export function ProcessFlowDiagram({
       setMoveMessage(`Deleted ${wafer.label}.`);
       scheduleBackgroundRefresh();
     })();
-  }, [canEdit, onDeleteWafer, scheduleBackgroundRefresh, selectedWafer, waferPreview]);
+  }, [canEdit, onDeleteWafer, scheduleBackgroundRefresh, selectedWafer]);
 
   const restoreFromSnapshot = useCallback((snapshot: GraphSnapshot) => {
     clearTimers();
@@ -2519,10 +2504,6 @@ export function ProcessFlowDiagram({
     waferDragRef.current = null;
     setWaferDrag(null);
 
-    if (finishedDrag.hasMoved) {
-      ignoreWaferPreviewUntilRef.current = Date.now() + 250;
-    }
-
     if (!shouldCommitWaferDrop(event.type, finishedDrag.hasMoved)) {
       return;
     }
@@ -2608,7 +2589,6 @@ export function ProcessFlowDiagram({
     const move = pendingWaferMove;
     const files = pendingWaferMoveFiles;
     const previousNodes = nodesRef.current;
-    const previousWaferPreview = waferPreview;
     const moveAssignmentIds = new Set(move.wafers.map((wafer) => wafer.assignmentId));
     const movingWafers = previousNodes
       .find((node) => node.id === move.sourceStepId)
@@ -2621,12 +2601,6 @@ export function ProcessFlowDiagram({
     const destinationStatus = sourceNode && targetNode && getReviewerRouteDecision(sourceNode.order, targetNode.order) === "redo"
       ? "redo_required" as const
       : "queued" as const;
-    const previewMovingWafer = previousWaferPreview
-      ? movingWafers.find((wafer) =>
-          wafer.waferId === previousWaferPreview.waferId &&
-          wafer.dieLabel === previousWaferPreview.dieLabel
-        ) ?? null
-      : null;
 
     setNodes((currentNodes) => move.kind === "submit"
       ? currentNodes.map((node) => node.id === move.sourceStepId ? {
@@ -2639,15 +2613,6 @@ export function ProcessFlowDiagram({
       : moveWafersBetweenNodes(currentNodes, move.sourceStepId, move.targetStepId, moveAssignmentIds, destinationStatus)
     );
     setSelectedWafers([]);
-    if (
-      previousWaferPreview &&
-      previewMovingWafer
-    ) {
-      setWaferPreview({
-        ...previousWaferPreview,
-        stepLabel: move.kind === "submit" ? move.sourceLabel : move.targetLabel
-      });
-    }
     setPendingWaferMove(null);
     setPendingWaferMoveNote("");
     setPendingWaferMoveFiles([]);
@@ -2795,11 +2760,6 @@ export function ProcessFlowDiagram({
                 destinationStatus
               ));
           setSelectedWafers(failedSelections);
-          setWaferPreview(
-            previousWaferPreview && previewMovingWafer && successfulAssignmentIds.has(previewMovingWafer.assignmentId)
-              ? { ...previousWaferPreview, stepLabel: move.targetLabel }
-              : previousWaferPreview
-          );
           setPendingWaferMove({
             ...move,
             wafers: failedWafers,
@@ -3524,7 +3484,7 @@ export function ProcessFlowDiagram({
         onCancelLabelEdit={cancelNodeLabelEdit}
         onBeginWaferDrag={beginWaferDrag}
         onSelectWafer={selectWafer}
-        onOpenWaferPreview={scheduleWaferPreview}
+        onOpenWaferDetails={openWaferDetails}
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}
         reviewerOptions={reviewerOptions}
         onUpdateReviewer={onUpdateStepReviewer ? updateCheckpointReviewer : undefined}
@@ -3534,7 +3494,6 @@ export function ProcessFlowDiagram({
           setSelectedEdgeId(canEdit ? edgeId : null);
         }}
       />
-      <WaferDiePreview preview={waferPreview} />
     </section>
   );
 }

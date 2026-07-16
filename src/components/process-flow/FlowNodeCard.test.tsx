@@ -54,7 +54,7 @@ test("renders Beginning and Complete selection through the same wafer chip compo
         onCancelLabelEdit={() => undefined}
         onBeginWaferDrag={() => undefined}
         onSelectWafer={() => undefined}
-        onOpenWaferPreview={() => undefined}
+        onOpenWaferDetails={() => undefined}
       />
     </svg>
   );

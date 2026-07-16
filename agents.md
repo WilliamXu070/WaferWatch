@@ -1,5 +1,17 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 direct wafer detail shortcut)
+
+- Removed the floating selected-wafer preview from Process Flow. A single click
+  now only selects the wafer or die, while double-clicking opens its exact
+  `/wafer-status` view directly.
+- Kept the shared preview component available for Calendar and preserved Process
+  Flow selection, drag, delete, and phone action behavior.
+- Verified the focused FlowNode test, `npm run lint`, and `npm run build`.
+  Authenticated `/wireframe/process-flow?processId=9fb7de9e-31b8-4b5a-aea7-8ee64eedb699`
+  at 1280x720 selected GAMMA with no preview panel, then double-clicked through
+  to its exact wafer-status URL with no overflow or console errors.
+
 ## Recent development note (2026-07-15 rounded Process Flow node lanes)
 
 - Clipped the Beginning/Complete SVG lane backgrounds to each node's inner

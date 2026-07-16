@@ -40,7 +40,7 @@ type FlowNodeCardProps = {
   onCancelLabelEdit: (nodeId: string) => void;
   onBeginWaferDrag: (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => void;
   onSelectWafer: (nodeId: string, wafer: WaferPin) => void;
-  onOpenWaferPreview: (node: FlowNode, wafer: WaferPin) => void;
+  onOpenWaferDetails: (wafer: WaferPin) => void;
 };
 
 export function FlowNodeCard({
@@ -64,7 +64,7 @@ export function FlowNodeCard({
   onCancelLabelEdit,
   onBeginWaferDrag,
   onSelectWafer,
-  onOpenWaferPreview
+  onOpenWaferDetails
 }: FlowNodeCardProps) {
   const active = hasActiveWafer(node);
   const phaseClipId = `flow-node-phase-clip-${node.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -73,7 +73,10 @@ export function FlowNodeCard({
   const nodeCardRef = useRef<SVGGElement>(null);
   const lanePointerWafersRef = useRef<Map<number, WaferPin>>(new Map());
 
-  const getLaneWafer = (event: PointerEvent<SVGGElement>, wafers: readonly WaferPin[]) => {
+  const getLaneWafer = (
+    event: PointerEvent<SVGGElement> | MouseEvent<SVGGElement>,
+    wafers: readonly WaferPin[]
+  ) => {
     const svg = event.currentTarget.ownerSVGElement;
     const matrix = event.currentTarget.getScreenCTM();
     if (!svg || !matrix) {
@@ -131,8 +134,8 @@ export function FlowNodeCard({
       }}
       onPointerUp={() => {
         onSelectWafer(node.id, wafer);
-        onOpenWaferPreview(node, wafer);
       }}
+      onDoubleClick={() => onOpenWaferDetails(wafer)}
     />
   );
 
@@ -157,7 +160,6 @@ export function FlowNodeCard({
         lanePointerWafersRef.current.delete(event.pointerId);
         if (!wafer) return;
         onSelectWafer(node.id, wafer);
-        onOpenWaferPreview(node, wafer);
       }}
       onPointerCancel={(event) => {
         lanePointerWafersRef.current.delete(event.pointerId);
@@ -168,6 +170,10 @@ export function FlowNodeCard({
       onDoubleClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
+        const wafer = getLaneWafer(event, wafers);
+        if (wafer) {
+          onOpenWaferDetails(wafer);
+        }
       }}
     >
       <rect
@@ -302,7 +308,8 @@ function WaferChip({
   status,
   title,
   onPointerDown,
-  onPointerUp
+  onPointerUp,
+  onDoubleClick
 }: {
   label: string;
   x: number;
@@ -315,6 +322,7 @@ function WaferChip({
   title?: string;
   onPointerDown?: (event: PointerEvent<SVGGElement>) => void;
   onPointerUp?: (event: PointerEvent<SVGGElement>) => void;
+  onDoubleClick?: (event: MouseEvent<SVGGElement>) => void;
 }) {
   const chipRef = useRef<SVGGElement>(null);
 
@@ -350,6 +358,7 @@ function WaferChip({
       onDoubleClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
+        onDoubleClick?.(event);
       }}
     >
       {title ? <title>{title}</title> : null}
