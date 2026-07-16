@@ -1,5 +1,16 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 denser readable Process Flow steps)
+
+- Widened Process Flow steps from 392 to 480 scene pixels while reducing the
+  base height from 176 to 150 and organized vertical spacing from 80 to 48.
+  Enlarged step titles, phase/reviewer labels, wafer chips, and wafer text, and
+  allowed longer step names before truncation.
+- Verified the focused `FlowNodeCard` test, `npm run lint`, and `npm run build`.
+  Authenticated `/wireframe/process-flow?processId=9fb7de9e-31b8-4b5a-aea7-8ee64eedb699`
+  at 1440x1000 and 390x844 rendered 168x52.5 steps at the 35% overview scale,
+  with no page overflow or console errors.
+
 ## Recent development note (2026-07-15 controlled iPhone pinch zoom)
 
 - Replaced fixed wheel jumps with bounded proportional zoom, reduced toolbar

@@ -259,7 +259,7 @@ export function FlowNodeCard({
         </foreignObject>
       ) : (
         <text x="64" y="34" className="flow-node-title" style={{ touchAction: "none" }}>
-          {truncateLabel(node.label, 20)}
+          {truncateLabel(node.label, 28)}
         </text>
       )}
       {active ? (

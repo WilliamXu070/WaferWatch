@@ -1,5 +1,5 @@
-export const NODE_WIDTH = 392;
-export const NODE_HEIGHT = 176;
+export const NODE_WIDTH = 480;
+export const NODE_HEIGHT = 150;
 export const SCENE_WIDTH = 4400;
 export const SCENE_HEIGHT = 3200;
 export const MIN_SCALE = 0.35;
@@ -15,18 +15,18 @@ export const EDGE_ID_PREFIX = "temp-edge-";
 export const SNAP_THRESHOLD = 16;
 export const LAYOUT_CENTER_X = 520;
 export const LAYOUT_TOP_Y = 72;
-export const LAYOUT_GAP_Y = 80;
+export const LAYOUT_GAP_Y = 48;
 export const LAYOUT_LANE_GAP_X = 88;
 export const LAYOUT_LOOP_GAP_X = 46;
 export const LAYOUT_LOOP_RADIUS_X = 84;
 export const LAYOUT_LOOP_RADIUS_Y = 34;
 export const EDGE_CURVE_OFFSET = 16;
 export const EDGE_NODE_CLEARANCE = 4;
-export const WAFER_CHIP_WIDTH = 46;
-export const WAFER_CHIP_HEIGHT = 26;
+export const WAFER_CHIP_WIDTH = 58;
+export const WAFER_CHIP_HEIGHT = 30;
 export const NODE_CHIP_COLUMNS = 2;
-export const WAFER_CHIP_GAP_X = 70;
-export const WAFER_CHIP_GAP_Y = 38;
+export const WAFER_CHIP_GAP_X = 76;
+export const WAFER_CHIP_GAP_Y = 36;
 export const FIT_VIEW_PADDING = 96;
 
 export function getNodeHeightForWaferCount(waferCount: number) {
