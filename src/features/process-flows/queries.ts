@@ -93,6 +93,16 @@ export type ProcessDashboardData = {
   calendarDays: ProcessDashboardCalendarDay[];
 };
 
+export type ProcessArchiveItem = {
+  assignmentId: string;
+  waferId: string;
+  waferCode: string;
+  dieLabel: string | null;
+  archivedAt: string;
+  archivedByName: string | null;
+  completedAt: string | null;
+};
+
 export type ProcessDashboardWaferData = Omit<ProcessDashboardData, "calendarDays">;
 
 function mapProcessStepsByTemplate(steps: ProcessStep[] | null) {
@@ -405,6 +415,7 @@ export async function getActiveAssignmentForWafer(waferId: string) {
     .select("*, process_templates(*)")
     .eq("wafer_id", waferId)
     .is("deleted_at", null)
+    .is("archived_at", null)
     .in("status", ["planned", "queued", "in_progress", "on_hold"])
     .order("assigned_at", { ascending: false })
     .limit(1)
@@ -415,6 +426,79 @@ export async function getActiveAssignmentForWafer(waferId: string) {
   }
 
   return data;
+}
+
+export async function getProcessArchiveItems(processTemplateId: string): Promise<ProcessArchiveItem[]> {
+  const supabase = await createServerSupabaseClient();
+  const { data: assignments, error: assignmentsError } = await supabase
+    .from("wafer_process_assignments")
+    .select("id, wafer_id, completed_at, archived_at, archived_by")
+    .eq("template_id", processTemplateId)
+    .is("deleted_at", null)
+    .not("archived_at", "is", null)
+    .order("archived_at", { ascending: false });
+
+  if (assignmentsError) {
+    throw assignmentsError;
+  }
+
+  const latestAssignmentByWafer = new Map<string, NonNullable<typeof assignments>[number]>();
+  for (const assignment of assignments ?? []) {
+    if (!latestAssignmentByWafer.has(assignment.wafer_id)) {
+      latestAssignmentByWafer.set(assignment.wafer_id, assignment);
+    }
+  }
+
+  const waferIds = Array.from(latestAssignmentByWafer.keys());
+  if (!waferIds.length) {
+    return [];
+  }
+
+  const { data: wafers, error: wafersError } = await supabase
+    .from("wafers")
+    .select("id, wafer_code, metadata, archived_at")
+    .in("id", waferIds)
+    .is("deleted_at", null)
+    .not("archived_at", "is", null);
+
+  if (wafersError) {
+    throw wafersError;
+  }
+
+  const actorIds = Array.from(new Set(
+    Array.from(latestAssignmentByWafer.values())
+      .map((assignment) => assignment.archived_by)
+      .filter((actorId): actorId is string => Boolean(actorId))
+  ));
+  const { data: actors, error: actorsError } = actorIds.length
+    ? await supabase.from("profiles").select("id, display_name, email").in("id", actorIds)
+    : { data: [], error: null };
+
+  if (actorsError) {
+    throw actorsError;
+  }
+
+  const actorNameById = new Map((actors ?? []).map((actor) => [
+    actor.id,
+    actor.display_name?.trim() || actor.email
+  ]));
+
+  return (wafers ?? []).flatMap((wafer) => {
+    const assignment = latestAssignmentByWafer.get(wafer.id);
+    const archivedAt = assignment?.archived_at ?? wafer.archived_at;
+    if (!assignment || !archivedAt) {
+      return [];
+    }
+    return [{
+      assignmentId: assignment.id,
+      waferId: wafer.id,
+      waferCode: wafer.wafer_code,
+      dieLabel: extractDieLabel(wafer.metadata as Json),
+      archivedAt,
+      archivedByName: assignment.archived_by ? actorNameById.get(assignment.archived_by) ?? null : null,
+      completedAt: assignment.completed_at
+    }];
+  }).sort((a, b) => b.archivedAt.localeCompare(a.archivedAt));
 }
 
 export async function getProcessDashboardData(
@@ -451,7 +535,8 @@ export async function getProcessDashboardData(
     .from("wafer_process_assignments")
     .select("id, wafer_id, status, assigned_at, started_at, completed_at, assigned_by, current_step_id")
     .eq("template_id", processTemplateId)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .is("archived_at", null);
 
   if (assignmentsResult.error) {
     throw assignmentsResult.error;
@@ -466,6 +551,7 @@ export async function getProcessDashboardData(
         .from("wafers")
         .select("id, wafer_code, project_id, metadata")
         .is("deleted_at", null)
+        .is("archived_at", null)
         .in("id", waferIds)
     : Promise.resolve({ data: [], error: null } as const);
 

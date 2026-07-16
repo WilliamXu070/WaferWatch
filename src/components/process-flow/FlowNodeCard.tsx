@@ -23,7 +23,7 @@ type FlowNodeCardProps = {
   node: FlowNode;
   isConnecting: boolean;
   isDragging: boolean;
-  dropTargetKind: "submit" | "move" | null;
+  dropTargetKind: "submit" | "move" | "restore" | null;
   isSelected: boolean;
   selectedWaferAssignmentIds: ReadonlySet<string>;
   isEditing: boolean;
@@ -194,6 +194,7 @@ export function FlowNodeCard({
         isDragging ? "flow-node--dragging" : ""
       } ${dropTargetKind ? "flow-node--drop-target" : ""} ${
         dropTargetKind === "submit" ? "flow-node--drop-target-submit" : ""
+      } ${dropTargetKind === "restore" ? "flow-node--drop-target-restore" : ""
       } ${isSelected ? "flow-node--selected" : ""}`}
       transform={`translate(${node.x} ${node.y})`}
       onPointerDown={(event) => onNodePointerDown(event, node)}

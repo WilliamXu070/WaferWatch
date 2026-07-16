@@ -10,6 +10,8 @@ import {
   draftProcessStepReorderSchema,
   draftProcessStepReviewerSchema,
   orderedDraftProcessStepCreateSchema,
+  processFlowArchiveRestoreSchema,
+  processFlowArchiveSchema,
   processFlowStepCreateSchema,
   processFlowWaferDeleteSchema,
   processFlowWaferCreateSchema,
@@ -645,6 +647,53 @@ export async function deleteProcessFlowWafer(input: unknown) {
       deleted: assignment.wafer_id,
       deletedWaferIds: deletedIds
     });
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function archiveCompletedProcessWafers(input: unknown) {
+  try {
+    await requireAccount();
+    const parsed = processFlowArchiveSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("archive_completed_wafer_assignments", {
+      target_assignment_ids: parsed.items.map((item) => item.assignmentId),
+      mutation_ids: parsed.items.map((item) => item.mutationId)
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+    if ((data ?? []).length !== parsed.items.length) {
+      return fail("One or more completed wafers were not archived.");
+    }
+
+    revalidateProcessFlow(parsed.templateId);
+    return ok({ archived: data ?? [] });
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function restoreArchivedProcessWafer(input: unknown) {
+  try {
+    await requireAccount();
+    const parsed = processFlowArchiveRestoreSchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("restore_archived_wafer_to_step", {
+      target_wafer_id: parsed.waferId,
+      archived_assignment_id: parsed.archivedAssignmentId,
+      target_step_id: parsed.targetStepId,
+      mutation_id: parsed.mutationId
+    });
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateProcessFlow(parsed.templateId);
+    return ok(data);
   } catch (error) {
     return fail(toErrorMessage(error));
   }

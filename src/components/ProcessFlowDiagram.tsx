@@ -34,8 +34,14 @@ import {
 import type { ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
 import { readDeletedWaferIds } from "@/features/process-flows/waferDeletion";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
+import { ProcessArchiveDock } from "./process-flow/ProcessArchiveDock";
 import { ProcessFlowToolbar } from "./process-flow/ProcessFlowToolbar";
 import { WaferCreateDialog, type WaferCreateDraft } from "./process-flow/WaferCreateDialog";
+import {
+  areWafersArchivable,
+  getBeginningLaneRestoreTarget,
+  isClientPointInsideRect
+} from "./process-flow/archiveInteractions";
 import {
   BUTTON_ZOOM_STEP,
   EDGE_ID_PREFIX,
@@ -81,6 +87,7 @@ import {
 } from "./process-flow/checkpointPhase";
 import type {
   CheckpointReviewerOption,
+  ArchiveCompletedProcessWafersAction,
   ConnectionDraft,
   CreateWaferAtProcessStartAction,
   CreateProcessFlowStepAction,
@@ -97,9 +104,11 @@ import type {
   NodeDrag,
   PanePoint,
   PendingWaferMove,
+  ProcessArchiveItem,
   PersistedStepPayload,
   RoleMenu,
   RouteCheckpointAction,
+  RestoreArchivedProcessWaferAction,
   ScenePoint,
   SelectionBox,
   SelectionRect,
@@ -307,6 +316,7 @@ export function ProcessFlowDiagram({
   transitions = [],
   processTemplateId,
   suggestedWaferCode,
+  archiveItems = [],
   onCreateStep,
   onCreateWaferAtProcessStart,
   onUpdateStepPositions,
@@ -315,6 +325,8 @@ export function ProcessFlowDiagram({
   onDeleteSteps,
   onDeleteTransitions,
   onDeleteWafer,
+  onArchiveWafers,
+  onRestoreArchivedWafer,
   onSubmitCheckpoint,
   onRouteCheckpoint,
   onMoveApprovedWafer,
@@ -327,6 +339,7 @@ export function ProcessFlowDiagram({
   transitions?: DiagramTransition[];
   processTemplateId?: string;
   suggestedWaferCode?: string;
+  archiveItems?: ProcessArchiveItem[];
   canEdit?: boolean;
   onCreateStep?: CreateProcessFlowStepAction;
   onCreateWaferAtProcessStart?: CreateWaferAtProcessStartAction;
@@ -337,6 +350,8 @@ export function ProcessFlowDiagram({
   onDeleteSteps?: DeleteProcessStepsAction;
   onDeleteTransitions?: DeleteProcessTransitionsAction;
   onDeleteWafer?: DeleteProcessFlowWaferAction;
+  onArchiveWafers?: ArchiveCompletedProcessWafersAction;
+  onRestoreArchivedWafer?: RestoreArchivedProcessWaferAction;
   onSubmitCheckpoint?: SubmitStepCheckpointAction;
   onRouteCheckpoint?: RouteCheckpointAction;
   onMoveApprovedWafer?: MoveApprovedCheckpointAction;
@@ -355,6 +370,23 @@ export function ProcessFlowDiagram({
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const [waferDrag, setWaferDrag] = useState<WaferDrag | null>(null);
   const [waferDropTarget, setWaferDropTarget] = useState<{ nodeId: string; kind: "submit" | "move" } | null>(null);
+  const [optimisticArchiveItems, setOptimisticArchiveItems] = useState<ProcessArchiveItem[]>([]);
+  const [hiddenArchiveWaferIds, setHiddenArchiveWaferIds] = useState<Set<string>>(new Set());
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [isArchiveDropActive, setIsArchiveDropActive] = useState(false);
+  const [isArchiveDropEligible, setIsArchiveDropEligible] = useState(false);
+  const [archiveMessage, setArchiveMessage] = useState<string | null>(null);
+  const [archiveRestoreDrag, setArchiveRestoreDrag] = useState<{
+    item: ProcessArchiveItem;
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    clientX: number;
+    clientY: number;
+    hasMoved: boolean;
+  } | null>(null);
+  const [archiveRestoreTargetNodeId, setArchiveRestoreTargetNodeId] = useState<string | null>(null);
+  const [archiveDockReceived, setArchiveDockReceived] = useState(false);
   const [pendingWaferMove, setPendingWaferMove] = useState<PendingWaferMove | null>(null);
   const [pendingWaferMoveNote, setPendingWaferMoveNote] = useState("");
   const [pendingWaferMoveFiles, setPendingWaferMoveFiles] = useState<File[]>([]);
@@ -402,6 +434,7 @@ export function ProcessFlowDiagram({
   }>>(new Map());
   const pendingNameUpdateRef = useRef<Map<string, { name: string; expectedName: string }>>(new Map());
   const pendingWaferDeleteIdsRef = useRef<Set<string>>(new Set());
+  const archiveDockRef = useRef<HTMLButtonElement | null>(null);
   const waferDragRef = useRef<WaferDrag | null>(null);
   const waferDropTargetRef = useRef<{ nodeId: string; kind: "submit" | "move" } | null>(null);
   const waferDragRenderQueueRef = useRef<LatestFrameQueue<WaferDrag> | null>(null);
@@ -462,6 +495,16 @@ export function ProcessFlowDiagram({
     () => new Set(activeSelectedWafers.map((wafer) => wafer.assignmentId)),
     [activeSelectedWafers]
   );
+  const selectedArchivePins = useMemo(() => {
+    if (!selectedWafer) return [];
+    const selectedIds = new Set(
+      activeSelectedWafers
+        .filter((selection) => selection.nodeId === selectedWafer.nodeId)
+        .map((selection) => selection.assignmentId)
+    );
+    return nodeById.get(selectedWafer.nodeId)?.wafers.filter((wafer) => selectedIds.has(wafer.assignmentId)) ?? [];
+  }, [activeSelectedWafers, nodeById, selectedWafer]);
+  const canArchiveSelected = areWafersArchivable(selectedArchivePins);
   const selectedLinkedStepEdge = useMemo(
     () => getSelectedLinkedStepEdge(edges, selectedNodeIds),
     [edges, selectedNodeIds]
@@ -507,6 +550,15 @@ export function ProcessFlowDiagram({
       kind: canSubmit ? "submit" as const : "move" as const
     };
   }, [currentUserId, displayNodes, nodeById, onMoveApprovedWafer, onRouteCheckpoint, onSubmitCheckpoint]);
+  const archiveItemsState = useMemo(() => {
+    const byWaferId = new Map<string, ProcessArchiveItem>();
+    for (const item of [...archiveItems, ...optimisticArchiveItems]) {
+      if (!hiddenArchiveWaferIds.has(item.waferId)) {
+        byWaferId.set(item.waferId, item);
+      }
+    }
+    return Array.from(byWaferId.values()).sort((a, b) => b.archivedAt.localeCompare(a.archivedAt));
+  }, [archiveItems, hiddenArchiveWaferIds, optimisticArchiveItems]);
   const nodesRef = useRef<FlowNode[]>([]);
   const edgesRef = useRef<FlowEdge[]>([]);
 
@@ -1123,6 +1175,132 @@ export function ProcessFlowDiagram({
   const getScenePoint = useCallback((event: { clientX: number; clientY: number }) => (
     getScenePointFromClient(event.clientX, event.clientY)
   ), [getScenePointFromClient]);
+
+  const restoreArchiveItem = useCallback((item: ProcessArchiveItem, targetStepId: string) => {
+    if (!canEdit || !processTemplateId || !onRestoreArchivedWafer || isWaferMutationPending) {
+      return;
+    }
+
+    const target = nodeById.get(targetStepId);
+    if (!target) {
+      setArchiveMessage("Choose a current process step.");
+      return;
+    }
+
+    setArchiveMessage(`Restoring ${item.dieLabel ?? item.waferCode} to ${target.label}…`);
+    startWaferMutationTransition(() => {
+      void onRestoreArchivedWafer({
+        templateId: processTemplateId,
+        waferId: item.waferId,
+        archivedAssignmentId: item.assignmentId,
+        targetStepId,
+        mutationId: crypto.randomUUID()
+      }).then((result) => {
+        if (!result.ok) {
+          setArchiveMessage(result.error);
+          return;
+        }
+
+        const restored = result.data && typeof result.data === "object" && !Array.isArray(result.data)
+          ? result.data as Record<string, unknown>
+          : {};
+        const assignmentId = typeof restored.assignment_id === "string" ? restored.assignment_id : null;
+        const stepExecutionId = typeof restored.step_execution_id === "string" ? restored.step_execution_id : null;
+        setOptimisticArchiveItems((current) => current.filter((candidate) => candidate.waferId !== item.waferId));
+        setHiddenArchiveWaferIds((current) => new Set(current).add(item.waferId));
+        if (assignmentId) {
+          setNodes((currentNodes) => currentNodes.map((node) => {
+            if (node.id !== targetStepId) return node;
+            const nextWafers = [
+              ...node.wafers.filter((wafer) => wafer.waferId !== item.waferId),
+              {
+                assignmentId,
+                waferId: item.waferId,
+                currentStepExecutionId: stepExecutionId,
+                waferCode: item.waferCode,
+                dieLabel: item.dieLabel,
+                currentStepStatus: "queued" as const,
+                isArchivable: false
+              }
+            ];
+            return { ...node, wafers: nextWafers, height: getNodeHeightForWafers(nextWafers) };
+          }));
+        }
+        setArchiveMessage(`${item.dieLabel ?? item.waferCode} restored to ${target.label} · Beginning.`);
+        router.refresh();
+      }).catch((error: unknown) => {
+        setArchiveMessage(error instanceof Error ? error.message : "The archive restore failed.");
+      });
+    });
+  }, [canEdit, isWaferMutationPending, nodeById, onRestoreArchivedWafer, processTemplateId, router]);
+
+  const beginArchiveRestoreDrag = useCallback((
+    event: PointerEvent<HTMLButtonElement>,
+    item: ProcessArchiveItem
+  ) => {
+    if (!canEdit || !onRestoreArchivedWafer || isWaferMutationPending || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setArchiveMessage(`Drag ${item.dieLabel ?? item.waferCode} to a Beginning lane.`);
+    setArchiveRestoreDrag({
+      item,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      hasMoved: false
+    });
+  }, [canEdit, isWaferMutationPending, onRestoreArchivedWafer]);
+
+  useEffect(() => {
+    if (!archiveRestoreDrag) return;
+
+    const handlePointerMove = (event: globalThis.PointerEvent) => {
+      if (event.pointerId !== archiveRestoreDrag.pointerId) return;
+      event.preventDefault();
+      const hasMoved = archiveRestoreDrag.hasMoved || Math.hypot(
+        event.clientX - archiveRestoreDrag.startClientX,
+        event.clientY - archiveRestoreDrag.startClientY
+      ) >= 8;
+      const scenePoint = getScenePointFromClient(event.clientX, event.clientY);
+      const target = hasMoved ? getBeginningLaneRestoreTarget(displayNodes, scenePoint) : null;
+      setArchiveRestoreTargetNodeId(target?.id ?? null);
+      setArchiveRestoreDrag((current) => current ? {
+        ...current,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        hasMoved
+      } : null);
+    };
+
+    const finishRestoreDrag = (event: globalThis.PointerEvent) => {
+      if (event.pointerId !== archiveRestoreDrag.pointerId) return;
+      const scenePoint = getScenePointFromClient(event.clientX, event.clientY);
+      const target = event.type === "pointerup" && archiveRestoreDrag.hasMoved
+        ? getBeginningLaneRestoreTarget(displayNodes, scenePoint)
+        : null;
+      const item = archiveRestoreDrag.item;
+      setArchiveRestoreDrag(null);
+      setArchiveRestoreTargetNodeId(null);
+      if (target) {
+        restoreArchiveItem(item, target.id);
+      } else if (event.type === "pointerup") {
+        setArchiveMessage("Drop onto the left, Beginning half of a process step.");
+      }
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", finishRestoreDrag);
+    window.addEventListener("pointercancel", finishRestoreDrag);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishRestoreDrag);
+      window.removeEventListener("pointercancel", finishRestoreDrag);
+    };
+  }, [archiveRestoreDrag, displayNodes, getScenePointFromClient, restoreArchiveItem]);
 
   const getSelectionRect = useCallback((box: SelectionBox | null = selectionBox): SelectionRect | null => {
     if (!box) {
@@ -2354,12 +2532,14 @@ export function ProcessFlowDiagram({
     if (event.pointerType === "touch" && pointerPinchRef.current.active) {
       return;
     }
-    if (!canEdit || (!onSubmitCheckpoint && !onMoveApprovedWafer && !onRouteCheckpoint) || event.button !== 0 || isMovePending) {
+    if (!canEdit || (!onSubmitCheckpoint && !onMoveApprovedWafer && !onRouteCheckpoint && !onArchiveWafers) || event.button !== 0 || isMovePending) {
       return;
     }
 
     event.stopPropagation();
     waferDragRenderQueueRef.current?.clear();
+    setIsArchiveDropActive(false);
+    setIsArchiveDropEligible(false);
     setRoleMenu(null);
     setMoveMessage(null);
 
@@ -2387,6 +2567,8 @@ export function ProcessFlowDiagram({
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
+      clientX: event.clientX,
+      clientY: event.clientY,
       startX: point.x,
       startY: point.y,
       x: point.x,
@@ -2415,6 +2597,8 @@ export function ProcessFlowDiagram({
       });
     const nextDrag = {
       ...currentDrag,
+      clientX: event.clientX,
+      clientY: event.clientY,
       x: point.x,
       y: point.y,
       hasMoved
@@ -2436,6 +2620,17 @@ export function ProcessFlowDiagram({
         waferDropTargetRef.current = nextDropTarget;
         setWaferDropTarget(nextDropTarget);
       }
+
+      const dockRect = archiveDockRef.current?.getBoundingClientRect();
+      const nextArchiveDropActive = Boolean(
+        dockRect && isClientPointInsideRect({ x: event.clientX, y: event.clientY }, dockRect)
+      );
+      const source = nodeById.get(nextDrag.sourceStepId);
+      const draggedPins = source?.wafers.filter((wafer) => (
+        nextDrag.wafers.some((item) => item.assignmentId === wafer.assignmentId)
+      )) ?? [];
+      setIsArchiveDropActive(nextArchiveDropActive);
+      setIsArchiveDropEligible(nextArchiveDropActive && areWafersArchivable(draggedPins));
 
       const dragPreview = svgRef.current?.querySelector<SVGGElement>(".flow-wafer-drag-preview");
       if (!dragPreview || targetChanged) {
@@ -2470,7 +2665,77 @@ export function ProcessFlowDiagram({
     waferDragRenderQueueRef.current?.clear();
     setWaferDrag(null);
     setWaferDropTarget(null);
+    setIsArchiveDropActive(false);
+    setIsArchiveDropEligible(false);
     clearDragTouchAction();
+  };
+
+  const archiveDraggedWafers = (drag: WaferDrag) => {
+    if (!processTemplateId || !onArchiveWafers || isWaferMutationPending) {
+      setArchiveMessage("Archiving is not available for this process.");
+      return;
+    }
+
+    const source = nodeById.get(drag.sourceStepId);
+    const pins = source?.wafers.filter((wafer) => (
+      drag.wafers.some((item) => item.assignmentId === wafer.assignmentId)
+    )) ?? [];
+    if (!areWafersArchivable(pins)) {
+      setArchiveMessage("Only wafers and dies with a completed process can be archived.");
+      return;
+    }
+
+    const assignmentIds = new Set(pins.map((wafer) => wafer.assignmentId));
+    setArchiveMessage(`Archiving ${drag.waferLabel}…`);
+    startWaferMutationTransition(() => {
+      void onArchiveWafers({
+        templateId: processTemplateId,
+        items: pins.map((wafer) => ({ assignmentId: wafer.assignmentId, mutationId: crypto.randomUUID() }))
+      }).then((result) => {
+        if (!result.ok) {
+          setArchiveMessage(result.error);
+          return;
+        }
+
+        setNodes((currentNodes) => currentNodes.map((node) => {
+          const nextWafers = node.wafers.filter((wafer) => !assignmentIds.has(wafer.assignmentId));
+          return nextWafers.length === node.wafers.length
+            ? node
+            : { ...node, wafers: nextWafers, height: getNodeHeightForWafers(nextWafers) };
+        }));
+        setSelectedWafers((current) => current.filter((selection) => !assignmentIds.has(selection.assignmentId)));
+        const archivedAt = new Date().toISOString();
+        setOptimisticArchiveItems((current) => {
+          const byWaferId = new Map(current.map((item) => [item.waferId, item]));
+          for (const pin of pins) {
+            if (!pin.waferId) continue;
+            byWaferId.set(pin.waferId, {
+              assignmentId: pin.assignmentId,
+              waferId: pin.waferId,
+              waferCode: pin.waferCode,
+              dieLabel: pin.dieLabel,
+              archivedAt,
+              archivedByName: null,
+              completedAt: archivedAt
+            });
+          }
+          return Array.from(byWaferId.values()).sort((a, b) => b.archivedAt.localeCompare(a.archivedAt));
+        });
+        setHiddenArchiveWaferIds((current) => {
+          const next = new Set(current);
+          for (const pin of pins) {
+            if (pin.waferId) next.delete(pin.waferId);
+          }
+          return next;
+        });
+        setArchiveDockReceived(true);
+        window.setTimeout(() => setArchiveDockReceived(false), 360);
+        setArchiveMessage(`${drag.waferLabel} archived. Completed history was preserved.`);
+        router.refresh();
+      }).catch((error: unknown) => {
+        setArchiveMessage(error instanceof Error ? error.message : "The archive operation failed.");
+      });
+    });
   };
 
   const openWaferMoveDialog = (
@@ -2586,6 +2851,15 @@ export function ProcessFlowDiagram({
     clearWaferDragState();
 
     if (!shouldCommitWaferDrop(event.type, finishedDrag.hasMoved)) {
+      return;
+    }
+
+    const dockRect = archiveDockRef.current?.getBoundingClientRect();
+    if (dockRect && isClientPointInsideRect(
+      { x: finishedDrag.clientX, y: finishedDrag.clientY },
+      dockRect
+    )) {
+      archiveDraggedWafers(finishedDrag);
       return;
     }
 
@@ -3435,6 +3709,35 @@ export function ProcessFlowDiagram({
               Delete {selectedWafer.isDie ? "die" : "wafer"}
             </button>
           ) : null}
+          {canEdit && onArchiveWafers && canArchiveSelected && selectedWafer ? (
+            <button
+              className="button button-secondary"
+              disabled={isWaferMutationPending}
+              onClick={() => archiveDraggedWafers({
+                assignmentId: selectedWafer.assignmentId,
+                sourceStepId: selectedWafer.nodeId,
+                waferLabel: getWaferSelectionLabel(activeSelectedWafers),
+                wafers: selectedArchivePins.map((wafer) => ({
+                  assignmentId: wafer.assignmentId,
+                  waferLabel: getWaferChipLabel(wafer),
+                  isDie: Boolean(wafer.dieLabel)
+                })),
+                pointerId: -1,
+                startClientX: 0,
+                startClientY: 0,
+                clientX: 0,
+                clientY: 0,
+                startX: 0,
+                startY: 0,
+                x: 0,
+                y: 0,
+                hasMoved: true
+              })}
+              type="button"
+            >
+              Archive {selectedArchivePins.length > 1 ? "selected" : selectedWafer.isDie ? "die" : "wafer"}
+            </button>
+          ) : null}
           {activeSelectedWafers.every((selection) => {
             const wafer = nodeById.get(selection.nodeId)?.wafers.find((item) => item.assignmentId === selection.assignmentId);
             return wafer && canSubmitCheckpoint(wafer.currentStepStatus);
@@ -3503,6 +3806,7 @@ export function ProcessFlowDiagram({
         connectionNodeId={connectionDraft?.from ?? null}
         waferDrag={waferDrag}
         waferDropTarget={waferDropTarget}
+        archiveRestoreTargetNodeId={archiveRestoreTargetNodeId}
         edges={edges}
         selectedNodeIds={selectedNodeIds}
         selectedEdgeId={selectedEdgeId}
@@ -3562,6 +3866,31 @@ export function ProcessFlowDiagram({
           setSelectedWafers([]);
           setSelectedEdgeId(canEdit ? edgeId : null);
         }}
+      />
+      {archiveRestoreDrag?.hasMoved ? (
+        <div
+          aria-hidden
+          className="flow-archive-restore-preview"
+          style={{ left: archiveRestoreDrag.clientX + 12, top: archiveRestoreDrag.clientY + 12 }}
+        >
+          {archiveRestoreDrag.item.dieLabel ?? archiveRestoreDrag.item.waferCode}
+        </div>
+      ) : null}
+      <ProcessArchiveDock
+        archiveItems={archiveItemsState}
+        canEdit={canEdit}
+        dockRef={archiveDockRef}
+        isBusy={isWaferMutationPending}
+        isDropActive={isArchiveDropActive}
+        isDropEligible={isArchiveDropEligible}
+        isOpen={isArchiveOpen}
+        isReceived={archiveDockReceived}
+        statusMessage={archiveMessage}
+        steps={displayNodes}
+        onBeginRestoreDrag={beginArchiveRestoreDrag}
+        onClose={() => setIsArchiveOpen(false)}
+        onRestoreToStep={restoreArchiveItem}
+        onToggle={() => setIsArchiveOpen((current) => !current)}
       />
     </section>
   );

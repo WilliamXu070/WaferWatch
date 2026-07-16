@@ -47,6 +47,30 @@ export const processFlowWaferDeleteSchema = z.object({
   assignmentId: uuidSchema
 });
 
+export const processFlowArchiveSchema = z.object({
+  templateId: uuidSchema,
+  items: z.array(z.object({
+    assignmentId: uuidSchema,
+    mutationId: uuidSchema
+  })).min(1).max(200)
+}).superRefine((value, context) => {
+  if (new Set(value.items.map((item) => item.assignmentId)).size !== value.items.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Each process assignment can only be archived once.",
+      path: ["items"]
+    });
+  }
+});
+
+export const processFlowArchiveRestoreSchema = z.object({
+  templateId: uuidSchema,
+  waferId: uuidSchema,
+  archivedAssignmentId: uuidSchema,
+  targetStepId: uuidSchema,
+  mutationId: uuidSchema
+});
+
 export const processStepCreateSchema = z.object({
   templateId: uuidSchema,
   stepOrder: z.number().int().positive(),

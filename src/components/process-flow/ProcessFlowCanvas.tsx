@@ -29,6 +29,7 @@ type ProcessFlowCanvasProps = {
   connectionDraft: ConnectionDraft | null;
   waferDrag: WaferDrag | null;
   waferDropTarget: { nodeId: string; kind: "submit" | "move" } | null;
+  archiveRestoreTargetNodeId: string | null;
   edges: FlowEdge[];
   selectedNodeIds: Set<string>;
   selectedEdgeId: string | null;
@@ -87,6 +88,7 @@ export function ProcessFlowCanvas({
   connectionDraft,
   waferDrag,
   waferDropTarget,
+  archiveRestoreTargetNodeId,
   edges,
   selectedNodeIds,
   selectedEdgeId,
@@ -260,7 +262,9 @@ export function ProcessFlowCanvas({
             node={node}
             isConnecting={connectionNodeId === node.id}
             isDragging={nodeDrag?.nodeStartPositions.some((position) => position.nodeId === node.id) ?? false}
-            dropTargetKind={waferDropTarget?.nodeId === node.id ? waferDropTarget.kind : null}
+            dropTargetKind={archiveRestoreTargetNodeId === node.id
+              ? "restore"
+              : waferDropTarget?.nodeId === node.id ? waferDropTarget.kind : null}
             isSelected={selectedNodeIds.has(node.id)}
             selectedWaferAssignmentIds={selectedWaferAssignmentIds}
             isEditing={editingNodeId === node.id}

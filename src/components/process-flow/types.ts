@@ -17,6 +17,17 @@ export type WaferPin = {
   requiredReviewerName?: string | null;
   canReview?: boolean;
   canWithdraw?: boolean;
+  isArchivable?: boolean;
+};
+
+export type ProcessArchiveItem = {
+  assignmentId: string;
+  waferId: string;
+  waferCode: string;
+  dieLabel: string | null;
+  archivedAt: string;
+  archivedByName: string | null;
+  completedAt: string | null;
 };
 
 export type DiagramStep = {
@@ -144,6 +155,8 @@ export type WaferDrag = {
   pointerId: number;
   startClientX: number;
   startClientY: number;
+  clientX: number;
+  clientY: number;
   startX: number;
   startY: number;
   x: number;
@@ -252,6 +265,22 @@ export type CreateWaferAtProcessStartAction = (input: {
 
 export type DeleteProcessFlowWaferAction = (input: {
   assignmentId: string;
+}) => Promise<ActionResult<unknown>>;
+
+export type ArchiveCompletedProcessWafersAction = (input: {
+  templateId: string;
+  items: Array<{
+    assignmentId: string;
+    mutationId: string;
+  }>;
+}) => Promise<ActionResult<unknown>>;
+
+export type RestoreArchivedProcessWaferAction = (input: {
+  templateId: string;
+  waferId: string;
+  archivedAssignmentId: string;
+  targetStepId: string;
+  mutationId: string;
 }) => Promise<ActionResult<unknown>>;
 
 export type CreateProcessFlowStepAction = (input: {

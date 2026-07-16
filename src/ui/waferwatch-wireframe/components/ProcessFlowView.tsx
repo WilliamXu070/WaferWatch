@@ -58,6 +58,7 @@ type ProcessFlowViewProps = {
   processTemplateId?: string;
   suggestedWaferCode?: string;
   reviewerOptions?: CheckpointReviewerOption[];
+  archiveItems?: Parameters<typeof ProcessFlowDiagram>[0]["archiveItems"];
   currentUserId?: string;
   onCreateStep?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateStep"];
   onCreateWaferAtProcessStart?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateWaferAtProcessStart"];
@@ -68,6 +69,8 @@ type ProcessFlowViewProps = {
   onDeleteSteps?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteSteps"];
   onDeleteTransitions?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteTransitions"];
   onDeleteWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteWafer"];
+  onArchiveWafers?: Parameters<typeof ProcessFlowDiagram>[0]["onArchiveWafers"];
+  onRestoreArchivedWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onRestoreArchivedWafer"];
   onSubmitCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onSubmitCheckpoint"];
   onRouteCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onRouteCheckpoint"];
   onMoveApprovedWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onMoveApprovedWafer"];
@@ -86,6 +89,7 @@ export function ProcessFlowView({
   processTemplateId,
   suggestedWaferCode,
   reviewerOptions,
+  archiveItems,
   currentUserId,
   onCreateStep,
   onCreateWaferAtProcessStart,
@@ -96,6 +100,8 @@ export function ProcessFlowView({
   onDeleteSteps,
   onDeleteTransitions,
   onDeleteWafer,
+  onArchiveWafers,
+  onRestoreArchivedWafer,
   onSubmitCheckpoint,
   onRouteCheckpoint,
   onMoveApprovedWafer,
@@ -134,6 +140,7 @@ export function ProcessFlowView({
             processTemplateId={processTemplateId}
             suggestedWaferCode={suggestedWaferCode}
             reviewerOptions={reviewerOptions}
+            archiveItems={archiveItems}
             currentUserId={currentUserId}
             canEdit={canEdit}
             onCreateStep={onCreateStep}
@@ -145,6 +152,8 @@ export function ProcessFlowView({
             onDeleteSteps={onDeleteSteps}
             onDeleteTransitions={onDeleteTransitions}
             onDeleteWafer={onDeleteWafer}
+            onArchiveWafers={onArchiveWafers}
+            onRestoreArchivedWafer={onRestoreArchivedWafer}
             onSubmitCheckpoint={onSubmitCheckpoint}
             onRouteCheckpoint={onRouteCheckpoint}
             onMoveApprovedWafer={onMoveApprovedWafer}

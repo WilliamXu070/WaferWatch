@@ -4,18 +4,21 @@ import {
   submitStepCheckpoint,
 } from "@/features/runs/actions";
 import {
+  archiveCompletedProcessWafers,
   createWaferAtProcessStart,
   createProcessFlowStep,
   createProcessStepTransition,
   deleteProcessFlowWafer,
   deleteProcessSteps,
   deleteProcessStepTransitions,
+  restoreArchivedProcessWafer,
   updateProcessStepName,
   updateProcessStepNodeType,
   updateProcessStepPositions,
   updateProcessStepCheckpointReviewer
 } from "@/features/process-flows/actions";
 import {
+  getProcessArchiveItems,
   getProcessDashboardData,
   type ProcessDashboardData
 } from "@/features/process-flows/queries";
@@ -56,6 +59,7 @@ type DiagramStep = {
     requiredReviewerName: string | null;
     canReview: boolean;
     canWithdraw: boolean;
+    isArchivable: boolean;
   }[];
   required_reviewer_id: string | null;
   required_reviewer_name: string | null;
@@ -75,6 +79,7 @@ function firstSearchValue(value: string | string[] | undefined) {
 }
 
 function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null): DiagramStep[] {
+  const flowStates = data.workspaceWaferStates.filter((state) => state.assignmentStatus !== "scrapped");
   return [...data.process.process_steps]
     .sort((a, b) => a.step_order - b.step_order)
     .map((step) => ({
@@ -86,8 +91,8 @@ function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null)
       canvas_x: step.canvas_x,
       canvas_y: step.canvas_y,
       required_reviewer_id: step.required_reviewer_id,
-      required_reviewer_name: data.activeWaferStates.find((state) => state.currentStepId === step.id)?.requiredReviewerName ?? null,
-      wafers: data.activeWaferStates
+      required_reviewer_name: flowStates.find((state) => state.currentStepId === step.id)?.requiredReviewerName ?? null,
+      wafers: flowStates
         .filter((state) => state.currentStepId === step.id)
         .map((state) => ({
           assignmentId: state.assignmentId,
@@ -104,7 +109,8 @@ function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null)
           requiredReviewerId: state.requiredReviewerId,
           requiredReviewerName: state.requiredReviewerName,
           canReview: Boolean(currentUserId && currentUserId === state.requiredReviewerId),
-          canWithdraw: Boolean(currentUserId && currentUserId === state.latestStepAttemptSubmittedById)
+          canWithdraw: Boolean(currentUserId && currentUserId === state.latestStepAttemptSubmittedById),
+          isArchivable: state.assignmentStatus === "completed"
         }))
     }));
 }
@@ -220,6 +226,9 @@ export default async function ProcessFlowWireframePage({
   const canEdit = await getCanEditProcessFlow(dashboardData);
   const suggestedWaferCode = await getSuggestedWaferCode(dashboardData);
   const reviewerOptions = await getReviewerOptions(dashboardData);
+  const archiveItems = dashboardData
+    ? await getProcessArchiveItems(dashboardData.process.id).catch(() => [])
+    : [];
   const flowColumns = dashboardData ? toFlowColumns(dashboardData, account?.userId ?? null) : [];
   const flowTransitions = toFlowTransitions(dashboardData);
   const processLabel = dashboardData
@@ -247,6 +256,7 @@ export default async function ProcessFlowWireframePage({
       processTemplateId={dashboardData?.process.id}
       suggestedWaferCode={suggestedWaferCode}
       reviewerOptions={reviewerOptions}
+      archiveItems={archiveItems}
       currentUserId={account?.userId}
       canEdit={canEdit}
       onCreateStep={canEdit ? createProcessFlowStep : undefined}
@@ -258,6 +268,8 @@ export default async function ProcessFlowWireframePage({
       onDeleteSteps={canEdit ? deleteProcessSteps : undefined}
       onDeleteTransitions={canEdit ? deleteProcessStepTransitions : undefined}
       onDeleteWafer={canEdit ? deleteProcessFlowWafer : undefined}
+      onArchiveWafers={canEdit ? archiveCompletedProcessWafers : undefined}
+      onRestoreArchivedWafer={canEdit ? restoreArchivedProcessWafer : undefined}
       onSubmitCheckpoint={canEdit ? submitStepCheckpoint : undefined}
       onRouteCheckpoint={canEdit ? routeCheckpointSubmission : undefined}
       onMoveApprovedWafer={canEdit ? moveApprovedCheckpointWafer : undefined}

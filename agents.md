@@ -14,6 +14,18 @@
   absent after reload, the database recorded one shared deletion timestamp, and
   the 1280x720 route had no overflow or console errors. Tracking: GitHub issue #27.
 
+## Recent development note (2026-07-15 completed-work archive UI)
+
+- Added the Process Flow archive dock and drawer. Completed wafers and dies can
+  be dragged into the dock; archived items retain their completed assignment
+  history and can be dragged back onto any step's Beginning lane as a new run.
+  Phone layouts expose the same flow through explicit archive/restore controls.
+- Verified `npm run archive:verify`, 11 focused archive/drag tests,
+  `npm run lint`, and `npm run build`. Authenticated
+  `/wireframe/process-flow?processId=9fb7de9e-31b8-4b5a-aea7-8ee64eedb699`
+  at 1440x1000 and 390x844 opened the empty archive drawer with no horizontal
+  overflow or console errors. No live wafer was mutated during browser testing.
+
 ## Recent development note (2026-07-15 completed-wafer archive schema release)
 
 - Fixed the Process Flow runtime `42703` failure caused by archive-aware queries

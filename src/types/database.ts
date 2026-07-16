@@ -165,6 +165,8 @@ export type Wafer = {
   status: FabricationStatus;
   notes: string | null;
   metadata: Json;
+  archived_at: string | null;
+  archived_by: string | null;
   deleted_at: string | null;
   deleted_by: string | null;
   created_at: string;
@@ -181,6 +183,8 @@ export type WaferProcessAssignment = {
   started_at: string | null;
   completed_at: string | null;
   current_step_id: string | null;
+  archived_at: string | null;
+  archived_by: string | null;
   deleted_at: string | null;
   deleted_by: string | null;
   revision: number;
@@ -709,6 +713,26 @@ export interface Database {
           target_wafer_ids: string[];
         };
         Returns: { wafer_id: string }[];
+      };
+      archive_completed_wafer_assignments: {
+        Args: {
+          target_assignment_ids: string[];
+          mutation_ids: string[];
+        };
+        Returns: Array<{
+          assignment_id: string;
+          wafer_id: string;
+          archived_at: string;
+        }>;
+      };
+      restore_archived_wafer_to_step: {
+        Args: {
+          target_wafer_id: string;
+          archived_assignment_id: string;
+          target_step_id: string;
+          mutation_id: string;
+        };
+        Returns: Json;
       };
     };
     Enums: {
