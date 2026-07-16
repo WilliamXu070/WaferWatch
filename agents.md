@@ -1,5 +1,21 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 faster Process Flow wafer movement)
+
+- Fixed slow wafer/die dragging by stopping the active pointer event at its
+  owning handler, coalescing pre-render updates to one animation frame, and
+  moving the mounted SVG preview directly between destination changes instead
+  of rerendering the entire graph for every pointer position.
+- Centralized drag cleanup so pointer cancellation clears the active ref,
+  queued frame, preview, drop target, and temporary touch policy. Removed the
+  redundant success-only client refresh; server revalidation and scoped
+  Broadcast remain authoritative.
+- The same authenticated 24-step drag reduced main-thread task time from
+  202.6ms to 58.4ms and script time from 171.4ms to 28.7ms. The preview tracked
+  the pointer and cleared on release with no overflow or console errors.
+- Verified 14 focused movement tests, `npm run checkpoint:verify`,
+  `npm run lint`, and `npm run build`. No live wafer mutation was submitted.
+
 ## Recent development note (2026-07-15 concise movement note dialog)
 
 - Simplified every required Process Flow movement-note dialog into a compact

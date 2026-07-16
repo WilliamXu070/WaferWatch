@@ -288,6 +288,7 @@ export function FlowNodeCard({
 export function WaferDragPreview({ waferDrag }: { waferDrag: WaferDrag }) {
   return (
     <WaferChip
+      className="flow-wafer-drag-preview"
       label={waferDrag.waferLabel}
       x={waferDrag.x + 12}
       y={waferDrag.y + 12}

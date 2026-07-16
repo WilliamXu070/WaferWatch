@@ -56,6 +56,7 @@ import {
 } from "./process-flow/constants";
 import { getGraphBounds, getSnappedNodePosition, nodeContainsPoint } from "./process-flow/geometry";
 import { findEdgeSplitCandidate, splitEdgeWithNode } from "./process-flow/graphEdit";
+import { createLatestFrameQueue, type LatestFrameQueue } from "./process-flow/latestFrameQueue";
 import {
   hasCrossedWaferDragThreshold,
   shouldCommitWaferDrop
@@ -352,6 +353,7 @@ export function ProcessFlowDiagram({
   const [nodeDrag, setNodeDrag] = useState<NodeDrag | null>(null);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const [waferDrag, setWaferDrag] = useState<WaferDrag | null>(null);
+  const [waferDropTarget, setWaferDropTarget] = useState<{ nodeId: string; kind: "submit" | "move" } | null>(null);
   const [pendingWaferMove, setPendingWaferMove] = useState<PendingWaferMove | null>(null);
   const [pendingWaferMoveNote, setPendingWaferMoveNote] = useState("");
   const [pendingWaferMoveFiles, setPendingWaferMoveFiles] = useState<File[]>([]);
@@ -400,6 +402,15 @@ export function ProcessFlowDiagram({
   const pendingNameUpdateRef = useRef<Map<string, { name: string; expectedName: string }>>(new Map());
   const pendingWaferDeleteIdsRef = useRef<Set<string>>(new Set());
   const waferDragRef = useRef<WaferDrag | null>(null);
+  const waferDropTargetRef = useRef<{ nodeId: string; kind: "submit" | "move" } | null>(null);
+  const waferDragRenderQueueRef = useRef<LatestFrameQueue<WaferDrag> | null>(null);
+  if (waferDragRenderQueueRef.current === null) {
+    waferDragRenderQueueRef.current = createLatestFrameQueue({
+      cancel: (frameId) => window.cancelAnimationFrame(frameId),
+      flush: (drag) => setWaferDrag(drag),
+      schedule: (callback) => window.requestAnimationFrame(callback)
+    });
+  }
   const undoRecoveredNodeIdsRef = useRef<Set<string>>(new Set());
   const undoRecoveredEdgeIdsRef = useRef<Set<string>>(new Set());
   const undoStackRef = useRef<GraphSnapshot[]>([]);
@@ -460,24 +471,24 @@ export function ProcessFlowDiagram({
       : [],
     [displayNodes, edges, nodeById, selectedWafer]
   );
-  const waferDropTarget = useMemo(() => {
-    if (!waferDrag?.hasMoved) {
+  const resolveWaferDropTarget = useCallback((drag: WaferDrag) => {
+    if (!drag.hasMoved) {
       return null;
     }
 
-    const source = nodeById.get(waferDrag.sourceStepId);
+    const source = nodeById.get(drag.sourceStepId);
     const target = displayNodes.find((node) =>
-      nodeContainsPoint(node, { x: waferDrag.x, y: waferDrag.y })
+      nodeContainsPoint(node, { x: drag.x, y: drag.y })
     );
 
     if (!source || !target) {
       return null;
     }
 
-    const draggedWafers = source.wafers.filter((wafer) => waferDrag.wafers.some((item) => item.assignmentId === wafer.assignmentId));
-    const canSubmit = target.id === source.id && waferDrag.x >= source.x + source.width / 2 &&
+    const draggedWafers = source.wafers.filter((wafer) => drag.wafers.some((item) => item.assignmentId === wafer.assignmentId));
+    const canSubmit = target.id === source.id && drag.x >= source.x + source.width / 2 &&
       Boolean(onSubmitCheckpoint) && draggedWafers.every((wafer) => canSubmitCheckpoint(wafer.currentStepStatus));
-    const canMove = (target.id !== source.id || waferDrag.x < source.x + source.width / 2) &&
+    const canMove = (target.id !== source.id || drag.x < source.x + source.width / 2) &&
       draggedWafers.every((wafer) =>
         (target.id !== source.id && Boolean(onMoveApprovedWafer) && canMoveToAnotherStep(wafer.currentStepStatus)) ||
         (Boolean(onRouteCheckpoint) && canReviewerRouteCheckpoint({
@@ -494,7 +505,7 @@ export function ProcessFlowDiagram({
       nodeId: target.id,
       kind: canSubmit ? "submit" as const : "move" as const
     };
-  }, [currentUserId, displayNodes, nodeById, onMoveApprovedWafer, onRouteCheckpoint, onSubmitCheckpoint, waferDrag]);
+  }, [currentUserId, displayNodes, nodeById, onMoveApprovedWafer, onRouteCheckpoint, onSubmitCheckpoint]);
   const nodesRef = useRef<FlowNode[]>([]);
   const edgesRef = useRef<FlowEdge[]>([]);
 
@@ -1067,6 +1078,7 @@ export function ProcessFlowDiagram({
   useEffect(() => {
     return () => {
       clearTimers();
+      waferDragRenderQueueRef.current?.clear();
     };
   }, [clearTimers]);
 
@@ -2322,6 +2334,7 @@ export function ProcessFlowDiagram({
     }
 
     event.stopPropagation();
+    waferDragRenderQueueRef.current?.clear();
     setRoleMenu(null);
     setMoveMessage(null);
 
@@ -2365,6 +2378,7 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    event.stopPropagation();
     const point = getScenePoint(event);
     const hasMoved =
       currentDrag.hasMoved ||
@@ -2388,7 +2402,22 @@ export function ProcessFlowDiagram({
         }
         setDragTouchAction();
       }
-      setWaferDrag(nextDrag);
+      const nextDropTarget = resolveWaferDropTarget(nextDrag);
+      const currentDropTarget = waferDropTargetRef.current;
+      const targetChanged =
+        currentDropTarget?.nodeId !== nextDropTarget?.nodeId ||
+        currentDropTarget?.kind !== nextDropTarget?.kind;
+      if (targetChanged) {
+        waferDropTargetRef.current = nextDropTarget;
+        setWaferDropTarget(nextDropTarget);
+      }
+
+      const dragPreview = svgRef.current?.querySelector<SVGGElement>(".flow-wafer-drag-preview");
+      if (!dragPreview || targetChanged) {
+        waferDragRenderQueueRef.current?.push(nextDrag);
+      } else {
+        dragPreview.setAttribute("transform", `translate(${nextDrag.x + 12} ${nextDrag.y + 12})`);
+      }
     }
   };
 
@@ -2408,6 +2437,15 @@ export function ProcessFlowDiagram({
     if (svgRef.current) {
       svgRef.current.style.touchAction = "none";
     }
+  };
+
+  const clearWaferDragState = () => {
+    waferDragRef.current = null;
+    waferDropTargetRef.current = null;
+    waferDragRenderQueueRef.current?.clear();
+    setWaferDrag(null);
+    setWaferDropTarget(null);
+    clearDragTouchAction();
   };
 
   const openWaferMoveDialog = (
@@ -2517,11 +2555,10 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    event.stopPropagation();
     safelyReleasePointerCapture(event.currentTarget, event.pointerId);
-    clearDragTouchAction();
     const finishedDrag = currentDrag;
-    waferDragRef.current = null;
-    setWaferDrag(null);
+    clearWaferDragState();
 
     if (!shouldCommitWaferDrop(event.type, finishedDrag.hasMoved)) {
       return;
@@ -2810,7 +2847,6 @@ export function ProcessFlowDiagram({
             ? `${successMessage} ${attachmentFailureCount} attachment set${attachmentFailureCount === 1 ? "" : "s"} could not be saved.`
             : successMessage
         );
-        scheduleBackgroundRefresh();
       })();
     });
   };
@@ -3464,11 +3500,10 @@ export function ProcessFlowDiagram({
         onCanvasPointerMove={updateConnection}
         onCanvasPointerUp={finishConnection}
         onCanvasPointerCancel={() => {
-          clearDragTouchAction();
+          clearWaferDragState();
           setConnectionDraft(null);
           setPendingConnectionStart(null);
           setSelectionBox(null);
-          setWaferDrag(null);
         }}
         onCanvasPointerDown={beginCanvasSelection}
         onCanvasDoubleClick={createNode}
