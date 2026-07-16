@@ -4,6 +4,7 @@ import {
   getBoundedPinchAccumulatorScale,
   getPinchTargetScale,
   getStableZoomAnchor,
+  getTouchCentroid,
   getTouchDistance,
   getWheelZoomTargetScale,
   getZoomScrollPosition,
@@ -76,6 +77,14 @@ test("derives pinch scale from two touch pointers and rebases at a zoom boundary
 
   assert.equal(cappedScale, 2.6);
   assert.ok(reversedScale < cappedScale);
+});
+
+test("anchors pinch zoom to the actual two-finger centroid", () => {
+  assert.deepEqual(getTouchCentroid([
+    { clientX: 80, clientY: 180 },
+    { clientX: 220, clientY: 320 }
+  ]), { clientX: 150, clientY: 250 });
+  assert.equal(getTouchCentroid([]), null);
 });
 
 test("distinguishes a deliberate touch tap from a moving gesture", () => {

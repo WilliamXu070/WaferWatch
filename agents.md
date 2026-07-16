@@ -1,5 +1,19 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 input-specific Process Flow zoom)
+
+- Restored desktop trackpad behavior so ordinary two-finger gestures pan the
+  canvas, while trackpad pinch/modified wheel gestures zoom at the pointer.
+  iPhone/iPad pinch now anchors to the live two-touch centroid instead of the
+  canvas center; Safari gesture events and zoom buttons use the same stable
+  focal-point path.
+- Restored proportional wheel sensitivity and added a centroid regression test.
+  Verified 14 focused gesture/interaction tests, `npm run lint`, and
+  `npm run build`. Authenticated Process Flow at 1280x720 preserved desktop pan
+  without changing scale and zoomed with under one scene-pixel drift; a 390x844
+  Safari-style pinch returned to its exact starting focal point, with no page
+  overflow or console errors. Tracking: GitHub issue #28.
+
 ## Recent development note (2026-07-15 idempotent wafer-family deletion)
 
 - Fixed Process Flow deletion when a final die also removes its hidden parent:

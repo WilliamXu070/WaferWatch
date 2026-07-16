@@ -6,6 +6,7 @@ import {
   getBoundedPinchAccumulatorScale,
   getPinchTargetScale,
   getStableZoomAnchor,
+  getTouchCentroid,
   getTouchDistance,
   getWheelZoomTargetScale,
   getZoomScrollPosition,
@@ -414,6 +415,8 @@ export function ProcessFlowDiagram({
   const activePinchSourceRef = useRef<"pointer" | "webkit" | null>(null);
   const touchPointersRef = useRef<Map<number, TouchPoint>>(new Map());
   const pinchAnchorRef = useRef<{ paneX: number; paneY: number } | null>(null);
+  const pinchSceneAnchorRef = useRef<ZoomAnchor | null>(null);
+  const lastZoomPanePointRef = useRef<PanePoint | null>(null);
   const pendingPinchScaleRef = useRef<number | null>(null);
   const pinchAnimationFrameRef = useRef<number | null>(null);
   const pendingTouchNodeRef = useRef<{
@@ -1324,7 +1327,8 @@ export function ProcessFlowDiagram({
 
   const applyScaleAtAnchor = useCallback((
     nextScale: number,
-    anchor: PanePoint | null = getPanePoint()
+    anchor: PanePoint | null = getPanePoint(),
+    stableSceneAnchor: ZoomAnchor | null = null
   ) => {
     const frame = frameRef.current;
     const currentScale = scaleRef.current;
@@ -1336,20 +1340,28 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    pendingZoomAnchorRef.current = getStableZoomAnchor(
-      currentScale,
-      frame.scrollLeft,
-      frame.scrollTop,
-      anchor,
-      pendingZoomAnchorRef.current
-    );
+    pendingZoomAnchorRef.current = stableSceneAnchor
+      ? { ...stableSceneAnchor, paneX: anchor.paneX, paneY: anchor.paneY }
+      : getStableZoomAnchor(
+          currentScale,
+          frame.scrollLeft,
+          frame.scrollTop,
+          anchor,
+          pendingZoomAnchorRef.current
+        );
 
     scaleRef.current = boundedScale;
     setScale(boundedScale);
   }, [getPanePoint]);
 
-  const zoomIn = () => applyScaleAtAnchor(scaleRef.current + BUTTON_ZOOM_STEP);
-  const zoomOut = () => applyScaleAtAnchor(scaleRef.current - BUTTON_ZOOM_STEP);
+  const zoomIn = () => applyScaleAtAnchor(
+    scaleRef.current + BUTTON_ZOOM_STEP,
+    lastZoomPanePointRef.current ?? getPanePoint()
+  );
+  const zoomOut = () => applyScaleAtAnchor(
+    scaleRef.current - BUTTON_ZOOM_STEP,
+    lastZoomPanePointRef.current ?? getPanePoint()
+  );
   const applyGraphFit = useCallback((fit: GraphViewportFit) => {
     const frame = frameRef.current;
     if (!frame) {
@@ -1925,7 +1937,10 @@ export function ProcessFlowDiagram({
       const queuedScale = pendingPinchScaleRef.current;
       pendingPinchScaleRef.current = null;
       if (queuedScale !== null) {
-        applyScaleAtAnchor(queuedScale, pinchAnchorRef.current);
+        applyScaleAtAnchor(queuedScale, pinchAnchorRef.current, pinchSceneAnchorRef.current);
+      }
+      if (activePinchSourceRef.current === null) {
+        pinchSceneAnchorRef.current = null;
       }
     });
   }, [applyScaleAtAnchor]);
@@ -1967,7 +1982,19 @@ export function ProcessFlowDiagram({
       rawScale: scaleRef.current
     };
     activePinchSourceRef.current = "pointer";
-    pinchAnchorRef.current = getPanePoint();
+    const centroid = getTouchCentroid(pointers.map(([, point]) => point));
+    const panePoint = centroid ? getPanePoint(centroid.clientX, centroid.clientY) : getPanePoint();
+    pinchAnchorRef.current = panePoint;
+    lastZoomPanePointRef.current = panePoint;
+    pinchSceneAnchorRef.current = panePoint
+      ? getStableZoomAnchor(
+          scaleRef.current,
+          frame.scrollLeft,
+          frame.scrollTop,
+          panePoint,
+          pendingZoomAnchorRef.current
+        )
+      : null;
     safelySetPointerCapture(frame, pointers[0][0]);
     safelySetPointerCapture(frame, pointers[1][0]);
     event.preventDefault();
@@ -2011,6 +2038,11 @@ export function ProcessFlowDiagram({
       lastDistance: distance,
       rawScale: nextRawScale
     };
+    const centroid = getTouchCentroid(pointers);
+    if (centroid) {
+      pinchAnchorRef.current = getPanePoint(centroid.clientX, centroid.clientY);
+      lastZoomPanePointRef.current = pinchAnchorRef.current;
+    }
     queuePinchScale(clampScale(nextRawScale));
     event.preventDefault();
     event.stopPropagation();
@@ -2032,10 +2064,14 @@ export function ProcessFlowDiagram({
       if (activePinchSourceRef.current === "pointer") {
         activePinchSourceRef.current = null;
       }
+      if (pinchAnimationFrameRef.current === null) {
+        pinchSceneAnchorRef.current = null;
+      }
     }
   };
 
   const updatePan = (event: PointerEvent<HTMLDivElement>) => {
+    lastZoomPanePointRef.current = getPanePoint(event.clientX, event.clientY);
     if (waferDragRef.current) {
       updateWaferDrag(event as unknown as PointerEvent<Element>);
       return;
@@ -3468,9 +3504,11 @@ export function ProcessFlowDiagram({
         return;
       }
 
+      const panePoint = getPanePoint(event.clientX, event.clientY);
+      lastZoomPanePointRef.current = panePoint;
       applyScaleAtAnchor(
         getWheelZoomTargetScale(scaleRef.current, event.deltaY, MIN_SCALE, MAX_SCALE),
-        getPanePoint(event.clientX, event.clientY)
+        panePoint
       );
     };
 
@@ -3481,7 +3519,7 @@ export function ProcessFlowDiagram({
         return;
       }
 
-      const gestureEvent = event as Event & { scale?: number };
+      const gestureEvent = event as Event & { scale?: number; clientX?: number; clientY?: number };
       const gestureScale = typeof gestureEvent.scale === "number" && gestureEvent.scale > 0
         ? gestureEvent.scale
         : 1;
@@ -3490,7 +3528,23 @@ export function ProcessFlowDiagram({
       pointerPinchRef.current = { active: false, lastDistance: 1, rawScale: scaleRef.current };
       pinchInitialAppScaleRef.current = scaleRef.current;
       pinchInitialGestureScaleRef.current = gestureScale;
-      pinchAnchorRef.current = getPanePoint();
+      const pointerCentroid = getTouchCentroid(Array.from(touchPointersRef.current.values()).slice(0, 2));
+      const panePoint = typeof gestureEvent.clientX === "number" && typeof gestureEvent.clientY === "number"
+        ? getPanePoint(gestureEvent.clientX, gestureEvent.clientY)
+        : pointerCentroid
+          ? getPanePoint(pointerCentroid.clientX, pointerCentroid.clientY)
+          : getPanePoint();
+      pinchAnchorRef.current = panePoint;
+      lastZoomPanePointRef.current = panePoint;
+      pinchSceneAnchorRef.current = panePoint
+        ? getStableZoomAnchor(
+            scaleRef.current,
+            frame.scrollLeft,
+            frame.scrollTop,
+            panePoint,
+            pendingZoomAnchorRef.current
+          )
+        : null;
       pendingPinchScaleRef.current = null;
       pendingTouchNodeRef.current = null;
 
@@ -3505,10 +3559,15 @@ export function ProcessFlowDiagram({
         return;
       }
 
-      const gestureEvent = event as Event & { scale?: number };
+      const gestureEvent = event as Event & { scale?: number; clientX?: number; clientY?: number };
       const gestureScale = gestureEvent.scale;
       if (gestureScale === undefined) {
         return;
+      }
+
+      if (typeof gestureEvent.clientX === "number" && typeof gestureEvent.clientY === "number") {
+        pinchAnchorRef.current = getPanePoint(gestureEvent.clientX, gestureEvent.clientY);
+        lastZoomPanePointRef.current = pinchAnchorRef.current;
       }
 
       queuePinchScale(getPinchTargetScale(
@@ -3525,6 +3584,9 @@ export function ProcessFlowDiagram({
         activePinchSourceRef.current = null;
         pinchInitialAppScaleRef.current = scaleRef.current;
         pinchInitialGestureScaleRef.current = 1;
+        if (pinchAnimationFrameRef.current === null) {
+          pinchSceneAnchorRef.current = null;
+        }
       }
 
       event.preventDefault();

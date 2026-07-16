@@ -74,6 +74,21 @@ export function getTouchDistance(first: TouchPoint, second: TouchPoint) {
   return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
 }
 
+export function getTouchCentroid(points: readonly TouchPoint[]) {
+  if (points.length === 0) {
+    return null;
+  }
+
+  const total = points.reduce(
+    (sum, point) => ({ clientX: sum.clientX + point.clientX, clientY: sum.clientY + point.clientY }),
+    { clientX: 0, clientY: 0 }
+  );
+  return {
+    clientX: total.clientX / points.length,
+    clientY: total.clientY / points.length
+  };
+}
+
 export function getBoundedPinchAccumulatorScale(
   currentAppScale: number,
   previousDistance: number,
