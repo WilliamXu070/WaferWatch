@@ -86,7 +86,7 @@ import {
 import { applyGraphDisplayOrder, autoLayoutNodes } from "./process-flow/layout";
 import { getInitialGraph } from "./process-flow/graphSeed";
 import {
-  canMoveToAnotherStep,
+  canMoveToProcessStep,
   canReviewerRouteCheckpoint,
   canSubmitCheckpoint,
   getReviewerRouteDecision
@@ -524,17 +524,22 @@ export function ProcessFlowDiagram({
     () => getSelectedLinkedStepEdge(edges, selectedNodeIds),
     [edges, selectedNodeIds]
   );
-  const selectedWaferMoveTargets = useMemo(
-    () => selectedWafer && nodeById.get(selectedWafer.nodeId)?.wafers.find((wafer) => wafer.assignmentId === selectedWafer.assignmentId)?.currentStepStatus === "ready_to_move"
-      ? getAvailableWaferMoveTargets(
-          displayNodes,
-          edges,
-          selectedWafer.nodeId,
-          selectedWaferPin?.anytimeReturnStepId
-        )
-      : [],
-    [displayNodes, edges, nodeById, selectedWafer, selectedWaferPin?.anytimeReturnStepId]
-  );
+  const selectedWaferMoveTargets = useMemo(() => {
+    if (!selectedWafer || !selectedWaferPin) return [];
+    const source = nodeById.get(selectedWafer.nodeId);
+    if (!source) return [];
+
+    return getAvailableWaferMoveTargets(
+      displayNodes,
+      edges,
+      selectedWafer.nodeId,
+      selectedWaferPin.anytimeReturnStepId
+    ).filter((target) => canMoveToProcessStep({
+      sourceMode: source.executionMode,
+      status: selectedWaferPin.currentStepStatus,
+      targetMode: target.executionMode
+    }));
+  }, [displayNodes, edges, nodeById, selectedWafer, selectedWaferPin]);
   const resolveWaferDropTarget = useCallback((drag: WaferDrag) => {
     if (!drag.hasMoved) {
       return null;
@@ -554,7 +559,11 @@ export function ProcessFlowDiagram({
       Boolean(onSubmitCheckpoint) && draggedWafers.every((wafer) => canSubmitCheckpoint(wafer.currentStepStatus));
     const canMove = (target.id !== source.id || drag.x < source.x + source.width / 2) &&
       draggedWafers.every((wafer) =>
-        (target.id !== source.id && Boolean(onMoveApprovedWafer) && canMoveToAnotherStep(wafer.currentStepStatus)) ||
+        (target.id !== source.id && Boolean(onMoveApprovedWafer) && canMoveToProcessStep({
+          sourceMode: source.executionMode,
+          status: wafer.currentStepStatus,
+          targetMode: target.executionMode
+        })) ||
         (Boolean(onRouteCheckpoint) && canReviewerRouteCheckpoint({
           attemptId: wafer.latestStepAttemptId,
           canReview: wafer.canReview,
@@ -2831,7 +2840,11 @@ export function ProcessFlowDiagram({
       uniqueWafers.some((selected) => selected.assignmentId === wafer.assignmentId)
     );
     const allEligible = eligible.length === uniqueWafers.length && eligible.every((wafer) =>
-      (sourceStepId !== targetStepId && Boolean(onMoveApprovedWafer) && canMoveToAnotherStep(wafer.currentStepStatus)) ||
+      (sourceStepId !== targetStepId && Boolean(onMoveApprovedWafer) && canMoveToProcessStep({
+        sourceMode: sourceNode.executionMode,
+        status: wafer.currentStepStatus,
+        targetMode: target.executionMode
+      })) ||
       (Boolean(onRouteCheckpoint) && canReviewerRouteCheckpoint({
         attemptId: wafer.latestStepAttemptId,
         canReview: wafer.canReview,
@@ -2841,7 +2854,9 @@ export function ProcessFlowDiagram({
       }))
     );
     if (!allEligible) {
-      setMoveMessage("Only the assigned reviewer can route Complete work to a Beginning lane.");
+      setMoveMessage(target.executionMode === "anytime"
+        ? "Only active main-flow work or approved Complete work can enter an anytime step."
+        : "Complete and approve this work before moving it to another main-flow step.");
       return;
     }
 
@@ -3024,7 +3039,12 @@ export function ProcessFlowDiagram({
     );
     const sourceNode = previousNodes.find((node) => node.id === move.sourceStepId);
     const targetNode = previousNodes.find((node) => node.id === move.targetStepId);
-    const destinationStatus = sourceNode && targetNode && getReviewerRouteDecision(sourceNode.order, targetNode.order) === "redo"
+    const destinationStatus = sourceNode && targetNode && getReviewerRouteDecision(
+      sourceNode.order,
+      targetNode.order,
+      sourceNode.executionMode,
+      targetNode.executionMode
+    ) === "redo"
       ? "redo_required" as const
       : "queued" as const;
 

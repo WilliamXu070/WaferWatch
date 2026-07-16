@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  canMoveToProcessStep,
   canMoveToAnotherStep,
   canReviewerRouteCheckpoint,
   canSubmitCheckpoint,
@@ -24,6 +25,16 @@ test("separates checkpoint submission from approved cross-step movement", () => 
   assert.equal(getCheckpointStateLabel("ready_to_move"), "Approved, ready to move");
 });
 
+test("allows active main work to detour only into an anytime step", () => {
+  for (const status of ["queued", "running", "blocked", "redo_required"] as const) {
+    assert.equal(canMoveToProcessStep({ sourceMode: "main", status, targetMode: "anytime" }), true);
+    assert.equal(canMoveToProcessStep({ sourceMode: "main", status, targetMode: "main" }), false);
+  }
+
+  assert.equal(canMoveToProcessStep({ sourceMode: "anytime", status: "queued", targetMode: "main" }), false);
+  assert.equal(canMoveToProcessStep({ sourceMode: "anytime", status: "ready_to_move", targetMode: "main" }), true);
+});
+
 test("allows only the assigned reviewer to route awaiting Complete work", () => {
   const reviewerRoute = {
     attemptId: "attempt-1",
@@ -43,4 +54,6 @@ test("treats same or earlier reviewer drops as redo and later drops as approval"
   assert.equal(getReviewerRouteDecision(20, 30), "approved");
   assert.equal(getReviewerRouteDecision(20, 20), "redo");
   assert.equal(getReviewerRouteDecision(20, 10), "redo");
+  assert.equal(getReviewerRouteDecision(20, 10, "main", "anytime"), "approved");
+  assert.equal(getReviewerRouteDecision(20, 10, "anytime", "main"), "approved");
 });

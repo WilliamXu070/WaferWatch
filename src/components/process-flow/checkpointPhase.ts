@@ -1,4 +1,4 @@
-import type { StepStatus } from "@/types/database";
+import type { ProcessStepExecutionMode, StepStatus } from "@/types/database";
 
 export type CheckpointPhase = "beginning" | "complete";
 
@@ -14,6 +14,24 @@ export function canSubmitCheckpoint(status: StepStatus | null | undefined) {
 
 export function canMoveToAnotherStep(status: StepStatus | null | undefined) {
   return status === "ready_to_move";
+}
+
+export function canMoveToProcessStep({
+  sourceMode,
+  status,
+  targetMode
+}: {
+  sourceMode: ProcessStepExecutionMode;
+  status: StepStatus | null | undefined;
+  targetMode: ProcessStepExecutionMode;
+}) {
+  if (canMoveToAnotherStep(status)) {
+    return true;
+  }
+
+  return sourceMode === "main" &&
+    targetMode === "anytime" &&
+    (status === "queued" || status === "running" || status === "blocked" || status === "redo_required");
 }
 
 export function canReviewerRouteCheckpoint({
@@ -36,7 +54,15 @@ export function canReviewerRouteCheckpoint({
     requiredReviewerId === currentUserId;
 }
 
-export function getReviewerRouteDecision(sourceStepOrder: number, targetStepOrder: number) {
+export function getReviewerRouteDecision(
+  sourceStepOrder: number,
+  targetStepOrder: number,
+  sourceMode: ProcessStepExecutionMode = "main",
+  targetMode: ProcessStepExecutionMode = "main"
+) {
+  if (sourceMode === "anytime" || targetMode === "anytime") {
+    return "approved" as const;
+  }
   return targetStepOrder <= sourceStepOrder ? "redo" as const : "approved" as const;
 }
 

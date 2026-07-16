@@ -103,7 +103,16 @@ const id = {
   routeDicingDecision: "10000000-0000-4000-8000-000000000097",
   routeDicingAggregate: "10000000-0000-4000-8000-000000000098",
   routeDicingChildMoveOne: "10000000-0000-4000-8000-000000000099",
-  routeDicingChildMoveTwo: "10000000-0000-4000-8000-000000000100"
+  routeDicingChildMoveTwo: "10000000-0000-4000-8000-000000000100",
+  anytimeTemplate: "10000000-0000-4000-8000-000000000101",
+  anytimeMain: "10000000-0000-4000-8000-000000000102",
+  anytimeProcedure: "10000000-0000-4000-8000-000000000103",
+  anytimeOtherMain: "10000000-0000-4000-8000-000000000104",
+  anytimeWafer: "10000000-0000-4000-8000-000000000105",
+  anytimeAssignment: "10000000-0000-4000-8000-000000000106",
+  anytimeMainExecution: "10000000-0000-4000-8000-000000000107",
+  anytimeMovement: "10000000-0000-4000-8000-000000000108",
+  rejectedMainMovement: "10000000-0000-4000-8000-000000000109"
 };
 
 await db.exec(`
@@ -1048,6 +1057,16 @@ const reviewerRouteMigration = await readFile(
   "utf8"
 );
 await db.exec(reviewerRouteMigration);
+const anytimeModeMigration = await readFile(
+  new URL("../supabase/migrations/202607160001_anytime_process_steps.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(anytimeModeMigration);
+const anytimeDetourMigration = await readFile(
+  new URL("../supabase/migrations/202607160002_allow_beginning_anytime_detours.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(anytimeDetourMigration);
 
 await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
 await db.query(`insert into public.wafers (id, project_id, wafer_code) values ($1, $2, 'ROUTED-1')`, [id.routeWafer, id.project]);
@@ -1239,6 +1258,76 @@ assert.deepEqual(dicingRouteEvents.rows, [{
   target_step_id: id.postDicingStep
 }]);
 
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+await db.query(
+  `insert into public.process_templates
+   (id, owner_project_id, name, version, created_by)
+   values ($1, $2, 'Anytime detour verification', '1.0', $3)`,
+  [id.anytimeTemplate, id.project, id.submitter]
+);
+await db.query(
+  `insert into public.process_steps
+   (id, template_id, step_order, name, slug, process_area, node_type, execution_mode)
+   values ($1, $2, 10, 'Main work', 'main-work', 'Verification', 'start', 'main'),
+          ($3, $2, 20, 'Piranha', 'piranha', 'Verification', 'procedure', 'anytime'),
+          ($4, $2, 30, 'Other main work', 'other-main-work', 'Verification', 'end', 'main')`,
+  [id.anytimeMain, id.anytimeTemplate, id.anytimeProcedure, id.anytimeOtherMain]
+);
+await db.query(
+  `insert into public.wafers (id, project_id, wafer_code)
+   values ($1, $2, 'ANYTIME-VERIFY')`,
+  [id.anytimeWafer, id.project]
+);
+await db.query(
+  `insert into public.wafer_process_assignments
+   (id, wafer_id, template_id, assigned_by, status, current_step_id)
+   values ($1, $2, $3, $4, 'in_progress', $5)`,
+  [id.anytimeAssignment, id.anytimeWafer, id.anytimeTemplate, id.submitter, id.anytimeMain]
+);
+await db.query(
+  `insert into public.step_executions
+   (id, assignment_id, wafer_id, process_step_id, status, queue_started_at)
+   values ($1, $2, $3, $4, 'queued', now())`,
+  [id.anytimeMainExecution, id.anytimeAssignment, id.anytimeWafer, id.anytimeMain]
+);
+await db.exec(`set role authenticated`);
+await assert.rejects(
+  db.query(
+    `select public.move_approved_checkpoint_assignment($1, $2, $3, 'must stay checkpoint gated')`,
+    [id.anytimeAssignment, id.anytimeOtherMain, id.rejectedMainMovement]
+  ),
+  /must be approved before the wafer can move/i
+);
+await db.query(
+  `select public.move_approved_checkpoint_assignment($1, $2, $3, 'enter optional piranha procedure')`,
+  [id.anytimeAssignment, id.anytimeProcedure, id.anytimeMovement]
+);
+await db.exec(`reset role`);
+const anytimeDetour = await db.query(
+  `select assignment.current_step_id,
+          assignment.anytime_return_step_id,
+          source.status as source_status,
+          destination.status as destination_status,
+          event.metadata ->> 'movement_kind' as movement_kind,
+          event.metadata ->> 'anytime_return_step_id' as event_return_step_id
+   from public.wafer_process_assignments assignment
+   join public.step_executions source on source.id = $2
+   join public.step_executions destination
+     on destination.assignment_id = assignment.id
+    and destination.process_step_id = $3
+   join public.process_events event on event.client_mutation_id = $4
+   where assignment.id = $1`,
+  [id.anytimeAssignment, id.anytimeMainExecution, id.anytimeProcedure, id.anytimeMovement]
+);
+assert.deepEqual(anytimeDetour.rows[0], {
+  current_step_id: id.anytimeProcedure,
+  anytime_return_step_id: id.anytimeMain,
+  source_status: "pending",
+  destination_status: "queued",
+  movement_kind: "anytime_enter",
+  event_return_step_id: id.anytimeMain
+});
+
 const checkpointHistoryBeforeDelete = await db.query(
   `select
      (select count(*)::integer from public.process_step_attempts where assignment_id = $1) as attempts,
@@ -1325,6 +1414,7 @@ console.log(JSON.stringify({
   authenticatedRole: "trigger helpers and reviewer-history RLS work without exposing mutation helpers",
   versioning: "legacy versioning remains compatible while active graph editing is restored",
   graphMovement: "reviewer drop approves later steps, marks same or earlier steps redo, and always begins at the destination",
+  anytimeDetour: "active main work enters an anytime procedure while preserving its main-flow return step",
   checkpointedDelete: "history stays append-only and reused codes can be deleted repeatedly without tombstone collisions",
   attempts: 4
 }, null, 2));

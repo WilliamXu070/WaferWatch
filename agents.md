@@ -1,5 +1,21 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 Beginning-to-anytime drag)
+
+- Fixed anytime steps rejecting wafers and dies on a main step's Beginning side.
+  Active main work can now detour into an anytime procedure without completing
+  its interrupted checkpoint; the source execution is preserved as pending and
+  becomes the stored return step.
+- Main-to-main movement remains checkpoint-gated, and reviewer routes involving
+  an anytime step are treated as approvals/returns instead of order-based redo.
+- Applied migration `202607160002`. Verified focused tests,
+  `npm run checkpoint:verify`, `npm run lint`, and `npm run build`.
+  Authenticated Process Flow at 1280x720 selected queued A2 at Cleaning and
+  exposed `Move to Piranha`, with no overflow or console errors. The live drop
+  was not submitted against the production die; the full transaction passed in
+  the isolated checkpoint workflow verifier. Tracking: local ticket
+  `docs/tickets/anytime-step-beginning-drag.md` because GitHub auth was expired.
+
 ## Recent development note (2026-07-16 anytime process steps)
 
 - Added first-class `main` and `anytime` process-step modes. Anytime procedures
