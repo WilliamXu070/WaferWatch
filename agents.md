@@ -1,5 +1,16 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 hidden dicing parent)
+
+- Fixed Process Flow leaving the completed parent wafer visible after Dicing
+  created child dies. Process Flow now applies the same persisted-child metadata
+  visibility rule as Dashboard, while ordinary completed wafers remain available
+  for archiving.
+- Verified the focused visibility test, `npm run lint`, and `npm run build`.
+  Authenticated `/process-flow?processId=9fb7de9e-31b8-4b5a-aea7-8ee64eedb699`
+  at 1280x720 showed A1 at Chromium Deposition with no ALPHA ghost, horizontal
+  overflow, or console errors. Tracking: GitHub issue #29.
+
 ## Recent development note (2026-07-15 compact post-dicing labels)
 
 - Shortened generated die identifiers for display only, so `ALPHA_1`,
