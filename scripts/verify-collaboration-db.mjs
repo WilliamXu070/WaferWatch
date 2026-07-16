@@ -172,6 +172,11 @@ const idempotencyMigration = await readFile(
   new URL("../supabase/migrations/202607150009_process_event_idempotency_constraint.sql", import.meta.url),
   "utf8"
 );
+assert.doesNotMatch(
+  broadcastMigration,
+  /alter\s+table\s+realtime\.messages\s+enable\s+row\s+level\s+security/i,
+  "Hosted Supabase owns realtime.messages; migrations must rely on its default RLS state."
+);
 await db.exec(collaborationMigration);
 await db.exec(broadcastMigration);
 await db.exec(idempotencyMigration);

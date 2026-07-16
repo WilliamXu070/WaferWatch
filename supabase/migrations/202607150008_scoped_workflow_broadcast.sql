@@ -65,8 +65,6 @@ $$;
 revoke execute on function public.can_receive_waferwatch_broadcast(text) from public, anon;
 grant execute on function public.can_receive_waferwatch_broadcast(text) to authenticated;
 
-alter table realtime.messages enable row level security;
-
 drop policy if exists "active users receive waferwatch broadcasts" on realtime.messages;
 create policy "active users receive waferwatch broadcasts"
   on realtime.messages
