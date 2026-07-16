@@ -3951,6 +3951,41 @@ textarea {
   white-space: nowrap;
 }
 
+.wafer-step-workspace {
+  height: clamp(620px, calc(100dvh - 24px), 960px);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.wafer-step-history__scroll,
+.wafer-step-detail__parameters,
+.wafer-step-detail__notes {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #c9c9c1 transparent;
+}
+
+.wafer-step-history__scroll::-webkit-scrollbar,
+.wafer-step-detail__parameters::-webkit-scrollbar,
+.wafer-step-detail__notes::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.wafer-step-history__scroll::-webkit-scrollbar-thumb,
+.wafer-step-detail__parameters::-webkit-scrollbar-thumb,
+.wafer-step-detail__notes::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c9c9c1;
+}
+
+.wafer-step-history__scroll::-webkit-scrollbar-track,
+.wafer-step-detail__parameters::-webkit-scrollbar-track,
+.wafer-step-detail__notes::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .wafer-parameters-table th:first-child {
   position: sticky;
   left: 0;
@@ -4498,6 +4533,53 @@ textarea {
     margin-left: -16px;
     padding-left: 16px;
     padding-right: 16px;
+  }
+
+  .wafer-step-workspace {
+    height: clamp(580px, calc(100dvh - 12px), 900px);
+    grid-template-rows: 136px minmax(0, 1fr);
+  }
+
+  .wafer-step-history__scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px;
+    scrollbar-gutter: auto;
+  }
+
+  .wafer-step-picker {
+    display: flex;
+    width: max-content;
+    min-width: 100%;
+    gap: 8px;
+  }
+
+  .wafer-step-picker::before {
+    display: none;
+  }
+
+  .wafer-step-picker__item {
+    width: min(76vw, 260px);
+    flex: 0 0 min(76vw, 260px);
+    padding-bottom: 0;
+  }
+
+  .wafer-step-picker__button {
+    min-height: 72px;
+  }
+
+  .wafer-step-detail__parameters {
+    max-height: 130px;
+  }
+
+  .wafer-step-detail__composer {
+    padding: 10px;
+  }
+
+  .wafer-step-detail__composer textarea {
+    min-height: 56px;
+    max-height: 84px;
+    font-size: 16px;
   }
 
   .wireframe-calendar-surface {

@@ -1,5 +1,19 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 viewport-contained step history)
+
+- Reworked the Notes-tab step history to match the earlier compact numbered
+  process timeline, including family-colored markers, selected-row tinting,
+  concise timestamps, and completion/current indicators.
+- Converted the history and notes area into a viewport-contained workspace.
+  Long desktop histories scroll vertically; phone histories become a horizontal
+  strip. Parameters and notes have bounded internal scrolling while the note
+  composer remains visible at the bottom of the detail pane.
+- Verified `npm run lint` and `npm run build`. A compiled-CSS layout harness at
+  1280x720 and 390x844 confirmed contained composers, scrollable 12-step history,
+  and no horizontal page overflow. The authenticated route was login-gated by an
+  expired refresh token, so no live wafer data was mutated.
+
 ## Recent development note (2026-07-16 step-focused die history)
 
 - Replaced the Wafer / Die Status checkpoint-event feed with a Notes-tab step

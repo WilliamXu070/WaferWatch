@@ -11,11 +11,20 @@ function formatRecordedTime(value: string) {
   }).format(date);
 }
 
-export function StepParameterHistory({ records }: { records: readonly WaferStatusStepParameterRecord[] }) {
+export function StepParameterHistory({
+  records,
+  className = ""
+}: {
+  records: readonly WaferStatusStepParameterRecord[];
+  className?: string;
+}) {
   const orderedRecords = [...records].sort((first, second) => second.recordedAt.localeCompare(first.recordedAt));
 
   return (
-    <section className="border-b border-[#eeeeea] bg-white px-4 py-3" aria-label="Selected step parameters">
+    <section
+      className={["border-b border-[#eeeeea] bg-white px-4 py-3", className].join(" ")}
+      aria-label="Selected step parameters"
+    >
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#777770]">Step parameters</h4>
         {orderedRecords[0] ? (

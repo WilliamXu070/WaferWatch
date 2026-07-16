@@ -333,7 +333,7 @@ function NoteAuthorMark({ note, authorName }: { note: WaferDieNote; authorName: 
 
 function EmptyNotesState() {
   return (
-    <div className="grid min-h-[180px] place-items-center rounded-lg border border-dashed border-[#ddddda] bg-white px-5 py-8 text-center">
+    <div className="grid min-h-[160px] flex-1 place-items-center rounded-lg border border-dashed border-[#ddddda] bg-white px-5 py-8 text-center">
       <div>
         <p className="text-[15px] font-semibold text-[#111111]">No notes yet</p>
         <p className="mt-2 max-w-[320px] text-[13px] leading-5 text-[#777770]">
@@ -791,18 +791,28 @@ export function WaferDieNotesDashboard({
   const selectedStepParameterRecords = selectedVisit?.parameterRecords ?? [];
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[440px_minmax(0,1fr)]">
-      <DetailCard title="Step history" className="min-h-[520px]">
-        {visits.length ? (
-          <SequentialStepPicker visits={visits} selectedVisitId={selectedVisit?.id} onSelectVisit={setSelectedVisitId} />
-        ) : (
-          <p className="rounded-lg border border-dashed border-[#ddddda] bg-white px-4 py-5 text-[13px] font-medium text-[#777770]">
-            No step history has been recorded.
-          </p>
-        )}
-      </DetailCard>
+    <div className="wafer-step-workspace grid min-h-0 gap-3 md:grid-cols-[280px_minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+      <section className="wafer-step-history grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
+        <div className="border-b border-[#eeeeea] px-4 py-3.5">
+          <h3 className="text-[15px] font-semibold text-[#111111]">Step history</h3>
+        </div>
+        <div className="wafer-step-history__scroll min-h-0 overflow-y-auto p-2.5">
+          {visits.length ? (
+            <SequentialStepPicker
+              visits={visits}
+              family={tile.family}
+              selectedVisitId={selectedVisit?.id}
+              onSelectVisit={setSelectedVisitId}
+            />
+          ) : (
+            <p className="rounded-lg border border-dashed border-[#ddddda] bg-white px-4 py-5 text-[13px] font-medium text-[#777770]">
+              No step history has been recorded.
+            </p>
+          )}
+        </div>
+      </section>
 
-      <section className="overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
+      <section className="wafer-step-detail grid min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
         <div className="border-b border-[#eeeeea] px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -850,9 +860,12 @@ export function WaferDieNotesDashboard({
           </section>
         ) : null}
 
-        <StepParameterHistory records={selectedStepParameterRecords} />
+        <StepParameterHistory
+          records={selectedStepParameterRecords}
+          className="wafer-step-detail__parameters max-h-[230px] overflow-y-auto"
+        />
 
-        <div className="grid max-h-[540px] min-h-[300px] gap-3 overflow-y-auto bg-[#fbfbf8] p-3">
+        <div className="wafer-step-detail__notes flex min-h-0 flex-col gap-3 overflow-y-auto bg-[#fbfbf8] p-3">
           {visibleNotes.length ? (
             visibleNotes.map((note) => {
               const authorName = getNoteAuthorName(note, currentUser);
@@ -990,7 +1003,7 @@ export function WaferDieNotesDashboard({
         </div>
 
         {canEdit ? (
-        <div className="border-t border-[#e6e6e0] bg-white p-3">
+        <div className="wafer-step-detail__composer border-t border-[#e6e6e0] bg-white p-3">
           <textarea
             id={`wafer-die-note-${selectedDraftKey}`}
             name="waferDieNote"
@@ -1000,7 +1013,7 @@ export function WaferDieNotesDashboard({
               [selectedDraftKey]: event.target.value.slice(0, MAX_NOTE_LENGTH)
             }))}
             placeholder={`Write a note for ${selectedStepName}...`}
-            className="min-h-[88px] w-full resize-y rounded-lg border border-[#e6e6e0] bg-[#fbfbf8] px-3 py-3 text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94] focus:border-[#111111]"
+            className="min-h-[68px] max-h-[120px] w-full resize-y rounded-lg border border-[#e6e6e0] bg-[#fbfbf8] px-3 py-3 text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94] focus:border-[#111111]"
             onPaste={(event) => {
               const pastedImages = getClipboardImageFiles(event.clipboardData);
               if (pastedImages.length > 0) {
