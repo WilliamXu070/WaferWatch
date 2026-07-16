@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { isDicedParentWafer } from "@/features/process-flows/waferVisibility";
 import type {
   DashboardModel,
   WaferCardModel,
@@ -247,17 +248,6 @@ function extractDieLabel(metadata: Json): string {
               : null;
 
   return candidate?.trim() || "Unassigned";
-}
-
-function isDicedParent(metadata: Json) {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return false;
-  }
-
-  return (
-    (Array.isArray(metadata.diced_child_wafer_ids) && metadata.diced_child_wafer_ids.length > 0) ||
-    (Array.isArray(metadata.diced_child_die_labels) && metadata.diced_child_die_labels.length > 0)
-  );
 }
 
 function stepStatusRank(status: StepStatus) {
@@ -743,7 +733,7 @@ export async function getWireframeDashboardModel(
   const candidateAssignments = allAssignments;
   const candidateWaferIds = new Set(candidateAssignments.map((assignment) => assignment.wafer_id));
   const wafers = allWafers.filter(
-    (wafer) => (!processTemplateId || candidateWaferIds.has(wafer.id)) && !isDicedParent(wafer.metadata as Json)
+    (wafer) => (!processTemplateId || candidateWaferIds.has(wafer.id)) && !isDicedParentWafer(wafer.metadata)
   );
   const visibleWaferIds = new Set(wafers.map((wafer) => wafer.id));
   const assignments = candidateAssignments.filter((assignment) => visibleWaferIds.has(assignment.wafer_id));

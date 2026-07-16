@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { isDicedParentWafer } from "@/features/process-flows/waferVisibility";
 import type {
   Json,
   ProcessStep,
@@ -694,7 +695,7 @@ export async function getProcessDashboardData(
 
   for (const assignment of assignments) {
     const wafer = wafersById.get(assignment.wafer_id);
-    if (!wafer) {
+    if (!wafer || isDicedParentWafer(wafer.metadata)) {
       continue;
     }
 
