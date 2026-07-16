@@ -1,7 +1,13 @@
+import type { PanePoint, ZoomAnchor } from "./types";
+
 export type TouchPoint = {
   clientX: number;
   clientY: number;
 };
+
+const PINCH_ZOOM_EXPONENT = 0.72;
+const WHEEL_ZOOM_SENSITIVITY = 0.0012;
+const MAX_WHEEL_DELTA = 48;
 
 export function shouldStartNodePointerInteraction(pointerType: string) {
   return pointerType !== "touch";
@@ -19,7 +25,49 @@ export function getPinchTargetScale(
     ? currentGestureScale
     : safeInitialGestureScale;
 
-  return initialAppScale * (safeCurrentGestureScale / safeInitialGestureScale);
+  const gestureRatio = safeCurrentGestureScale / safeInitialGestureScale;
+  return initialAppScale * Math.pow(gestureRatio, PINCH_ZOOM_EXPONENT);
+}
+
+export function getWheelZoomTargetScale(
+  currentScale: number,
+  deltaY: number,
+  minScale: number,
+  maxScale: number
+) {
+  const boundedDelta = Math.min(MAX_WHEEL_DELTA, Math.max(-MAX_WHEEL_DELTA, deltaY));
+  const targetScale = currentScale * Math.exp(-boundedDelta * WHEEL_ZOOM_SENSITIVITY);
+  return Math.min(maxScale, Math.max(minScale, targetScale));
+}
+
+export function supportsWebKitGestureEvents(target: object) {
+  return "ongesturestart" in target || "GestureEvent" in target;
+}
+
+export function getZoomScrollPosition(anchor: ZoomAnchor, scale: number) {
+  return {
+    scrollLeft: anchor.sceneX * scale - anchor.paneX,
+    scrollTop: anchor.sceneY * scale - anchor.paneY
+  };
+}
+
+export function getStableZoomAnchor(
+  currentScale: number,
+  scrollLeft: number,
+  scrollTop: number,
+  panePoint: PanePoint,
+  pendingAnchor: ZoomAnchor | null = null
+): ZoomAnchor {
+  const effectiveScroll = pendingAnchor
+    ? getZoomScrollPosition(pendingAnchor, currentScale)
+    : { scrollLeft, scrollTop };
+
+  return {
+    paneX: panePoint.paneX,
+    paneY: panePoint.paneY,
+    sceneX: (effectiveScroll.scrollLeft + panePoint.paneX) / currentScale,
+    sceneY: (effectiveScroll.scrollTop + panePoint.paneY) / currentScale
+  };
 }
 
 export function getTouchDistance(first: TouchPoint, second: TouchPoint) {

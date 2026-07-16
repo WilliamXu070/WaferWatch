@@ -3,9 +3,13 @@ import test from "node:test";
 import {
   getBoundedPinchAccumulatorScale,
   getPinchTargetScale,
+  getStableZoomAnchor,
   getTouchDistance,
+  getWheelZoomTargetScale,
+  getZoomScrollPosition,
   isTouchTapWithinThreshold,
-  shouldStartNodePointerInteraction
+  shouldStartNodePointerInteraction,
+  supportsWebKitGestureEvents
 } from "./gesture";
 
 test("keeps touch gestures from selecting or dragging process-flow steps", () => {
@@ -17,10 +21,45 @@ test("preserves mouse and pen step editing", () => {
   assert.equal(shouldStartNodePointerInteraction("pen"), true);
 });
 
-test("calculates pinch zoom symmetrically from one stable gesture baseline", () => {
-  assert.equal(getPinchTargetScale(1, 1, 1.25), 1.25);
-  assert.equal(getPinchTargetScale(1, 1, 0.8), 0.8);
-  assert.equal(getPinchTargetScale(0.8, 0.8, 1), 1);
+test("dampens pinch zoom while keeping outward and inward motion reciprocal", () => {
+  const expandedScale = getPinchTargetScale(1, 1, 1.25);
+  const restoredScale = getPinchTargetScale(expandedScale, 1.25, 1);
+
+  assert.ok(expandedScale > 1);
+  assert.ok(expandedScale < 1.25);
+  assert.ok(Math.abs(restoredScale - 1) < 0.000001);
+});
+
+test("uses bounded proportional wheel zoom instead of fixed scale jumps", () => {
+  const smallZoom = getWheelZoomTargetScale(0.35, -8, 0.35, 2.6);
+  const largeZoom = getWheelZoomTargetScale(0.35, -100, 0.35, 2.6);
+  const boundedLargeZoom = getWheelZoomTargetScale(0.35, -10_000, 0.35, 2.6);
+
+  assert.ok(smallZoom > 0.35);
+  assert.ok(smallZoom < largeZoom);
+  assert.equal(largeZoom, boundedLargeZoom);
+  assert.ok(largeZoom < 0.38);
+});
+
+test("detects Safari gesture events so iPhone pinch has one input owner", () => {
+  assert.equal(supportsWebKitGestureEvents({ ongesturestart: null }), true);
+  assert.equal(supportsWebKitGestureEvents({ GestureEvent: class GestureEvent {} }), true);
+  assert.equal(supportsWebKitGestureEvents({ PointerEvent: class PointerEvent {} }), false);
+});
+
+test("keeps the same scene point anchored across queued zoom frames", () => {
+  const panePoint = { paneX: 200, paneY: 160 };
+  const firstAnchor = getStableZoomAnchor(1, 500, 300, panePoint);
+  const firstTargetScroll = getZoomScrollPosition(firstAnchor, 1.1);
+  const queuedAnchor = getStableZoomAnchor(1.1, 500, 300, panePoint, firstAnchor);
+  const queuedTargetScroll = getZoomScrollPosition(queuedAnchor, 1.2);
+
+  assert.ok(Math.abs(firstTargetScroll.scrollLeft - 570) < 0.000001);
+  assert.ok(Math.abs(firstTargetScroll.scrollTop - 346) < 0.000001);
+  assert.equal(queuedAnchor.sceneX, firstAnchor.sceneX);
+  assert.equal(queuedAnchor.sceneY, firstAnchor.sceneY);
+  assert.ok(Math.abs(queuedTargetScroll.scrollLeft - 640) < 0.000001);
+  assert.ok(Math.abs(queuedTargetScroll.scrollTop - 392) < 0.000001);
 });
 
 test("derives pinch scale from two touch pointers and rebases at a zoom boundary", () => {

@@ -5,9 +5,13 @@ import type { ClipboardEvent, MouseEvent, PointerEvent } from "react";
 import {
   getBoundedPinchAccumulatorScale,
   getPinchTargetScale,
+  getStableZoomAnchor,
   getTouchDistance,
+  getWheelZoomTargetScale,
+  getZoomScrollPosition,
   isTouchTapWithinThreshold,
   shouldStartNodePointerInteraction,
+  supportsWebKitGestureEvents,
   type TouchPoint
 } from "@/components/process-flow/gesture";
 import { useRouter } from "next/navigation";
@@ -47,7 +51,6 @@ import {
   SCENE_WIDTH,
   TRANSITION_RETRY_DELAY_MS,
   TRANSITION_RETRY_LIMIT,
-  WHEEL_ZOOM_STEP,
   getNodeHeightForWaferCount,
   getNodeHeightForWafers
 } from "./process-flow/constants";
@@ -373,6 +376,7 @@ export function ProcessFlowDiagram({
   const pinchInitialAppScaleRef = useRef(1);
   const pinchInitialGestureScaleRef = useRef(1);
   const pointerPinchRef = useRef({ active: false, lastDistance: 1, rawScale: 1 });
+  const activePinchSourceRef = useRef<"pointer" | "webkit" | null>(null);
   const touchPointersRef = useRef<Map<number, TouchPoint>>(new Map());
   const pinchAnchorRef = useRef<{ paneX: number; paneY: number } | null>(null);
   const pendingPinchScaleRef = useRef<number | null>(null);
@@ -1141,12 +1145,13 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    pendingZoomAnchorRef.current = {
-      paneX: anchor.paneX,
-      paneY: anchor.paneY,
-      sceneX: (frame.scrollLeft + anchor.paneX) / currentScale,
-      sceneY: (frame.scrollTop + anchor.paneY) / currentScale
-    };
+    pendingZoomAnchorRef.current = getStableZoomAnchor(
+      currentScale,
+      frame.scrollLeft,
+      frame.scrollTop,
+      anchor,
+      pendingZoomAnchorRef.current
+    );
 
     scaleRef.current = boundedScale;
     setScale(boundedScale);
@@ -1649,8 +1654,9 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    frame.scrollLeft = anchor.sceneX * scale - anchor.paneX;
-    frame.scrollTop = anchor.sceneY * scale - anchor.paneY;
+    const scrollPosition = getZoomScrollPosition(anchor, scale);
+    frame.scrollLeft = scrollPosition.scrollLeft;
+    frame.scrollTop = scrollPosition.scrollTop;
     pendingZoomAnchorRef.current = null;
   }, [scale]);
 
@@ -1734,13 +1740,19 @@ export function ProcessFlowDiagram({
       return;
     }
 
+    pendingTouchNodeRef.current = null;
+    if (supportsWebKitGestureEvents(window)) {
+      pointerPinchRef.current = { active: false, lastDistance: 1, rawScale: scaleRef.current };
+      return;
+    }
+
     pointerPinchRef.current = {
       active: true,
       lastDistance: distance,
       rawScale: scaleRef.current
     };
+    activePinchSourceRef.current = "pointer";
     pinchAnchorRef.current = getPanePoint();
-    pendingTouchNodeRef.current = null;
     safelySetPointerCapture(frame, pointers[0][0]);
     safelySetPointerCapture(frame, pointers[1][0]);
     event.preventDefault();
@@ -1756,6 +1768,10 @@ export function ProcessFlowDiagram({
       clientX: event.clientX,
       clientY: event.clientY
     });
+
+    if (supportsWebKitGestureEvents(window)) {
+      return;
+    }
 
     const pinch = pointerPinchRef.current;
     const pointers = Array.from(touchPointersRef.current.values()).slice(0, 2);
@@ -1798,6 +1814,9 @@ export function ProcessFlowDiagram({
 
     if (touchPointersRef.current.size < 2) {
       pointerPinchRef.current = { active: false, lastDistance: 1, rawScale: scaleRef.current };
+      if (activePinchSourceRef.current === "pointer") {
+        activePinchSourceRef.current = null;
+      }
     }
   };
 
@@ -3114,12 +3133,14 @@ export function ProcessFlowDiagram({
         return;
       }
 
-      const delta = event.deltaY > 0 ? -WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
-      applyScaleAtAnchor(scaleRef.current + delta, getPanePoint(event.clientX, event.clientY));
+      applyScaleAtAnchor(
+        getWheelZoomTargetScale(scaleRef.current, event.deltaY, MIN_SCALE, MAX_SCALE),
+        getPanePoint(event.clientX, event.clientY)
+      );
     };
 
     const handleGestureStart = (event: Event) => {
-      if (pointerPinchRef.current.active) {
+      if (activePinchSourceRef.current === "pointer") {
         event.preventDefault();
         event.stopPropagation();
         return;
@@ -3129,17 +3150,12 @@ export function ProcessFlowDiagram({
       const gestureScale = typeof gestureEvent.scale === "number" && gestureEvent.scale > 0
         ? gestureEvent.scale
         : 1;
-      const clientPoint =
-        "clientX" in event && "clientY" in event
-          ? getPanePoint(
-              (event as Event & { clientX: number }).clientX,
-              (event as Event & { clientY: number }).clientY
-            )
-          : getPanePoint();
 
+      activePinchSourceRef.current = "webkit";
+      pointerPinchRef.current = { active: false, lastDistance: 1, rawScale: scaleRef.current };
       pinchInitialAppScaleRef.current = scaleRef.current;
       pinchInitialGestureScaleRef.current = gestureScale;
-      pinchAnchorRef.current = clientPoint;
+      pinchAnchorRef.current = getPanePoint();
       pendingPinchScaleRef.current = null;
       pendingTouchNodeRef.current = null;
 
@@ -3148,7 +3164,7 @@ export function ProcessFlowDiagram({
     };
 
     const handleGestureChange = (event: Event) => {
-      if (pointerPinchRef.current.active) {
+      if (activePinchSourceRef.current !== "webkit") {
         event.preventDefault();
         event.stopPropagation();
         return;
@@ -3170,10 +3186,10 @@ export function ProcessFlowDiagram({
     };
 
     const handleGestureEnd = (event: Event) => {
-      if (pointerPinchRef.current.active) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
+      if (activePinchSourceRef.current === "webkit") {
+        activePinchSourceRef.current = null;
+        pinchInitialAppScaleRef.current = scaleRef.current;
+        pinchInitialGestureScaleRef.current = 1;
       }
 
       event.preventDefault();

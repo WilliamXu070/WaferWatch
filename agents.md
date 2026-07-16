@@ -1,5 +1,18 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 controlled iPhone pinch zoom)
+
+- Replaced fixed wheel jumps with bounded proportional zoom, reduced toolbar
+  zoom steps, and damped pinch response while keeping pinch-in/out reciprocal.
+- Safari gesture events now exclusively own iPhone pinch, with Pointer Events
+  retained as the fallback elsewhere. Queued zoom frames preserve one stable
+  scene anchor so rapid updates do not drift or jump after `pointercancel`.
+- Verified 13 focused gesture/interaction tests, `npm run lint`, and
+  `npm run build`. Authenticated `/wireframe/process-flow` at 390x844: a
+  Safari-style 1.5x pinch moved 35% to 47% and back to 35%, preserved the
+  centered scene point, selected no nodes, caused no horizontal overflow, and
+  logged no console errors. Physical iPhone pinch remains the final hardware check.
+
 ## Recent development note (2026-07-15 direct wafer detail shortcut)
 
 - Removed the floating selected-wafer preview from Process Flow. A single click
