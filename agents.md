@@ -1,5 +1,17 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 phone-only wafer action tray)
+
+- Limited the Process Flow selected-wafer action tray (Clear, Delete, Complete,
+  and movement targets) to phone widths below the existing 768px mobile
+  breakpoint. Desktop and tablet selection still retain chip styling, preview,
+  drag, and keyboard behavior without the duplicate tray.
+- Verified `npm run lint` and `npm run build`. Authenticated
+  `/process-flow?processId=9fb7de9e-31b8-4b5a-aea7-8ee64eedb699` selected GAMMA:
+  at 1440x1000 the tray remained in the DOM with `display: none`; at 390x844 it
+  rendered as a 316x114 flex tray with no horizontal overflow. Both widths had
+  no console errors.
+
 ## Recent development note (2026-07-15 scoped Supabase Broadcast realtime)
 
 - Replaced every application `postgres_changes` subscription with private,

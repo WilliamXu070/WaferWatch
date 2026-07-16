@@ -3379,7 +3379,7 @@ export function ProcessFlowDiagram({
       {selectedWafer && selectedWaferPin ? (
         <div
           aria-label={`Selection actions for ${activeSelectedWafers.map((wafer) => wafer.label).join(", ")}`}
-          className="mx-3 mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-[#e5e5db] bg-[#fafaf4] p-3"
+          className="mx-3 mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-[#e5e5db] bg-[#fafaf4] p-3 md:hidden"
         >
           <span
             className="mr-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#6b6a5f]"
