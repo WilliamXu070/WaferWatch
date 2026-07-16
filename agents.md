@@ -1,5 +1,22 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 checkpoint route constraint release)
+
+- Fixed reviewer routing from Complete by releasing the pending process-event
+  idempotency constraint. The root cause was a partial unique index that
+  PostgreSQL could not use for `ON CONFLICT (client_mutation_id)`.
+- Patched scoped Broadcast migration `202607150008` for hosted Supabase by
+  removing a redundant `ALTER TABLE realtime.messages` ownership operation;
+  the scoped authorization policy remains in place. Deployed the compatible
+  client before applying migrations `202607150008` and `202607150009`; unrelated
+  migration `202607150010` was not released.
+- Verified `npm run checkpoint:verify`, `npm run collaboration:verify`,
+  `npm run lint`, and `npm run build` from clean commit `0b8405c`. Production
+  migration history now includes `008` and `009`. ALPHA remained intact at
+  Dicing Complete awaiting its reviewer; the fresh in-app browser session was
+  unauthenticated, so the signed-in drag to Cleaning remains the live UI check.
+  Tracking: GitHub issue #25.
+
 ## Recent development note (2026-07-15 faster Process Flow wafer movement)
 
 - Fixed slow wafer/die dragging by stopping the active pointer event at its
