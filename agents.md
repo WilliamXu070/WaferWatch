@@ -1,5 +1,17 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-15 completed-wafer archive schema release)
+
+- Fixed the Process Flow runtime `42703` failure caused by archive-aware queries
+  reaching the remote database before their columns existed. Applied migration
+  `202607150010_completed_wafer_archive.sql`, adding the wafer and assignment
+  archive fields plus the archive/restore transaction functions.
+- Verified both formerly failing remote column queries, `npm run archive:verify`,
+  `npm run checkpoint:verify`, `npm run lint`, and `npm run build`.
+  Authenticated `/wireframe/process-flow` at `http://127.0.0.1:3013` loaded the
+  selected eight-step process and two active wafers with no console errors or
+  horizontal overflow. Tracking: GitHub issue #26.
+
 ## Recent development note (2026-07-15 checkpoint route constraint release)
 
 - Fixed reviewer routing from Complete by releasing the pending process-event
