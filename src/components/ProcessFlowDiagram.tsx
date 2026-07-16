@@ -3240,17 +3240,12 @@ export function ProcessFlowDiagram({
             role="dialog"
           >
             <div className="flow-wafer-move-dialog__header">
-              <p className="eyebrow">{pendingWaferMove.kind === "submit" ? "Checkpoint submission" : "Move to Beginning"}</p>
               <h2 id="flow-wafer-move-title">
-                {pendingWaferMove.kind === "submit" ? "Complete " : "Move "}
-                {pendingWaferMove.wafers.length > 1 ? pendingWaferMove.waferLabel : "wafer"}
+                {pendingWaferMove.kind === "submit" ? "Checkpoint note" : "Movement note"}
               </h2>
-              <p>
-                {pendingWaferMove.kind === "submit"
-                  ? `Document the completed work for ${pendingWaferMove.waferLabel}. It will wait on Complete until the assigned reviewer routes it.`
-                  : `Add a movement note before ${pendingWaferMove.waferLabel} enters ${pendingWaferMove.targetLabel} on Beginning.`}
-                {pendingWaferMove.wafers.length > 1 ? " The same note will be saved to every selected die." : ""}
-              </p>
+              {pendingWaferMove.wafers.length > 1 ? (
+                <p>Applies to {pendingWaferMove.waferLabel}.</p>
+              ) : null}
             </div>
             <dl className="flow-wafer-move-dialog__path">
               <div>
@@ -3263,7 +3258,7 @@ export function ProcessFlowDiagram({
               </div>
             </dl>
             <label className="flow-wafer-move-dialog__field">
-              <span>Process note</span>
+              <span>Required note</span>
               <textarea
                 autoFocus
                 disabled={isMovePending}
@@ -3274,8 +3269,8 @@ export function ProcessFlowDiagram({
                 onPaste={pastePendingWaferMoveImages}
                 placeholder={
                   pendingWaferMove.kind === "submit"
-                    ? "What work was completed, and what should the reviewer verify?"
-                    : `Why ${pendingWaferMove.wafers.length > 1 ? "are these dies" : "is this wafer"} moving to this step?`
+                    ? "Summarize completed work and any review details."
+                    : `Reason for moving to ${pendingWaferMove.targetLabel}.`
                 }
                 rows={5}
                 value={pendingWaferMoveNote}
@@ -3283,8 +3278,8 @@ export function ProcessFlowDiagram({
             </label>
             <div className="flow-wafer-move-dialog__attachments">
               <p>
-                Paste screenshots with Command-V. Up to {MAX_NOTE_ATTACHMENTS} images.
-                {pendingWaferMove.wafers.length > 1 ? " Images will be attached to every selected die." : ""}
+                Paste up to {MAX_NOTE_ATTACHMENTS} screenshots with ⌘V.
+                {pendingWaferMove.wafers.length > 1 ? " Attachments apply to all selected dies." : ""}
               </p>
               {pendingWaferMoveFiles.length ? (
                 <div className="flow-wafer-move-dialog__attachment-list">
@@ -3321,10 +3316,8 @@ export function ProcessFlowDiagram({
                 type="button"
               >
                 {isMovePending
-                  ? "Saving..."
-                  : `${pendingWaferMove.kind === "submit" ? "Submit" : "Move"} ${
-                      pendingWaferMove.wafers.length > 1 ? pendingWaferMove.waferLabel : "wafer"
-                    }`}
+                  ? "Saving…"
+                  : pendingWaferMove.kind === "submit" ? "Submit for review" : "Confirm move"}
               </button>
             </div>
           </section>
