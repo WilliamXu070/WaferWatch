@@ -28,6 +28,7 @@ export type IssueSeverity = "low" | "medium" | "high" | "critical";
 export type IssueStatus = "open" | "investigating" | "resolved" | "closed";
 export type ProcessStepNodeType = "start" | "procedure" | "end";
 export type ProcessStepTransitionType = "flow" | "return";
+export type ProcessStepExecutionMode = "main" | "anytime";
 export type ProcessTemplateLifecycleStatus = "draft" | "published";
 export type CheckpointDecisionValue = "approved" | "redo";
 
@@ -87,6 +88,7 @@ export type ProcessStep = {
   slug: string;
   process_area: string;
   node_type: ProcessStepNodeType;
+  execution_mode: ProcessStepExecutionMode;
   canvas_x: number | null;
   canvas_y: number | null;
   expected_duration_minutes: number | null;
@@ -183,6 +185,7 @@ export type WaferProcessAssignment = {
   started_at: string | null;
   completed_at: string | null;
   current_step_id: string | null;
+  anytime_return_step_id: string | null;
   archived_at: string | null;
   archived_by: string | null;
   deleted_at: string | null;

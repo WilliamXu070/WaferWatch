@@ -120,6 +120,7 @@ import type {
   SelectionBox,
   SelectionRect,
   SnapGuide,
+  UpdateProcessStepExecutionModeAction,
   UpdateProcessStepNameAction,
   UpdateStepCheckpointReviewerAction,
   UpdateProcessStepNodeTypeAction,
@@ -328,6 +329,7 @@ export function ProcessFlowDiagram({
   onCreateWaferAtProcessStart,
   onUpdateStepPositions,
   onUpdateStepName,
+  onUpdateStepExecutionMode,
   onCreateTransition,
   onDeleteSteps,
   onDeleteTransitions,
@@ -353,6 +355,7 @@ export function ProcessFlowDiagram({
   onCreateWaferAtProcessStart?: CreateWaferAtProcessStartAction;
   onUpdateStepPositions?: UpdateProcessStepPositionsAction;
   onUpdateStepName?: UpdateProcessStepNameAction;
+  onUpdateStepExecutionMode?: UpdateProcessStepExecutionModeAction;
   onUpdateStepNodeType?: UpdateProcessStepNodeTypeAction;
   onCreateTransition?: CreateProcessStepTransitionAction;
   onDeleteSteps?: DeleteProcessStepsAction;
@@ -523,9 +526,14 @@ export function ProcessFlowDiagram({
   );
   const selectedWaferMoveTargets = useMemo(
     () => selectedWafer && nodeById.get(selectedWafer.nodeId)?.wafers.find((wafer) => wafer.assignmentId === selectedWafer.assignmentId)?.currentStepStatus === "ready_to_move"
-      ? getAvailableWaferMoveTargets(displayNodes, edges, selectedWafer.nodeId)
+      ? getAvailableWaferMoveTargets(
+          displayNodes,
+          edges,
+          selectedWafer.nodeId,
+          selectedWaferPin?.anytimeReturnStepId
+        )
       : [],
-    [displayNodes, edges, nodeById, selectedWafer]
+    [displayNodes, edges, nodeById, selectedWafer, selectedWaferPin?.anytimeReturnStepId]
   );
   const resolveWaferDropTarget = useCallback((drag: WaferDrag) => {
     if (!drag.hasMoved) {
@@ -691,6 +699,7 @@ export function ProcessFlowDiagram({
               label: finalLabel,
               subLabel: persistedStep.process_area,
               order: persistedStep.step_order,
+              executionMode: persistedStep.execution_mode,
               isOptimistic: false
             }
           : node
@@ -2241,6 +2250,7 @@ export function ProcessFlowDiagram({
       width: NODE_WIDTH,
       height: getNodeHeightForWaferCount(0),
       role: "normal",
+      executionMode: "main",
       order: displayNodes.length + 1,
       parametersSchema: {},
       isOptimistic: true
@@ -2333,6 +2343,11 @@ export function ProcessFlowDiagram({
   };
 
   const beginPendingConnection = (event: PointerEvent<SVGGElement>, nodeId: string) => {
+    if (nodeById.get(nodeId)?.executionMode === "anytime") {
+      setMoveMessage("Anytime steps stay disconnected from the main process path.");
+      return;
+    }
+
     event.stopPropagation();
     setRoleMenu(null);
     setSelectedWafers([]);
@@ -3242,6 +3257,37 @@ export function ProcessFlowDiagram({
     });
   };
 
+  const updateStepExecutionMode = (nodeId: string, executionMode: "main" | "anytime") => {
+    if (!onUpdateStepExecutionMode || isGraphPending) return;
+    const previousNode = nodeById.get(nodeId);
+    if (!previousNode || previousNode.executionMode === executionMode) return;
+
+    const removedEdges = edgesRef.current.filter((edge) => edge.from === nodeId || edge.to === nodeId);
+    setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, executionMode } : node));
+    if (executionMode === "anytime") {
+      setEdges((current) => current.filter((edge) => edge.from !== nodeId && edge.to !== nodeId));
+    }
+    setRoleMenu(null);
+
+    startGraphTransition(() => {
+      void (async () => {
+        const result = await onUpdateStepExecutionMode({ stepId: nodeId, executionMode });
+        if (!result.ok) {
+          setNodes((current) => current.map((node) => node.id === nodeId ? previousNode : node));
+          if (executionMode === "anytime") {
+            setEdges((current) => normalizeFlowEdges([...current, ...removedEdges]));
+          }
+          setMoveMessage(result.error);
+          return;
+        }
+
+        setMoveMessage(executionMode === "anytime"
+          ? `${previousNode.label} is now available anytime.`
+          : `${previousNode.label} returned to the main-flow canvas. Connect it where it belongs.`);
+      })();
+    });
+  };
+
   const updateConnection = (event: PointerEvent<SVGSVGElement>) => {
     if (updateCanvasSelection(event)) {
       return;
@@ -3293,6 +3339,11 @@ export function ProcessFlowDiagram({
     setConnectionDraft(null);
 
     if (!target || !sourceNode || !finishedDraft.hasMoved) {
+      return;
+    }
+
+    if (sourceNode.executionMode === "anytime" || target.executionMode === "anytime") {
+      setMoveMessage("Anytime steps stay disconnected and can be entered from any approved stage.");
       return;
     }
 
@@ -3876,7 +3927,9 @@ export function ProcessFlowDiagram({
               )}
               type="button"
             >
-              Move{activeSelectedWafers.length > 1 ? " all" : ""} to {target.label}
+              {target.id === selectedWaferPin.anytimeReturnStepId
+                ? `Return${activeSelectedWafers.length > 1 ? " all" : ""} to ${target.label}`
+                : `Move${activeSelectedWafers.length > 1 ? " all" : ""} to ${target.label}`}
             </button>
           ))}
         </div>
@@ -3977,6 +4030,7 @@ export function ProcessFlowDiagram({
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}
         reviewerOptions={reviewerOptions}
         onUpdateReviewer={onUpdateStepReviewer ? updateCheckpointReviewer : undefined}
+        onUpdateExecutionMode={onUpdateStepExecutionMode ? updateStepExecutionMode : undefined}
         onEdgeClick={(edgeId) => {
           setSelectedNodeIds(new Set());
           setSelectedWafers([]);

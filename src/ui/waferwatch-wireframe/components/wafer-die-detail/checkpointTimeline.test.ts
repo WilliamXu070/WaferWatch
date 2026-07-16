@@ -234,3 +234,44 @@ test("flattens arrival, submission, approval, movement, and redo into actual eve
   ]);
   assert.deepEqual(events.map((event) => event.tone), ["neutral", "awaiting", "approved", "neutral"]);
 });
+
+test("labels entry into and return from an anytime step in die history", () => {
+  const entries = buildCheckpointTimeline({
+    attempts: [],
+    decisions: [],
+    withdrawals: [],
+    legacyEntries: [
+      {
+        id: "enter-piranha",
+        sourceEventId: "event-enter-piranha",
+        legacyType: "checkpoint_step_entered",
+        occurredAt: "2026-07-15T12:30:00.000Z",
+        actor: { id: "operator-1", name: "Operator One" },
+        note: null,
+        fromStepId: "step-clean",
+        fromStepName: "Cleaning",
+        toStepId: "step-piranha",
+        toStepName: "Piranha",
+        recordedStatus: "anytime_enter"
+      },
+      {
+        id: "return-cleaning",
+        sourceEventId: "event-return-cleaning",
+        legacyType: "checkpoint_step_entered",
+        occurredAt: "2026-07-15T13:30:00.000Z",
+        actor: { id: "operator-1", name: "Operator One" },
+        note: null,
+        fromStepId: "step-piranha",
+        fromStepName: "Piranha",
+        toStepId: "step-clean",
+        toStepName: "Cleaning",
+        recordedStatus: "anytime_return"
+      }
+    ]
+  });
+
+  assert.deepEqual(flattenCheckpointTimeline(entries).map((event) => event.title), [
+    "Entered anytime step · Beginning",
+    "Returned to main flow · Beginning"
+  ]);
+});

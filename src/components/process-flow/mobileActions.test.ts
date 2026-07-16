@@ -4,9 +4,10 @@ import { getAvailableWaferMoveTargets, getSelectedLinkedStepEdge } from "./mobil
 import type { FlowEdge, FlowNode } from "./types";
 
 const nodes: FlowNode[] = [
-  { id: "start", label: "Start", subLabel: "", wafers: [], x: 0, y: 0, width: 10, height: 10, role: "start", order: 1 },
-  { id: "dicing", label: "Dicing", subLabel: "", wafers: [], x: 0, y: 20, width: 10, height: 10, role: "normal", order: 2 },
-  { id: "complete", label: "Complete", subLabel: "", wafers: [], x: 0, y: 40, width: 10, height: 10, role: "end", order: 3 }
+  { id: "start", label: "Start", subLabel: "", wafers: [], x: 0, y: 0, width: 10, height: 10, role: "start", executionMode: "main", order: 1, parametersSchema: {} },
+  { id: "dicing", label: "Dicing", subLabel: "", wafers: [], x: 0, y: 20, width: 10, height: 10, role: "normal", executionMode: "main", order: 2, parametersSchema: {} },
+  { id: "piranha", label: "Piranha", subLabel: "", wafers: [], x: 20, y: 20, width: 10, height: 10, role: "normal", executionMode: "anytime", order: 3, parametersSchema: {} },
+  { id: "complete", label: "Complete", subLabel: "", wafers: [], x: 0, y: 40, width: 10, height: 10, role: "end", executionMode: "main", order: 4, parametersSchema: {} }
 ];
 
 const edges: FlowEdge[] = [
@@ -17,7 +18,14 @@ const edges: FlowEdge[] = [
 test("offers every other step because graph edges are visual only", () => {
   assert.deepEqual(
     getAvailableWaferMoveTargets(nodes, edges, "dicing").map((node) => node.id),
-    ["start", "complete"]
+    ["piranha", "start", "complete"]
+  );
+});
+
+test("prioritizes the recorded main-flow return step from an anytime procedure", () => {
+  assert.deepEqual(
+    getAvailableWaferMoveTargets(nodes, edges, "piranha", "dicing").map((node) => node.id),
+    ["dicing", "start", "complete"]
   );
 });
 

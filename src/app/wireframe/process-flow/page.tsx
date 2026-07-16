@@ -13,6 +13,7 @@ import {
   deleteProcessStepTransitions,
   restoreArchivedProcessWafer,
   updateProcessStepName,
+  updateProcessStepExecutionMode,
   updateProcessStepNodeType,
   updateProcessStepPositions,
   updateProcessStepCheckpointReviewer,
@@ -28,7 +29,7 @@ import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/li
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ProcessFlowView } from "@/ui/waferwatch-wireframe";
 import type { FlowStatModel } from "@/ui/waferwatch-wireframe/types";
-import type { Json, ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
+import type { Json, ProcessStepExecutionMode, ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,7 @@ type DiagramStep = {
   process_area: string;
   step_order: number;
   node_type: ProcessStepNodeType;
+  execution_mode: ProcessStepExecutionMode;
   canvas_x: number | null;
   canvas_y: number | null;
   wafers: {
@@ -61,6 +63,8 @@ type DiagramStep = {
     canReview: boolean;
     canWithdraw: boolean;
     isArchivable: boolean;
+    anytimeReturnStepId: string | null;
+    anytimeReturnStepName: string | null;
   }[];
   required_reviewer_id: string | null;
   required_reviewer_name: string | null;
@@ -90,6 +94,7 @@ function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null)
       process_area: step.process_area,
       step_order: step.step_order,
       node_type: step.node_type,
+      execution_mode: step.execution_mode,
       canvas_x: step.canvas_x,
       canvas_y: step.canvas_y,
       required_reviewer_id: step.required_reviewer_id,
@@ -113,7 +118,9 @@ function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null)
           requiredReviewerName: state.requiredReviewerName,
           canReview: Boolean(currentUserId && currentUserId === state.requiredReviewerId),
           canWithdraw: Boolean(currentUserId && currentUserId === state.latestStepAttemptSubmittedById),
-          isArchivable: state.assignmentStatus === "completed"
+          isArchivable: state.assignmentStatus === "completed",
+          anytimeReturnStepId: state.anytimeReturnStepId,
+          anytimeReturnStepName: state.anytimeReturnStepName
         }))
     }));
 }
@@ -267,6 +274,7 @@ export default async function ProcessFlowWireframePage({
       onUpdateStepPositions={canEdit ? updateProcessStepPositions : undefined}
       onUpdateStepName={canEdit ? updateProcessStepName : undefined}
       onUpdateStepNodeType={canEdit ? updateProcessStepNodeType : undefined}
+      onUpdateStepExecutionMode={canEdit ? updateProcessStepExecutionMode : undefined}
       onCreateTransition={canEdit ? createProcessStepTransition : undefined}
       onDeleteSteps={canEdit ? deleteProcessSteps : undefined}
       onDeleteTransitions={canEdit ? deleteProcessStepTransitions : undefined}

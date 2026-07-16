@@ -231,8 +231,12 @@ export function flattenCheckpointTimeline(
         id: entry.id,
         occurredAt: entry.occurredAt,
         tone: entry.legacyType === "wafer_step_reverted" ? "redo" : "neutral",
-        title: entry.legacyType === "checkpoint_step_entered"
-          ? "Moved here · Beginning"
+        title: entry.recordedStatus === "anytime_enter"
+          ? "Entered anytime step · Beginning"
+          : entry.recordedStatus === "anytime_return"
+            ? "Returned to main flow · Beginning"
+            : entry.legacyType === "checkpoint_step_entered"
+              ? "Moved here · Beginning"
           : entry.legacyType === "wafer_step_reverted"
             ? "Legacy redo movement"
             : entry.legacyType === "wafer_step_moved"

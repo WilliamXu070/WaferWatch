@@ -18,6 +18,7 @@ import {
   publishedProcessStepReviewerRecoverySchema,
   processAssignmentSchema,
   processStepDeleteSchema,
+  processStepExecutionModeUpdateSchema,
   processStepCreateSchema,
   processStepNodeTypeUpdateSchema,
   processStepCheckpointReviewerSchema,
@@ -1204,6 +1205,49 @@ export async function updateProcessStepNodeType(input: unknown) {
 
     if (error) {
       return fail(error.message);
+    }
+
+    revalidateProcessFlow(step.template_id);
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function updateProcessStepExecutionMode(input: unknown) {
+  try {
+    const parsed = processStepExecutionModeUpdateSchema.parse(input);
+    const step = await getStepForWrite(parsed.stepId);
+
+    if (parsed.executionMode === "anytime" && step.node_type !== "procedure") {
+      return fail("Only procedure steps can be made available anytime.");
+    }
+
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from("process_steps")
+      .update({ execution_mode: parsed.executionMode })
+      .eq("id", parsed.stepId)
+      .select("*")
+      .single();
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    if (parsed.executionMode === "anytime") {
+      const { error: transitionsError } = await supabase
+        .from("process_step_transitions")
+        .delete()
+        .or(`from_step_id.eq.${parsed.stepId},to_step_id.eq.${parsed.stepId}`);
+
+      if (transitionsError) {
+        await supabase
+          .from("process_steps")
+          .update({ execution_mode: step.execution_mode })
+          .eq("id", parsed.stepId);
+        return fail(transitionsError.message);
+      }
     }
 
     revalidateProcessFlow(step.template_id);

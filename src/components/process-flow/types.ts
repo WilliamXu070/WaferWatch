@@ -1,5 +1,5 @@
 import type { ActionResult } from "@/lib/action-result";
-import type { Json, ProcessStepNodeType, ProcessStepTransitionType, StepStatus, StepParameterRecord } from "@/types/database";
+import type { Json, ProcessStepExecutionMode, ProcessStepNodeType, ProcessStepTransitionType, StepStatus, StepParameterRecord } from "@/types/database";
 
 export type WaferPin = {
   assignmentId: string;
@@ -18,6 +18,8 @@ export type WaferPin = {
   canReview?: boolean;
   canWithdraw?: boolean;
   isArchivable?: boolean;
+  anytimeReturnStepId?: string | null;
+  anytimeReturnStepName?: string | null;
 };
 
 export type ProcessArchiveItem = {
@@ -36,6 +38,7 @@ export type DiagramStep = {
   process_area: string;
   step_order: number;
   node_type?: ProcessStepNodeType;
+  execution_mode?: ProcessStepExecutionMode;
   canvas_x?: number | null;
   canvas_y?: number | null;
   required_reviewer_id?: string | null;
@@ -59,6 +62,7 @@ export type PersistedStepPayload = {
   process_area: string;
   step_order: number;
   node_type: ProcessStepNodeType;
+  execution_mode: ProcessStepExecutionMode;
   canvas_x: number | null;
   canvas_y: number | null;
 };
@@ -84,6 +88,7 @@ export type FlowNode = {
   width: number;
   height: number;
   role: FlowNodeRole;
+  executionMode: ProcessStepExecutionMode;
   order: number;
   requiredReviewerId?: string | null;
   requiredReviewerName?: string | null;
@@ -331,6 +336,11 @@ export type UpdateProcessStepNameAction = (input: {
 export type UpdateProcessStepNodeTypeAction = (input: {
   stepId: string;
   nodeType: ProcessStepNodeType;
+}) => Promise<ActionResult<PersistedStepPayload>>;
+
+export type UpdateProcessStepExecutionModeAction = (input: {
+  stepId: string;
+  executionMode: ProcessStepExecutionMode;
 }) => Promise<ActionResult<PersistedStepPayload>>;
 
 export type CreateProcessStepTransitionAction = (input: {

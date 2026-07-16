@@ -129,7 +129,9 @@ export function FlowNodeCard({
       y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
       isSelected={selectedWaferAssignmentIds.has(wafer.assignmentId)}
       status={wafer.currentStepStatus}
-      title={`${getWaferChipLabel(wafer)} · ${getCheckpointStateLabel(wafer.currentStepStatus)}`}
+      title={`${getWaferChipLabel(wafer)} · ${getCheckpointStateLabel(wafer.currentStepStatus)}${
+        wafer.anytimeReturnStepName ? ` · Return to ${wafer.anytimeReturnStepName}` : ""
+      }`}
       onPointerDown={(event) => {
         event.stopPropagation();
         onBeginWaferDrag(event, node, wafer);
@@ -200,7 +202,7 @@ export function FlowNodeCard({
       } ${dropTargetKind ? "flow-node--drop-target" : ""} ${
         dropTargetKind === "submit" ? "flow-node--drop-target-submit" : ""
       } ${dropTargetKind === "restore" ? "flow-node--drop-target-restore" : ""
-      } ${isSelected ? "flow-node--selected" : ""}`}
+      } ${isSelected ? "flow-node--selected" : ""} ${node.executionMode === "anytime" ? "flow-node--anytime" : ""}`}
       transform={`translate(${node.x} ${node.y})`}
       onPointerDown={(event) => onNodePointerDown(event, node)}
       onPointerMove={onNodePointerMove}
@@ -241,7 +243,7 @@ export function FlowNodeCard({
       </g>
       <path className="flow-node-icon" d={getNodeIconPath(node.role)} style={{ touchAction: "none" }} />
       <text x="31" y="35" className="flow-node-order" style={{ touchAction: "none" }}>
-        {node.order}
+        {node.executionMode === "anytime" ? "" : node.order}
       </text>
       <g className="flow-node-port-hit">
         <circle cx={node.width - 24} cy="24" r="14" className="flow-node-port-target" style={{ touchAction: "none" }} />
@@ -284,7 +286,12 @@ export function FlowNodeCard({
           {truncateLabel(node.label, 28)}
         </text>
       )}
-      {active ? (
+      {node.executionMode === "anytime" ? (
+        <g className="flow-node-anytime-pill" transform={`translate(${node.width - 100} 17)`}>
+          <rect x="0" y="0" width="78" height="22" rx="11" />
+          <text x="39" y="15">Anytime</text>
+        </g>
+      ) : active ? (
         <g className="flow-node-active-pill" transform={`translate(${node.width - 78} 22)`}>
           <rect x="0" y="0" width="56" height="22" rx="11" style={{ touchAction: "none" }} />
           <text x="28" y="15" style={{ touchAction: "none" }}>Active</text>

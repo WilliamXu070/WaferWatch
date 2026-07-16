@@ -22,6 +22,7 @@ type DashboardAssignment = Pick<
   | "completed_at"
   | "assigned_by"
   | "current_step_id"
+  | "anytime_return_step_id"
 >;
 
 type DashboardStepExecution = Pick<
@@ -65,6 +66,8 @@ export type ProcessDashboardWaferState = {
   currentHandlerName: string | null;
   requiredReviewerId: string | null;
   requiredReviewerName: string | null;
+  anytimeReturnStepId: string | null;
+  anytimeReturnStepName: string | null;
   dieDescriptions: Record<string, string>;
   diePolingParameters: Record<string, Record<string, Record<string, Record<string, string>>>>;
 };
@@ -529,12 +532,14 @@ export async function getProcessDashboardData(
   const stepOrderById = new Map(process.process_steps.map((step) => [step.id, step.step_order]));
   const stepNameById = new Map(process.process_steps.map((step) => [step.id, step.name]));
   const stepAreaById = new Map(process.process_steps.map((step) => [step.id, step.process_area]));
-  const sortedProcessSteps = [...process.process_steps].sort((a, b) => a.step_order - b.step_order);
+  const sortedProcessSteps = process.process_steps
+    .filter((step) => step.execution_mode !== "anytime")
+    .sort((a, b) => a.step_order - b.step_order);
   const startStep = sortedProcessSteps[0] ?? null;
 
   const assignmentsResult = await supabase
     .from("wafer_process_assignments")
-    .select("id, wafer_id, status, assigned_at, started_at, completed_at, assigned_by, current_step_id")
+    .select("id, wafer_id, status, assigned_at, started_at, completed_at, assigned_by, current_step_id, anytime_return_step_id")
     .eq("template_id", processTemplateId)
     .is("deleted_at", null)
     .is("archived_at", null);
@@ -749,6 +754,10 @@ export async function getProcessDashboardData(
       currentHandlerName: handlerProfileId ? handlerNameById.get(handlerProfileId) ?? null : null,
       requiredReviewerId,
       requiredReviewerName: requiredReviewerId ? handlerNameById.get(requiredReviewerId) ?? null : null,
+      anytimeReturnStepId: assignment.anytime_return_step_id,
+      anytimeReturnStepName: assignment.anytime_return_step_id
+        ? stepNameById.get(assignment.anytime_return_step_id) ?? null
+        : null,
       dieDescriptions: extractDieDescriptions(wafer.metadata as Json),
       diePolingParameters: extractDiePolingParameters(wafer.metadata as Json)
     };

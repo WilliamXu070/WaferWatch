@@ -73,6 +73,7 @@ type ProcessFlowCanvasProps = {
   onEdgeClick: (edgeId: string) => void;
   reviewerOptions: Array<{ id: string; name: string }>;
   onUpdateReviewer?: (nodeId: string, reviewerId: string | null) => void;
+  onUpdateExecutionMode?: (nodeId: string, executionMode: "main" | "anytime") => void;
 };
 
 export function ProcessFlowCanvas({
@@ -132,7 +133,8 @@ export function ProcessFlowCanvas({
   onDeleteNodes,
   onEdgeClick,
   reviewerOptions,
-  onUpdateReviewer
+  onUpdateReviewer,
+  onUpdateExecutionMode
 }: ProcessFlowCanvasProps) {
   const draftSourceNode = connectionDraft ? nodeById.get(connectionDraft.from) : null;
   const draftPath = draftSourceNode
@@ -310,6 +312,19 @@ export function ProcessFlowCanvas({
               ))}
             </select>
           </label>
+          {roleMenuNode.role === "normal" ? (
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={roleMenuNode.executionMode === "anytime"}
+              onClick={() => onUpdateExecutionMode?.(
+                roleMenuNode.id,
+                roleMenuNode.executionMode === "anytime" ? "main" : "anytime"
+              )}
+            >
+              {roleMenuNode.executionMode === "anytime" ? "Use in main flow" : "Make available anytime"}
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitem"

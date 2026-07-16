@@ -16,13 +16,14 @@ export function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransi
       width: NODE_WIDTH,
       height: getNodeHeightForWafers(step.wafers),
       role: toFlowNodeRole(step.node_type),
+      executionMode: step.execution_mode ?? "main",
       order: index + 1,
       requiredReviewerId: step.required_reviewer_id ?? null,
       requiredReviewerName: step.required_reviewer_name ?? null,
       parametersSchema: step.parameters_schema ?? {}
     }));
 
-  const nodeIds = new Set(nodes.map((node) => node.id));
+  const nodeIds = new Set(nodes.filter((node) => node.executionMode === "main").map((node) => node.id));
   const persistedEdges: FlowEdge[] = transitions
     .filter((transition) => nodeIds.has(transition.from_step_id) && nodeIds.has(transition.to_step_id))
     .map((transition) => ({

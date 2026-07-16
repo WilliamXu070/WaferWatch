@@ -71,8 +71,10 @@ function makeNode(id: string, x: number, y: number, order: number, label: string
     label,
     subLabel: "Step",
     role: "normal",
+    executionMode: "main",
     width: 276,
     height: 134,
-    wafers: []
+    wafers: [],
+    parametersSchema: {}
   };
 }

@@ -4,6 +4,7 @@ import { WAFER_CODE_ERROR, WAFER_CODE_PATTERN } from "@/features/process-flows/w
 
 export const processStepNodeTypeSchema = z.enum(["start", "procedure", "end"]);
 export const processStepTransitionTypeSchema = z.enum(["flow", "return"]);
+export const processStepExecutionModeSchema = z.enum(["main", "anytime"]);
 
 const canvasCoordinateSchema = z.number().int().min(0).max(20000);
 
@@ -151,6 +152,11 @@ export const processStepPositionsUpdateSchema = z.object({
 export const processStepNodeTypeUpdateSchema = z.object({
   stepId: uuidSchema,
   nodeType: processStepNodeTypeSchema
+});
+
+export const processStepExecutionModeUpdateSchema = z.object({
+  stepId: uuidSchema,
+  executionMode: processStepExecutionModeSchema
 });
 
 export const processStepCheckpointReviewerSchema = z.object({

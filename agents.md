@@ -1,5 +1,20 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 anytime process steps)
+
+- Added first-class `main` and `anytime` process-step modes. Anytime procedures
+  stay disconnected from the main graph, can be entered from any approved stage,
+  remember the interrupted main step, and prioritize returning there after their
+  own checkpoint is complete.
+- Movement events are annotated as anytime entry or main-flow return, so Wafer /
+  Die Status labels both transitions chronologically while retaining the normal
+  step parameters, notes, reviewer, and execution history.
+- Applied migration `202607160001`. Verified 13 focused graph, node, mobile-target,
+  and history tests, `npm run lint`, and `npm run build`. Authenticated Process
+  Flow at 1280x720 and 390x844 rendered the real eight-step process with the new
+  context-menu action, no page overflow, and no console errors. Existing process
+  steps and wafers were not mutated during browser verification.
+
 ## Recent development note (2026-07-16 batch step parameters)
 
 - Fixed multi-die movement opening the same step-parameter form once per die.

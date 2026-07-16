@@ -13,7 +13,9 @@ const node: FlowNode = {
   width: 392,
   height: 176,
   role: "normal",
+  executionMode: "main",
   order: 2,
+  parametersSchema: {},
   wafers: [
     {
       assignmentId: "beginning",
@@ -69,4 +71,38 @@ test("renders Beginning and Complete selection through the same wafer chip compo
   assert.doesNotMatch(markup, /flow-node-complete-touch-layer/);
   assert.match(markup, /clipPath id="flow-node-phase-clip-cleaning"/);
   assert.match(markup, /clip-path="url\(#flow-node-phase-clip-cleaning\)"/);
+});
+
+test("renders an anytime procedure as a clearly separate disconnected step", () => {
+  const markup = renderToStaticMarkup(
+    <svg>
+      <FlowNodeCard
+        node={{ ...node, executionMode: "anytime", wafers: [] }}
+        isConnecting={false}
+        isDragging={false}
+        dropTargetKind={null}
+        isSelected={false}
+        selectedWaferAssignmentIds={new Set()}
+        isEditing={false}
+        editingNodeLabel=""
+        editingInputRef={{ current: null }}
+        onNodePointerDown={() => undefined}
+        onNodePointerMove={() => undefined}
+        onNodePointerUp={() => undefined}
+        onNodePointerCancel={() => undefined}
+        onNodeContextMenu={() => undefined}
+        onBeginLabelEdit={() => undefined}
+        onEditingLabelChange={() => undefined}
+        onCommitLabel={() => undefined}
+        onCancelLabelEdit={() => undefined}
+        onBeginWaferDrag={() => undefined}
+        onSelectWafer={() => undefined}
+        onOpenWaferDetails={() => undefined}
+        onOpenStepParameters={() => undefined}
+      />
+    </svg>
+  );
+
+  assert.match(markup, /flow-node--anytime/);
+  assert.match(markup, />Anytime</);
 });

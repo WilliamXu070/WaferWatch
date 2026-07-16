@@ -1,7 +1,7 @@
 "use client";
 
 import { ProcessFlowDiagram } from "@/components/ProcessFlowDiagram";
-import type { Json, ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
+import type { Json, ProcessStepExecutionMode, ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
 import type { CheckpointReviewerOption } from "@/components/process-flow/types";
 import type { FlowStatModel } from "../types";
 import { ProcessFlowStatsBar } from "./ProcessFlowStatsBar";
@@ -22,6 +22,8 @@ type ProcessFlowWaferModel = {
   requiredReviewerName?: string | null;
   canReview?: boolean;
   canWithdraw?: boolean;
+  anytimeReturnStepId?: string | null;
+  anytimeReturnStepName?: string | null;
 };
 
 type ProcessFlowStepModel = {
@@ -30,6 +32,7 @@ type ProcessFlowStepModel = {
   process_area: string;
   step_order: number;
   node_type: ProcessStepNodeType;
+  execution_mode: ProcessStepExecutionMode;
   canvas_x: number | null;
   canvas_y: number | null;
   required_reviewer_id?: string | null;
@@ -66,6 +69,7 @@ type ProcessFlowViewProps = {
   onUpdateStepPositions?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepPositions"];
   onUpdateStepName?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepName"];
   onUpdateStepNodeType?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepNodeType"];
+  onUpdateStepExecutionMode?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepExecutionMode"];
   onCreateTransition?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateTransition"];
   onDeleteSteps?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteSteps"];
   onDeleteTransitions?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteTransitions"];
@@ -98,6 +102,7 @@ export function ProcessFlowView({
   onUpdateStepPositions,
   onUpdateStepName,
   onUpdateStepNodeType,
+  onUpdateStepExecutionMode,
   onCreateTransition,
   onDeleteSteps,
   onDeleteTransitions,
@@ -151,6 +156,7 @@ export function ProcessFlowView({
             onUpdateStepPositions={onUpdateStepPositions}
             onUpdateStepName={onUpdateStepName}
             onUpdateStepNodeType={onUpdateStepNodeType}
+            onUpdateStepExecutionMode={onUpdateStepExecutionMode}
             onCreateTransition={onCreateTransition}
             onDeleteSteps={onDeleteSteps}
             onDeleteTransitions={onDeleteTransitions}
