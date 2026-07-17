@@ -13,6 +13,7 @@ import {
   registerAttachment
 } from "@/features/measurements/actions";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
+import { saveWaferStatusStepParameterRecord } from "@/features/process-flows/actions";
 import { isGeneratedDicedPieceNote } from "@/features/runs/dicingNoteTransfer";
 import { mutateTextSurfaceJsonArray } from "@/features/text-surfaces/actions";
 import { createClient } from "@/lib/supabase/client";
@@ -333,10 +334,10 @@ function NoteAuthorMark({ note, authorName }: { note: WaferDieNote; authorName: 
 
 function EmptyNotesState() {
   return (
-    <div className="grid min-h-[160px] flex-1 place-items-center rounded-lg border border-dashed border-[#ddddda] bg-white px-5 py-8 text-center">
+    <div className="grid min-h-[72px] flex-1 place-items-center rounded-lg border border-dashed border-[#ddddda] bg-white px-4 py-3 text-center">
       <div>
         <p className="text-[15px] font-semibold text-[#111111]">No notes yet</p>
-        <p className="mt-2 max-w-[320px] text-[13px] leading-5 text-[#777770]">
+        <p className="mt-1 max-w-[320px] text-[12px] leading-4 text-[#777770]">
           Add the first persistent note for this die.
         </p>
       </div>
@@ -789,14 +790,15 @@ export function WaferDieNotesDashboard({
   const selectedDraftFiles = draftFilesByStepId[selectedDraftKey] ?? [];
   const selectedStepExecutionId = selectedVisit?.executionId ?? null;
   const selectedStepParameterRecords = selectedVisit?.parameterRecords ?? [];
+  const selectedStep = tile.processSteps?.find((step) => step.id === selectedStepId) ?? null;
 
   return (
-    <div className="wafer-step-workspace grid min-h-0 gap-3 md:grid-cols-[280px_minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+    <div className="wafer-step-workspace grid min-h-0 gap-3 md:grid-cols-[210px_minmax(0,1fr)] lg:grid-cols-[224px_minmax(0,1fr)]">
       <section className="wafer-step-history grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
-        <div className="border-b border-[#eeeeea] px-4 py-3.5">
-          <h3 className="text-[15px] font-semibold text-[#111111]">Step history</h3>
+        <div className="border-b border-[#eeeeea] px-3 py-2.5">
+          <h3 className="text-[13px] font-semibold text-[#111111]">Step history</h3>
         </div>
-        <div className="wafer-step-history__scroll min-h-0 overflow-y-auto p-2.5">
+        <div className="wafer-step-history__scroll min-h-0 overflow-y-auto p-1.5">
           {visits.length ? (
             <SequentialStepPicker
               visits={visits}
@@ -812,8 +814,8 @@ export function WaferDieNotesDashboard({
         </div>
       </section>
 
-      <section className="wafer-step-detail grid min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
-        <div className="border-b border-[#eeeeea] px-4 py-3">
+      <section className="wafer-step-detail grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
+        <div className="row-start-1 min-w-0 w-full border-b border-[#eeeeea] px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <span className="h-2.5 w-2.5 rounded-full bg-[#1fa69a]" aria-hidden />
@@ -831,10 +833,10 @@ export function WaferDieNotesDashboard({
           </div>
         </div>
 
-        {selectedVisit ? (
-          <section className="border-b border-[#eeeeea] bg-[#fbfbf8] px-4 py-3" aria-label="Step completion record">
+        {selectedVisit && (selectedVisit.state !== "current" || selectedVisit.completionNote) ? (
+          <section className="row-start-2 min-w-0 w-full border-b border-[#eeeeea] bg-[#fbfbf8] px-3 py-2" aria-label="Step completion record">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#777770]">
+              <h4 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#777770]">
                 {selectedVisit.state === "current" ? "Current visit" : "Completion note"}
               </h4>
               <span className="text-[11px] font-medium text-[#8a8a83]">
@@ -846,11 +848,11 @@ export function WaferDieNotesDashboard({
               </span>
             </div>
             {selectedVisit.completionNote ? (
-              <p className="mt-2 max-w-[75ch] whitespace-pre-wrap text-[14px] leading-6 text-[#3f3f3a]">
+              <p className="mt-1 max-w-[75ch] whitespace-pre-wrap text-[12px] leading-5 text-[#3f3f3a]">
                 {selectedVisit.completionNote}
               </p>
             ) : (
-              <p className="mt-2 text-[12px] font-medium text-[#8a8a83]">
+              <p className="mt-1 text-[11px] font-medium text-[#8a8a83]">
                 {selectedVisit.state === "current" ? "This step is currently in progress." : "No completion note was added."}
               </p>
             )}
@@ -861,11 +863,19 @@ export function WaferDieNotesDashboard({
         ) : null}
 
         <StepParameterHistory
+          key={`${selectedVisit?.id ?? "die"}:${selectedStepParameterRecords[0]?.revision ?? 0}`}
           records={selectedStepParameterRecords}
-          className="wafer-step-detail__parameters max-h-[230px] overflow-y-auto"
+          templateSchema={selectedStep?.parametersSchema ?? {}}
+          projectId={tile.projectId}
+          waferId={tile.waferId}
+          stepId={selectedStepId}
+          stepExecutionId={selectedStepExecutionId}
+          canEdit={canEdit && Boolean(selectedVisit)}
+          onSave={saveWaferStatusStepParameterRecord}
+          className="wafer-step-detail__parameters row-start-3 min-w-0 w-full max-w-full max-h-[250px] overflow-y-auto"
         />
 
-        <div className="wafer-step-detail__notes flex min-h-0 flex-col gap-3 overflow-y-auto bg-[#fbfbf8] p-3">
+        <div className="wafer-step-detail__notes row-start-4 flex min-h-0 min-w-0 w-full max-w-full flex-col gap-3 overflow-y-auto bg-[#fbfbf8] p-3">
           {visibleNotes.length ? (
             visibleNotes.map((note) => {
               const authorName = getNoteAuthorName(note, currentUser);
@@ -1003,27 +1013,9 @@ export function WaferDieNotesDashboard({
         </div>
 
         {canEdit ? (
-        <div className="wafer-step-detail__composer border-t border-[#e6e6e0] bg-white p-3">
-          <textarea
-            id={`wafer-die-note-${selectedDraftKey}`}
-            name="waferDieNote"
-            value={selectedDraft}
-            onChange={(event) => setDraftByStepId((current) => ({
-              ...current,
-              [selectedDraftKey]: event.target.value.slice(0, MAX_NOTE_LENGTH)
-            }))}
-            placeholder={`Write a note for ${selectedStepName}...`}
-            className="min-h-[68px] max-h-[120px] w-full resize-y rounded-lg border border-[#e6e6e0] bg-[#fbfbf8] px-3 py-3 text-[14px] leading-6 text-[#111111] outline-none placeholder:text-[#9b9b94] focus:border-[#111111]"
-            onPaste={(event) => {
-              const pastedImages = getClipboardImageFiles(event.clipboardData);
-              if (pastedImages.length > 0) {
-                event.preventDefault();
-                appendDraftFiles(selectedDraftKey, pastedImages);
-              }
-            }}
-          />
+        <div className="wafer-step-detail__composer row-start-5 min-w-0 w-full max-w-full border-t border-[#e6e6e0] bg-white p-2">
           {selectedDraftFiles.length ? (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mb-2 flex flex-wrap gap-2">
               {selectedDraftFiles.map((file) => (
                 <span
                   key={`${file.name}:${file.size}:${file.lastModified}`}
@@ -1045,12 +1037,9 @@ export function WaferDieNotesDashboard({
               ))}
             </div>
           ) : null}
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="mr-1 text-[12px] font-medium text-[#8a8a83]">
-                {selectedDraft.length}/{MAX_NOTE_LENGTH}
-              </p>
-              <label className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Attach files" aria-label="Attach files">
+          <div className="wafer-step-detail__composer-row flex min-w-0 items-end gap-1.5">
+            <div className="flex shrink-0 items-center gap-1.5">
+              <label className="grid h-8 w-8 cursor-pointer place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Attach files" aria-label="Attach files">
                 <Paperclip size={16} aria-hidden />
                 <input
                   type="file"
@@ -1065,7 +1054,7 @@ export function WaferDieNotesDashboard({
                   }}
                 />
               </label>
-              <label className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Choose photos" aria-label="Choose photos">
+              <label className="grid h-8 w-8 cursor-pointer place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Choose photos" aria-label="Choose photos">
                 <ImagePlus size={16} aria-hidden />
                 <input
                   type="file"
@@ -1080,7 +1069,7 @@ export function WaferDieNotesDashboard({
                   }}
                 />
               </label>
-              <label className="grid h-9 w-9 cursor-pointer place-items-center rounded-lg border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Take photo" aria-label="Take photo">
+              <label className="grid h-8 w-8 cursor-pointer place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Take photo" aria-label="Take photo">
                 <Camera size={16} aria-hidden />
                 <input
                   type="file"
@@ -1096,27 +1085,36 @@ export function WaferDieNotesDashboard({
                 />
               </label>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setDraftByStepId((current) => ({ ...current, [selectedDraftKey]: "" }));
-                  setDraftFilesByStepId((current) => ({ ...current, [selectedDraftKey]: [] }));
-                }}
-                className="h-10 rounded-lg border border-transparent px-4 text-[14px] font-semibold text-[#55554f] hover:bg-[#fafafa]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void addNote(selectedStepId, selectedStepName, selectedStepExecutionId, selectedDraftKey)}
-                disabled={(!selectedDraft.trim() && selectedDraftFiles.length === 0) || isSaving}
-                className="h-10 rounded-lg bg-[#2d74f0] px-5 text-[14px] font-semibold text-white hover:bg-[#1f60d1] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
-              >
-                Add note
-              </button>
-            </div>
+            <textarea
+              id={`wafer-die-note-${selectedDraftKey}`}
+              name="waferDieNote"
+              value={selectedDraft}
+              onChange={(event) => setDraftByStepId((current) => ({
+                ...current,
+                [selectedDraftKey]: event.target.value.slice(0, MAX_NOTE_LENGTH)
+              }))}
+              placeholder={`Write a note for ${selectedStepName}...`}
+              className="wafer-step-detail__composer-input min-h-10 max-h-20 min-w-0 flex-1 resize-y rounded-md border border-[#deded8] bg-[#fbfbf8] px-3 py-2 text-[14px] leading-5 text-[#111111] outline-none placeholder:text-[#9b9b94] focus:border-[#777770]"
+              onPaste={(event) => {
+                const pastedImages = getClipboardImageFiles(event.clipboardData);
+                if (pastedImages.length > 0) {
+                  event.preventDefault();
+                  appendDraftFiles(selectedDraftKey, pastedImages);
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void addNote(selectedStepId, selectedStepName, selectedStepExecutionId, selectedDraftKey)}
+              disabled={(!selectedDraft.trim() && selectedDraftFiles.length === 0) || isSaving}
+              className="h-10 shrink-0 rounded-md bg-[#171714] px-3.5 text-[12px] font-semibold text-white transition-transform hover:bg-[#30302b] active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
+            >
+              Add note
+            </button>
           </div>
+          {selectedDraft.length ? (
+            <p className="mt-1 text-right text-[10px] font-medium text-[#8a8a83]">{selectedDraft.length}/{MAX_NOTE_LENGTH}</p>
+          ) : null}
         </div>
         ) : null}
       </section>

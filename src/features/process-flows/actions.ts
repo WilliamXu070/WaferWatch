@@ -33,11 +33,13 @@ import {
   processTemplateCreateSchema,
   processStepNameUpdateSchema,
   processStepParametersUpdateSchema,
-  stepParameterRecordSaveSchema
+  stepParameterRecordSaveSchema,
+  waferStatusStepParameterRecordSaveSchema
 } from "@/features/process-flows/schemas";
 import {
   mergeStepParameterDefinitions,
   readStepParameterDefinitions,
+  writeStepParameterDefinitions,
   type StepParameterDefinition
 } from "@/features/process-flows/stepParameters";
 import { normalizeWaferCode } from "@/features/process-flows/waferNaming";
@@ -1438,6 +1440,207 @@ export async function saveStepParameterRecord(input: unknown) {
     revalidatePath("/wafer-status");
     revalidatePath("/wireframe/wafer-status");
     return ok(record);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function saveWaferStatusStepParameterRecord(input: unknown) {
+  try {
+    const parsed = waferStatusStepParameterRecordSaveSchema.parse(input);
+    const account = await requireAccount();
+    await assertProjectAccess(parsed.projectId, "write");
+    const supabase = await createServerSupabaseClient();
+
+    const [{ data: wafer, error: waferError }, { data: step, error: stepError }] = await Promise.all([
+      supabase
+        .from("wafers")
+        .select("id, project_id")
+        .eq("id", parsed.waferId)
+        .is("deleted_at", null)
+        .maybeSingle(),
+      supabase
+        .from("process_steps")
+        .select("id, template_id, parameters_schema")
+        .eq("id", parsed.stepId)
+        .maybeSingle()
+    ]);
+
+    if (waferError) return fail(waferError.message);
+    if (stepError) return fail(stepError.message);
+    if (!wafer || wafer.project_id !== parsed.projectId) {
+      return fail("This wafer is no longer available in the selected project.");
+    }
+    if (!step) {
+      return fail("This process step is no longer available.");
+    }
+
+    const { data: assignment, error: assignmentError } = await supabase
+      .from("wafer_process_assignments")
+      .select("id, template_id")
+      .eq("wafer_id", parsed.waferId)
+      .eq("template_id", step.template_id)
+      .is("deleted_at", null)
+      .order("assigned_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (assignmentError) return fail(assignmentError.message);
+    if (!assignment) {
+      return fail("The process assignment for this step could not be found.");
+    }
+
+    let stepExecutionId = parsed.stepExecutionId;
+    if (stepExecutionId) {
+      const { data: execution, error: executionError } = await supabase
+        .from("step_executions")
+        .select("id")
+        .eq("id", stepExecutionId)
+        .eq("assignment_id", assignment.id)
+        .eq("wafer_id", parsed.waferId)
+        .eq("process_step_id", parsed.stepId)
+        .maybeSingle();
+      if (executionError) return fail(executionError.message);
+      if (!execution) return fail("This recorded step visit has changed. Reload and try again.");
+    } else {
+      const { data: execution, error: executionError } = await supabase
+        .from("step_executions")
+        .select("id")
+        .eq("assignment_id", assignment.id)
+        .eq("wafer_id", parsed.waferId)
+        .eq("process_step_id", parsed.stepId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (executionError) return fail(executionError.message);
+      stepExecutionId = execution?.id ?? null;
+    }
+
+    let existingRecord: {
+      id: string;
+      revision: number;
+      schema_snapshot: Json;
+      process_event_id: string;
+      movement_mutation_id: string;
+    } | null = null;
+
+    if (parsed.recordId) {
+      const { data, error } = await supabase
+        .from("step_parameter_records")
+        .select("id, revision, schema_snapshot, process_event_id, movement_mutation_id")
+        .eq("id", parsed.recordId)
+        .eq("project_id", parsed.projectId)
+        .eq("wafer_id", parsed.waferId)
+        .eq("assignment_id", assignment.id)
+        .eq("process_step_id", parsed.stepId)
+        .maybeSingle();
+      if (error) return fail(error.message);
+      if (!data) return fail("This parameter entry was removed by another collaborator.");
+      existingRecord = data;
+    }
+
+    const baseSchema = existingRecord?.schema_snapshot ?? step.parameters_schema;
+    const existingDefinitions = new Map(
+      readStepParameterDefinitions(baseSchema).map((definition) => [definition.key, definition])
+    );
+    const globalParameters = parsed.parameters.filter((parameter) => parameter.scope === "global");
+    const localParameters = parsed.parameters.filter((parameter) => parameter.scope === "local");
+    const nextDefinitions: StepParameterDefinition[] = globalParameters.map((parameter) => {
+      const existing = existingDefinitions.get(parameter.key);
+      return {
+        id: parameter.id,
+        key: parameter.key,
+        label: parameter.label,
+        type: parameter.type,
+        unit: parameter.unit,
+        required: existing?.required ?? false,
+        description: existing?.description ?? "",
+        defaultValue: existing?.defaultValue ?? null
+      };
+    });
+    const schemaSnapshot = {
+      ...writeStepParameterDefinitions(baseSchema, nextDefinitions),
+      recordNotes: Object.fromEntries(
+        globalParameters
+          .filter((parameter) => parameter.notes)
+          .map((parameter) => [parameter.key, parameter.notes])
+      )
+    };
+    const globalValues = Object.fromEntries(
+      globalParameters.map((parameter) => [parameter.key, parameter.value])
+    );
+
+    if (existingRecord) {
+      const { data: updated, error: updateError } = await supabase
+        .from("step_parameter_records")
+        .update({
+          schema_snapshot: schemaSnapshot as Json,
+          global_values: globalValues as Json,
+          local_parameters: localParameters as Json,
+          notes: parsed.notes,
+          recorded_by: account.userId
+        })
+        .eq("id", existingRecord.id)
+        .eq("revision", parsed.expectedRevision ?? existingRecord.revision)
+        .select("*")
+        .maybeSingle();
+
+      if (updateError) return fail(updateError.message);
+      if (!updated) {
+        return fail("These parameters changed in another session. Reload before saving again.");
+      }
+
+      revalidateProcessFlow(step.template_id);
+      revalidatePath("/wafer-status");
+      revalidatePath("/wireframe/wafer-status");
+      return ok(updated);
+    }
+
+    const movementMutationId = crypto.randomUUID();
+    const { data: processEvent, error: processEventError } = await supabase
+      .from("process_events")
+      .insert({
+        project_id: parsed.projectId,
+        wafer_id: parsed.waferId,
+        step_execution_id: stepExecutionId,
+        actor_id: account.userId,
+        event_type: "step_parameters_recorded",
+        metadata: {
+          assignment_id: assignment.id,
+          target_step_id: parsed.stepId
+        },
+        client_mutation_id: movementMutationId
+      })
+      .select("id")
+      .single();
+
+    if (processEventError) return fail(processEventError.message);
+
+    const { data: created, error: createError } = await supabase
+      .from("step_parameter_records")
+      .insert({
+        project_id: parsed.projectId,
+        wafer_id: parsed.waferId,
+        assignment_id: assignment.id,
+        process_step_id: parsed.stepId,
+        step_execution_id: stepExecutionId,
+        process_event_id: processEvent.id,
+        movement_mutation_id: movementMutationId,
+        schema_snapshot: schemaSnapshot as Json,
+        global_values: globalValues as Json,
+        local_parameters: localParameters as Json,
+        notes: parsed.notes,
+        recorded_by: account.userId
+      })
+      .select("*")
+      .single();
+
+    if (createError) return fail(createError.message);
+
+    revalidateProcessFlow(step.template_id);
+    revalidatePath("/wafer-status");
+    revalidatePath("/wireframe/wafer-status");
+    return ok(created);
   } catch (error) {
     return fail(toErrorMessage(error));
   }

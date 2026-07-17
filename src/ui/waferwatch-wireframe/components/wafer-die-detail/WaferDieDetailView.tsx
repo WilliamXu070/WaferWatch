@@ -53,7 +53,7 @@ export function DieDetailView({
     : "No recorded update yet";
 
   return (
-    <section className="wafer-die-detail-view grid gap-5 bg-white md:gap-6">
+    <section className={`wafer-die-detail-view grid gap-5 bg-white md:gap-6 ${activeTab === "notes" ? "wafer-die-detail-view--notes" : ""}`}>
       <div className="wafer-die-detail-header border-b border-[#eeeeea] bg-white pb-4 md:pb-6">
         <div className="wafer-die-detail-breadcrumb mb-4 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-[#8a887b] md:mb-6">
           <button type="button" onClick={onBack} className="hover:text-[#111111]">Wafers</button>

@@ -48,8 +48,8 @@ test("keeps repeated visits separate and assigns parameter records to the matchi
     processSteps: base.processSteps?.map((step) => step.id === "clean" ? {
       ...step,
       parameterRecords: [
-        { id: "record-1", movementMutationId: "move-1", recordedAt: "2026-07-16T15:34:10Z", recordedById: null, recordedByName: null, notes: null, values: [] },
-        { id: "record-2", movementMutationId: "move-2", recordedAt: "2026-07-16T18:00:10Z", recordedById: null, recordedByName: null, notes: null, values: [] }
+        { id: "record-1", revision: 1, movementMutationId: "move-1", recordedAt: "2026-07-16T15:34:10Z", recordedById: null, recordedByName: null, notes: null, values: [] },
+        { id: "record-2", revision: 1, movementMutationId: "move-2", recordedAt: "2026-07-16T18:00:10Z", recordedById: null, recordedByName: null, notes: null, values: [] }
       ]
     } : step),
     checkpointHistory: [

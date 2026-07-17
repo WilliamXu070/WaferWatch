@@ -109,7 +109,7 @@ function DieNotesTab({
   onNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
 }) {
   return (
-    <div className="grid gap-4">
+    <div className="wafer-die-notes-tab min-h-0">
       <WaferDieNotesDashboard
         key={tile.id}
         tile={tile}

@@ -128,6 +128,10 @@ const recordedLocalStepParameterSchema = z.object({
   scope: z.enum(["local", "global"])
 });
 
+const waferStatusEditableStepParameterSchema = recordedLocalStepParameterSchema.extend({
+  id: z.string().trim().min(1).max(100)
+});
+
 export const stepParameterRecordSaveSchema = z.object({
   assignmentId: uuidSchema,
   stepId: uuidSchema,
@@ -135,6 +139,34 @@ export const stepParameterRecordSaveSchema = z.object({
   globalValues: z.record(z.string(), stepParameterValueSchema),
   notes: z.string().trim().max(4000).nullable(),
   localParameters: z.array(recordedLocalStepParameterSchema).max(100)
+});
+
+export const waferStatusStepParameterRecordSaveSchema = z.object({
+  projectId: uuidSchema,
+  waferId: uuidSchema,
+  stepId: uuidSchema,
+  stepExecutionId: uuidSchema.nullable(),
+  recordId: uuidSchema.nullable(),
+  expectedRevision: z.number().int().positive().nullable(),
+  notes: z.string().trim().max(4000).nullable(),
+  parameters: z.array(waferStatusEditableStepParameterSchema).max(100)
+}).superRefine((value, context) => {
+  if (value.recordId && value.expectedRevision === null) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "An existing parameter record requires its revision.",
+      path: ["expectedRevision"]
+    });
+  }
+
+  const keys = value.parameters.map((parameter) => parameter.key);
+  if (new Set(keys).size !== keys.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Each parameter needs a unique key.",
+      path: ["parameters"]
+    });
+  }
 });
 
 export const processStepPositionUpdateSchema = z.object({

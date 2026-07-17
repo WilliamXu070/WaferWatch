@@ -1,5 +1,22 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 compact editable step workspace)
+
+- Reduced Notes-tab history rows to the two operator-relevant lines: step name
+  and timestamp. The narrow numbered rail keeps family color and selection while
+  long desktop histories scroll vertically and phone history scrolls horizontally.
+- Replaced read-only parameter snapshots with a compact editable Parameter / Value /
+  Notes sheet. Editors can rename rows, change values and row notes, add or remove
+  visit-local parameters, edit the parameter-set note, and save with revision checks;
+  an entry can also be created after the original movement popup was skipped.
+- Tightened the Notes-mode header and composer so the full workspace fits above the
+  phone navigation and inside desktop height. Parameters, history, and notes scroll
+  internally without widening the page.
+- Verified focused parameter/history tests, `npm run lint`, and `npm run build`.
+  Authenticated `/wafer-status?processId=9fb7de9e-31b8-4b5a-aea7-8ee64eedb699`
+  at 1280x720 and 390x844 had no horizontal overflow or console errors. Add/edit
+  controls were exercised without pressing Save, so no live wafer data was changed.
+
 ## Recent development note (2026-07-16 viewport-contained step history)
 
 - Reworked the Notes-tab step history to match the earlier compact numbered

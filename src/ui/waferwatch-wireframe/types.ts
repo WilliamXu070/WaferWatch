@@ -1,4 +1,4 @@
-import type { StepStatus } from "@/types/database";
+import type { Json, StepStatus } from "@/types/database";
 import type { ProcessCalendarLocation } from "@/features/calendar/queries";
 export type {
   WireframeCalendarDto,
@@ -202,15 +202,19 @@ export type DiePolingCellValues = Partial<Record<DiePolingParameterField, string
 export type DiePolingRows = Record<string, Record<string, DiePolingCellValues>>;
 
 export type WaferStatusStepParameterValue = {
+  id: string;
   key: string;
   label: string;
+  type: "text" | "number" | "boolean" | "select";
   value: string | number | boolean | null;
   unit: string;
+  notes: string;
   scope: "global" | "local";
 };
 
 export type WaferStatusStepParameterRecord = {
   id: string;
+  revision: number;
   movementMutationId: string;
   recordedAt: string;
   recordedById: string | null;
@@ -233,6 +237,7 @@ export type WaferStatusProcessStepModel = {
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string | null;
+  parametersSchema?: Json;
   parameterRecords?: WaferStatusStepParameterRecord[];
   branchLabel?: string | null;
 };

@@ -3952,14 +3952,60 @@ textarea {
 }
 
 .wafer-step-workspace {
-  height: clamp(620px, calc(100dvh - 24px), 960px);
+  height: 100%;
+  min-height: 0;
   max-width: 100%;
   overflow: hidden;
 }
 
+.wafer-status-detail-page:has(.wafer-die-detail-view--notes) {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.wafer-die-detail-view--notes {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
+}
+
+.wafer-die-detail-view--notes .wafer-die-detail-header {
+  padding-bottom: 0;
+}
+
+.wafer-die-detail-view--notes .wafer-die-detail-breadcrumb {
+  margin-bottom: 12px;
+}
+
+.wafer-die-detail-view--notes .wafer-die-detail-header h1 {
+  font-size: 30px;
+}
+
+.wafer-die-detail-view--notes .wafer-die-detail-header > div:nth-child(2) > div:first-child > div:last-child {
+  margin-top: 10px;
+}
+
+.wafer-die-detail-view--notes .wafer-die-detail-tabs {
+  margin-top: 14px;
+}
+
+.wafer-die-detail-view--notes .wafer-die-detail-tabs__button {
+  height: 44px;
+}
+
+.wafer-die-notes-tab {
+  height: 100%;
+  min-height: 0;
+}
+
 .wafer-step-history__scroll,
 .wafer-step-detail__parameters,
-.wafer-step-detail__notes {
+.wafer-step-detail__notes,
+.wafer-step-parameter-sheet {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
@@ -3968,21 +4014,24 @@ textarea {
 
 .wafer-step-history__scroll::-webkit-scrollbar,
 .wafer-step-detail__parameters::-webkit-scrollbar,
-.wafer-step-detail__notes::-webkit-scrollbar {
+.wafer-step-detail__notes::-webkit-scrollbar,
+.wafer-step-parameter-sheet::-webkit-scrollbar {
   width: 7px;
   height: 7px;
 }
 
 .wafer-step-history__scroll::-webkit-scrollbar-thumb,
 .wafer-step-detail__parameters::-webkit-scrollbar-thumb,
-.wafer-step-detail__notes::-webkit-scrollbar-thumb {
+.wafer-step-detail__notes::-webkit-scrollbar-thumb,
+.wafer-step-parameter-sheet::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: #c9c9c1;
 }
 
 .wafer-step-history__scroll::-webkit-scrollbar-track,
 .wafer-step-detail__parameters::-webkit-scrollbar-track,
-.wafer-step-detail__notes::-webkit-scrollbar-track {
+.wafer-step-detail__notes::-webkit-scrollbar-track,
+.wafer-step-parameter-sheet::-webkit-scrollbar-track {
   background: transparent;
 }
 
@@ -4536,8 +4585,8 @@ textarea {
   }
 
   .wafer-step-workspace {
-    height: clamp(580px, calc(100dvh - 12px), 900px);
-    grid-template-rows: 136px minmax(0, 1fr);
+    height: calc(100dvh - 285px);
+    grid-template-rows: 104px minmax(0, 1fr);
   }
 
   .wafer-step-history__scroll {
@@ -4559,17 +4608,17 @@ textarea {
   }
 
   .wafer-step-picker__item {
-    width: min(76vw, 260px);
-    flex: 0 0 min(76vw, 260px);
+    width: min(60vw, 210px);
+    flex: 0 0 min(60vw, 210px);
     padding-bottom: 0;
   }
 
   .wafer-step-picker__button {
-    min-height: 72px;
+    min-height: 54px;
   }
 
   .wafer-step-detail__parameters {
-    max-height: 130px;
+    max-height: 190px;
   }
 
   .wafer-step-detail__composer {
@@ -4577,9 +4626,47 @@ textarea {
   }
 
   .wafer-step-detail__composer textarea {
-    min-height: 56px;
-    max-height: 84px;
+    min-height: 48px;
+    max-height: 72px;
     font-size: 16px;
+  }
+
+  .wafer-step-detail__composer-row {
+    flex-wrap: wrap;
+  }
+
+  .wafer-step-detail__composer-input {
+    order: -1;
+    flex: 1 0 100%;
+    width: 100%;
+  }
+
+  .wafer-step-detail__composer-row > button {
+    margin-left: auto;
+  }
+
+  .wafer-die-detail-view--notes .wafer-die-detail-breadcrumb {
+    display: none;
+  }
+
+  .wafer-die-detail-view--notes .wafer-die-detail-header h1 {
+    font-size: 24px;
+  }
+
+  .wafer-die-detail-view--notes .wafer-die-detail-header > div:nth-child(2) {
+    gap: 8px;
+  }
+
+  .wafer-die-detail-view--notes .wafer-die-detail-header > div:nth-child(2) > div:first-child > div:last-child {
+    display: none;
+  }
+
+  .wafer-die-detail-view--notes .wafer-die-detail-tabs {
+    margin-top: 8px;
+  }
+
+  .wafer-die-detail-view--notes .wafer-die-detail-tabs__button {
+    height: 40px;
   }
 
   .wireframe-calendar-surface {

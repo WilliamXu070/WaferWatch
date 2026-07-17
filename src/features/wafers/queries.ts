@@ -89,7 +89,7 @@ type WaferStatusExecutionRow = Pick<
 
 type WaferStatusStepRow = Pick<
   ProcessStep,
-  "id" | "template_id" | "name" | "process_area" | "step_order" | "node_type" | "execution_mode"
+  "id" | "template_id" | "name" | "process_area" | "step_order" | "node_type" | "execution_mode" | "parameters_schema"
 >;
 type WaferStatusTransitionRow = Pick<ProcessStepTransition, "from_step_id" | "to_step_id" | "edge_type" | "priority" | "created_at">;
 type WaferStatusProcessEventRow = {
@@ -166,12 +166,17 @@ function getStepParameterRecordMapKey(assignmentId: string, stepId: string) {
 
 function readStepParameterRecordValues(row: UnknownRow) {
   const schema = (row.schema_snapshot ?? {}) as Json;
+  const schemaRoot = asUnknownRow(schema) ?? {};
+  const recordNotes = asUnknownRow(schemaRoot.recordNotes) ?? {};
   const globalValues = asUnknownRow(row.global_values) ?? {};
   const templateValues = readStepParameterDefinitions(schema).map((definition) => ({
+    id: definition.id,
     key: definition.key,
     label: definition.label,
+    type: definition.type,
     value: (globalValues[definition.key] ?? null) as string | number | boolean | null,
     unit: definition.unit,
+    notes: typeof recordNotes[definition.key] === "string" ? recordNotes[definition.key] : "",
     scope: "global" as const
   }));
   const localRows = Array.isArray(row.local_parameters) ? row.local_parameters : [];
@@ -181,13 +186,17 @@ function readStepParameterRecordValues(row: UnknownRow) {
     const label = parameter ? getUnknownString(parameter, "label") : null;
     if (!parameter || !key || !label) return [];
     const rawValue = parameter.value;
+    const rawType = getUnknownString(parameter, "type");
     return [{
+      id: getUnknownString(parameter, "id") ?? key,
       key,
       label,
+      type: rawType === "number" || rawType === "boolean" || rawType === "select" ? rawType : "text",
       value: typeof rawValue === "string" || typeof rawValue === "number" || typeof rawValue === "boolean"
         ? rawValue
         : null,
       unit: getUnknownString(parameter, "unit") ?? "",
+      notes: getUnknownString(parameter, "notes") ?? "",
       scope: "local" as const
     }];
   });
@@ -661,6 +670,7 @@ function mapWafersToStatusModel({
           startedAt: execution?.started_at ?? null,
           completedAt: execution?.completed_at ?? null,
           createdAt: execution?.created_at ?? null,
+          parametersSchema: step.parameters_schema,
           parameterRecords: assignment
             ? stepParameterRecordsByAssignmentStep.get(getStepParameterRecordMapKey(assignment.id, step.id)) ?? []
             : [],
@@ -983,13 +993,13 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   const stepsResult = processTemplateId
     ? await supabase
         .from("process_steps")
-        .select("id, template_id, name, process_area, step_order, node_type, execution_mode")
+        .select("id, template_id, name, process_area, step_order, node_type, execution_mode, parameters_schema")
         .eq("template_id", processTemplateId)
         .order("step_order", { ascending: true })
     : executionStepIds.length
       ? await supabase
           .from("process_steps")
-          .select("id, template_id, name, process_area, step_order, node_type, execution_mode")
+          .select("id, template_id, name, process_area, step_order, node_type, execution_mode, parameters_schema")
           .in("id", executionStepIds)
           .order("step_order", { ascending: true })
       : ({ data: [], error: null } as const);
@@ -1078,6 +1088,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     const recordedById = getUnknownString(row, "recorded_by");
     appendGrouped(stepParameterRecordsByAssignmentStep, getStepParameterRecordMapKey(assignmentId, stepId), {
       id,
+      revision: Math.max(1, getUnknownNumber(row, "revision") ?? 1),
       movementMutationId,
       recordedAt,
       recordedById,
