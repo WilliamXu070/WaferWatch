@@ -32,14 +32,23 @@ const iconByKey = {
   waferStatus: WaferStatusIcon
 } as const;
 
-function NavRow({ item, active }: { item: SidebarNavItem; active: boolean }) {
+function NavRow({
+  item,
+  active,
+  onIntent
+}: {
+  item: SidebarNavItem;
+  active: boolean;
+  onIntent: () => void;
+}) {
   const Icon = iconByKey[item.icon];
 
   return (
     <Link
       href={item.href}
-      prefetch={true}
+      prefetch={false}
       aria-current={active ? "page" : undefined}
+      onPointerEnter={onIntent}
       className={[
         "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all",
         active
@@ -256,7 +265,14 @@ export function WireframeSidebar({
               ? shell.calendarEventCount
               : item.badge;
 
-          return <NavRow key={item.key} item={{ ...item, badge }} active={isActive(item.href)} />;
+          return (
+            <NavRow
+              key={item.key}
+              item={{ ...item, badge }}
+              active={isActive(item.href)}
+              onIntent={() => router.prefetch(item.href)}
+            />
+          );
         })}
       </nav>
 

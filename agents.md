@@ -2,10 +2,12 @@
 
 ## Recent development note (2026-07-17 hot authenticated navigation and bounded Calendar loading)
 
-- Process Flow, Calendar, and Wafer / Die Status now prefetch from the persistent
-  authenticated shell. Next's router cache keeps an explicitly prefetched view
-  reusable for 60 seconds; workflow actions and the existing realtime bridge
-  still refresh current data rather than leaving stale process state visible.
+- The persistent authenticated shell warms one likely next Process Flow,
+  Calendar, or Wafer / Die Status route at a time, while hover/touch warms the
+  exact destination without competing backend reads. Next's router cache keeps
+  that prefetched view reusable for 60 seconds; workflow actions and the
+  existing realtime bridge still refresh current data rather than leaving stale
+  process state visible.
 - Calendar no longer reads every event between 2000 and 2099 when it opens.
   It receives the current week on the server, retains recently viewed weeks in
   a small client cache, and fetches only the newly selected week in the

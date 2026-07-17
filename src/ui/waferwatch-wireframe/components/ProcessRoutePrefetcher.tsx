@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { NavBasePath } from "../nav";
 
 function getProcessRouteHrefs(processId: string, navBasePath: NavBasePath) {
@@ -27,16 +27,23 @@ export function ProcessRoutePrefetcher({
   navBasePath?: NavBasePath;
 }) {
   const router = useRouter();
+  const pathname = usePathname() ?? "";
   const selectedProcessId = useSearchParams().get("processId");
   const processId = selectedProcessId ?? defaultProcessId ?? null;
 
   useEffect(() => {
     if (!processId) return;
 
+    const routePaths = ["/dashboard", "/calendar", "/process-flow", "/wafer-status"];
+    const currentIndex = routePaths.findIndex((route) => pathname === `${navBasePath}${route}`);
+    const nextHref = getProcessRouteHrefs(processId, navBasePath)[
+      (currentIndex + 1 + routePaths.length) % routePaths.length
+    ];
+
+    if (!nextHref) return;
+
     const prefetch = () => {
-      for (const href of getProcessRouteHrefs(processId, navBasePath)) {
-        router.prefetch(href);
-      }
+      router.prefetch(nextHref);
     };
 
     if (typeof window.requestIdleCallback === "function") {
@@ -46,7 +53,7 @@ export function ProcessRoutePrefetcher({
 
     const timerId = window.setTimeout(prefetch, 160);
     return () => window.clearTimeout(timerId);
-  }, [navBasePath, processId, router]);
+  }, [navBasePath, pathname, processId, router]);
 
   return null;
 }

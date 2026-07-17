@@ -43,20 +43,24 @@ function withCurrentProcess(href: string, processId: string | null | undefined) 
 function MobileNavLink({
   item,
   active,
-  onClick
+  onClick,
+  onIntent
 }: {
   item: SidebarNavItem;
   active: boolean;
   onClick?: () => void;
+  onIntent?: () => void;
 }) {
   const Icon = iconByKey[item.icon];
 
   return (
     <Link
       href={item.href}
-      prefetch={true}
+      prefetch={false}
       aria-current={active ? "page" : undefined}
       onClick={onClick}
+      onPointerEnter={onIntent}
+      onTouchStart={onIntent}
       className={[
         "flex min-h-[46px] items-center gap-3 rounded-xl px-3 text-[14px] font-semibold transition-colors",
         active ? "bg-[#f0f1f3] text-[#151512]" : "text-[#55534a] hover:bg-[#f8f9fb]"
@@ -185,8 +189,10 @@ export function WireframeMobileChrome({
             <Link
               key={item.key}
               href={item.href}
-              prefetch={true}
+              prefetch={false}
               aria-current={active ? "page" : undefined}
+              onPointerEnter={() => router.prefetch(item.href)}
+              onTouchStart={() => router.prefetch(item.href)}
               className={[
                 "wireframe-mobile-bottom-nav__item",
                 active ? "is-active" : "",
@@ -236,9 +242,10 @@ export function WireframeMobileChrome({
                 {mainNav.map((item) => (
                   <MobileNavLink
                     key={item.key}
-                    item={item}
-                    active={isActive(item.href)}
-                    onClick={() => setDrawerOpen(false)}
+                  item={item}
+                  active={isActive(item.href)}
+                  onClick={() => setDrawerOpen(false)}
+                  onIntent={() => router.prefetch(item.href)}
                   />
                 ))}
               </nav>
@@ -301,9 +308,10 @@ export function WireframeMobileChrome({
                   {processNav.map((item) => (
                     <MobileNavLink
                       key={item.key}
-                      item={item}
-                      active={isActive(item.href.split("?")[0])}
-                      onClick={() => setDrawerOpen(false)}
+                    item={item}
+                    active={isActive(item.href.split("?")[0])}
+                    onClick={() => setDrawerOpen(false)}
+                    onIntent={() => router.prefetch(item.href)}
                     />
                   ))}
                 </nav>
