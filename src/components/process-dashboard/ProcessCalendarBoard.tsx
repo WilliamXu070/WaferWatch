@@ -1,5 +1,7 @@
 "use client";
 
+import "react-calendar-timeline/style.css";
+import "./calendar/calendar.css";
 import {
   HTMLAttributes,
   type MouseEvent as ReactMouseEvent,

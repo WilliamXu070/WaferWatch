@@ -93,25 +93,24 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
   }
 
   const process = await getProcessTemplate(processId);
-  const canEdit = process.owner_project_id
-    ? await canEditProject(process.owner_project_id, account)
-    : canManageProcessLibrary(account.profile.role);
-
   const queryStart = new Date(2000, 0, 1);
   const queryEnd = new Date(2099, 11, 31, 23, 59, 59, 999);
-  const schedule = await getProcessCalendarSchedule(
-    process.id,
-    queryStart.toISOString(),
-    queryEnd.toISOString()
-  );
-  const [wafersResult, dashboardData] = await Promise.all([
+  const [canEdit, schedule, wafersResult, dashboardData] = await Promise.all([
+    process.owner_project_id
+      ? canEditProject(process.owner_project_id, account)
+      : Promise.resolve(canManageProcessLibrary(account.profile.role)),
+    getProcessCalendarSchedule(
+      process.id,
+      queryStart.toISOString(),
+      queryEnd.toISOString()
+    ),
     supabase
       .from("wafer_process_assignments")
       .select("wafers(id, wafer_code)")
       .eq("template_id", process.id)
       .in("status", ["planned", "queued", "in_progress", "on_hold"])
       .order("assigned_at", { ascending: false }),
-    getProcessDashboardData(process.id, 0, false)
+    getProcessDashboardData(process.id, 0, false, process)
   ]);
 
   if (wafersResult.error) {

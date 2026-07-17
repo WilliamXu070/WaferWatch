@@ -1,5 +1,23 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 production navigation payload and Calendar waterfall)
+
+- Production Playwright with a disposable signed-in account measured Dashboard at
+  3.13 s on the cold reload and 0.91 s warm, Process Flow at 1.01 s, Wafer / Die
+  Status at 1.19 s, and Calendar at 1.93 s. The host was 88–92% CPU idle with
+  no swap activity or memory pressure, so the reported slowdown was request and
+  page-payload latency rather than a browser or Mac memory leak.
+- Calendar-only timeline styles no longer ship on Login, Dashboard, Process
+  Flow, or Wafer Status. The production build manifest now assigns Login only
+  the 147.7 KB shared stylesheet; the 37.3 KB timeline/calendar stylesheet is
+  loaded by Calendar alone.
+- Calendar now starts permission, schedule, active-wafer, and preview-state
+  reads together after resolving the process, and reuses that process in the
+  preview query instead of fetching its template, steps, and transitions again.
+  Verified `npm run lint` and `npm run build`; repository-wide `tsc --noEmit`
+  remains blocked by existing unrelated test typing/configuration errors.
+  Tracking: GitHub issue #39 (reopened).
+
 ## Recent development note (2026-07-17 post-login loading and local cache)
 
 - Reduced the restart/sign-out/sign-in load path: authenticated account/profile

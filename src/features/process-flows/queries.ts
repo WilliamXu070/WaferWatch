@@ -523,10 +523,13 @@ export async function getProcessArchiveItems(processTemplateId: string): Promise
 export async function getProcessDashboardData(
   processTemplateId: string,
   calendarDays = 14,
-  includeCalendar = true
+  includeCalendar = true,
+  resolvedProcess?: ProcessTemplateWithSteps
 ): Promise<ProcessDashboardData> {
   const supabase = await createServerSupabaseClient();
-  const process = await getProcessTemplate(processTemplateId);
+  const process = resolvedProcess?.id === processTemplateId
+    ? resolvedProcess
+    : await getProcessTemplate(processTemplateId);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
