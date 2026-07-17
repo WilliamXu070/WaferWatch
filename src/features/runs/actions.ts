@@ -15,6 +15,7 @@ import {
   reservationSchema,
   submitStepCheckpointSchema,
   startStepSchema,
+  undoDieProcessHistorySchema,
   withdrawStepCheckpointSchema
 } from "@/features/runs/schemas";
 import {
@@ -1063,6 +1064,8 @@ export async function reviewStepCheckpoint(input: unknown) {
         .from("checkpoint_decisions")
         .select("*")
         .eq("attempt_id", parsed.attemptId)
+        .order("decided_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (
@@ -1112,6 +1115,29 @@ export async function moveApprovedCheckpointWafer(input: unknown) {
         notes: parsed.note
       }
     );
+
+    if (error) {
+      return fail(error.message);
+    }
+
+    revalidateCheckpointWorkflow();
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function undoDieProcessHistoryState(input: unknown) {
+  try {
+    await requireAccount();
+    const parsed = undoDieProcessHistorySchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("undo_die_process_history_state", {
+      target_assignment_id: parsed.assignmentId,
+      expected_step_id: parsed.expectedStepId,
+      expected_step_status: parsed.expectedStepStatus,
+      mutation_id: parsed.mutationId
+    });
 
     if (error) {
       return fail(error.message);

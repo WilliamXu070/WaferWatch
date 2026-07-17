@@ -10,8 +10,9 @@ type ProcessFlowToolbarProps = {
   onOrganize: () => void;
   onAddLinkedStep?: () => void;
   onAddWafer?: () => void;
-  onUndo: () => void;
+  onUndo?: () => void;
   canUndo: boolean;
+  isUndoPending?: boolean;
   canAddLinkedStep: boolean;
   canAddWafer: boolean;
   canEdit: boolean;
@@ -29,6 +30,7 @@ export function ProcessFlowToolbar({
   onAddWafer,
   onUndo,
   canUndo,
+  isUndoPending = false,
   canAddLinkedStep,
   canAddWafer,
   canEdit
@@ -36,9 +38,9 @@ export function ProcessFlowToolbar({
   return (
     <div className="flow-map-toolbar" aria-label="Flow map controls">
       <div className="flow-map-actions" role="group" aria-label="Canvas controls">
-        {canEdit ? (
-          <button className="button button-secondary flow-fit-button flow-undo-button" type="button" onClick={onUndo} disabled={!canUndo || isGraphPending}>
-            Undo
+        {canEdit && onUndo ? (
+          <button className="button button-secondary flow-fit-button flow-undo-button" type="button" onClick={onUndo} disabled={!canUndo || isUndoPending}>
+            {isUndoPending ? "Undoing…" : "Undo"}
           </button>
         ) : null}
         <button

@@ -17,6 +17,7 @@ export type WaferPin = {
   requiredReviewerName?: string | null;
   canReview?: boolean;
   canWithdraw?: boolean;
+  canUndoHistory?: boolean;
   canCorrectCheckpointRoute?: boolean;
   checkpointRouteSourceStepId?: string | null;
   isArchivable?: boolean;
@@ -278,6 +279,13 @@ export type MoveApprovedCheckpointAction = (input: {
   targetStepId: string;
   note: string;
   correctCheckpointRoute?: boolean;
+}) => Promise<ActionResult<unknown>>;
+
+export type UndoDieProcessHistoryAction = (input: {
+  mutationId: string;
+  assignmentId: string;
+  expectedStepId: string;
+  expectedStepStatus: Exclude<StepStatus, "pending" | "skipped" | "failed">;
 }) => Promise<ActionResult<unknown>>;
 
 export type UpdateStepCheckpointReviewerAction = (input: {

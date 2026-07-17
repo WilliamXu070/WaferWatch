@@ -4,6 +4,7 @@ import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-ord
 import { readStepParameterDefinitions } from "@/features/process-flows/stepParameters";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCheckpointRouteCorrectionState } from "@/features/process-flows/checkpointRouteCorrection";
+import { getHistoryUndoState } from "@/features/process-flows/historyUndo";
 import type {
   Json,
   FabricationStatus,
@@ -937,7 +938,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
         .from("process_events")
         .select("id, wafer_id, actor_id, event_type, event_at, notes, metadata")
         .in("wafer_id", historyWaferIds)
-        .in("event_type", ["wafer_step_moved", "wafer_step_reverted", "checkpoint_step_entered"])
+        .in("event_type", ["wafer_step_moved", "wafer_step_reverted", "checkpoint_step_entered", "wafer_history_undone"])
         .order("event_at", { ascending: true })
     : ({ data: [], error: null } as const);
 
@@ -951,15 +952,27 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
 
   const executions = (executionsResult.data ?? []) as WaferStatusExecutionRow[];
   const allProcessEvents = (processEventsResult.data ?? []) as WaferStatusProcessEventRow[];
-  const checkpointRouteState = getCheckpointRouteCorrectionState(allProcessEvents.map((event) => ({
+  const historyUndoState = getHistoryUndoState(allProcessEvents.map((event) => ({
+    id: event.id,
+    eventType: event.event_type,
+    metadata: event.metadata
+  })));
+  const visibleWorkflowEvents = allProcessEvents.filter((event) =>
+    event.event_type !== "wafer_history_undone" &&
+    !historyUndoState.undoneProcessEventIds.has(event.id)
+  );
+  const checkpointRouteState = getCheckpointRouteCorrectionState(visibleWorkflowEvents.map((event) => ({
     id: event.id,
     eventAt: event.event_at,
     metadata: event.metadata
   })));
-  const processEvents = allProcessEvents.filter((event) => checkpointRouteState.visibleEventIds.has(event.id));
+  const processEvents = visibleWorkflowEvents.filter((event) => checkpointRouteState.visibleEventIds.has(event.id));
   const activeStepParameterRecordRows = stepParameterRecordRows.filter((row) => {
     const processEventId = getUnknownString(row, "process_event_id");
-    return !processEventId || !checkpointRouteState.correctedEventIds.has(processEventId);
+    return !processEventId || (
+      !checkpointRouteState.correctedEventIds.has(processEventId) &&
+      !historyUndoState.undoneProcessEventIds.has(processEventId)
+    );
   });
   const executionsByAssignmentId = new Map<string, WaferStatusExecutionRow[]>();
   for (const execution of executions) {
@@ -1121,7 +1134,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     const stepId = getUnknownString(row, "process_step_id");
     const stepExecutionId = getUnknownString(row, "step_execution_id");
     const submittedAt = getUnknownString(row, "submitted_at");
-    if (!id || !assignmentId || !stepId || !submittedAt) continue;
+    if (!id || !assignmentId || !stepId || !submittedAt || historyUndoState.undoneAttemptIds.has(id)) continue;
 
     if (stepExecutionId) checkpointExecutionIds.add(stepExecutionId);
     const submittedBy = getUnknownString(row, "submitted_by");
@@ -1157,7 +1170,14 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     const attemptId = getUnknownString(row, "attempt_id");
     const decision = getUnknownString(row, "decision");
     const occurredAt = getUnknownString(row, "decided_at") ?? getUnknownString(row, "created_at");
-    if (!id || !assignmentId || !attemptId || !occurredAt || !["approved", "approve", "redo"].includes(decision ?? "")) {
+    if (
+      !id ||
+      !assignmentId ||
+      !attemptId ||
+      !occurredAt ||
+      historyUndoState.undoneDecisionIds.has(id) ||
+      !["approved", "approve", "redo"].includes(decision ?? "")
+    ) {
       continue;
     }
 

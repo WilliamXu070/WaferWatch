@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCheckpointRouteCorrectionState } from "@/features/process-flows/checkpointRouteCorrection";
+import { getHistoryUndoState } from "@/features/process-flows/historyUndo";
 import { isDicedParentWafer } from "@/features/process-flows/waferVisibility";
 import type {
   Json,
@@ -43,6 +44,7 @@ type DashboardStepAttempt = {
 
 type DashboardProcessEvent = {
   id: string;
+  event_type: string;
   event_at: string;
   metadata: Json;
 };
@@ -73,6 +75,7 @@ export type ProcessDashboardWaferState = {
   currentHandlerName: string | null;
   requiredReviewerId: string | null;
   requiredReviewerName: string | null;
+  canUndoHistory: boolean;
   canCorrectCheckpointRoute: boolean;
   checkpointRouteSourceStepId: string | null;
   anytimeReturnStepId: string | null;
@@ -587,9 +590,9 @@ export async function getProcessDashboardData(
     assignmentIds.length
       ? supabase
           .from("process_events")
-          .select("id, event_at, metadata")
+          .select("id, event_type, event_at, metadata")
           .in("wafer_id", waferIds)
-          .in("event_type", ["checkpoint_step_entered"])
+          .in("event_type", ["wafer_step_moved", "wafer_step_reverted", "checkpoint_step_entered", "wafer_history_undone"])
           .order("event_at", { ascending: true })
       : Promise.resolve({ data: [], error: null } as const),
     assignedWafersQuery
@@ -657,12 +660,23 @@ export async function getProcessDashboardData(
   const wafersById = mergedWafersById;
 
   const assignmentWaferIdById = new Map(assignments.map((assignment) => [assignment.id, assignment.wafer_id]));
+  const workflowEvents = (processEventsResult.data ?? []) as DashboardProcessEvent[];
+  const historyUndoState = getHistoryUndoState(workflowEvents.map((event) => ({
+    id: event.id,
+    eventType: event.event_type,
+    metadata: event.metadata
+  })));
+  const visibleWorkflowEvents = workflowEvents.filter((event) =>
+    event.event_type !== "wafer_history_undone" &&
+    !historyUndoState.undoneProcessEventIds.has(event.id)
+  );
   const checkpointRouteState = getCheckpointRouteCorrectionState(
-    ((processEventsResult.data ?? []) as DashboardProcessEvent[]).map((event) => ({
+    visibleWorkflowEvents
+      .map((event) => ({
       id: event.id,
       eventAt: event.event_at,
       metadata: event.metadata
-    }))
+      }))
   );
 
   const stepExecutionsByAssignment = new Map<string, DashboardStepExecution[]>();
@@ -692,6 +706,9 @@ export async function getProcessDashboardData(
   }
 
   for (const attempt of stepAttemptsResult.data ?? []) {
+    if (historyUndoState.undoneAttemptIds.has(attempt.id)) {
+      continue;
+    }
     const key = `${attempt.assignment_id}:${attempt.process_step_id}`;
     const current = latestAttemptByAssignmentStep.get(key);
     if (!current || attempt.attempt_number > current.attempt_number) {
@@ -759,6 +776,26 @@ export async function getProcessDashboardData(
       ? latestAttemptByAssignmentStep.get(`${assignment.id}:${currentStepId}`) ?? null
       : null;
     const activeCheckpointRoute = checkpointRouteState.activeRouteByAssignmentId.get(assignment.id) ?? null;
+    const currentStepStatus = currentExecution ? currentExecution.status : getFallbackStepStatus(assignment.status);
+    const currentStepIdForHistory = currentStepId;
+    const hasCurrentArrival = currentStepIdForHistory
+      ? visibleWorkflowEvents.some((event) => {
+          if (!checkpointRouteState.visibleEventIds.has(event.id)) return false;
+          const metadata = event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+            ? event.metadata as Record<string, unknown>
+            : {};
+          const assignmentId = typeof metadata.assignment_id === "string" ? metadata.assignment_id : null;
+          const targetStepId = typeof metadata.target_step_id === "string"
+            ? metadata.target_step_id
+            : typeof metadata.to_step_id === "string"
+              ? metadata.to_step_id
+              : null;
+          return assignmentId === assignment.id && targetStepId === currentStepIdForHistory;
+        })
+      : false;
+    const canUndoHistory = currentStepStatus !== null && ["awaiting_checkpoint", "ready_to_move", "completed"].includes(currentStepStatus)
+      ? Boolean(latestAttempt)
+      : hasCurrentArrival;
 
     const waferState: ProcessDashboardWaferState = {
       assignmentId: assignment.id,
@@ -774,7 +811,7 @@ export async function getProcessDashboardData(
       latestStepAttemptNotes: latestAttempt?.submission_notes ?? null,
       currentStepName: currentStepId ? stepNameById.get(currentStepId) ?? null : null,
       currentStepOrder,
-      currentStepStatus: currentExecution ? currentExecution.status : getFallbackStepStatus(assignment.status),
+      currentStepStatus,
       currentStepArea: currentExecution
         ? stepAreaById.get(currentExecution.process_step_id) ?? null
         : startStep?.process_area ?? null,
@@ -783,6 +820,7 @@ export async function getProcessDashboardData(
       currentHandlerName: handlerProfileId ? handlerNameById.get(handlerProfileId) ?? null : null,
       requiredReviewerId,
       requiredReviewerName: requiredReviewerId ? handlerNameById.get(requiredReviewerId) ?? null : null,
+      canUndoHistory,
       canCorrectCheckpointRoute: activeCheckpointRoute?.targetStepId === currentStepId,
       checkpointRouteSourceStepId: activeCheckpointRoute?.targetStepId === currentStepId
         ? activeCheckpointRoute.fromStepId

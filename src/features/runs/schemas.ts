@@ -68,6 +68,21 @@ export const moveApprovedCheckpointSchema = z.object({
   path: ["targetStepId"]
 });
 
+export const undoDieProcessHistorySchema = z.object({
+  mutationId: uuidSchema,
+  assignmentId: uuidSchema,
+  expectedStepId: uuidSchema,
+  expectedStepStatus: z.enum([
+    "queued",
+    "running",
+    "blocked",
+    "awaiting_checkpoint",
+    "ready_to_move",
+    "redo_required",
+    "completed"
+  ])
+});
+
 export const routeCheckpointSubmissionSchema = z.object({
   attemptId: uuidSchema,
   targetStepId: uuidSchema,

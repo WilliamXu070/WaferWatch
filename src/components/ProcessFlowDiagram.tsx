@@ -126,6 +126,7 @@ import type {
   SelectionBox,
   SelectionRect,
   SnapGuide,
+  UndoDieProcessHistoryAction,
   UpdateProcessStepExecutionModeAction,
   UpdateProcessStepNameAction,
   UpdateStepCheckpointReviewerAction,
@@ -161,16 +162,6 @@ type QueuedPositionUpdate = {
   expectedCanvasY: number;
 };
 
-type GraphSnapshot = {
-  nodes: FlowNode[];
-  edges: FlowEdge[];
-  selectedNodeIds: string[];
-  selectedEdgeId: string | null;
-  scale: number;
-  scrollLeft: number;
-  scrollTop: number;
-};
-
 type CreatedWaferPayload = {
   wafer?: {
     wafer_code?: string | null;
@@ -186,8 +177,6 @@ type SelectedFlowWafer = {
   label: string;
   isDie: boolean;
 };
-
-const MAX_UNDO_STACK = 30;
 
 function getWaferSelectionLabel(wafers: readonly Pick<SelectedFlowWafer, "label" | "isDie">[]) {
   if (wafers.length === 1) {
@@ -352,6 +341,7 @@ export function ProcessFlowDiagram({
   onSubmitCheckpoint,
   onRouteCheckpoint,
   onMoveApprovedWafer,
+  onUndoDieProcessHistory,
   onSaveStepParameters,
   onUpdateStepReviewer,
   reviewerOptions = [],
@@ -380,6 +370,7 @@ export function ProcessFlowDiagram({
   onSubmitCheckpoint?: SubmitStepCheckpointAction;
   onRouteCheckpoint?: RouteCheckpointAction;
   onMoveApprovedWafer?: MoveApprovedCheckpointAction;
+  onUndoDieProcessHistory?: UndoDieProcessHistoryAction;
   onSaveStepParameters?: SaveStepParameterRecordAction;
   onUpdateStepReviewer?: UpdateStepCheckpointReviewerAction;
   reviewerOptions?: CheckpointReviewerOption[];
@@ -427,7 +418,6 @@ export function ProcessFlowDiagram({
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [selectedWafers, setSelectedWafers] = useState<SelectedFlowWafer[]>([]);
-  const [undoStepsCount, setUndoStepsCount] = useState(0);
   const setMoveMessage = (msg: string | null) => { if (msg) console.warn("[ProcessFlow]", msg); };
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editingNodeLabel, setEditingNodeLabel] = useState("");
@@ -474,9 +464,6 @@ export function ProcessFlowDiagram({
       schedule: (callback) => window.requestAnimationFrame(callback)
     });
   }
-  const undoRecoveredNodeIdsRef = useRef<Set<string>>(new Set());
-  const undoRecoveredEdgeIdsRef = useRef<Set<string>>(new Set());
-  const undoStackRef = useRef<GraphSnapshot[]>([]);
   type TimerHandle = NodeJS.Timeout | number | null;
   const pendingStepCreateTimerRef = useRef<TimerHandle>(null);
   const pendingTransitionCreateTimerRef = useRef<TimerHandle>(null);
@@ -624,34 +611,6 @@ export function ProcessFlowDiagram({
     (stepId: string) => stepId.startsWith(NODE_ID_PREFIX),
     []
   );
-
-  const createGraphSnapshot = useCallback(() => ({
-    nodes: nodesRef.current.map((node) => ({ ...node, wafers: [...node.wafers] })),
-    edges: normalizeFlowEdges(edgesRef.current).map((edge) => ({ ...edge })),
-    selectedNodeIds: [...selectedNodeIds],
-    selectedEdgeId,
-    scale: scaleRef.current,
-    scrollLeft: frameRef.current?.scrollLeft ?? 0,
-    scrollTop: frameRef.current?.scrollTop ?? 0
-  }), [selectedEdgeId, selectedNodeIds]);
-
-  const pushUndoSnapshot = useCallback(() => {
-    const snapshot = createGraphSnapshot();
-    undoStackRef.current = [...undoStackRef.current, snapshot].slice(-MAX_UNDO_STACK);
-    setUndoStepsCount(undoStackRef.current.length);
-  }, [createGraphSnapshot]);
-
-  const popUndoSnapshot = useCallback(() => {
-    const current = undoStackRef.current;
-    if (current.length === 0) {
-      return null;
-    }
-
-    const snapshot = current[current.length - 1];
-    undoStackRef.current = current.slice(0, -1);
-    setUndoStepsCount(undoStackRef.current.length);
-    return snapshot;
-  }, []);
 
   const clearTimers = useCallback(() => {
     if (pendingStepCreateTimerRef.current) {
@@ -1216,7 +1175,6 @@ export function ProcessFlowDiagram({
     }
 
     if (nextLabel !== node.label) {
-      pushUndoSnapshot();
       setNodes((currentNodes) =>
         currentNodes.map((item) =>
           item.id === nodeId
@@ -1232,7 +1190,7 @@ export function ProcessFlowDiagram({
     }
 
     clearEditingNode();
-  }, [canEdit, clearEditingNode, nodeById, pushUndoSnapshot, queueNodeNamePersist]);
+  }, [canEdit, clearEditingNode, nodeById, queueNodeNamePersist]);
 
   const commitActiveNodeLabel = useCallback(() => {
     if (!editingNodeId) {
@@ -1550,8 +1508,6 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    pushUndoSnapshot();
-
     const targetCenter = getStableLayoutCenter(displayNodes, getCanvasSceneCenter());
     const nextNodes = autoLayoutNodes(displayNodes, edges, targetCenter);
     const currentNodeById = new Map(displayNodes.map((node) => [node.id, node]));
@@ -1852,63 +1808,6 @@ export function ProcessFlowDiagram({
     })();
   }, [canEdit, onDeleteWafer, scheduleBackgroundRefresh, selectedWafer]);
 
-  const restoreFromSnapshot = useCallback((snapshot: GraphSnapshot) => {
-    clearTimers();
-    clearQueuedStepMaps();
-    pendingPositionUpdateRef.current.clear();
-    pendingTransitionCreateRef.current.clear();
-
-    const currentNodeIds = new Set(nodesRef.current.map((node) => node.id));
-    const currentEdgeIds = new Set(edgesRef.current.map((edge) => edge.id));
-    for (const node of snapshot.nodes) {
-      if (!currentNodeIds.has(node.id)) {
-        undoRecoveredNodeIdsRef.current.add(node.id);
-      }
-    }
-
-    for (const edge of snapshot.edges) {
-      if (!currentEdgeIds.has(edge.id)) {
-        undoRecoveredEdgeIdsRef.current.add(edge.id);
-      }
-    }
-
-    setNodes(snapshot.nodes.map((node) => ({ ...node, wafers: [...node.wafers] })));
-    setEdges(normalizeFlowEdges(snapshot.edges).map((edge) => ({ ...edge })));
-    setSelectedNodeIds(new Set(snapshot.selectedNodeIds));
-    setSelectedEdgeId(snapshot.selectedEdgeId);
-    setConnectionDraft(null);
-    setPendingConnectionStart(null);
-    setNodeDrag(null);
-    setSelectionBox(null);
-    setWaferDrag(null);
-    setSnapGuides([]);
-    setRoleMenu(null);
-    setEditingNodeId(null);
-    setEditingNodeLabel("");
-    setMoveMessage("Undid last edit.");
-    scaleRef.current = snapshot.scale;
-    setScale(snapshot.scale);
-
-    window.requestAnimationFrame(() => {
-      const frame = frameRef.current;
-      if (!frame) {
-        return;
-      }
-
-      frame.scrollLeft = snapshot.scrollLeft;
-      frame.scrollTop = snapshot.scrollTop;
-    });
-  }, [clearQueuedStepMaps, clearTimers]);
-
-  const undoLastEdit = useCallback(() => {
-    const snapshot = popUndoSnapshot();
-    if (!snapshot) {
-      return;
-    }
-
-    restoreFromSnapshot(snapshot);
-  }, [popUndoSnapshot, restoreFromSnapshot]);
-
   const mergeServerGraphIntoLocal = useCallback((graph: { nodes: FlowNode[]; edges: FlowEdge[] }) => {
     const serverNodeById = new Map(graph.nodes.map((node) => [node.id, node]));
     const serverEdgeById = new Map(graph.edges.map((edge) => [edge.id, edge]));
@@ -1921,14 +1820,13 @@ export function ProcessFlowDiagram({
         const serverNode = serverNodeById.get(node.id);
 
         if (!serverNode) {
-          if (node.isOptimistic || pendingStepCreateRef.current.has(node.id) || undoRecoveredNodeIdsRef.current.has(node.id)) {
+          if (node.isOptimistic || pendingStepCreateRef.current.has(node.id)) {
             nextNodes.push(node);
           }
           continue;
         }
 
         seenNodeIds.add(node.id);
-        undoRecoveredNodeIdsRef.current.delete(node.id);
         const hasPendingName = pendingNameUpdateRef.current.has(node.id) || editingNodeId === node.id;
         const protectedTarget = protectedPositionUpdateRef.current.get(node.id);
         const resolvedPosition = resolveCanvasPosition({
@@ -1976,15 +1874,9 @@ export function ProcessFlowDiagram({
         }
 
         const serverEdge = serverEdgeById.get(edge.id);
-        if (!serverEdge) {
-          if (undoRecoveredEdgeIdsRef.current.has(edge.id)) {
-            nextEdges.push(edge);
-          }
-          continue;
-        }
+        if (!serverEdge) continue;
 
         seenServerEdgeIds.add(edge.id);
-        undoRecoveredEdgeIdsRef.current.delete(edge.id);
         nextEdges.push(serverEdge);
       }
 
@@ -2004,10 +1896,6 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    undoStackRef.current = [];
-    undoRecoveredNodeIdsRef.current.clear();
-    undoRecoveredEdgeIdsRef.current.clear();
-    setUndoStepsCount(0);
     setNodes(serverGraph.nodes);
     setEdges(normalizeFlowEdges(serverGraph.edges));
     setConnectionDraft(null);
@@ -2367,8 +2255,6 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    pushUndoSnapshot();
-
     const canvasX = Math.max(24, Math.round(point.x - NODE_WIDTH / 2));
     const canvasY = Math.max(24, Math.round(point.y - NODE_HEIGHT / 2));
     const temporaryStepId = `${NODE_ID_PREFIX}${Math.random().toString(36).slice(2, 10)}`;
@@ -2723,8 +2609,6 @@ export function ProcessFlowDiagram({
     if (movedNodes.length === 0) {
       return;
     }
-
-    pushUndoSnapshot();
 
     movedNodes.forEach((node) => queueNodePositionPersist(node.id, node.x, node.y));
   };
@@ -3504,8 +3388,6 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    pushUndoSnapshot();
-
     setEdges((currentEdges) =>
       normalizeFlowEdges([
         ...currentEdges,
@@ -3561,22 +3443,12 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    pushUndoSnapshot();
-
     const label = uniqueNodeIds.length === 1
       ? nodeById.get(uniqueNodeIds[0])?.label ?? "selected step"
       : `${uniqueNodeIds.length} selected steps`;
     const previousNodes = nodesRef.current;
     const previousEdges = edgesRef.current;
-    const previousRecoveredNodeIds = new Set(undoRecoveredNodeIdsRef.current);
-    const previousRecoveredEdgeIds = new Set(undoRecoveredEdgeIdsRef.current);
     const deletedIds = new Set(uniqueNodeIds);
-    uniqueNodeIds.forEach((nodeId) => undoRecoveredNodeIdsRef.current.delete(nodeId));
-    previousEdges.forEach((edge) => {
-      if (deletedIds.has(edge.from) || deletedIds.has(edge.to)) {
-        undoRecoveredEdgeIdsRef.current.delete(edge.id);
-      }
-    });
 
     setNodes((currentNodes) => currentNodes.filter((node) => !deletedIds.has(node.id)));
     setEdges((currentEdges) => normalizeFlowEdges(currentEdges.filter((edge) => !deletedIds.has(edge.from) && !deletedIds.has(edge.to))));
@@ -3600,8 +3472,6 @@ export function ProcessFlowDiagram({
 
           setNodes(previousNodes);
           setEdges(normalizeFlowEdges(previousEdges));
-          undoRecoveredNodeIdsRef.current = previousRecoveredNodeIds;
-          undoRecoveredEdgeIdsRef.current = previousRecoveredEdgeIds;
           setMoveMessage(result.error);
           return;
         }
@@ -3609,7 +3479,7 @@ export function ProcessFlowDiagram({
         setMoveMessage(`Deleted ${label}.`);
       })();
     });
-  }, [canEdit, nodeById, onDeleteSteps, pushUndoSnapshot]);
+  }, [canEdit, nodeById, onDeleteSteps]);
 
   const deleteSelectedNodes = useCallback(() => {
     deleteNodes([...selectedNodeIds]);
@@ -3625,8 +3495,6 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    pushUndoSnapshot();
-    undoRecoveredEdgeIdsRef.current.delete(edgeId);
     setEdges((current) => normalizeFlowEdges(current.filter((edge) => edge.id !== edgeId)));
     setSelectedEdgeId(null);
 
@@ -3647,7 +3515,61 @@ export function ProcessFlowDiagram({
         }
       })();
     });
-  }, [canEdit, edges, onDeleteTransitions, pushUndoSnapshot]);
+  }, [canEdit, edges, onDeleteTransitions]);
+
+  const canUndoSelectedDieHistory = Boolean(
+    canEdit &&
+    onUndoDieProcessHistory &&
+    activeSelectedWafers.length === 1 &&
+    selectedWafer?.isDie &&
+    selectedWaferPin?.canUndoHistory &&
+    selectedWaferPin?.currentStepStatus &&
+    ["queued", "running", "blocked", "awaiting_checkpoint", "ready_to_move", "redo_required", "completed"].includes(
+      selectedWaferPin.currentStepStatus
+    )
+  );
+
+  const undoSelectedDieHistory = useCallback(() => {
+    if (
+      !canUndoSelectedDieHistory ||
+      !onUndoDieProcessHistory ||
+      !selectedWafer ||
+      !selectedWaferPin?.currentStepStatus ||
+      isWaferMutationPending
+    ) {
+      return;
+    }
+
+    const expectedStepStatus = selectedWaferPin.currentStepStatus as Exclude<
+      typeof selectedWaferPin.currentStepStatus,
+      "pending" | "skipped" | "failed" | null
+    >;
+    startWaferMutationTransition(() => {
+      void onUndoDieProcessHistory({
+        mutationId: crypto.randomUUID(),
+        assignmentId: selectedWafer.assignmentId,
+        expectedStepId: selectedWafer.nodeId,
+        expectedStepStatus
+      }).then((result) => {
+        if (!result.ok) {
+          setMoveMessage(result.error);
+          return;
+        }
+
+        setMoveMessage(`Undid ${selectedWafer.label} to its previous process state.`);
+        router.refresh();
+      }).catch((error: unknown) => {
+        setMoveMessage(error instanceof Error ? error.message : "The die history could not be undone.");
+      });
+    });
+  }, [
+    canUndoSelectedDieHistory,
+    isWaferMutationPending,
+    onUndoDieProcessHistory,
+    router,
+    selectedWafer,
+    selectedWaferPin
+  ]);
 
   useEffect(() => {
     const onGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -3657,12 +3579,12 @@ export function ProcessFlowDiagram({
 
       const isUndoShortcut = (event.key === "z" || event.key === "Z") && (event.ctrlKey || event.metaKey) && !event.shiftKey;
       if (isUndoShortcut) {
-        if (!canEdit) {
+        if (!canUndoSelectedDieHistory) {
           return;
         }
 
         event.preventDefault();
-        undoLastEdit();
+        undoSelectedDieHistory();
         return;
       }
 
@@ -3689,7 +3611,17 @@ export function ProcessFlowDiagram({
     return () => {
       window.removeEventListener("keydown", onGlobalKeyDown);
     };
-  }, [canEdit, deleteEdge, deleteSelectedNodes, deleteSelectedWafer, selectedEdgeId, selectedNodeIds, selectedWafer, undoLastEdit]);
+  }, [
+    canEdit,
+    canUndoSelectedDieHistory,
+    deleteEdge,
+    deleteSelectedNodes,
+    deleteSelectedWafer,
+    selectedEdgeId,
+    selectedNodeIds,
+    selectedWafer,
+    undoSelectedDieHistory
+  ]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -3960,8 +3892,9 @@ export function ProcessFlowDiagram({
         onOrganize={organizeCanvas}
         onAddLinkedStep={createLinkedStep}
         onAddWafer={openWaferCreateDialog}
-        onUndo={undoLastEdit}
-        canUndo={undoStepsCount > 0}
+        onUndo={onUndoDieProcessHistory ? undoSelectedDieHistory : undefined}
+        canUndo={canUndoSelectedDieHistory}
+        isUndoPending={isWaferMutationPending}
         canAddLinkedStep={Boolean(
           canEdit &&
           processTemplateId &&

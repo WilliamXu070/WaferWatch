@@ -728,6 +728,15 @@ export interface Database {
         };
         Returns: Json;
       };
+      undo_die_process_history_state: {
+        Args: {
+          target_assignment_id: string;
+          expected_step_id: string;
+          expected_step_status: string;
+          mutation_id: string;
+        };
+        Returns: Json;
+      };
       route_checkpoint_submission: {
         Args: {
           target_attempt_id: string;

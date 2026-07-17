@@ -1088,8 +1088,83 @@ const checkpointRouteCorrectionMigration = await readFile(
   "utf8"
 );
 await db.exec(checkpointRouteCorrectionMigration);
+const dieHistoryUndoMigration = await readFile(
+  new URL("../supabase/migrations/202607170002_die_history_undo.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(dieHistoryUndoMigration);
 
 await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+const undoDie = "10000000-0000-4000-8000-000000000201";
+const undoAssignment = "10000000-0000-4000-8000-000000000202";
+const undoFirstExecution = "10000000-0000-4000-8000-000000000203";
+const undoSecondExecution = "10000000-0000-4000-8000-000000000204";
+const undoSubmit = "10000000-0000-4000-8000-000000000205";
+const undoDecision = "10000000-0000-4000-8000-000000000206";
+const undoMovement = "10000000-0000-4000-8000-000000000207";
+const undoCheckpoint = "10000000-0000-4000-8000-000000000208";
+const undoBeginning = "10000000-0000-4000-8000-000000000209";
+const undoReDecision = "10000000-0000-4000-8000-000000000210";
+const undoReDecisionUndo = "10000000-0000-4000-8000-000000000211";
+await db.query(
+  `insert into public.wafers (id, project_id, wafer_code, metadata)
+   values ($1, $2, 'UNDO-DIE-1', jsonb_build_object('parent_wafer_id', $3::text, 'current_die', 'UNDO_1'))`,
+  [undoDie, id.project, id.correctionWafer]
+);
+await db.query(
+  `insert into public.wafer_process_assignments
+   (id, wafer_id, template_id, assigned_by, status, current_step_id)
+   values ($1, $2, $3, $4, 'in_progress', $5)`,
+  [undoAssignment, undoDie, id.correctionTemplate, id.submitter, id.correctionFirst]
+);
+await db.query(
+  `insert into public.step_executions
+   (id, assignment_id, wafer_id, process_step_id, status, queue_started_at)
+   values ($1, $2, $3, $4, 'queued', now()), ($5, $2, $3, $6, 'pending', null)`,
+  [undoFirstExecution, undoAssignment, undoDie, id.correctionFirst, undoSecondExecution, id.correctionEnd]
+);
+const undoAttempt = await db.query(
+  `select id from public.submit_step_checkpoint($1, $2, 'undo test checkpoint', '{}'::jsonb)`,
+  [undoFirstExecution, undoSubmit]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.reviewer]);
+await db.query(
+  `select public.route_checkpoint_submission($1, $2, $3, $4, 'undo test route', '[]'::jsonb)`,
+  [undoAttempt.rows[0].id, id.correctionEnd, undoDecision, undoMovement]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+await db.query(
+  `select public.undo_die_process_history_state($1, $2, 'queued', $3)`,
+  [undoAssignment, id.correctionEnd, undoCheckpoint]
+);
+const undoAfterCheckpoint = await db.query(
+  `select assignment.current_step_id, execution.status
+   from public.wafer_process_assignments assignment
+   join public.step_executions execution on execution.assignment_id = assignment.id
+     and execution.process_step_id = assignment.current_step_id
+   where assignment.id = $1`,
+  [undoAssignment]
+);
+assert.deepEqual(undoAfterCheckpoint.rows, [{ current_step_id: id.correctionFirst, status: "awaiting_checkpoint" }]);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.reviewer]);
+await db.query(
+  `select id from public.review_step_checkpoint($1, 'approved', $2, 'undo re-review')`,
+  [undoAttempt.rows[0].id, undoReDecision]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+await db.query(
+  `select public.undo_die_process_history_state($1, $2, 'ready_to_move', $3)`,
+  [undoAssignment, id.correctionFirst, undoReDecisionUndo]
+);
+await db.query(
+  `select public.undo_die_process_history_state($1, $2, 'awaiting_checkpoint', $3)`,
+  [undoAssignment, id.correctionFirst, undoBeginning]
+);
+const undoAfterBeginning = await db.query(
+  `select status from public.step_executions where id = $1`,
+  [undoFirstExecution]
+);
+assert.equal(undoAfterBeginning.rows[0].status, "queued");
 await db.query(
   `insert into public.wafers (id, project_id, wafer_code)
    values ($1, $2, 'ROUTE-CORRECTION')`,
@@ -1601,6 +1676,7 @@ console.log(JSON.stringify({
   versioning: "legacy versioning remains compatible while active graph editing is restored",
   graphMovement: "reviewer drop approves every different destination, records only a same-step repeat as redo, and always begins at the destination",
   beginningRouteCorrection: "wrong Beginning arrival is superseded and replaced without mutating checkpoint history",
+  dieHistoryUndo: "one die moves Beginning to its prior checkpoint to its prior Beginning, and an undone decision can be reviewed again",
   anytimeDetour: "active main work enters an anytime procedure while preserving its main-flow return step",
   checkpointedDelete: "history stays append-only and reused codes can be deleted repeatedly without tombstone collisions",
   attempts: 4

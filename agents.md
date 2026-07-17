@@ -1,5 +1,21 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 selected-die process history Undo)
+
+- Replaced Process Flow's local graph/layout Undo with persisted process-history
+  Undo for exactly one selected die. It moves the effective state backward from
+  a destination Beginning to its prior checkpoint, then to the prior Beginning;
+  decisions and parameter records from superseded visits disappear from the
+  effective Wafer / Die Status history while the audit trail remains append-only.
+- Added migration `202607170002_die_history_undo.sql`, including an atomic,
+  permission-checked die rollback RPC, stale-state/idempotency guards, and
+  append-only re-review support after an undone checkpoint decision. The remote
+  migration was applied before releasing the matching UI.
+- Verified the real migration through `npm run checkpoint:verify` (including
+  Beginning → checkpoint → Beginning and re-review), `npm run lint`, and
+  `npm run build`. `npx tsc --noEmit` remains blocked only by pre-existing test
+  fixture/config errors unrelated to this change.
+
 ## Recent development note (2026-07-17 explicit redo-only checkpoint routing)
 
 - Fixed reviewer routing falsely labeling every earlier destination as `Redo`.

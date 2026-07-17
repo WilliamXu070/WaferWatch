@@ -22,6 +22,7 @@ type ProcessFlowWaferModel = {
   requiredReviewerName?: string | null;
   canReview?: boolean;
   canWithdraw?: boolean;
+  canUndoHistory?: boolean;
   canCorrectCheckpointRoute?: boolean;
   checkpointRouteSourceStepId?: string | null;
   anytimeReturnStepId?: string | null;
@@ -82,6 +83,7 @@ type ProcessFlowViewProps = {
   onSubmitCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onSubmitCheckpoint"];
   onRouteCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onRouteCheckpoint"];
   onMoveApprovedWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onMoveApprovedWafer"];
+  onUndoDieProcessHistory?: Parameters<typeof ProcessFlowDiagram>[0]["onUndoDieProcessHistory"];
   onSaveStepParameters?: Parameters<typeof ProcessFlowDiagram>[0]["onSaveStepParameters"];
   onUpdateStepReviewer?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepReviewer"];
 };
@@ -116,6 +118,7 @@ export function ProcessFlowView({
   onSubmitCheckpoint,
   onRouteCheckpoint,
   onMoveApprovedWafer,
+  onUndoDieProcessHistory,
   onSaveStepParameters,
   onUpdateStepReviewer
 }: ProcessFlowViewProps) {
@@ -171,6 +174,7 @@ export function ProcessFlowView({
             onSubmitCheckpoint={onSubmitCheckpoint}
             onRouteCheckpoint={onRouteCheckpoint}
             onMoveApprovedWafer={onMoveApprovedWafer}
+            onUndoDieProcessHistory={onUndoDieProcessHistory}
             onSaveStepParameters={onSaveStepParameters}
             onUpdateStepReviewer={onUpdateStepReviewer}
           />

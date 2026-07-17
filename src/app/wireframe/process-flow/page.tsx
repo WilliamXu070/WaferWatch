@@ -2,6 +2,7 @@ import {
   moveApprovedCheckpointWafer,
   routeCheckpointSubmission,
   submitStepCheckpoint,
+  undoDieProcessHistoryState,
 } from "@/features/runs/actions";
 import {
   archiveCompletedProcessWafers,
@@ -62,6 +63,7 @@ type DiagramStep = {
     requiredReviewerName: string | null;
     canReview: boolean;
     canWithdraw: boolean;
+    canUndoHistory: boolean;
     canCorrectCheckpointRoute: boolean;
     checkpointRouteSourceStepId: string | null;
     isArchivable: boolean;
@@ -120,6 +122,7 @@ function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null)
           requiredReviewerName: state.requiredReviewerName,
           canReview: Boolean(currentUserId && currentUserId === state.requiredReviewerId),
           canWithdraw: Boolean(currentUserId && currentUserId === state.latestStepAttemptSubmittedById),
+          canUndoHistory: state.canUndoHistory,
           canCorrectCheckpointRoute: state.canCorrectCheckpointRoute,
           checkpointRouteSourceStepId: state.checkpointRouteSourceStepId,
           isArchivable: state.assignmentStatus === "completed",
@@ -289,6 +292,7 @@ export default async function ProcessFlowWireframePage({
       onSubmitCheckpoint={canEdit ? submitStepCheckpoint : undefined}
       onRouteCheckpoint={canEdit ? routeCheckpointSubmission : undefined}
       onMoveApprovedWafer={canEdit ? moveApprovedCheckpointWafer : undefined}
+      onUndoDieProcessHistory={canEdit ? undoDieProcessHistoryState : undefined}
       onSaveStepParameters={canEdit ? saveStepParameterRecord : undefined}
       onUpdateStepReviewer={canEdit ? updateProcessStepCheckpointReviewer : undefined}
     />
