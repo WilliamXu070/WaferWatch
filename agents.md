@@ -1,5 +1,18 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 die appearance source of truth)
+
+- A die now begins with a neutral semiconductor-template preview rather than
+  the generic diced-wafer cartoon. Its saved Die appearance attachment replaces
+  that template in the overview canvas, Status tile, and selected-die preview;
+  undiced wafers retain their wafer geometry.
+- The appearance loader keeps the attachment ID, signed URL, version, and
+  realtime refresh behavior together, so a later replacement updates the same
+  visual source rather than creating a competing image field.
+- Verified focused template/history render tests, `npm run lint`, and `npm run
+  build`. A headed signed-in 390x844 replay showed A1's existing uploaded image
+  in the Die appearance canvas with `Replace image`; no wafer data was changed.
+
 ## Recent development note (2026-07-17 hot authenticated navigation and bounded Calendar loading)
 
 - The persistent authenticated shell warms one likely next Process Flow,

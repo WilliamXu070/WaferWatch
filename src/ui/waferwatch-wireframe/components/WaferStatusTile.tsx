@@ -1,5 +1,6 @@
 import type { WaferStatusTileModel, WaferTileStatus } from "../types";
 import { WaferGeometryPreview } from "./WaferGeometryPreview";
+import { DieAppearancePreview } from "./wafer-die-detail/DieAppearancePreview";
 import { getSelectedDieLabel, getWaferDisplayLabel } from "./wafer-die-detail/waferDieDetailHelpers";
 
 const statusDotColor: Record<WaferTileStatus, string> = {
@@ -45,15 +46,17 @@ export function WaferStatusTile({
         </span>
       </span>
       <span className="grid min-h-[80px] place-items-center rounded-md border border-[#eeeeea] bg-white px-2 py-1">
-        <WaferGeometryPreview
-          modeKeyword={tile.waferStateName}
-          selectedLabel={getSelectedDieLabel(tile)}
-          selectedDieCode={isUndiced ? undefined : (tile.dieLabel || tile.code)}
-          colorSeed={tile.family}
-          showOnlySelectedDie={!isUndiced}
-          showDieLabel={false}
-          className="max-h-[78px]"
-        />
+        {isUndiced ? (
+          <WaferGeometryPreview
+            modeKeyword={tile.waferStateName}
+            selectedLabel={getSelectedDieLabel(tile)}
+            colorSeed={tile.family}
+            showDieLabel={false}
+            className="max-h-[78px]"
+          />
+        ) : (
+          <DieAppearancePreview tile={tile} className="max-h-[78px]" sizes="120px" />
+        )}
       </span>
       {selected ? (
         <span className="absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-[#111111] text-[12px] font-semibold text-white">

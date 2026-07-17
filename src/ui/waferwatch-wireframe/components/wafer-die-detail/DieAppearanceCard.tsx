@@ -1,83 +1,35 @@
 "use client";
 
 import Image from "next/image";
-import { type ChangeEvent, type ClipboardEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type ClipboardEvent, useCallback, useRef, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { getAttachmentDownloadUrl } from "@/features/measurements/actions";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
 import { NOTE_ATTACHMENT_MAX_BYTES, uploadWaferNoteAttachments } from "@/features/measurements/noteAttachmentUpload";
-import { isWorkflowEventFor, WORKFLOW_REALTIME_EVENT } from "@/features/collaboration/realtime";
-import { getTextSurface, upsertTextSurface } from "@/features/text-surfaces/actions";
+import { upsertTextSurface } from "@/features/text-surfaces/actions";
 import type { WaferStatusTileModel } from "../../types";
 import { DetailCard } from "./DetailCard";
+import { APPEARANCE_FIELD_KEY, useDieAppearance } from "./DieAppearancePreview";
+import { DieAppearanceTemplate } from "./DieAppearanceTemplate";
 import { getWaferDieNotesScopeKey, waferDieNotesSurface } from "./waferDieDetailData";
 
-const APPEARANCE_FIELD_KEY = "appearance_attachment_id";
 const ACCEPTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileModel; canEdit: boolean }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [attachmentId, setAttachmentId] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [version, setVersion] = useState(0);
-  const [isBusy, setIsBusy] = useState(true);
+  const {
+    attachmentId,
+    dieLabel,
+    error: appearanceError,
+    imageUrl,
+    isLoading,
+    setSavedAppearance,
+    version
+  } = useDieAppearance(tile);
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dieLabel = tile.dieLabel || tile.code;
+  const isBusy = isLoading || isUploading;
   const scopeKey = getWaferDieNotesScopeKey(tile.waferId, dieLabel);
-
-  const loadAppearance = useCallback(async () => {
-    const result = await getTextSurface({
-      projectId: tile.projectId,
-      scopeType: waferDieNotesSurface.scopeType,
-      scopeKey,
-      fieldKey: APPEARANCE_FIELD_KEY
-    });
-
-    if (!result.ok) {
-      setError(result.error);
-      setIsBusy(false);
-      return;
-    }
-
-    const nextAttachmentId = result.data?.value.trim() || null;
-    setAttachmentId(nextAttachmentId);
-    setVersion(result.data?.version ?? 0);
-    if (!nextAttachmentId) {
-      setImageUrl(null);
-      setIsBusy(false);
-      return;
-    }
-
-    const download = await getAttachmentDownloadUrl({ attachmentId: nextAttachmentId });
-    if (!download.ok) {
-      setError(download.error);
-      setIsBusy(false);
-      return;
-    }
-
-    setImageUrl(download.data.signedUrl);
-    setError(null);
-    setIsBusy(false);
-  }, [scopeKey, tile.projectId]);
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => void loadAppearance(), 0);
-    return () => window.clearTimeout(timeoutId);
-  }, [loadAppearance]);
-
-  useEffect(() => {
-    const handleRealtimeChange = (event: Event) => {
-      if (isWorkflowEventFor({ event, table: "text_surfaces", projectId: tile.projectId })) {
-        void loadAppearance();
-      }
-    };
-
-    window.addEventListener(WORKFLOW_REALTIME_EVENT, handleRealtimeChange);
-
-    return () => {
-      window.removeEventListener(WORKFLOW_REALTIME_EVENT, handleRealtimeChange);
-    };
-  }, [loadAppearance, tile.projectId]);
 
   const uploadImage = useCallback(async (file: File) => {
     if (!canEdit || isBusy) {
@@ -92,7 +44,7 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
       return;
     }
 
-    setIsBusy(true);
+    setIsUploading(true);
     setError(null);
     try {
       const [attachment] = await uploadWaferNoteAttachments({
@@ -120,19 +72,17 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
         throw new Error(saved.error);
       }
 
-      setAttachmentId(attachment.id);
-      setVersion(saved.data.version);
       const download = await getAttachmentDownloadUrl({ attachmentId: attachment.id });
       if (!download.ok) {
         throw new Error(download.error);
       }
-      setImageUrl(download.data.signedUrl);
+      setSavedAppearance({ attachmentId: attachment.id, imageUrl: download.data.signedUrl, version: saved.data.version });
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Unable to save the die image.");
     } finally {
-      setIsBusy(false);
+      setIsUploading(false);
     }
-  }, [canEdit, dieLabel, isBusy, scopeKey, tile.currentStepExecutionId, tile.projectId, tile.waferId, version]);
+  }, [canEdit, dieLabel, isBusy, scopeKey, setSavedAppearance, tile.currentStepExecutionId, tile.projectId, tile.waferId, version]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
@@ -164,15 +114,13 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
             unoptimized
           />
         ) : (
-          <div className="grid max-w-[280px] justify-items-center gap-3 px-6 text-center">
-            <span className="grid h-11 w-11 place-items-center rounded-full border border-[#dfdfd9] bg-white text-[#777770]">
-              <ImagePlus aria-hidden size={19} />
-            </span>
+          <div className="grid w-full max-w-[280px] justify-items-center gap-3 px-6 text-center">
+            <DieAppearanceTemplate className="h-[130px] max-w-[180px]" />
             <div>
               <p className="text-[14px] font-semibold text-[#22221f]">
-                {isBusy ? "Loading image..." : "No die image yet"}
+                {isBusy ? "Loading image..." : "Die image template"}
               </p>
-              {canEdit ? <p className="mt-1 text-[12px] leading-5 text-[#777770]">Upload or paste a screenshot of this die.</p> : null}
+              {canEdit ? <p className="mt-1 text-[12px] leading-5 text-[#777770]">Upload or paste an image to replace this template.</p> : null}
             </div>
           </div>
         )}
@@ -199,7 +147,7 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
         onChange={handleFileChange}
         type="file"
       />
-      {error ? <p className="form-error mt-2" role="alert">{error}</p> : null}
+      {error || appearanceError ? <p className="form-error mt-2" role="alert">{error || appearanceError}</p> : null}
     </DetailCard>
   );
 }

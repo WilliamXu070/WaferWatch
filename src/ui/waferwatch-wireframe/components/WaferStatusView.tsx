@@ -16,6 +16,11 @@ import type {
 import { WaferGeometryPreview } from "./WaferGeometryPreview";
 import { WaferStatusTile } from "./WaferStatusTile";
 import {
+  findDeepLinkedWaferStatusTile,
+  findInitialWaferStatusTile
+} from "./waferStatusSelection";
+import { DieAppearancePreview } from "./wafer-die-detail/DieAppearancePreview";
+import {
   canOpenDieDetail,
   DieDetailView,
   getSelectedDieLabel,
@@ -116,15 +121,17 @@ function SelectedDiePanel({
       </div>
 
       <div className="grid min-h-[420px] place-items-center bg-white p-4">
-        <WaferGeometryPreview
-          modeKeyword={selectedTile.waferStateName}
-          selectedLabel={getSelectedDieLabel(selectedTile)}
-          selectedDieCode={isUndiced ? undefined : (selectedTile.dieLabel || selectedTile.code)}
-          colorSeed={selectedTile.family}
-          showOnlySelectedDie={!isUndiced}
-          showDieLabel={false}
-          className="max-h-[320px]"
-        />
+        {isUndiced ? (
+          <WaferGeometryPreview
+            modeKeyword={selectedTile.waferStateName}
+            selectedLabel={getSelectedDieLabel(selectedTile)}
+            colorSeed={selectedTile.family}
+            showDieLabel={false}
+            className="max-h-[320px]"
+          />
+        ) : (
+          <DieAppearancePreview tile={selectedTile} className="max-h-[320px]" sizes="400px" />
+        )}
       </div>
     </aside>
   );
@@ -169,24 +176,21 @@ export function WaferStatusView({
   emptyTitle?: string;
   emptyDescription?: string;
 }) {
-  const initialSelected = useMemo(() => {
+  const { initialSelected, initialDetail } = useMemo(() => {
     const tiles = model.families.flatMap((family) => family.tiles);
-    return (
-      tiles.find((tile) =>
-        tile.waferId === initialWaferId &&
-        (!initialDieLabel || tile.dieLabel === initialDieLabel)
-      ) ??
-      tiles.find((tile) => tile.isSelected) ??
-      model.families[0]?.tiles[0] ??
-      null
-    );
+    const deepLinkedTile = findDeepLinkedWaferStatusTile(tiles, initialWaferId, initialDieLabel);
+
+    return {
+      initialSelected: findInitialWaferStatusTile(tiles, deepLinkedTile),
+      // Only an explicit URL target opens a die detail. The ordinary Status
+      // navigation link carries only processId and must land on the overview.
+      initialDetail: deepLinkedTile && canOpenDieDetail(deepLinkedTile) ? deepLinkedTile : null
+    };
   },
     [initialDieLabel, initialWaferId, model]
   );
   const [selectedTile, setSelectedTile] = useState<WaferStatusTileModel | null>(initialSelected);
-  const [detailTile, setDetailTile] = useState<WaferStatusTileModel | null>(() =>
-    initialSelected && canOpenDieDetail(initialSelected) ? initialSelected : null
-  );
+  const [detailTile, setDetailTile] = useState<WaferStatusTileModel | null>(initialDetail);
   const latestTiles = model.families.flatMap((family) => family.tiles);
   const activeSelectedTile = selectedTile
     ? latestTiles.find((tile) => tile.id === selectedTile.id) ?? selectedTile
