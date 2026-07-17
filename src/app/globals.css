@@ -4608,7 +4608,10 @@ textarea {
   }
 
   .wireframe-calendar-surface {
-    overflow-x: hidden;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: clip;
   }
 
   .waferwatch-wireframe .wireframe-calendar-card__header {
@@ -4627,10 +4630,11 @@ textarea {
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-panel {
-    overflow-x: auto;
-    overflow-y: hidden;
-    overscroll-behavior-x: contain;
-    overscroll-behavior-y: auto;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: clip;
+    overscroll-behavior: none;
     touch-action: pan-y;
   }
 
