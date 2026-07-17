@@ -1,5 +1,17 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 optimistic step parameter routing)
+
+- Fixed newly added Process Flow steps opening the parameter editor with their
+  temporary client ID and rendering the authenticated shell around a 404. An
+  immediate parameter-open now waits for step persistence, then navigates with
+  the real database ID; failed or discarded optimistic steps clear that intent.
+- Added exact temporary-versus-persisted navigation coverage. Verified 17 focused
+  tests, `npm run lint`, and `npm run build`. Authenticated Playwright QA created
+  a step and immediately opened parameters: it resolved to a UUID route with the
+  `Untitled parameters` editor and no 404. The QA step was deleted and remained
+  absent after reload, restoring the process to its original 11 steps.
+
 ## Recent development note (2026-07-16 unified note attachments)
 
 - Unified movement/checkpoint, post-movement step-parameter, and Wafer / Die

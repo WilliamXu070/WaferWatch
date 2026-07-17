@@ -2,11 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getProcessMoveActionNote,
+  getStepParametersNavigation,
   getStepDoubleClickAction,
   getNearestWaferGridIndex,
   hasCrossedWaferDragThreshold,
   shouldCommitWaferDrop
 } from "./interactions";
+
+test("defers parameter navigation until a newly added step has a persisted id", () => {
+  assert.deepEqual(getStepParametersNavigation({
+    stepId: "temp-step-new-cleaning",
+    processTemplateId: "process-123"
+  }), { kind: "defer" });
+
+  assert.deepEqual(getStepParametersNavigation({
+    stepId: "53d4d014-9275-4ec3-b714-a612eb14aaee",
+    processTemplateId: "process-123"
+  }), {
+    kind: "navigate",
+    href: "/process-flow/steps/53d4d014-9275-4ec3-b714-a612eb14aaee/parameters?processId=process-123"
+  });
+});
 
 test("keeps title double-clicks for rename and routes the rest of a step to parameters", () => {
   assert.equal(getStepDoubleClickAction({ x: 80, y: 32, nodeWidth: 392 }), "rename");

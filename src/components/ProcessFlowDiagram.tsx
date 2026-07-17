@@ -64,6 +64,7 @@ import { findEdgeSplitCandidate, splitEdgeWithNode } from "./process-flow/graphE
 import { createLatestFrameQueue, type LatestFrameQueue } from "./process-flow/latestFrameQueue";
 import {
   getProcessMoveActionNote,
+  getStepParametersNavigation,
   hasCrossedWaferDragThreshold,
   shouldCommitWaferDrop
 } from "./process-flow/interactions";
@@ -435,6 +436,7 @@ export function ProcessFlowDiagram({
   const pendingZoomAnchorRef = useRef<ZoomAnchor | null>(null);
   const pendingGraphFitRef = useRef<GraphViewportFit | null>(null);
   const pendingStepCreateRef = useRef<Map<string, QueuedStepCreate>>(new Map());
+  const pendingStepParametersOpenRef = useRef<string | null>(null);
   const pendingTransitionCreateRef = useRef<Map<string, QueuedTransition>>(new Map());
   const pendingPositionUpdateRef = useRef<Map<string, {
     canvasX: number;
@@ -759,9 +761,23 @@ export function ProcessFlowDiagram({
         expectedName: persistedStep.name
       });
     }
-  }, [editingNodeId, getLatestNode]);
+
+    if (pendingStepParametersOpenRef.current === temporaryStepId) {
+      pendingStepParametersOpenRef.current = null;
+      const navigation = getStepParametersNavigation({
+        stepId: persistedStep.id,
+        processTemplateId
+      });
+      if (navigation.kind === "navigate") {
+        router.push(navigation.href);
+      }
+    }
+  }, [editingNodeId, getLatestNode, processTemplateId, router]);
 
   const clearQueuedStep = (stepId: string) => {
+    if (pendingStepParametersOpenRef.current === stepId) {
+      pendingStepParametersOpenRef.current = null;
+    }
     pendingStepCreateRef.current.delete(stepId);
     pendingTransitionCreateRef.current.forEach((transition, localId) => {
       if (transition.fromStepId === stepId || transition.toStepId === stepId) {
@@ -773,6 +789,7 @@ export function ProcessFlowDiagram({
   };
 
   const clearQueuedStepMaps = useCallback(() => {
+    pendingStepParametersOpenRef.current = null;
     pendingStepCreateRef.current.clear();
     pendingTransitionCreateRef.current.clear();
     pendingPositionUpdateRef.current.clear();
@@ -1632,11 +1649,20 @@ export function ProcessFlowDiagram({
   }, [processTemplateId, router]);
 
   const openStepParameters = useCallback((stepId: string) => {
-    const search = processTemplateId
-      ? `?${new URLSearchParams({ processId: processTemplateId }).toString()}`
-      : "";
-    router.push(`/process-flow/steps/${stepId}/parameters${search}`);
-  }, [processTemplateId, router]);
+    const navigation = getStepParametersNavigation({ stepId, processTemplateId });
+    if (navigation.kind === "defer") {
+      pendingStepParametersOpenRef.current = stepId;
+      if (pendingStepCreateTimerRef.current) {
+        window.clearTimeout(pendingStepCreateTimerRef.current);
+        pendingStepCreateTimerRef.current = null;
+        void flushPendingStepCreates();
+      }
+      return;
+    }
+
+    pendingStepParametersOpenRef.current = null;
+    router.push(navigation.href);
+  }, [flushPendingStepCreates, processTemplateId, router]);
 
   const deleteSelectedWafer = useCallback(() => {
     if (!canEdit || !selectedWafer) {

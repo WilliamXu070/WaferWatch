@@ -1,4 +1,5 @@
 import {
+  NODE_ID_PREFIX,
   NODE_CHIP_COLUMNS,
   WAFER_CHIP_GAP_X,
   WAFER_CHIP_GAP_Y,
@@ -7,6 +8,27 @@ import {
 } from "./constants";
 
 export const WAFER_DRAG_THRESHOLD_PX = 10;
+
+export function getStepParametersNavigation({
+  stepId,
+  processTemplateId
+}: {
+  stepId: string;
+  processTemplateId?: string;
+}) {
+  if (stepId.startsWith(NODE_ID_PREFIX)) {
+    return { kind: "defer" as const };
+  }
+
+  const search = processTemplateId
+    ? `?${new URLSearchParams({ processId: processTemplateId }).toString()}`
+    : "";
+
+  return {
+    kind: "navigate" as const,
+    href: `/process-flow/steps/${encodeURIComponent(stepId)}/parameters${search}`
+  };
+}
 
 export function getStepDoubleClickAction({
   x,
