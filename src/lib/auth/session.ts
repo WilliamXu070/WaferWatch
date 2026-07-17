@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -12,7 +13,7 @@ export type AccountContext = {
   profile: Profile;
 };
 
-export async function getCurrentAccount(): Promise<AccountContext | null> {
+const getCurrentAccountForRequest = cache(async (): Promise<AccountContext | null> => {
   const cookieStore = await cookies();
   const hasAuthCookie = cookieStore
     .getAll()
@@ -48,6 +49,15 @@ export async function getCurrentAccount(): Promise<AccountContext | null> {
     email,
     profile
   };
+});
+
+/**
+ * Resolves the signed-in account once per server request. Layouts and pages
+ * often need both the account and its permissions; sharing this lookup avoids
+ * repeating the auth-token verification and profile read on the first screen.
+ */
+export function getCurrentAccount(): Promise<AccountContext | null> {
+  return getCurrentAccountForRequest();
 }
 
 export async function requireAccount() {
@@ -88,8 +98,11 @@ export function canManageProcessLibrary(role: UserRole) {
   return role === "admin" || role === "process_engineer";
 }
 
-export async function canEditProject(projectId: string) {
-  const account = await getCurrentAccount();
+export async function canEditProject(
+  projectId: string,
+  knownAccount?: AccountContext | null
+) {
+  const account = knownAccount ?? await getCurrentAccount();
 
   if (!account) {
     return false;

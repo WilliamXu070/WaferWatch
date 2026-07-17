@@ -201,20 +201,23 @@ function toFlowStats(data: ProcessDashboardData | null, columns: DiagramStep[]):
   ];
 }
 
-async function loadProcessFlowData(requestedProcessId: string | undefined) {
+async function loadProcessFlowData(
+  requestedProcessId: string | undefined,
+  account: Awaited<ReturnType<typeof getCurrentAccount>>
+) {
   if (!requestedProcessId) return null;
-  const supabase = await createServerSupabaseClient();
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-  if (claimsError || !claimsData?.claims?.sub) return null;
+  if (!account) return null;
   return getProcessDashboardData(requestedProcessId, 14, false).catch(() => null);
 }
 
-async function getCanEditProcessFlow(data: ProcessDashboardData | null) {
+async function getCanEditProcessFlow(
+  data: ProcessDashboardData | null,
+  account: Awaited<ReturnType<typeof getCurrentAccount>>
+) {
   if (!data) return false;
-  const account = await getCurrentAccount();
   if (!account) return false;
   return data.process.owner_project_id
-    ? canEditProject(data.process.owner_project_id)
+    ? canEditProject(data.process.owner_project_id, account)
     : canManageProcessLibrary(account.profile.role);
 }
 
@@ -238,14 +241,16 @@ export default async function ProcessFlowWireframePage({
   searchParams: Promise<ProcessFlowSearchParams>;
 }) {
   const requestedProcessId = firstSearchValue((await searchParams).processId);
-  const dashboardData = await loadProcessFlowData(requestedProcessId);
   const account = await getCurrentAccount();
-  const canEdit = await getCanEditProcessFlow(dashboardData);
-  const suggestedWaferCode = await getSuggestedWaferCode(dashboardData);
-  const reviewerOptions = await getReviewerOptions(dashboardData);
-  const archiveItems = dashboardData
-    ? await getProcessArchiveItems(dashboardData.process.id).catch(() => [])
-    : [];
+  const dashboardData = await loadProcessFlowData(requestedProcessId, account);
+  const [canEdit, suggestedWaferCode, reviewerOptions, archiveItems] = await Promise.all([
+    getCanEditProcessFlow(dashboardData, account),
+    getSuggestedWaferCode(dashboardData),
+    getReviewerOptions(dashboardData),
+    dashboardData
+      ? getProcessArchiveItems(dashboardData.process.id).catch(() => [])
+      : Promise.resolve([])
+  ]);
   const flowColumns = dashboardData ? toFlowColumns(dashboardData, account?.userId ?? null) : [];
   const flowTransitions = toFlowTransitions(dashboardData);
   const processLabel = dashboardData

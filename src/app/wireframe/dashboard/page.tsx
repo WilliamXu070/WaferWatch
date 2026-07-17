@@ -3,6 +3,7 @@ import {
   getEmptyWireframeDashboardModel,
   getWireframeDashboardModel
 } from "@/features/dashboard/queries";
+import { getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const metadata = {
@@ -25,10 +26,9 @@ export default async function WireframeDashboardPage({
   searchParams: Promise<DashboardSearchParams>;
 }) {
   const requestedProcessId = firstSearchValue((await searchParams).processId);
-  const supabase = await createServerSupabaseClient();
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+  const account = await getCurrentAccount();
 
-  if (claimsError || !claimsData?.claims?.sub) {
+  if (!account) {
     return (
       <DashboardView
         dashboard={getEmptyWireframeDashboardModel()}
@@ -38,6 +38,7 @@ export default async function WireframeDashboardPage({
     );
   }
 
+  const supabase = await createServerSupabaseClient();
   const dashboard = await getWireframeDashboardModel(supabase, requestedProcessId);
 
   return <DashboardView dashboard={dashboard} />;

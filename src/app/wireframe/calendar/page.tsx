@@ -94,7 +94,7 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
 
   const process = await getProcessTemplate(processId);
   const canEdit = process.owner_project_id
-    ? await canEditProject(process.owner_project_id)
+    ? await canEditProject(process.owner_project_id, account)
     : canManageProcessLibrary(account.profile.role);
 
   const queryStart = new Date(2000, 0, 1);

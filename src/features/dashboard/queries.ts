@@ -639,68 +639,110 @@ export function getEmptyWireframeDashboardModel(): DashboardModel {
   return makeEmptyDashboardModel();
 }
 
+async function resolveDashboardProcessTemplateId(
+  supabase: WireframeDashboardQueryClient,
+  requestedProcessTemplateId?: string
+) {
+  if (requestedProcessTemplateId) {
+    return requestedProcessTemplateId;
+  }
+
+  const { data, error } = await supabase
+    .from("process_templates")
+    .select("id")
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.id ?? null;
+}
+
 export async function getWireframeDashboardModel(
   supabase: WireframeDashboardQueryClient = createSupabaseAdminClient(),
   processTemplateId?: string
 ): Promise<DashboardModel> {
+  // The dashboard is entered directly after sign-in. Restrict its initial
+  // hydration to the selected active process instead of loading every process
+  // and historical execution in the workspace.
+  const resolvedProcessTemplateId = await resolveDashboardProcessTemplateId(
+    supabase,
+    processTemplateId
+  );
+
+  if (!resolvedProcessTemplateId) {
+    return makeEmptyDashboardModel();
+  }
+
   const templatesQuery = supabase
     .from("process_templates")
     .select("id, name, version, is_active")
+    .eq("id", resolvedProcessTemplateId)
     .order("name", { ascending: true });
   const stepsQuery = supabase
     .from("process_steps")
     .select("id, template_id, name, step_order, process_area, node_type")
+    .eq("template_id", resolvedProcessTemplateId)
     .order("step_order", { ascending: true });
   const transitionsQuery = supabase
     .from("process_step_transitions")
     .select("template_id, from_step_id, to_step_id, edge_type, priority, created_at")
+    .eq("template_id", resolvedProcessTemplateId)
     .order("priority", { ascending: true })
     .order("created_at", { ascending: true });
   const assignmentsQuery = supabase
     .from("wafer_process_assignments")
     .select("id, wafer_id, template_id, assigned_by, status, assigned_at, started_at, completed_at, current_step_id")
+    .eq("template_id", resolvedProcessTemplateId)
     .is("deleted_at", null)
     .is("archived_at", null)
     .order("assigned_at", { ascending: false });
   const calendarEventsQuery = supabase
     .from("process_calendar_events")
     .select("id, process_template_id, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description")
+    .eq("process_template_id", resolvedProcessTemplateId)
     .order("starts_at", { ascending: true });
-
-  if (processTemplateId) {
-    templatesQuery.eq("id", processTemplateId);
-    stepsQuery.eq("template_id", processTemplateId);
-    transitionsQuery.eq("template_id", processTemplateId);
-    assignmentsQuery.eq("template_id", processTemplateId);
-    calendarEventsQuery.eq("process_template_id", processTemplateId);
-  }
 
   const [
     templatesResult,
     stepsResult,
     transitionsResult,
     assignmentsResult,
-    wafersResult,
-    executionsResult,
     calendarEventsResult
   ] = await Promise.all([
     templatesQuery,
     stepsQuery,
     transitionsQuery,
     assignmentsQuery,
-    supabase
-      .from("wafers")
-      .select("id, wafer_code, project_id, metadata")
-      .is("deleted_at", null)
-      .is("archived_at", null)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("step_executions")
-      .select(
-        "id, assignment_id, process_step_id, status, planned_start_at, planned_end_at, started_at, completed_at, operator_id, completed_by, created_at, updated_at"
-      )
-      .order("updated_at", { ascending: false }),
     calendarEventsQuery
+  ]);
+
+  const candidateAssignments = (assignmentsResult.data ?? []) as WireframeAssignment[];
+  const assignmentIds = candidateAssignments.map((assignment) => assignment.id);
+  const candidateWaferIds = candidateAssignments.map((assignment) => assignment.wafer_id);
+  const [wafersResult, executionsResult] = await Promise.all([
+    candidateWaferIds.length
+      ? supabase
+          .from("wafers")
+          .select("id, wafer_code, project_id, metadata")
+          .in("id", candidateWaferIds)
+          .is("deleted_at", null)
+          .is("archived_at", null)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    assignmentIds.length
+      ? supabase
+          .from("step_executions")
+          .select(
+            "id, assignment_id, process_step_id, status, planned_start_at, planned_end_at, started_at, completed_at, operator_id, completed_by, created_at, updated_at"
+          )
+          .in("assignment_id", assignmentIds)
+          .order("updated_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null })
   ]);
 
   const queryErrors = [
@@ -723,24 +765,20 @@ export async function getWireframeDashboardModel(
   const allTemplates = (templatesResult.data ?? []) as WireframeTemplate[];
   const allSteps = (stepsResult.data ?? []) as WireframeStep[];
   const allTransitions = (transitionsResult.data ?? []) as WireframeTransition[];
-  const allAssignments = (assignmentsResult.data ?? []) as WireframeAssignment[];
   const allWafers = (wafersResult.data ?? []) as WireframeWafer[];
   const allExecutions = (executionsResult.data ?? []) as WireframeExecution[];
   const allCalendarEvents = (calendarEventsResult.data ?? []) as WireframeCalendarEvent[];
   const templates = allTemplates;
   const steps = allSteps;
   const transitions = allTransitions;
-  const candidateAssignments = allAssignments;
-  const candidateWaferIds = new Set(candidateAssignments.map((assignment) => assignment.wafer_id));
+  const candidateWaferIdSet = new Set(candidateWaferIds);
   const wafers = allWafers.filter(
-    (wafer) => (!processTemplateId || candidateWaferIds.has(wafer.id)) && !isDicedParentWafer(wafer.metadata)
+    (wafer) => candidateWaferIdSet.has(wafer.id) && !isDicedParentWafer(wafer.metadata)
   );
   const visibleWaferIds = new Set(wafers.map((wafer) => wafer.id));
   const assignments = candidateAssignments.filter((assignment) => visibleWaferIds.has(assignment.wafer_id));
-  const assignmentIds = new Set(assignments.map((assignment) => assignment.id));
-  const executions = processTemplateId
-    ? allExecutions.filter((execution) => assignmentIds.has(execution.assignment_id))
-    : allExecutions;
+  const visibleAssignmentIds = new Set(assignments.map((assignment) => assignment.id));
+  const executions = allExecutions.filter((execution) => visibleAssignmentIds.has(execution.assignment_id));
   const calendarEvents = allCalendarEvents;
 
   if (templates.length === 0 && assignments.length === 0 && wafers.length === 0 && executions.length === 0) {
@@ -787,9 +825,7 @@ export async function getWireframeDashboardModel(
     (execution) => execution.status === "blocked" || execution.status === "failed"
   ).length;
   const progress = buildProgress(executions);
-  const processQuery = processTemplateId
-    ? `?processId=${encodeURIComponent(processTemplateId)}`
-    : "";
+  const processQuery = `?processId=${encodeURIComponent(resolvedProcessTemplateId)}`;
 
   return {
     activity: buildActivity(executions, calendarEvents),

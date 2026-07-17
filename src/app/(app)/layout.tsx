@@ -11,8 +11,8 @@ import { WaferWatchShell } from "@/ui/waferwatch-wireframe";
 import { RealtimeWorkflowBridge } from "@/features/collaboration/RealtimeWorkflowBridge";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  await requireAccountOrRedirect();
-  const shell = await getWireframeShellModel();
+  const account = await requireAccountOrRedirect();
+  const shell = await getWireframeShellModel(account);
 
   return (
     <WaferWatchShell

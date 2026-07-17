@@ -2,6 +2,7 @@ import "server-only";
 
 import { getProcessCalendarSchedule } from "@/features/calendar/queries";
 import { getProcessDashboardData } from "@/features/process-flows/queries";
+import { getCurrentAccount, type AccountContext } from "@/lib/auth/session";
 import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 import type { FabricationStatus } from "@/types/database";
 import {
@@ -36,11 +37,12 @@ const ACTIVE_ASSIGNMENT_STATUSES: readonly FabricationStatus[] = [
   "on_hold"
 ];
 
-export async function getWireframeShellModel(): Promise<WireframeShellDto> {
-  const supabase = await createServerSupabaseClient();
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+export async function getWireframeShellModel(
+  knownAccount?: AccountContext | null
+): Promise<WireframeShellDto> {
+  const account = knownAccount ?? await getCurrentAccount();
 
-  if (claimsError || !claimsData?.claims?.sub) {
+  if (!account) {
     return {
       currentUser: null,
       currentProcess: null,
@@ -50,26 +52,16 @@ export async function getWireframeShellModel(): Promise<WireframeShellDto> {
     };
   }
 
-  const [templatesResult, currentProfileResult] = await Promise.all([
-    supabase
-      .from("process_templates")
-      .select("id, name, version, owner_project_id")
-      .eq("is_active", true)
-      .order("updated_at", { ascending: false })
-      .limit(24),
-    supabase
-      .from("profiles")
-      .select("id, display_name, email, role, is_active")
-      .eq("id", claimsData.claims.sub)
-      .single()
-  ]);
+  const supabase = await createServerSupabaseClient();
+  const templatesResult = await supabase
+    .from("process_templates")
+    .select("id, name, version, owner_project_id")
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
+    .limit(24);
 
   if (templatesResult.error) {
     throw templatesResult.error;
-  }
-
-  if (currentProfileResult.error) {
-    throw currentProfileResult.error;
   }
 
   const activeTemplates = templatesResult.data ?? [];
@@ -117,7 +109,7 @@ export async function getWireframeShellModel(): Promise<WireframeShellDto> {
   }));
 
   return {
-    currentUser: mapProfileToTeamIdentity(currentProfileResult.data as TeamDirectoryProfile),
+    currentUser: mapProfileToTeamIdentity(account.profile as TeamDirectoryProfile),
     currentProcess: activeTemplate
       ? {
           id: activeTemplate.id,

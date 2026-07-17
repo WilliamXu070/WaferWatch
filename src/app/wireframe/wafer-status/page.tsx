@@ -3,7 +3,6 @@ import {
   getWaferStatusModel
 } from "@/features/wafers/queries";
 import { canEditProject, getCurrentAccount } from "@/lib/auth/session";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { WaferStatusView } from "@/ui/waferwatch-wireframe";
 
 export const dynamic = "force-dynamic";
@@ -42,10 +41,9 @@ export default async function WireframeWaferStatusPage({
     );
   }
 
-  const supabase = await createServerSupabaseClient();
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+  const account = await getCurrentAccount();
 
-  if (claimsError || !claimsData?.claims?.sub) {
+  if (!account) {
     return (
       <WaferStatusView
         model={getEmptyWaferStatusModel()}
@@ -57,7 +55,6 @@ export default async function WireframeWaferStatusPage({
   }
 
   const model = await getWaferStatusModel(requestedProcessId);
-  const account = await getCurrentAccount();
   const projectIds = Array.from(
     new Set(
       model.families
@@ -67,7 +64,7 @@ export default async function WireframeWaferStatusPage({
   );
   const canEdit = account
     ? account.profile.role === "admin" ||
-      (projectIds.length > 0 && (await Promise.all(projectIds.map((projectId) => canEditProject(projectId)))).every(Boolean))
+      (projectIds.length > 0 && (await Promise.all(projectIds.map((projectId) => canEditProject(projectId, account)))).every(Boolean))
     : false;
 
   return (

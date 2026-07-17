@@ -1,5 +1,26 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 post-login loading and local cache)
+
+- Reduced the restart/sign-out/sign-in load path: authenticated account/profile
+  resolution is now request-scoped, the shell reuses that account, and the
+  dashboard defaults to one active process instead of fetching every process,
+  wafer, execution, and calendar row in the workspace. Process Flow now runs
+  its independent post-load reads in parallel and reuses the same account for
+  permission checks.
+- Disabled Turbopack's persistent development filesystem cache after this
+  checkout accumulated 7.7 GB across 2,754 SST files; removed the generated
+  cache with no local dev server running, leaving `.next` at 34 MB. Production
+  bundles are unaffected.
+- Live host profiling found 80% CPU idle, 88% free memory, and no swapping, so
+  there was no system or browser memory leak. Local production-mode smoke: `/`
+  in 77 ms and `/api/health` in 8 ms; `npm run lint` and `npm run build` pass.
+  Supabase REST remains externally degraded (`PGRST002`, 5–9 second schema-cache
+  retries) even after an explicit schema reload and recycling idle-aborted
+  PostgREST connections; direct database SQL and migration checks are healthy.
+  This blocks a truthful authenticated end-to-end timing result. Tracking:
+  GitHub issue #39.
+
 ## Recent development note (2026-07-17 current Beginning route eligibility)
 
 - Fixed Process Flow blocking a Beginning-to-Beginning correction after the
