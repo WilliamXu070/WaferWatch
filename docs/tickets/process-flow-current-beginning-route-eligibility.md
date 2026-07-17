@@ -18,8 +18,12 @@ Process Flow projected one `activeRouteByAssignmentId` by the latest route-event
 
 ## Verification
 
-Pending implementation.
+- Production `ALPHA_1` reproduced the stale assignment-wide route projection.
+- The focused current-arrival projection regression, `npm run checkpoint:verify`,
+  `npm run lint`, and `npm run build` pass.
+- Production deployment `dpl_BH6bNtayRw7uvj6PZ5wWectjbyin` is Ready and the
+  configured production health endpoint returned HTTP 200.
 
 ## Status
 
-In progress.
+Closed in GitHub issue #38.
