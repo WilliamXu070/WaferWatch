@@ -1,5 +1,22 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 current Beginning route eligibility)
+
+- Fixed Process Flow blocking a Beginning-to-Beginning correction after the
+  false-redo backfill. Eligibility now uses the effective checkpoint arrival
+  targeting the item’s current step rather than the latest route event anywhere
+  in its history, so an older corrected visit cannot hide a valid current drag.
+- The existing correction transaction remains unchanged: it supersedes the
+  mistaken arrival, preserves append-only checkpoint evidence, and opens the
+  normal destination parameter flow. No database migration was needed.
+- Production `ALPHA_1` proved the root cause: it was currently at Post-Bake
+  from a valid checkpoint move, while a later historical Spin Coating backfill
+  made the old assignment-wide projection false. Added an exact regression for
+  that event order. Verified the focused projection test, `npm run
+  checkpoint:verify`, `npm run lint`, and `npm run build`. Authenticated browser
+  replay was unavailable because the available in-app Browser was Login-gated.
+  Tracking: GitHub issue #38.
+
 ## Recent development note (2026-07-17 reusable movement parameters)
 
 - Fixed the post-movement parameter dialog treating its only `Add row` action as

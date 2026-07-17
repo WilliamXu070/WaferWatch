@@ -1,7 +1,10 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getCheckpointRouteCorrectionState } from "@/features/process-flows/checkpointRouteCorrection";
+import {
+  getCheckpointRouteAssignmentStepKey,
+  getCheckpointRouteCorrectionState
+} from "@/features/process-flows/checkpointRouteCorrection";
 import { getHistoryUndoState } from "@/features/process-flows/historyUndo";
 import { isDicedParentWafer } from "@/features/process-flows/waferVisibility";
 import type {
@@ -775,7 +778,11 @@ export async function getProcessDashboardData(
     const latestAttempt = currentStepId
       ? latestAttemptByAssignmentStep.get(`${assignment.id}:${currentStepId}`) ?? null
       : null;
-    const activeCheckpointRoute = checkpointRouteState.activeRouteByAssignmentId.get(assignment.id) ?? null;
+    const currentCheckpointRoute = currentStepId
+      ? checkpointRouteState.activeRouteByAssignmentStep.get(
+          getCheckpointRouteAssignmentStepKey(assignment.id, currentStepId)
+        ) ?? null
+      : null;
     const currentStepStatus = currentExecution ? currentExecution.status : getFallbackStepStatus(assignment.status);
     const currentStepIdForHistory = currentStepId;
     const hasCurrentArrival = currentStepIdForHistory
@@ -821,10 +828,8 @@ export async function getProcessDashboardData(
       requiredReviewerId,
       requiredReviewerName: requiredReviewerId ? handlerNameById.get(requiredReviewerId) ?? null : null,
       canUndoHistory,
-      canCorrectCheckpointRoute: activeCheckpointRoute?.targetStepId === currentStepId,
-      checkpointRouteSourceStepId: activeCheckpointRoute?.targetStepId === currentStepId
-        ? activeCheckpointRoute.fromStepId
-        : null,
+      canCorrectCheckpointRoute: currentCheckpointRoute !== null,
+      checkpointRouteSourceStepId: currentCheckpointRoute?.fromStepId ?? null,
       anytimeReturnStepId: assignment.anytime_return_step_id,
       anytimeReturnStepName: assignment.anytime_return_step_id
         ? stepNameById.get(assignment.anytime_return_step_id) ?? null

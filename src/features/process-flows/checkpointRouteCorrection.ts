@@ -15,10 +15,15 @@ export type ActiveCheckpointRoute = {
 
 type CheckpointRouteCorrectionState = {
   activeRouteByAssignmentId: Map<string, ActiveCheckpointRoute>;
+  activeRouteByAssignmentStep: Map<string, ActiveCheckpointRoute>;
   correctedEventIds: Set<string>;
   correctionByDecisionId: Map<string, ActiveCheckpointRoute>;
   visibleEventIds: Set<string>;
 };
+
+export function getCheckpointRouteAssignmentStepKey(assignmentId: string, targetStepId: string) {
+  return `${assignmentId}:${targetStepId}`;
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -67,6 +72,7 @@ export function getCheckpointRouteCorrectionState(
     .filter((event) => !correctedEventIds.has(event.id))
     .sort((first, second) => first.eventAt.localeCompare(second.eventAt) || first.id.localeCompare(second.id));
   const activeRouteByAssignmentId = new Map<string, ActiveCheckpointRoute>();
+  const activeRouteByAssignmentStep = new Map<string, ActiveCheckpointRoute>();
   const correctionByDecisionId = new Map<string, ActiveCheckpointRoute>();
 
   for (const event of visibleEvents) {
@@ -74,6 +80,10 @@ export function getCheckpointRouteCorrectionState(
     if (!route) continue;
 
     activeRouteByAssignmentId.set(route.assignmentId, route);
+    activeRouteByAssignmentStep.set(
+      getCheckpointRouteAssignmentStepKey(route.assignmentId, route.targetStepId),
+      route
+    );
     if (readString(asRecord(event.metadata), "corrected_event_id")) {
       correctionByDecisionId.set(route.checkpointDecisionId, route);
     }
@@ -81,6 +91,7 @@ export function getCheckpointRouteCorrectionState(
 
   return {
     activeRouteByAssignmentId,
+    activeRouteByAssignmentStep,
     correctedEventIds,
     correctionByDecisionId,
     visibleEventIds: new Set(visibleEvents.map((event) => event.id))
