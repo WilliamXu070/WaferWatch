@@ -54,6 +54,7 @@ test("keeps the selected redo visit recolored and names its rollback destination
   assert.match(markup, /Redo → Cleaning/);
   assert.match(markup, /Continue → Cleaning/);
   assert.match(markup, /aria-label="Step history timeline, swipe for more"/);
+  assert.match(markup, /aria-current="step"/);
   assert.match(markup, /wafer-step-picker__marker/);
 });
 

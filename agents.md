@@ -1,5 +1,20 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 two-tab visit-aware Wafer / Die Status)
+
+- Wafer / Die Status now has exactly two top-level tabs: Overview and Process
+  History. Process History retains the selected visit across tab switches and
+  provides accessible tab and history-picker arrow/Home/End navigation.
+- Generic visits keep their selected parameter record, completion record, and
+  notes together. Poling and Inspection/Test visits open their existing matrix
+  and evidence UI in the same workspace, explicitly labeled as shared die data
+  rather than being incorrectly attributed to a historical visit.
+- `parametersSchema.historyWorkspace` can explicitly select `generic`,
+  `poling`, or `inspection`; legacy templates retain name-based routing.
+  Verified focused capability/picker tests, `npm run lint`, and `npm run build`.
+  The available in-app Browser could not reach localhost, so no live phone
+  replay was possible in-session.
+
 ## Recent development note (2026-07-17 die appearance clipboard replacement)
 
 - The editable Die Appearance overview now accepts clipboard images with ⌘V,

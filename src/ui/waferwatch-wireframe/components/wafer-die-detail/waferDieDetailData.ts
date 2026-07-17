@@ -1,8 +1,8 @@
+import type { Json } from "@/types/database";
+
 export const dieDetailTabs = [
   { id: "overview", label: "Overview" },
-  { id: "parameters", label: "Parameters" },
-  { id: "results", label: "Results" },
-  { id: "notes", label: "Notes" }
+  { id: "history", label: "Process History" }
 ] as const;
 
 export type DieDetailTab = (typeof dieDetailTabs)[number]["id"];
@@ -22,6 +22,39 @@ export function getWaferDieStepNotesScopeKey(waferId: string, dieLabel: string, 
 
 export function isPolingStepName(stepName: string) {
   return stepName.toLowerCase().includes("poling");
+}
+
+export function isInspectionStepName(stepName: string) {
+  return /\b(inspection|inspect|test|characterization)\b/i.test(stepName);
+}
+
+export type HistoryWorkspaceCapability = "generic" | "poling" | "inspection";
+
+/**
+ * New step schemas can name the status workspace directly. Older process
+ * templates keep their current Poling/Inspection behavior via the fallback.
+ */
+export function getHistoryWorkspaceCapability({
+  stepName,
+  processArea,
+  parametersSchema
+}: {
+  stepName: string;
+  processArea: string;
+  parametersSchema?: Json;
+}): HistoryWorkspaceCapability {
+  const schema = parametersSchema && typeof parametersSchema === "object" && !Array.isArray(parametersSchema)
+    ? parametersSchema as Record<string, unknown>
+    : null;
+  const configured = schema?.historyWorkspace;
+  if (configured === "poling" || configured === "inspection" || configured === "generic") {
+    return configured;
+  }
+
+  const legacyLabel = `${stepName} ${processArea}`;
+  if (isPolingStepName(legacyLabel)) return "poling";
+  if (isInspectionStepName(legacyLabel)) return "inspection";
+  return "generic";
 }
 
 export const processTimeline = [

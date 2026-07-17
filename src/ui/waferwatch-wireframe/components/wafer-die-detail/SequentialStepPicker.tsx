@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import type { StepVisitHistoryItem } from "./stepVisitHistoryModel";
 
 const timelineAccentByFamily: Record<string, { accent: string; selected: string }> = {
@@ -65,6 +65,26 @@ export function SequentialStepPicker({
     "--step-history-selected": palette.selected
   } as CSSProperties;
 
+  const selectVisitByKeyboard = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const lastIndex = visits.length - 1;
+    const nextIndex = event.key === "ArrowDown" || event.key === "ArrowRight"
+      ? index === lastIndex ? 0 : index + 1
+      : event.key === "ArrowUp" || event.key === "ArrowLeft"
+        ? index === 0 ? lastIndex : index - 1
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? lastIndex
+            : null;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextVisit = visits[nextIndex];
+    if (!nextVisit) return;
+    onSelectVisit(nextVisit.id);
+    const buttons = Array.from(event.currentTarget.closest("ol")?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+    buttons[nextIndex]?.focus();
+  };
+
   return (
     <ol
       aria-label={visits.length > 1 ? "Step history timeline, swipe for more" : "Step history"}
@@ -94,7 +114,9 @@ export function SequentialStepPicker({
             <button
               type="button"
               aria-pressed={isSelected}
+              aria-current={isSelected ? "step" : undefined}
               onClick={() => onSelectVisit(visit.id)}
+              onKeyDown={(event) => selectVisitByKeyboard(event, index)}
               style={{ backgroundColor: rowBackground }}
               className="wafer-step-picker__button grid min-h-[54px] w-full grid-cols-[32px_minmax(0,1fr)] items-center gap-2 rounded-md px-1 py-1.5 text-left outline-none transition-colors hover:bg-[#f7f7f3] focus-visible:ring-2 focus-visible:ring-[#171714] focus-visible:ring-offset-1 motion-reduce:transition-none"
             >

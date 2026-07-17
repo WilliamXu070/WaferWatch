@@ -30,7 +30,10 @@ import { SequentialStepPicker } from "./SequentialStepPicker";
 import { StepParameterHistory } from "./StepParameterHistory";
 import { buildStepVisitHistory } from "./stepVisitHistoryModel";
 import { createTiffPngPreview, isTiffImage } from "./tiffPreview";
+import { ParametersTableCard } from "./ParametersTableCard";
+import { ResultsReviewBoard } from "./ResultsReviewBoard";
 import {
+  getHistoryWorkspaceCapability,
   getWaferDieNotesScopeKey,
   getWaferDieStepNotesScopeKey,
   waferDieNotesSurface
@@ -262,18 +265,6 @@ export function getInitialWaferDieNotesByStep(tile: WaferStatusTileModel): Recor
     steps.map((step) => [step.id, getInitialWaferDieNotesForStep(tile, step.id)])
   );
 
-  if (steps.length > 0) {
-    const firstStepId = tile.currentStepId ?? steps[0]?.id;
-    const legacyNotes = getInitialWaferDieNotes(tile).filter((note) => !note.processStepId);
-    if (firstStepId && legacyNotes.length > 0 && (notesByStepId[firstStepId]?.length ?? 0) === 0) {
-      notesByStepId[firstStepId] = legacyNotes.map((note) => ({
-        ...note,
-        processStepId: firstStepId,
-        processStepName: steps.find((step) => step.id === firstStepId)?.name ?? null
-      }));
-    }
-  }
-
   return notesByStepId;
 }
 
@@ -407,7 +398,7 @@ export function NotesCard({
           onClick={onOpenNotes}
           className="mt-1 h-10 rounded-lg border border-[#e1e1dc] bg-white text-[14px] font-semibold text-[#44443f] hover:bg-[#fafafa]"
         >
-          Open Notes tab
+          Open Process History
         </button>
       </div>
     </DetailCard>
@@ -428,18 +419,27 @@ export function WaferDieNotesDashboard({
   canEdit = true,
   currentUser,
   notesByStepId,
-  onNotesChange
+  onNotesChange,
+  selectedVisitId: selectedVisitIdProp,
+  onSelectedVisitChange
 }: {
   tile: WaferStatusTileModel;
   canEdit?: boolean;
   currentUser?: WaferDieNoteViewer | null;
   notesByStepId: Record<string, readonly WaferDieNote[]>;
   onNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
+  selectedVisitId?: string | null;
+  onSelectedVisitChange?: (visitId: string) => void;
 }) {
   const visits = useMemo(() => buildStepVisitHistory(tile), [tile]);
-  const [selectedVisitId, setSelectedVisitId] = useState(() =>
+  const [uncontrolledSelectedVisitId, setUncontrolledSelectedVisitId] = useState(() =>
     [...visits].reverse().find((visit) => visit.state === "current")?.id ?? visits.at(-1)?.id ?? "die"
   );
+  const selectedVisitId = selectedVisitIdProp ?? uncontrolledSelectedVisitId;
+  const selectVisit = useCallback((visitId: string) => {
+    setUncontrolledSelectedVisitId(visitId);
+    onSelectedVisitChange?.(visitId);
+  }, [onSelectedVisitChange]);
   const [draftByStepId, setDraftByStepId] = useState<Record<string, string>>({});
   const [draftFilesByStepId, setDraftFilesByStepId] = useState<Record<string, File[]>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -680,6 +680,14 @@ export function WaferDieNotesDashboard({
   const selectedStepExecutionId = selectedVisit?.executionId ?? null;
   const selectedStepParameterRecords = selectedVisit?.parameterRecords ?? [];
   const selectedStep = tile.processSteps?.find((step) => step.id === selectedStepId) ?? null;
+  const workspaceCapability = selectedStep
+    ? getHistoryWorkspaceCapability({
+      stepName: selectedStep.name,
+      processArea: selectedStep.processArea,
+      parametersSchema: selectedStep.parametersSchema
+    })
+    : "generic";
+  const selectedVisitDate = selectedVisit?.completedAt ?? selectedVisit?.startedAt ?? selectedVisit?.occurredAt ?? null;
 
   return (
     <div className="wafer-step-workspace grid min-h-0 gap-3 md:grid-cols-[210px_minmax(0,1fr)] lg:grid-cols-[224px_minmax(0,1fr)]">
@@ -698,7 +706,7 @@ export function WaferDieNotesDashboard({
               visits={visits}
               family={tile.family}
               selectedVisitId={selectedVisit?.id}
-              onSelectVisit={setSelectedVisitId}
+              onSelectVisit={selectVisit}
             />
           ) : (
             <p className="rounded-lg border border-dashed border-[#ddddda] bg-white px-4 py-5 text-[13px] font-medium text-[#777770]">
@@ -714,9 +722,7 @@ export function WaferDieNotesDashboard({
             <div className="flex min-w-0 items-center gap-3">
               <span className="h-2.5 w-2.5 rounded-full bg-[#1fa69a]" aria-hidden />
               <h3 className="truncate text-[15px] font-semibold text-[#111111]">{selectedStepName}</h3>
-              {selectedVisit?.visitNumber && selectedVisit.visitNumber > 1 ? (
-                <span className="text-[12px] font-semibold text-[#777770]">Visit {selectedVisit.visitNumber}</span>
-              ) : null}
+              {selectedVisit ? <span className="text-[12px] font-semibold text-[#777770]">Visit {selectedVisit.visitNumber}</span> : null}
               <span className="text-[13px] font-semibold text-[#8a8a83]">
                 {visibleNotes.length} {visibleNotes.length === 1 ? "note" : "notes"}
               </span>
@@ -725,6 +731,11 @@ export function WaferDieNotesDashboard({
               {error ?? (isSaving ? "Saving..." : savedAt ? `Saved ${formatNoteTime(savedAt)}` : "")}
             </span>
           </div>
+          {selectedVisitDate ? (
+            <p className="mt-1 text-[11px] font-medium text-[#8a8a83]">
+              {selectedVisit?.completedAt ? "Completed" : "Started"} {formatNoteTime(selectedVisitDate)}
+            </p>
+          ) : null}
         </div>
 
         {selectedVisit && (selectedVisit.state !== "current" || selectedVisit.completionNote) ? (
@@ -756,18 +767,37 @@ export function WaferDieNotesDashboard({
           </section>
         ) : null}
 
-        <StepParameterHistory
-          key={`${selectedVisit?.id ?? "die"}:${selectedStepParameterRecords[0]?.revision ?? 0}`}
-          records={selectedStepParameterRecords}
-          templateSchema={selectedStep?.parametersSchema ?? {}}
-          projectId={tile.projectId}
-          waferId={tile.waferId}
-          stepId={selectedStepId}
-          stepExecutionId={selectedStepExecutionId}
-          canEdit={canEdit && Boolean(selectedVisit)}
-          onSave={saveWaferStatusStepParameterRecord}
-          className="wafer-step-detail__parameters row-start-3 min-w-0 w-full max-w-full max-h-[250px] overflow-y-auto"
-        />
+        <section className="wafer-step-detail__parameters row-start-3 min-w-0 w-full max-w-full max-h-[360px] overflow-y-auto" aria-label={`${selectedStepName} workspace`}>
+          {workspaceCapability === "poling" ? (
+            <div className="grid gap-3 p-3">
+              <div>
+                <h4 className="text-[13px] font-semibold text-[#111111]">Shared die Poling matrix</h4>
+                <p className="mt-1 text-[11px] font-medium text-[#777770]">Applies to this die; not attributed to this visit.</p>
+              </div>
+              <ParametersTableCard tile={tile} canEdit={canEdit} onPolingNotesChange={onNotesChange} />
+            </div>
+          ) : workspaceCapability === "inspection" ? (
+            <div className="grid gap-3 p-3">
+              <div>
+                <h4 className="text-[13px] font-semibold text-[#111111]">Shared die inspection evidence</h4>
+                <p className="mt-1 text-[11px] font-medium text-[#777770]">Applies to this die; not attributed to this visit.</p>
+              </div>
+              <ResultsReviewBoard tile={tile} canEdit={canEdit} />
+            </div>
+          ) : (
+            <StepParameterHistory
+              key={`${selectedVisit?.id ?? "die"}:${selectedStepParameterRecords[0]?.revision ?? 0}`}
+              records={selectedStepParameterRecords}
+              templateSchema={selectedStep?.parametersSchema ?? {}}
+              projectId={tile.projectId}
+              waferId={tile.waferId}
+              stepId={selectedStepId}
+              stepExecutionId={selectedStepExecutionId}
+              canEdit={canEdit && Boolean(selectedVisit)}
+              onSave={saveWaferStatusStepParameterRecord}
+            />
+          )}
+        </section>
 
         <div className="wafer-step-detail__notes row-start-4 flex min-h-0 min-w-0 w-full max-w-full flex-col gap-3 overflow-y-auto bg-[#fbfbf8] p-3">
           {visibleNotes.length ? (

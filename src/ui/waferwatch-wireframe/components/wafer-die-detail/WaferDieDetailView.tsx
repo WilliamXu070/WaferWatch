@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { formatDieDisplayLabel } from "@/features/wafers/dieDisplayLabel";
 import type { WaferStatusTileModel } from "../../types";
 import {
@@ -11,6 +11,7 @@ import {
 import { dieDetailTabs, type DieDetailTab } from "./waferDieDetailData";
 import { WaferDieDetailTabs } from "./WaferDieDetailTabs";
 import type { WaferDieNoteViewer } from "./WaferDieNotes";
+import { buildStepVisitHistory } from "./stepVisitHistoryModel";
 
 function formatDetailTimestamp(value: string) {
   const date = new Date(value);
@@ -45,6 +46,11 @@ export function DieDetailView({
   canNavigateForward: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<DieDetailTab>("overview");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const visits = useMemo(() => buildStepVisitHistory(tile), [tile]);
+  const defaultVisitId = visits.find((visit) => visit.state === "current")?.id ?? visits.at(-1)?.id ?? null;
+  const [selectedVisitId, setSelectedVisitId] = useState<string | null>(defaultVisitId);
+  const resolvedVisitId = visits.some((visit) => visit.id === selectedVisitId) ? selectedVisitId : defaultVisitId;
   const displayLabel = formatDieDisplayLabel(tile.dieLabel || tile.code);
   const currentStep = tile.processSteps?.find((step) => step.id === tile.currentStepId) ?? null;
   const lastUpdatedAt = currentStep?.completedAt ?? currentStep?.startedAt ?? currentStep?.createdAt ?? null;
@@ -53,7 +59,7 @@ export function DieDetailView({
     : "No recorded update yet";
 
   return (
-    <section className={`wafer-die-detail-view grid gap-5 bg-white md:gap-6 ${activeTab === "notes" ? "wafer-die-detail-view--notes" : ""}`}>
+    <section className={`wafer-die-detail-view grid gap-5 bg-white md:gap-6 ${activeTab === "history" ? "wafer-die-detail-view--history" : ""}`}>
       <div className="wafer-die-detail-header border-b border-[#eeeeea] bg-white pb-4 md:pb-6">
         <div className="wafer-die-detail-breadcrumb mb-4 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-[#8a887b] md:mb-6">
           <button type="button" onClick={onBack} className="hover:text-[#111111]">Wafers</button>
@@ -101,12 +107,35 @@ export function DieDetailView({
         </div>
 
         <div className="wafer-die-detail-tabs mt-5 border-b border-[#eeeeea] md:mt-7">
-          <div className="wafer-die-detail-tabs__list flex overflow-x-auto bg-white">
-            {dieDetailTabs.map((tab) => (
+          <div className="wafer-die-detail-tabs__list flex overflow-x-auto bg-white" role="tablist" aria-label="Die status sections">
+            {dieDetailTabs.map((tab, index) => (
               <button
                 key={tab.id}
+                ref={(element) => { tabRefs.current[index] = element; }}
+                id={`die-status-tab-${tab.id}`}
                 type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                aria-controls={`die-status-panel-${tab.id}`}
+                tabIndex={activeTab === tab.id ? 0 : -1}
                 onClick={() => setActiveTab(tab.id)}
+                onKeyDown={(event) => {
+                  const lastIndex = dieDetailTabs.length - 1;
+                  const nextIndex = event.key === "ArrowRight"
+                    ? index === lastIndex ? 0 : index + 1
+                    : event.key === "ArrowLeft"
+                      ? index === 0 ? lastIndex : index - 1
+                      : event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? lastIndex
+                          : null;
+                  if (nextIndex === null) return;
+                  event.preventDefault();
+                  const nextTab = dieDetailTabs[nextIndex];
+                  setActiveTab(nextTab.id);
+                  tabRefs.current[nextIndex]?.focus();
+                }}
                 className={[
                   "wafer-die-detail-tabs__button relative flex h-14 shrink-0 items-center justify-center px-6 text-[14px] font-semibold",
                   activeTab === tab.id ? "text-[#111111]" : "text-[#66665f] hover:bg-[#fafafa]"
@@ -122,20 +151,33 @@ export function DieDetailView({
         </div>
       </div>
 
-      <WaferDieDetailTabs
-        key={`${tile.id}:${JSON.stringify({
-          notes: tile.notesSurfaceValue ?? "",
-          stepNotes: tile.notesSurfaceValuesByStepId ?? {},
-          parameters: tile.diePolingParameters ?? {},
-          steps: tile.processSteps ?? [],
-          reverts: tile.revertHistory ?? []
-        })}`}
-        activeTab={activeTab}
-        tile={tile}
-        canEdit={canEdit}
-        currentUser={currentUser}
-        onOpenNotes={() => setActiveTab("notes")}
-      />
+      <div
+        id={`die-status-panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`die-status-tab-${activeTab}`}
+        tabIndex={0}
+        className="min-h-0 outline-none focus-visible:ring-2 focus-visible:ring-[#171714] focus-visible:ring-offset-2"
+      >
+        <WaferDieDetailTabs
+          key={`${tile.id}:${JSON.stringify({
+            notes: tile.notesSurfaceValue ?? "",
+            stepNotes: tile.notesSurfaceValuesByStepId ?? {},
+            parameters: tile.diePolingParameters ?? {},
+            steps: tile.processSteps ?? [],
+            reverts: tile.revertHistory ?? []
+          })}`}
+          activeTab={activeTab}
+          tile={tile}
+          canEdit={canEdit}
+          currentUser={currentUser}
+          onOpenHistory={() => {
+            setSelectedVisitId(defaultVisitId);
+            setActiveTab("history");
+          }}
+          selectedVisitId={resolvedVisitId}
+          onSelectedVisitChange={setSelectedVisitId}
+        />
+      </div>
     </section>
   );
 }

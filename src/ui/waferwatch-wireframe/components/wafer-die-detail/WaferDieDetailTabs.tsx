@@ -7,9 +7,6 @@ import {
   KeyResultsCard
 } from "./DieSummaryCards";
 import { DieAppearanceCard } from "./DieAppearanceCard";
-import { DetailCard } from "./DetailCard";
-import { ParametersTableCard } from "./ParametersTableCard";
-import { ResultsReviewBoard } from "./ResultsReviewBoard";
 import {
   flattenStepNotes,
   getInitialWaferDieNotes,
@@ -19,34 +16,20 @@ import {
   type WaferDieNote,
   type WaferDieNoteViewer
 } from "./WaferDieNotes";
-import { isPolingStepName, type DieDetailTab } from "./waferDieDetailData";
-
-function hasPolingWorkflow(tile: WaferStatusTileModel) {
-  return tile.processSteps?.some((step) => isPolingStepName(step.name)) ?? false;
-}
-
-function EmptyProcessData({ title, message }: { title: string; message: string }) {
-  return (
-    <DetailCard title={title} className="lg:col-span-3">
-      <div className="grid min-h-[180px] place-items-center rounded-lg border border-dashed border-[#ddddda] bg-white px-6 text-center">
-        <p className="max-w-md text-[14px] font-medium leading-6 text-[#777770]">{message}</p>
-      </div>
-    </DetailCard>
-  );
-}
+import { type DieDetailTab } from "./waferDieDetailData";
 
 function DieOverviewTab({
   tile,
   notes,
   canEdit,
   currentUser,
-  onOpenNotes
+  onOpenHistory
 }: {
   tile: WaferStatusTileModel;
   notes: readonly WaferDieNote[];
   canEdit: boolean;
   currentUser?: WaferDieNoteViewer | null;
-  onOpenNotes: () => void;
+  onOpenHistory: () => void;
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -56,57 +39,28 @@ function DieOverviewTab({
       </div>
       <aside className="grid content-start gap-4">
         <KeyResultsCard />
-        <NotesCard notes={notes} currentUser={currentUser} onOpenNotes={onOpenNotes} />
+        <NotesCard notes={notes} currentUser={currentUser} onOpenNotes={onOpenHistory} />
       </aside>
     </div>
   );
 }
 
-function DieParametersTab({
-  tile,
-  canEdit,
-  onPolingNotesChange
-}: {
-  tile: WaferStatusTileModel;
-  canEdit: boolean;
-  onPolingNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
-}) {
-  if (!hasPolingWorkflow(tile)) {
-    return <EmptyProcessData title="Parameters" message="No parameter workflow is configured for this process." />;
-  }
-
-  return (
-    <div className="grid gap-4">
-      <ParametersTableCard
-        key={`parameters-${tile.id}`}
-        tile={tile}
-        canEdit={canEdit}
-        onPolingNotesChange={onPolingNotesChange}
-      />
-    </div>
-  );
-}
-
-function DieResultsTab({ tile, canEdit }: { tile: WaferStatusTileModel; canEdit: boolean }) {
-  if (!hasPolingWorkflow(tile)) {
-    return <EmptyProcessData title="Results" message="No result collection workflow is configured for this process." />;
-  }
-
-  return <ResultsReviewBoard tile={tile} canEdit={canEdit} />;
-}
-
-function DieNotesTab({
+function DieProcessHistoryTab({
   tile,
   canEdit,
   currentUser,
   notesByStepId,
-  onNotesChange
+  onNotesChange,
+  selectedVisitId,
+  onSelectedVisitChange
 }: {
   tile: WaferStatusTileModel;
   canEdit: boolean;
   currentUser?: WaferDieNoteViewer | null;
   notesByStepId: Record<string, readonly WaferDieNote[]>;
   onNotesChange: (stepId: string, notes: WaferDieNote[]) => void;
+  selectedVisitId: string | null;
+  onSelectedVisitChange: (visitId: string) => void;
 }) {
   return (
     <div className="wafer-die-notes-tab min-h-0">
@@ -117,6 +71,8 @@ function DieNotesTab({
         currentUser={currentUser}
         notesByStepId={notesByStepId}
         onNotesChange={onNotesChange}
+        selectedVisitId={selectedVisitId}
+        onSelectedVisitChange={onSelectedVisitChange}
       />
     </div>
   );
@@ -127,18 +83,24 @@ export function WaferDieDetailTabs({
   tile,
   canEdit,
   currentUser,
-  onOpenNotes
+  onOpenHistory,
+  selectedVisitId,
+  onSelectedVisitChange
 }: {
   activeTab: DieDetailTab;
   tile: WaferStatusTileModel;
   canEdit: boolean;
   currentUser?: WaferDieNoteViewer | null;
-  onOpenNotes: () => void;
+  onOpenHistory: () => void;
+  selectedVisitId: string | null;
+  onSelectedVisitChange: (visitId: string) => void;
 }) {
   const [notesByStepId, setNotesByStepId] = useState<Record<string, WaferDieNote[]>>(() =>
     getInitialWaferDieNotesByStep(tile)
   );
-  const notes = tile.processSteps?.length ? flattenStepNotes(notesByStepId) : getInitialWaferDieNotes(tile);
+  const notes = tile.processSteps?.length
+    ? [...getInitialWaferDieNotes(tile), ...flattenStepNotes(notesByStepId)]
+    : getInitialWaferDieNotes(tile);
   const setStepNotes = (stepId: string, notesForStep: WaferDieNote[]) => {
     setNotesByStepId((current) => ({
       ...current,
@@ -146,10 +108,18 @@ export function WaferDieDetailTabs({
     }));
   };
 
-  if (activeTab === "parameters") return <DieParametersTab tile={tile} canEdit={canEdit} onPolingNotesChange={setStepNotes} />;
-  if (activeTab === "results") return <DieResultsTab tile={tile} canEdit={canEdit} />;
-  if (activeTab === "notes") {
-    return <DieNotesTab tile={tile} canEdit={canEdit} currentUser={currentUser} notesByStepId={notesByStepId} onNotesChange={setStepNotes} />;
+  if (activeTab === "history") {
+    return (
+      <DieProcessHistoryTab
+        tile={tile}
+        canEdit={canEdit}
+        currentUser={currentUser}
+        notesByStepId={notesByStepId}
+        onNotesChange={setStepNotes}
+        selectedVisitId={selectedVisitId}
+        onSelectedVisitChange={onSelectedVisitChange}
+      />
+    );
   }
-  return <DieOverviewTab tile={tile} notes={notes} canEdit={canEdit} currentUser={currentUser} onOpenNotes={onOpenNotes} />;
+  return <DieOverviewTab tile={tile} notes={notes} canEdit={canEdit} currentUser={currentUser} onOpenHistory={onOpenHistory} />;
 }

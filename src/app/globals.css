@@ -3906,14 +3906,14 @@ textarea {
   overflow: hidden;
 }
 
-.wafer-status-detail-page:has(.wafer-die-detail-view--notes) {
+.wafer-status-detail-page:has(.wafer-die-detail-view--history) {
   height: 100%;
   min-height: 0;
   grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 
-.wafer-die-detail-view--notes {
+.wafer-die-detail-view--history {
   height: 100%;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
@@ -3921,27 +3921,27 @@ textarea {
   overflow: hidden;
 }
 
-.wafer-die-detail-view--notes .wafer-die-detail-header {
+.wafer-die-detail-view--history .wafer-die-detail-header {
   padding-bottom: 0;
 }
 
-.wafer-die-detail-view--notes .wafer-die-detail-breadcrumb {
+.wafer-die-detail-view--history .wafer-die-detail-breadcrumb {
   margin-bottom: 12px;
 }
 
-.wafer-die-detail-view--notes .wafer-die-detail-header h1 {
+.wafer-die-detail-view--history .wafer-die-detail-header h1 {
   font-size: 30px;
 }
 
-.wafer-die-detail-view--notes .wafer-die-detail-header > div:nth-child(2) > div:first-child > div:last-child {
+.wafer-die-detail-view--history .wafer-die-detail-header > div:nth-child(2) > div:first-child > div:last-child {
   margin-top: 10px;
 }
 
-.wafer-die-detail-view--notes .wafer-die-detail-tabs {
+.wafer-die-detail-view--history .wafer-die-detail-tabs {
   margin-top: 14px;
 }
 
-.wafer-die-detail-view--notes .wafer-die-detail-tabs__button {
+.wafer-die-detail-view--history .wafer-die-detail-tabs__button {
   height: 44px;
 }
 
@@ -4114,10 +4114,10 @@ textarea {
     padding: 0;
   }
 
-  /* Notes is a bounded workspace on phones.  Anchoring it to the same app
+  /* Process History is a bounded workspace on phones. Anchoring it to the same app
      chrome as Process Flow avoids a viewport-height guess that can collide
      with Safari's changing browser bars. */
-  .waferwatch-wireframe .wireframe-main:has(.wafer-die-detail-view--notes) {
+  .waferwatch-wireframe .wireframe-main:has(.wafer-die-detail-view--history) {
     position: fixed;
     top: calc(58px + env(safe-area-inset-top));
     right: 0;
@@ -4523,7 +4523,7 @@ textarea {
 
   .wafer-die-detail-tabs__list {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     max-width: 100%;
     flex-wrap: nowrap;
     overflow: hidden;
@@ -4656,38 +4656,38 @@ textarea {
     margin-left: auto;
   }
 
-  .wafer-die-detail-view--notes .wafer-die-detail-breadcrumb {
+  .wafer-die-detail-view--history .wafer-die-detail-breadcrumb {
     display: none;
   }
 
-  .wafer-die-detail-view--notes .wafer-die-detail-header h1 {
+  .wafer-die-detail-view--history .wafer-die-detail-header h1 {
     font-size: 24px;
   }
 
-  .wafer-die-detail-view--notes .wafer-die-detail-header > div:nth-child(2) {
+  .wafer-die-detail-view--history .wafer-die-detail-header > div:nth-child(2) {
     gap: 8px;
   }
 
-  .wafer-die-detail-view--notes .wafer-die-detail-header > div:nth-child(2) > div:first-child > div:last-child {
+  .wafer-die-detail-view--history .wafer-die-detail-header > div:nth-child(2) > div:first-child > div:last-child {
     display: none;
   }
 
-  .wafer-die-detail-view--notes .wafer-die-detail-tabs {
+  .wafer-die-detail-view--history .wafer-die-detail-tabs {
     margin-top: 8px;
   }
 
-  .wafer-die-detail-view--notes .wafer-die-detail-tabs__button {
+  .wafer-die-detail-view--history .wafer-die-detail-tabs__button {
     height: 40px;
   }
 
-  .wafer-status-detail-page:has(.wafer-die-detail-view--notes),
-  .wafer-die-detail-view--notes,
+  .wafer-status-detail-page:has(.wafer-die-detail-view--history),
+  .wafer-die-detail-view--history,
   .wafer-die-notes-tab {
     height: 100%;
     min-height: 0;
   }
 
-  .wafer-status-detail-page:has(.wafer-die-detail-view--notes) {
+  .wafer-status-detail-page:has(.wafer-die-detail-view--history) {
     padding: 0;
   }
 
