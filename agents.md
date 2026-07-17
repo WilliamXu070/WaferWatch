@@ -1,5 +1,14 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 full iPhone Calendar fit)
+
+- Corrected the earlier Calendar fix: a later phone override was still expanding
+  each location lane to 132px, which pushed Toronto below the initial viewport.
+  Phone Calendar now uses three 64px lanes, 48px events, one-line location names,
+  and title-only event cards so McMaster, Waterloo, and Toronto appear together.
+- Verified `npm run lint` and `npm run build`. The available in-app Browser blocks
+  local `localhost`, so this change could not receive a browser replay in-session.
+
 ## Recent development note (2026-07-17 reliable iPhone Process Flow wafer drag)
 
 - Fixed phone wafer/die drags failing to register after the compact selection

@@ -460,11 +460,16 @@ export function ProcessCalendarBoard({
     () =>
       LOCATIONS.map((location) => ({
         id: location,
-        title: presentationMode === "wireframe" ? `${location}\n${LOCATION_REGIONS[location]}` : location,
+        title:
+          presentationMode === "wireframe"
+            ? isCompactViewport
+              ? location
+              : `${location}\n${LOCATION_REGIONS[location]}`
+            : location,
         rightTitle: `${visibleEvents.filter((event) => event.location === location).length}`,
         stackItems: true
       })),
-    [presentationMode, visibleEvents]
+    [isCompactViewport, presentationMode, visibleEvents]
   );
 
   const timelineItems = useMemo<CalendarTimelineItem[]>(
@@ -505,7 +510,7 @@ export function ProcessCalendarBoard({
           canMove: canEdit,
           canChangeGroup: canEdit,
           canResize: canEdit ? "both" : false,
-          height: presentationMode === "wireframe" ? (isCompactViewport ? 72 : 100) : 30
+          height: presentationMode === "wireframe" ? (isCompactViewport ? 48 : 100) : 30
         };
       });
 
@@ -531,7 +536,7 @@ export function ProcessCalendarBoard({
           canMove: !draftDragSelection,
           canChangeGroup: !draftDragSelection,
           canResize: draftDragSelection ? false : "both",
-          height: presentationMode === "wireframe" ? (isCompactViewport ? 72 : 100) : 30,
+          height: presentationMode === "wireframe" ? (isCompactViewport ? 48 : 100) : 30,
           isDraft: true
         });
       }
@@ -1838,10 +1843,10 @@ export function ProcessCalendarBoard({
           itemHeightRatio={0.76}
           itemRenderer={renderTimelineItem}
           itemTouchSendsClick
-          itemVerticalGap={presentationMode === "wireframe" ? (isCompactViewport ? 6 : 12) : 6}
+          itemVerticalGap={presentationMode === "wireframe" ? (isCompactViewport ? 4 : 12) : 6}
           items={timelineItems}
           keys={TIMELINE_KEYS}
-          lineHeight={presentationMode === "wireframe" ? (isCompactViewport ? 88 : 172) : 46}
+          lineHeight={presentationMode === "wireframe" ? (isCompactViewport ? 64 : 172) : 46}
           maxZoom={maxZoomMs}
           minZoom={MIN_ZOOM_MS}
           moveResizeValidator={moveResizeValidator}

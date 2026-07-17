@@ -1627,8 +1627,8 @@
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-toolbar {
     display: flex;
-    min-height: 54px;
-    padding: 10px 12px;
+    min-height: 48px;
+    padding: 8px 10px;
   }
 
   /* The seven-day view is calculated from the available viewport width. Keep
@@ -1653,7 +1653,7 @@
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-timeline-toolbar .calendar-new-event-button {
-    min-height: 40px;
+    min-height: 36px;
     white-space: nowrap;
   }
 
@@ -1664,10 +1664,10 @@
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-row {
-    min-height: 88px;
+    min-height: 64px;
     padding: 0 7px;
     font-size: 10px;
-    line-height: 1.25 !important;
+    line-height: 1.15 !important;
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-scroll {
@@ -1675,14 +1675,14 @@
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item {
-    min-height: 72px;
+    min-height: 48px;
     border-left-width: 3px !important;
     border-radius: 7px;
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-content {
-    gap: 4px;
-    padding: 8px 9px;
+    gap: 0;
+    padding: 6px 8px;
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-title-row {
@@ -1696,8 +1696,7 @@
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-person,
   .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-time {
-    font-size: 10px;
-    line-height: 1.2;
+    display: none;
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-item-badge {

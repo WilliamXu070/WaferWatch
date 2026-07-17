@@ -4645,13 +4645,14 @@ textarea {
   .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar,
   .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-header,
   .wireframe-calendar-surface .calendar-scheduler--wireframe .ww-timeline-sidebar-header {
-    width: 104px !important;
+    width: 78px !important;
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .rct-sidebar-row {
-    min-height: 132px;
-    padding: 0 10px;
-    font-size: 12px;
+    min-height: 64px;
+    padding: 0 7px;
+    font-size: 10px;
+    line-height: 1.15 !important;
   }
 
   .wireframe-calendar-surface .calendar-scheduler--wireframe .calendar-inspector--wireframe.calendar-inspector--active {
