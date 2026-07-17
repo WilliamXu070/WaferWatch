@@ -148,9 +148,9 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
   };
 
   return (
-    <DetailCard title="Die appearance">
+    <DetailCard title="Die appearance" className="die-appearance-card">
       <div
-        className="group relative grid min-h-[260px] place-items-center overflow-hidden rounded-lg border border-[#e5e5e0] bg-[#fafaf7] outline-none focus-within:border-[#111111] focus:border-[#111111]"
+        className="die-appearance-card__canvas group relative grid min-h-[260px] place-items-center overflow-hidden rounded-lg border border-[#e5e5e0] bg-[#fafaf7] outline-none focus-within:border-[#111111] focus:border-[#111111]"
         onPaste={handlePaste}
         tabIndex={canEdit ? 0 : -1}
       >

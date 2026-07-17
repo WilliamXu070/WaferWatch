@@ -4104,6 +4104,21 @@ textarea {
     padding: 0;
   }
 
+  /* Notes is a bounded workspace on phones.  Anchoring it to the same app
+     chrome as Process Flow avoids a viewport-height guess that can collide
+     with Safari's changing browser bars. */
+  .waferwatch-wireframe .wireframe-main:has(.wafer-die-detail-view--notes) {
+    position: fixed;
+    top: calc(58px + env(safe-area-inset-top));
+    right: 0;
+    bottom: calc(68px + env(safe-area-inset-bottom));
+    left: 0;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+    padding: 12px;
+  }
+
   .process-flow-view {
     max-height: 100%;
     overflow: hidden;
@@ -4497,18 +4512,25 @@ textarea {
   }
 
   .wafer-die-detail-tabs__list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     max-width: 100%;
-    flex-wrap: wrap;
-    overflow-x: visible;
+    flex-wrap: nowrap;
+    overflow: hidden;
   }
 
   .wafer-die-detail-tabs__button {
-    flex: 1 1 112px;
-    min-width: max-content;
-    height: 50px;
-    padding-right: 14px;
-    padding-left: 14px;
-    font-size: 13px;
+    width: 100%;
+    min-width: 0;
+    height: 48px;
+    padding-right: 4px;
+    padding-left: 4px;
+    font-size: 12px;
+  }
+
+  .wafer-die-detail-tabs__button span {
+    right: 5px;
+    left: 5px;
   }
 
   .wafer-parameters-recipe-grid {
@@ -4523,7 +4545,7 @@ textarea {
   }
 
   .wafer-step-workspace {
-    height: calc(100dvh - 285px);
+    height: 100%;
     grid-template-rows: 104px minmax(0, 1fr);
   }
 
@@ -4605,6 +4627,21 @@ textarea {
 
   .wafer-die-detail-view--notes .wafer-die-detail-tabs__button {
     height: 40px;
+  }
+
+  .wafer-status-detail-page:has(.wafer-die-detail-view--notes),
+  .wafer-die-detail-view--notes,
+  .wafer-die-notes-tab {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .wafer-status-detail-page:has(.wafer-die-detail-view--notes) {
+    padding: 0;
+  }
+
+  .die-appearance-card__canvas {
+    min-height: 220px;
   }
 
   .wireframe-calendar-surface {

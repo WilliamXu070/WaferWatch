@@ -1,5 +1,18 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 Wafer / Die Status phone fit)
+
+- Reworked mobile Wafer / Die Status fitment at 320px and up: the four detail
+  tabs now stay in a single equal-width row, while the empty Die appearance
+  canvas is 220px instead of consuming the first phone viewport.
+- Notes no longer estimates its available height with `100dvh - 285px`.
+  It is bounded directly between the existing mobile top bar and bottom nav, so
+  the horizontal step history, parameter sheet, note feed, and composer share
+  the actual remaining space without running beneath navigation when Safari's
+  browser bars change size.
+- Verified `npm run lint` and `npm run build`. Mobile browser replay could not
+  run because the installed Playwright CLI has no browser executable.
+
 ## Recent development note (2026-07-17 full iPhone Calendar fit)
 
 - Corrected the earlier Calendar fix: a later phone override was still expanding
