@@ -17,6 +17,8 @@ export type StepVisitHistoryItem = {
   completedAt: string | null;
   completionNote: string | null;
   completionActor: WaferStatusTimelineActor;
+  redoDestinationStepId: string | null;
+  redoDestinationStepName: string | null;
   parameterRecords: readonly WaferStatusStepParameterRecord[];
   inheritedFromParent?: { waferId: string; waferCode: string };
   sequence: number;
@@ -31,9 +33,16 @@ function timeValue(value: string | null | undefined) {
   return Number.isNaN(timestamp) ? Number.MAX_SAFE_INTEGER : timestamp;
 }
 
-function compareVisits(first: StepVisitHistoryItem, second: StepVisitHistoryItem) {
-  const difference = timeValue(first.occurredAt) - timeValue(second.occurredAt);
+function compareVisitBeginnings(first: StepVisitHistoryItem, second: StepVisitHistoryItem) {
+  const difference = timeValue(first.startedAt ?? first.occurredAt) - timeValue(second.startedAt ?? second.occurredAt);
   return difference || first.id.localeCompare(second.id);
+}
+
+function compareVisitProgression(first: StepVisitHistoryItem, second: StepVisitHistoryItem) {
+  const completionDifference = timeValue(first.completedAt) - timeValue(second.completedAt);
+  if (completionDifference) return completionDifference;
+
+  return compareVisitBeginnings(first, second);
 }
 
 function assignParameterRecords(visits: StepVisitHistoryItem[]) {
@@ -43,7 +52,7 @@ function assignParameterRecords(visits: StepVisitHistoryItem[]) {
   }
 
   for (const stepVisits of visitsByStepId.values()) {
-    stepVisits.sort(compareVisits);
+    stepVisits.sort(compareVisitBeginnings);
     const records = stepVisits[0]?.parameterRecords ?? [];
     for (const visit of stepVisits) visit.parameterRecords = [];
 
@@ -79,6 +88,12 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
       completedAt: attempt.submission?.occurredAt ?? null,
       completionNote: attempt.submission?.note?.trim() || null,
       completionActor: attempt.submission?.actor ?? NO_ACTOR,
+      redoDestinationStepId: attempt.effectiveDecision?.outcome === "redo"
+        ? attempt.effectiveDecision.destinationStepId
+        : null,
+      redoDestinationStepName: attempt.effectiveDecision?.outcome === "redo"
+        ? attempt.effectiveDecision.destinationStepName
+        : null,
       parameterRecords: step?.parameterRecords ?? [],
       inheritedFromParent: attempt.inheritedFromParent,
       sequence: 0,
@@ -106,6 +121,8 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
         completedAt: null,
         completionNote: null,
         completionActor: NO_ACTOR,
+        redoDestinationStepId: null,
+        redoDestinationStepName: null,
         parameterRecords: step.parameterRecords ?? [],
         sequence: 0,
         visitNumber: 1
@@ -130,6 +147,8 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
         completedAt: step.completedAt,
         completionNote: step.runNote?.trim() || null,
         completionActor: { id: step.noteAuthorId, name: step.noteAuthorName },
+        redoDestinationStepId: null,
+        redoDestinationStepName: null,
         parameterRecords: step.parameterRecords ?? [],
         sequence: 0,
         visitNumber: 1
@@ -137,7 +156,7 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
     }
   }
 
-  visits.sort(compareVisits);
+  visits.sort(compareVisitProgression);
   assignParameterRecords(visits);
 
   const visitCountByStepId = new Map<string, number>();

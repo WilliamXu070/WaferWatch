@@ -1,5 +1,21 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 completion-ordered step history)
+
+- Fixed a Wafer / Die Status Notes bug that ordered completed visits by their
+  start time while displaying completion time. Completed rows now progress by
+  completion timestamp, with the unfinished current visit kept last and labeled
+  `Current step` instead of showing a misleading stale timestamp.
+- Redo decisions now keep their destination in the visit model and render as a
+  persistent amber row with an explicit `Redo → step` badge, including while
+  selected. No persistence or migration changes were required.
+- Added exact overlapping-visit and selected-redo regressions. Verified four
+  focused tests, `npm run lint`, and `npm run build`. Authenticated A3 Notes at
+  1280x720 rendered `11:11 → 11:14 → 11:16 → Current step`, with
+  Chromium visibly marked `Redo → Cleaning`; 390x844 remained horizontally
+  contained. Both widths had no console warnings/errors and no live data was
+  changed. Tracking: GitHub issue #33.
+
 ## Recent development note (2026-07-16 automatic release loop)
 
 - Made push and deployment mandatory after every completed edit in the primary

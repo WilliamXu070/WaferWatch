@@ -62,3 +62,93 @@ test("keeps repeated visits separate and assigns parameter records to the matchi
   assert.deepEqual(cleaningVisits.map((visit) => visit.visitNumber), [1, 2]);
   assert.deepEqual(cleaningVisits.map((visit) => visit.parameterRecords.map((record) => record.id)), [["record-1"], ["record-2"]]);
 });
+
+test("orders progression by completion time when repeated visits started in a different order", () => {
+  const base = tile();
+  const visits = buildStepVisitHistory(tile({
+    currentStepId: "pad",
+    checkpointHistory: [
+      {
+        kind: "attempt",
+        id: "attempt-dice",
+        stepId: "dice",
+        stepName: "Dicing",
+        attemptNumber: 1,
+        state: "approved",
+        occurredAt: "2026-07-16T15:00:00Z",
+        startedAt: "2026-07-16T15:00:00Z",
+        submission: { id: "submission-dice", occurredAt: "2026-07-16T15:11:00Z", actor: { id: "user-1", name: "William" }, note: null },
+        withdrawals: [],
+        decisions: [],
+        effectiveDecision: null
+      },
+      {
+        kind: "attempt",
+        id: "attempt-clean-late",
+        stepId: "clean",
+        stepName: "Cleaning",
+        attemptNumber: 1,
+        state: "approved",
+        occurredAt: "2026-07-16T15:01:00Z",
+        startedAt: "2026-07-16T15:01:00Z",
+        submission: { id: "submission-clean-late", occurredAt: "2026-07-16T15:14:00Z", actor: { id: "user-1", name: "William" }, note: null },
+        withdrawals: [],
+        decisions: [],
+        effectiveDecision: null
+      },
+      {
+        kind: "attempt",
+        id: "attempt-clean-early",
+        stepId: "clean",
+        stepName: "Cleaning",
+        attemptNumber: 2,
+        state: "redo_required",
+        occurredAt: "2026-07-16T15:05:00Z",
+        startedAt: "2026-07-16T15:05:00Z",
+        submission: { id: "submission-clean-early", occurredAt: "2026-07-16T15:11:30Z", actor: { id: "user-1", name: "William" }, note: null },
+        withdrawals: [],
+        decisions: [{
+          id: "decision-clean-redo",
+          outcome: "redo",
+          occurredAt: "2026-07-16T15:12:00Z",
+          actor: { id: "reviewer-1", name: "Reviewer" },
+          note: "Repeat cleaning",
+          destinationStepId: "clean",
+          destinationStepName: "Cleaning",
+          supersedesDecisionId: null,
+          isEffective: true
+        }],
+        effectiveDecision: {
+          id: "decision-clean-redo",
+          outcome: "redo",
+          occurredAt: "2026-07-16T15:12:00Z",
+          actor: { id: "reviewer-1", name: "Reviewer" },
+          note: "Repeat cleaning",
+          destinationStepId: "clean",
+          destinationStepName: "Cleaning",
+          supersedesDecisionId: null,
+          isEffective: true
+        }
+      }
+    ],
+    processSteps: base.processSteps
+      ?.filter((step) => step.id !== "piranha")
+      .map((step) => step.id === "pad" ? {
+        ...step,
+        startedAt: "2026-07-16T15:16:00Z",
+        createdAt: "2026-07-16T15:16:00Z"
+      } : step)
+  }));
+
+  assert.deepEqual(
+    visits.map((visit) => [visit.stepName, visit.completedAt]),
+    [
+      ["Dicing", "2026-07-16T15:11:00Z"],
+      ["Cleaning", "2026-07-16T15:11:30Z"],
+      ["Cleaning", "2026-07-16T15:14:00Z"],
+      ["Pad Formation", null]
+    ]
+  );
+  assert.equal(visits[1]?.state, "returned");
+  assert.equal(visits[1]?.redoDestinationStepName, "Cleaning");
+});

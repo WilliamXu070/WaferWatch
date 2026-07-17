@@ -49,22 +49,38 @@ export function SequentialStepPicker({
       {visits.map((visit) => {
         const isSelected = selectedVisitId === visit.id;
         const wasReturned = visit.state === "returned";
+        const visitTimeLabel = visit.completedAt
+          ? formatVisitTime(visit.completedAt)
+          : visit.state === "current"
+            ? "Current step"
+            : formatVisitTime(visit.startedAt ?? visit.occurredAt);
         const markerColor = wasReturned ? "#a65d22" : palette.accent;
+        const redoLabel = visit.redoDestinationStepName
+          ? `Redo → ${visit.redoDestinationStepName}`
+          : "Redo required";
+        const rowBackground = wasReturned
+          ? isSelected ? "#f5dfca" : "#fff6eb"
+          : isSelected ? palette.selected : undefined;
 
         return (
-          <li key={visit.id} className="wafer-step-picker__item relative pb-1.5 last:pb-0">
+          <li
+            key={visit.id}
+            data-visit-state={visit.state}
+            className="wafer-step-picker__item relative pb-1.5 last:pb-0"
+          >
             <button
               type="button"
               aria-pressed={isSelected}
               onClick={() => onSelectVisit(visit.id)}
-              style={{ backgroundColor: isSelected ? palette.selected : undefined }}
+              style={{ backgroundColor: rowBackground }}
               className="wafer-step-picker__button grid min-h-[54px] w-full grid-cols-[32px_minmax(0,1fr)] items-center gap-2 rounded-md px-1 py-1.5 text-left outline-none transition-colors hover:bg-[#f7f7f3] focus-visible:ring-2 focus-visible:ring-[#171714] focus-visible:ring-offset-1 motion-reduce:transition-none"
             >
               <span
                 className="relative z-10 grid h-7 w-7 place-items-center rounded-full border text-[11px] font-semibold text-[#fffefb]"
                 style={{
-                  backgroundColor: isSelected ? "#171714" : markerColor,
-                  borderColor: isSelected ? "#171714" : markerColor
+                  backgroundColor: wasReturned ? markerColor : isSelected ? "#171714" : markerColor,
+                  borderColor: wasReturned ? markerColor : isSelected ? "#171714" : markerColor,
+                  boxShadow: wasReturned && isSelected ? "0 0 0 2px #171714" : undefined
                 }}
                 aria-hidden
               >
@@ -75,8 +91,19 @@ export function SequentialStepPicker({
                 <strong className="block truncate text-[13px] font-semibold leading-4 text-[#171714]">
                   {visit.stepName}
                 </strong>
-                <span className="mt-0.5 block truncate text-[11px] font-medium leading-4 text-[#8a8a83]">
-                  {formatVisitTime(visit.completedAt ?? visit.startedAt ?? visit.occurredAt)}
+                <span className="mt-0.5 block min-w-0 text-[11px] font-medium leading-4 text-[#8a8a83]">
+                  <span className="block min-w-0 truncate">
+                    {visitTimeLabel}
+                  </span>
+                  {wasReturned ? (
+                    <span
+                      title={redoLabel}
+                      aria-label={redoLabel}
+                      className="mt-0.5 inline-flex max-w-full rounded-full bg-[#f3d4b3] px-1.5 py-0.5 text-[9px] font-bold text-[#7c3a0b]"
+                    >
+                      {redoLabel}
+                    </span>
+                  ) : null}
                 </span>
               </span>
             </button>
