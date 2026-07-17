@@ -15,11 +15,12 @@
 - Live host profiling found 80% CPU idle, 88% free memory, and no swapping, so
   there was no system or browser memory leak. Local production-mode smoke: `/`
   in 77 ms and `/api/health` in 8 ms; `npm run lint` and `npm run build` pass.
-  Supabase REST remains externally degraded (`PGRST002`, 5–9 second schema-cache
-  retries) even after an explicit schema reload and recycling idle-aborted
-  PostgREST connections; direct database SQL and migration checks are healthy.
-  This blocks a truthful authenticated end-to-end timing result. Tracking:
-  GitHub issue #39.
+  A transient Supabase REST `PGRST002` schema-cache failure caused the original
+  5–9 second retries while direct SQL and migration checks stayed healthy.
+  Explicit schema reload plus recycling the stale idle-aborted PostgREST
+  connection restored REST reads to 1.19 s cold, then 204 ms and 117 ms warm.
+  Production `/api/health` returned HTTP 200 through Vercel's authenticated
+  curl. Tracking: GitHub issue #39 (closed).
 
 ## Recent development note (2026-07-17 current Beginning route eligibility)
 
