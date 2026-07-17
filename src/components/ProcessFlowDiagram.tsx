@@ -75,6 +75,7 @@ import {
   targetsSameCanvasPosition
 } from "./process-flow/positionPersistence";
 import {
+  canMoveSelectedProcessStep,
   canMoveSelectedWafer,
   getProcessMoveActionNote,
   getStepParametersNavigation,
@@ -2375,6 +2376,13 @@ export function ProcessFlowDiagram({
         startClientX: event.clientX,
         startClientY: event.clientY
       };
+      return;
+    }
+
+    if (!canMoveSelectedProcessStep(selectedNodeIds.has(node.id))) {
+      setRoleMenu(null);
+      setSelectedWafers([]);
+      setSelectedNodeIds(new Set([node.id]));
       return;
     }
 

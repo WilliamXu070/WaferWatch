@@ -1,5 +1,14 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 selected-only Process Flow step layout)
+
+- Process-step layout movement now requires a prior desktop/trackpad selection:
+  the first click selects the step and a second drag repositions it. This stops
+  an ordinary click or first drag from moving an unselected step.
+- Phone step taps remain selection-only so the established pinch-zoom safety
+  model is unchanged. Added a selected-step movement regression; verified 13
+  focused tests, `npm run lint`, and `npm run build`.
+
 ## Recent development note (2026-07-17 selected-only Process Flow movement)
 
 - Tightened wafer/die movement so only a die selected before the gesture can
