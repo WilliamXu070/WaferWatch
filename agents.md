@@ -1,5 +1,14 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 selected-only Process Flow movement)
+
+- Tightened wafer/die movement so only a die selected before the gesture can
+  move. Touching or dragging an unselected die now ends as selection only; it
+  cannot create a preview, select a destination, submit a checkpoint, or move.
+- The selected die still uses the same stable phone capture and normal 10px
+  drag threshold. Added an exact selected-versus-unselected movement regression,
+  then verified 12 focused tests, `npm run lint`, and `npm run build`.
+
 ## Recent development note (2026-07-17 defined phone Notes timeline)
 
 - Fixed Wafer / Die Status Notes history reading as disconnected cards on

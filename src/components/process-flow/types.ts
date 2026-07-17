@@ -189,6 +189,7 @@ export type WaferDrag = {
   startY: number;
   x: number;
   y: number;
+  canMove: boolean;
   hasMoved: boolean;
 };
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canMoveSelectedWafer,
   getProcessMoveActionNote,
   getStepParametersNavigation,
   getStepDoubleClickAction,
@@ -61,6 +62,11 @@ test("starts a wafer drag after intentional physical movement", () => {
     clientX: 110,
     clientY: 100
   }), true);
+});
+
+test("requires a prior die selection before a gesture can move it", () => {
+  assert.equal(canMoveSelectedWafer(false), false);
+  assert.equal(canMoveSelectedWafer(true), true);
 });
 
 test("routes an iPhone wafer drag through the stable canvas frame from touch-down", () => {

@@ -75,6 +75,7 @@ import {
   targetsSameCanvasPosition
 } from "./process-flow/positionPersistence";
 import {
+  canMoveSelectedWafer,
   getProcessMoveActionNote,
   getStepParametersNavigation,
   getWaferDragCaptureTarget,
@@ -2605,9 +2606,10 @@ export function ProcessFlowDiagram({
     setRoleMenu(null);
     setMoveMessage(null);
 
-    const draggedSelection = activeSelectedWafers.some(
+    const isSelectedForMove = activeSelectedWafers.some(
       (selection) => selection.assignmentId === wafer.assignmentId
-    )
+    );
+    const draggedSelection = isSelectedForMove
       ? activeSelectedWafers
       : [{
           assignmentId: wafer.assignmentId,
@@ -2635,6 +2637,7 @@ export function ProcessFlowDiagram({
       startY: point.y,
       x: point.x,
       y: point.y,
+      canMove: canMoveSelectedWafer(isSelectedForMove),
       hasMoved: false
     };
     waferDragRef.current = nextDrag;
@@ -2656,6 +2659,9 @@ export function ProcessFlowDiagram({
     }
 
     event.stopPropagation();
+    if (!currentDrag.canMove) {
+      return;
+    }
     const point = getScenePoint(event);
     const hasMoved =
       currentDrag.hasMoved ||

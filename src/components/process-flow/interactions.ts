@@ -17,6 +17,11 @@ export function getWaferDragCaptureTarget(pointerType: string) {
   return pointerType === "touch" ? "frame" : "source";
 }
 
+/** A die must be deliberately selected before a gesture may move it. */
+export function canMoveSelectedWafer(isSelected: boolean) {
+  return isSelected;
+}
+
 /** A capture hand-off can emit pointerleave; it must not cancel a live drag. */
 export function shouldEndWaferDragFromFrameEvent(eventType: string) {
   return eventType === "pointerup" || eventType === "pointercancel";
