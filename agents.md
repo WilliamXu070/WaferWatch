@@ -1,5 +1,16 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 Status overview-first navigation)
+
+- The ordinary Wafer / Die Status navigation link now opens the Status home
+  and selected-die overview, never a previously/default-selected die detail.
+  Only an explicit `waferId` deep link (such as Process Flow's Open status
+  action) can enter a die detail directly; an invalid deep link also falls back
+  safely to the overview.
+- Added a focused normal-navigation versus deep-link selection regression.
+  Verified the test, `npm run lint`, and `npm run build`; production replay is
+  required after deployment. Tracking: GitHub issue #44.
+
 ## Recent development note (2026-07-17 die appearance source of truth)
 
 - A die now begins with a neutral semiconductor-template preview rather than
