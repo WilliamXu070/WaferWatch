@@ -1,5 +1,11 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 removed Calendar empty-state copy)
+
+- Removed the wireframe Calendar's empty-state card and its instructional copy.
+  An empty schedule now opens directly into the Calendar board without extra chrome.
+- Verified `npm run lint` and `npm run build`.
+
 ## Recent development note (2026-07-17 Wafer / Die Status phone fit)
 
 - Reworked mobile Wafer / Die Status fitment at 320px and up: the four detail

@@ -233,15 +233,6 @@ export function CalendarView({ result }: CalendarViewProps) {
         <div className="wireframe-calendar-surface">
           {calendarData && calendarWindowRange ? (
             <>
-              {resolvedEvents.length === 0 ? (
-                <div className="mb-4 rounded-2xl border border-dashed border-[#d8d6ca] bg-[#fbfbf7] p-4">
-                  <p className="text-sm font-semibold text-[#151512]">No calendar events yet</p>
-                  <p className="mt-1 text-sm text-[#7b796f]">
-                    This process has no Supabase calendar rows in the loaded range. Double-click the scheduler to create the first event.
-                  </p>
-                </div>
-              ) : null}
-
               <ProcessCalendarBoard
                 key={`${calendarData.process.id}:${visibleStartDate}`}
                 processTemplateId={calendarData.process.id}
