@@ -75,7 +75,11 @@ export function getReviewerRouteDecision(
   if (sourceMode === "anytime" || targetMode === "anytime") {
     return "approved" as const;
   }
-  return targetStepOrder <= sourceStepOrder ? "redo" as const : "approved" as const;
+
+  // A reviewer choosing another process step is an approved route, not a
+  // rejection inferred from the diagram's display order. Repeating the exact
+  // same checkpoint is the one route that necessarily represents a redo.
+  return targetStepOrder === sourceStepOrder ? "redo" as const : "approved" as const;
 }
 
 export function getCheckpointStateLabel(status: StepStatus | null | undefined) {

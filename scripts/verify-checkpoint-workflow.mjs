@@ -122,7 +122,13 @@ const id = {
   routeCorrectionDecision: "10000000-0000-4000-8000-000000000116",
   routeCorrectionWrongMove: "10000000-0000-4000-8000-000000000117",
   routeCorrectionMove: "10000000-0000-4000-8000-000000000118",
-  routeCorrectionPremature: "10000000-0000-4000-8000-000000000119"
+  routeCorrectionPremature: "10000000-0000-4000-8000-000000000119",
+  routeSubmitForwardAgain: "10000000-0000-4000-8000-000000000120",
+  routeDecisionForwardAgain: "10000000-0000-4000-8000-000000000121",
+  routeMoveForwardAgain: "10000000-0000-4000-8000-000000000122",
+  routeSubmitBackApproved: "10000000-0000-4000-8000-000000000123",
+  routeDecisionBackApproved: "10000000-0000-4000-8000-000000000124",
+  routeMoveBackApproved: "10000000-0000-4000-8000-000000000125"
 };
 
 await db.exec(`
@@ -1281,6 +1287,30 @@ assert.deepEqual(backwardRoute.rows[0], {
   event_type: "checkpoint_step_entered"
 });
 
+const onlyExplicitRedoRouteMigration = await readFile(
+  new URL("../supabase/migrations/202607170003_only_explicit_redo_routes.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(onlyExplicitRedoRouteMigration);
+
+const correctedAutomaticRedo = await db.query(
+  `select decision.decision as stored_decision,
+          correction.metadata ->> 'route_decision' as effective_decision,
+          correction.metadata ->> 'corrected_event_id' = original.id::text as corrects_original
+   from public.checkpoint_decisions decision
+   join public.process_events original on original.client_mutation_id = $2
+   join public.process_events correction
+     on correction.metadata ->> 'corrected_event_id' = original.id::text
+    and correction.metadata ->> 'movement_kind' = 'checkpoint_route_auto_redo_correction'
+   where decision.client_mutation_id = $1`,
+  [id.routeDecisionBack, id.routeMoveBack]
+);
+assert.deepEqual(correctedAutomaticRedo.rows[0], {
+  stored_decision: "redo",
+  effective_decision: "approved",
+  corrects_original: true
+});
+
 await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
 const routeSameAttempt = await db.query(
   `select id from public.submit_step_checkpoint($1, $2, 'repeat this step', '{}'::jsonb)`,
@@ -1303,6 +1333,40 @@ assert.deepEqual(sameStepRoute.rows[0], {
   current_step_id: id.correctionFirst,
   status: "redo_required",
   decision: "redo"
+});
+
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+const forwardAgainAttempt = await db.query(
+  `select id from public.submit_step_checkpoint($1, $2, 'move to disconnected inspection', '{}'::jsonb)`,
+  [id.routeFirstExecution, id.routeSubmitForwardAgain]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.reviewer]);
+await db.query(
+  `select public.route_checkpoint_submission($1, $2, $3, $4, 'normal forward route', '[]'::jsonb)`,
+  [forwardAgainAttempt.rows[0].id, id.correctionDisconnected, id.routeDecisionForwardAgain, id.routeMoveForwardAgain]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+const backwardApprovedAttempt = await db.query(
+  `select id from public.submit_step_checkpoint($1, $2, 'return to beginning work', '{}'::jsonb)`,
+  [id.routeDisconnectedExecution, id.routeSubmitBackApproved]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.reviewer]);
+await db.query(
+  `select public.route_checkpoint_submission($1, $2, $3, $4, 'normal backward route', '[]'::jsonb)`,
+  [backwardApprovedAttempt.rows[0].id, id.correctionFirst, id.routeDecisionBackApproved, id.routeMoveBackApproved]
+);
+const backwardApprovedRoute = await db.query(
+  `select assignment.current_step_id, execution.status, decision.decision
+   from public.wafer_process_assignments assignment
+   join public.step_executions execution on execution.id = $2
+   join public.checkpoint_decisions decision on decision.client_mutation_id = $3
+   where assignment.id = $1`,
+  [id.routeAssignment, id.routeFirstExecution, id.routeDecisionBackApproved]
+);
+assert.deepEqual(backwardApprovedRoute.rows[0], {
+  current_step_id: id.correctionFirst,
+  status: "queued",
+  decision: "approved"
 });
 
 await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
@@ -1535,7 +1599,7 @@ console.log(JSON.stringify({
   reviewerRecovery: "audited, idempotent handoff lets current reviewer decide an older submission",
   authenticatedRole: "trigger helpers and reviewer-history RLS work without exposing mutation helpers",
   versioning: "legacy versioning remains compatible while active graph editing is restored",
-  graphMovement: "reviewer drop approves later steps, marks same or earlier steps redo, and always begins at the destination",
+  graphMovement: "reviewer drop approves every different destination, records only a same-step repeat as redo, and always begins at the destination",
   beginningRouteCorrection: "wrong Beginning arrival is superseded and replaced without mutating checkpoint history",
   anytimeDetour: "active main work enters an anytime procedure while preserving its main-flow return step",
   checkpointedDelete: "history stays append-only and reused codes can be deleted repeatedly without tombstone collisions",

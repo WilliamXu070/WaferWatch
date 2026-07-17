@@ -62,10 +62,10 @@ test("allows only the assigned reviewer to route awaiting Complete work", () => 
   assert.equal(canReviewerRouteCheckpoint({ ...reviewerRoute, status: "ready_to_move" }), false);
 });
 
-test("treats same or earlier reviewer drops as redo and later drops as approval", () => {
+test("treats a different reviewer destination as approved regardless of display order", () => {
   assert.equal(getReviewerRouteDecision(20, 30), "approved");
+  assert.equal(getReviewerRouteDecision(20, 10), "approved");
   assert.equal(getReviewerRouteDecision(20, 20), "redo");
-  assert.equal(getReviewerRouteDecision(20, 10), "redo");
   assert.equal(getReviewerRouteDecision(20, 10, "main", "anytime"), "approved");
   assert.equal(getReviewerRouteDecision(20, 10, "anytime", "main"), "approved");
 });

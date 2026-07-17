@@ -1,5 +1,22 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 explicit redo-only checkpoint routing)
+
+- Fixed reviewer routing falsely labeling every earlier destination as `Redo`.
+  A reviewer-selected move to a different step is now an approved route regardless
+  of canvas/order position; only repeating the exact same checkpoint remains a
+  redo. The separate explicit redo decision RPC is unchanged.
+- Added migration `202607170003`, which preserves append-only checkpoint
+  decisions while inserting effective-approval correction events for the prior
+  auto-generated `checkpoint_redo_route` rows. Wafer / Die Status therefore
+  removes the false amber history badges without rewriting audit evidence.
+- Verified the checkpoint workflow creates the historical false redo, corrects
+  it append-only, and then routes a new earlier destination as approved; focused
+  UI/model tests and lint pass. The primary checkout build is blocked by an
+  unrelated uncommitted ProcessFlowDiagram status-union mismatch, so the clean
+  release checkout remains the required build and browser verification surface.
+  Tracking: GitHub issue #36.
+
 ## Recent development note (2026-07-17 Beginning checkpoint route correction)
 
 - Added main-flow Beginning-to-Beginning correction for a destination chosen
