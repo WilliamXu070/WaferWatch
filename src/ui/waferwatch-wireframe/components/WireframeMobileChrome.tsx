@@ -54,6 +54,7 @@ function MobileNavLink({
   return (
     <Link
       href={item.href}
+      prefetch={true}
       aria-current={active ? "page" : undefined}
       onClick={onClick}
       className={[
@@ -184,6 +185,7 @@ export function WireframeMobileChrome({
             <Link
               key={item.key}
               href={item.href}
+              prefetch={true}
               aria-current={active ? "page" : undefined}
               className={[
                 "wireframe-mobile-bottom-nav__item",

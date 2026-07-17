@@ -38,6 +38,7 @@ function NavRow({ item, active }: { item: SidebarNavItem; active: boolean }) {
   return (
     <Link
       href={item.href}
+      prefetch={true}
       aria-current={active ? "page" : undefined}
       className={[
         "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all",

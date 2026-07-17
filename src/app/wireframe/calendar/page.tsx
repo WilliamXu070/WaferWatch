@@ -79,6 +79,12 @@ function getMondayWeekStart(date: Date) {
   return next;
 }
 
+function getWeekEndExclusiveIso(startDate: Date) {
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 7);
+  return endDate.toISOString();
+}
+
 async function loadBackendCalendar(requestedProcessId?: string): Promise<CalendarLoadResult> {
   const supabase = await createServerSupabaseClient();
   const account = await getCurrentAccount();
@@ -93,16 +99,15 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
   }
 
   const process = await getProcessTemplate(processId);
-  const queryStart = new Date(2000, 0, 1);
-  const queryEnd = new Date(2099, 11, 31, 23, 59, 59, 999);
+  const initialWeekStart = getMondayWeekStart(new Date());
   const [canEdit, schedule, wafersResult, dashboardData] = await Promise.all([
     process.owner_project_id
       ? canEditProject(process.owner_project_id, account)
       : Promise.resolve(canManageProcessLibrary(account.profile.role)),
     getProcessCalendarSchedule(
       process.id,
-      queryStart.toISOString(),
-      queryEnd.toISOString()
+      initialWeekStart.toISOString(),
+      getWeekEndExclusiveIso(initialWeekStart)
     ),
     supabase
       .from("wafer_process_assignments")
@@ -151,7 +156,7 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
         wafer: event.wafer ?? null,
         location: toCalendarLocation(event.location)
       })),
-      initialStartDate: getMondayWeekStart(new Date()).toISOString().slice(0, 10),
+      initialStartDate: initialWeekStart.toISOString().slice(0, 10),
       canEdit
     }
   };
@@ -168,5 +173,10 @@ export default async function WireframeCalendarPage({
     message: error instanceof Error ? error.message : "Calendar backend could not be loaded."
   }));
 
-  return <CalendarView result={calendarResult} />;
+  return (
+    <CalendarView
+      key={calendarResult.status === "ready" ? calendarResult.data.process.id : calendarResult.status}
+      result={calendarResult}
+    />
+  );
 }

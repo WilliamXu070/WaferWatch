@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ProcessCalendarBoard } from "@/components/process-dashboard/ProcessCalendarBoard";
 import { ChevronLeftIcon, ChevronRightIcon } from "../icons";
 import type {
@@ -8,10 +8,7 @@ import type {
   CalendarPersonModel
 } from "../types";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const MIN_WINDOW_DAYS = 365;
-const LOOKBACK_DAYS = 180;
-const LOOKAHEAD_DAYS = 180;
+const WEEK_DAYS = 7;
 const CALENDAR_TITLE = "Calendar";
 
 type ProcessStepOption = {
@@ -50,6 +47,11 @@ type CalendarViewProps = {
     | { status: "unavailable"; message: string };
 };
 
+type CalendarWindow = {
+  events: readonly CalendarEventModel[];
+  people: readonly CalendarPersonModel[];
+};
+
 function parseIsoDate(input: string) {
   const parsed = new Date(`${input}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) {
@@ -76,7 +78,7 @@ function addDateDays(input: string, days: number) {
 function formatRangeLabel(input: string) {
   const start = parseIsoDate(input);
   const end = new Date(start);
-  end.setDate(start.getDate() + 6);
+  end.setDate(start.getDate() + WEEK_DAYS - 1);
 
   return `${start.toLocaleDateString(undefined, {
     month: "short",
@@ -87,60 +89,21 @@ function formatRangeLabel(input: string) {
   })}`;
 }
 
-function getCalendarWindowFallback(startDate: Date, eventStart: number, eventEnd: number) {
-  const windowStart = new Date(eventStart);
-  const windowEnd = new Date(eventEnd);
-  windowStart.setDate(windowStart.getDate() - LOOKBACK_DAYS);
-  windowEnd.setDate(windowEnd.getDate() + LOOKAHEAD_DAYS);
-
-  if (windowStart.getTime() >= windowEnd.getTime()) {
-    windowStart.setDate(startDate.getDate() - LOOKBACK_DAYS);
-    windowEnd.setDate(startDate.getDate() + LOOKAHEAD_DAYS);
-  }
-
-  const days = Math.max(
-    MIN_WINDOW_DAYS,
-    Math.max(1, Math.ceil((windowEnd.getTime() - windowStart.getTime()) / DAY_MS))
-  );
-
-  return {
-    startDate: toIsoDate(windowStart),
-    days
-  };
+function getWindowCacheKey(processId: string, startDate: string) {
+  return `${processId}:${startDate}`;
 }
 
-function getCalendarWindow(
-  initialStartDate: string,
-  events: readonly CalendarEventModel[]
-) {
-  const fallbackStart = parseIsoDate(initialStartDate);
+function getWeekRequestRange(startDate: string) {
+  const endDate = addDateDays(startDate, WEEK_DAYS);
+  const toUtcBoundary = (date: string) => {
+    const [year, month, day] = date.split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, day)).toISOString();
+  };
 
-  if (!events?.length) {
-    return {
-      startDate: toIsoDate(new Date(fallbackStart.getTime() - LOOKBACK_DAYS * DAY_MS)),
-      days: MIN_WINDOW_DAYS + LOOKBACK_DAYS + LOOKAHEAD_DAYS
-    };
-  }
-
-  const starts = events
-    .map((event) => new Date(event.starts_at).getTime())
-    .filter((timestamp) => Number.isFinite(timestamp));
-  const ends = events
-    .map((event) => new Date(event.ends_at).getTime())
-    .filter((timestamp) => Number.isFinite(timestamp));
-
-  if (!starts.length || !ends.length) {
-    return {
-      startDate: toIsoDate(new Date(fallbackStart.getTime() - LOOKBACK_DAYS * DAY_MS)),
-      days: MIN_WINDOW_DAYS + LOOKBACK_DAYS + LOOKAHEAD_DAYS
-    };
-  }
-
-  return getCalendarWindowFallback(
-    fallbackStart,
-    Math.min(...starts),
-    Math.max(...ends)
-  );
+  return {
+    from: toUtcBoundary(startDate),
+    to: toUtcBoundary(endDate)
+  };
 }
 
 function getDisabledStateCopy(status: Exclude<CalendarViewProps["result"], { status: "ready" }>) {
@@ -170,18 +133,54 @@ export function CalendarView({ result }: CalendarViewProps) {
   const [visibleStartDate, setVisibleStartDate] = useState(() =>
     calendarData?.initialStartDate ?? toIsoDate(new Date())
   );
+  const [windowsByKey, setWindowsByKey] = useState<Record<string, CalendarWindow>>({});
   const resolvedSteps = useMemo(() => (calendarData ? [...calendarData.steps] : []), [calendarData]);
   const resolvedWafers = useMemo(() => (calendarData ? [...calendarData.wafers] : []), [calendarData]);
-  const resolvedPeople = useMemo(() => (calendarData ? [...calendarData.people] : []), [calendarData]);
-  const resolvedEvents = useMemo(() => (calendarData ? [...calendarData.initialEvents] : []), [calendarData]);
-
-  const calendarWindowRange = useMemo(
-    () =>
-      calendarData
-        ? getCalendarWindow(calendarData.initialStartDate, resolvedEvents)
-        : null,
-    [calendarData, resolvedEvents]
+  const windowKey = calendarData
+    ? getWindowCacheKey(calendarData.process.id, visibleStartDate)
+    : null;
+  const serverWindowKey = calendarData
+    ? getWindowCacheKey(calendarData.process.id, calendarData.initialStartDate)
+    : null;
+  const serverWindow = calendarData
+    ? { events: calendarData.initialEvents, people: calendarData.people }
+    : null;
+  const activeWindow = windowKey && windowKey === serverWindowKey
+    ? serverWindow
+    : windowKey
+      ? windowsByKey[windowKey] ?? null
+      : null;
+  const resolvedPeople = useMemo(
+    () => (activeWindow ? [...activeWindow.people] : calendarData ? [...calendarData.people] : []),
+    [activeWindow, calendarData]
   );
+  const resolvedEvents = useMemo(
+    () => (activeWindow ? [...activeWindow.events] : []),
+    [activeWindow]
+  );
+
+  useEffect(() => {
+    if (!calendarData || !windowKey || activeWindow) return;
+
+    const controller = new AbortController();
+    const range = getWeekRequestRange(visibleStartDate);
+    const query = new URLSearchParams(range);
+
+    void fetch(`/api/processes/${calendarData.process.id}/calendar?${query.toString()}`, {
+      signal: controller.signal,
+      credentials: "same-origin"
+    }).then(async (response) => {
+      if (!response.ok) return;
+      const schedule = await response.json() as CalendarWindow;
+      if (controller.signal.aborted) return;
+      setWindowsByKey((current) => ({ ...current, [windowKey]: schedule }));
+    }).catch(() => {
+      // Keep the calendar interactive; a future visit to this week can retry.
+    });
+
+    return () => controller.abort();
+  }, [activeWindow, calendarData, visibleStartDate, windowKey]);
+
   const disabledState = isBackendReady ? null : getDisabledStateCopy(result);
   const rangeLabel = calendarData ? formatRangeLabel(visibleStartDate) : "Backend schedule";
 
@@ -231,13 +230,13 @@ export function CalendarView({ result }: CalendarViewProps) {
         </header>
 
         <div className="wireframe-calendar-surface">
-          {calendarData && calendarWindowRange ? (
+          {calendarData ? (
             <>
               <ProcessCalendarBoard
                 key={`${calendarData.process.id}:${visibleStartDate}`}
                 processTemplateId={calendarData.process.id}
-                calendarStartDate={calendarWindowRange.startDate}
-                days={calendarWindowRange.days}
+                calendarStartDate={visibleStartDate}
+                days={WEEK_DAYS}
                 steps={resolvedSteps}
                 wafers={resolvedWafers}
                 people={resolvedPeople}

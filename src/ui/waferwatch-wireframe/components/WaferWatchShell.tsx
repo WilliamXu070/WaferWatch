@@ -5,6 +5,7 @@ import type { NavBasePath } from "../nav";
 import { WireframeSidebar } from "./WireframeSidebar";
 import { WireframeMobileChrome } from "./WireframeMobileChrome";
 import { WireframeTopbar } from "./WireframeTopbar";
+import { ProcessRoutePrefetcher } from "./ProcessRoutePrefetcher";
 
 export type UpdateProcessNameAction = (input: {
   templateId: string;
@@ -42,6 +43,10 @@ export function WaferWatchShell({
 }) {
   return (
     <div className="waferwatch-wireframe flex h-[100svh] w-full overflow-hidden bg-white text-[#151512]">
+      <ProcessRoutePrefetcher
+        defaultProcessId={shell.currentProcess?.id}
+        navBasePath={navBasePath}
+      />
       <WireframeMobileChrome
         shell={shell}
         navBasePath={navBasePath}

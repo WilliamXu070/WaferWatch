@@ -1,5 +1,19 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 hot authenticated navigation and bounded Calendar loading)
+
+- Process Flow, Calendar, and Wafer / Die Status now prefetch from the persistent
+  authenticated shell. Next's router cache keeps an explicitly prefetched view
+  reusable for 60 seconds; workflow actions and the existing realtime bridge
+  still refresh current data rather than leaving stale process state visible.
+- Calendar no longer reads every event between 2000 and 2099 when it opens.
+  It receives the current week on the server, retains recently viewed weeks in
+  a small client cache, and fetches only the newly selected week in the
+  background. The heavy Flow, Calendar, and Status DOM trees are not kept mounted.
+- Added a shell-contained loading surface for uncached route changes. Verified
+  `npm run lint` and `npm run build`; production desktop and 390x844 navigation
+  replay is required after deployment. Tracking: GitHub issue #43.
+
 ## Recent development note (2026-07-17 visible iPhone Notes timeline correction)
 
 - A headed Playwright replay at 390x844 proved the earlier phone timeline fix

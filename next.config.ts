@@ -11,7 +11,13 @@ const nextConfig: NextConfig = {
   experimental: {
     // The default persistent Turbopack cache grew to 7.7 GB in this checkout.
     // Keep dev artifacts in memory so restart/page work cannot steadily consume disk.
-    turbopackFileSystemCacheForDev: false
+    turbopackFileSystemCacheForDev: false,
+    // Process navigation is authenticated and dynamic, but its prefetched RSC
+    // payload can safely stay reusable until realtime or an action refreshes it.
+    staleTimes: {
+      dynamic: 30,
+      static: 60
+    }
   },
   turbopack: {
     root: dependencyRoot
