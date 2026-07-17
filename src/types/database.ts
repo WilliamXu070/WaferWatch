@@ -719,6 +719,15 @@ export interface Database {
         };
         Returns: Json;
       };
+      correct_checkpoint_route_assignment: {
+        Args: {
+          target_assignment_id: string;
+          target_step_id: string;
+          mutation_id: string;
+          notes: string;
+        };
+        Returns: Json;
+      };
       route_checkpoint_submission: {
         Args: {
           target_attempt_id: string;

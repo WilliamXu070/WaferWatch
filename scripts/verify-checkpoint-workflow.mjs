@@ -112,7 +112,17 @@ const id = {
   anytimeAssignment: "10000000-0000-4000-8000-000000000106",
   anytimeMainExecution: "10000000-0000-4000-8000-000000000107",
   anytimeMovement: "10000000-0000-4000-8000-000000000108",
-  rejectedMainMovement: "10000000-0000-4000-8000-000000000109"
+  rejectedMainMovement: "10000000-0000-4000-8000-000000000109",
+  routeCorrectionWafer: "10000000-0000-4000-8000-000000000110",
+  routeCorrectionAssignment: "10000000-0000-4000-8000-000000000111",
+  routeCorrectionFirstExecution: "10000000-0000-4000-8000-000000000112",
+  routeCorrectionWrongExecution: "10000000-0000-4000-8000-000000000113",
+  routeCorrectionTargetExecution: "10000000-0000-4000-8000-000000000114",
+  routeCorrectionSubmit: "10000000-0000-4000-8000-000000000115",
+  routeCorrectionDecision: "10000000-0000-4000-8000-000000000116",
+  routeCorrectionWrongMove: "10000000-0000-4000-8000-000000000117",
+  routeCorrectionMove: "10000000-0000-4000-8000-000000000118",
+  routeCorrectionPremature: "10000000-0000-4000-8000-000000000119"
 };
 
 await db.exec(`
@@ -1067,6 +1077,118 @@ const anytimeDetourMigration = await readFile(
   "utf8"
 );
 await db.exec(anytimeDetourMigration);
+const checkpointRouteCorrectionMigration = await readFile(
+  new URL("../supabase/migrations/202607170001_correct_beginning_checkpoint_routes.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(checkpointRouteCorrectionMigration);
+
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+await db.query(
+  `insert into public.wafers (id, project_id, wafer_code)
+   values ($1, $2, 'ROUTE-CORRECTION')`,
+  [id.routeCorrectionWafer, id.project]
+);
+await db.query(
+  `insert into public.wafer_process_assignments
+   (id, wafer_id, template_id, assigned_by, status, current_step_id)
+   values ($1, $2, $3, $4, 'queued', $5)`,
+  [
+    id.routeCorrectionAssignment,
+    id.routeCorrectionWafer,
+    id.correctionTemplate,
+    id.submitter,
+    id.correctionFirst
+  ]
+);
+await db.query(
+  `insert into public.step_executions
+   (id, assignment_id, wafer_id, process_step_id, status, queue_started_at)
+   values ($1, $2, $3, $4, 'queued', now()),
+          ($5, $2, $3, $6, 'pending', null),
+          ($7, $2, $3, $8, 'pending', null)`,
+  [
+    id.routeCorrectionFirstExecution,
+    id.routeCorrectionAssignment,
+    id.routeCorrectionWafer,
+    id.correctionFirst,
+    id.routeCorrectionWrongExecution,
+    id.correctionDisconnected,
+    id.routeCorrectionTargetExecution,
+    id.correctionEnd
+  ]
+);
+await db.exec(`set role authenticated`);
+await assert.rejects(
+  db.query(
+    `select public.correct_checkpoint_route_assignment($1, $2, $3, 'no checkpoint route yet')`,
+    [id.routeCorrectionAssignment, id.correctionEnd, id.routeCorrectionPremature]
+  ),
+  /not created by a checkpoint route/i
+);
+await db.exec(`reset role`);
+
+const routeCorrectionAttempt = await db.query(
+  `select id from public.submit_step_checkpoint($1, $2, 'route to the wrong step', '{}'::jsonb)`,
+  [id.routeCorrectionFirstExecution, id.routeCorrectionSubmit]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.reviewer]);
+await db.query(
+  `select public.route_checkpoint_submission($1, $2, $3, $4, 'wrong destination', '[]'::jsonb)`,
+  [
+    routeCorrectionAttempt.rows[0].id,
+    id.correctionDisconnected,
+    id.routeCorrectionDecision,
+    id.routeCorrectionWrongMove
+  ]
+);
+await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
+await db.exec(`set role authenticated`);
+await db.query(
+  `select public.correct_checkpoint_route_assignment($1, $2, $3, 'replace the wrong destination')`,
+  [id.routeCorrectionAssignment, id.correctionEnd, id.routeCorrectionMove]
+);
+await db.query(
+  `select public.correct_checkpoint_route_assignment($1, $2, $3, 'replace the wrong destination')`,
+  [id.routeCorrectionAssignment, id.correctionEnd, id.routeCorrectionMove]
+);
+await db.exec(`reset role`);
+
+const correctedBeginningRoute = await db.query(
+  `select assignment.current_step_id,
+          wrong_execution.status as wrong_status,
+          target_execution.status as target_status,
+          decision.decision,
+          correction.metadata ->> 'corrected_event_id' = wrong_event.id::text as corrected_wrong_event,
+          correction.metadata ->> 'route_decision' as route_decision,
+          (select count(*)::integer from public.process_events event
+           where event.metadata ->> 'assignment_id' = assignment.id::text
+             and event.event_type = 'checkpoint_step_entered') as route_event_count
+   from public.wafer_process_assignments assignment
+   join public.step_executions wrong_execution on wrong_execution.id = $2
+   join public.step_executions target_execution on target_execution.id = $3
+   join public.checkpoint_decisions decision on decision.client_mutation_id = $4
+   join public.process_events correction on correction.client_mutation_id = $5
+   join public.process_events wrong_event on wrong_event.client_mutation_id = $6
+   where assignment.id = $1`,
+  [
+    id.routeCorrectionAssignment,
+    id.routeCorrectionWrongExecution,
+    id.routeCorrectionTargetExecution,
+    id.routeCorrectionDecision,
+    id.routeCorrectionMove,
+    id.routeCorrectionWrongMove
+  ]
+);
+assert.deepEqual(correctedBeginningRoute.rows[0], {
+  current_step_id: id.correctionEnd,
+  wrong_status: "pending",
+  target_status: "queued",
+  decision: "approved",
+  corrected_wrong_event: true,
+  route_decision: "approved",
+  route_event_count: 2
+});
 
 await db.query(`select set_config('app.actor_id', $1, false)`, [id.submitter]);
 await db.query(`insert into public.wafers (id, project_id, wafer_code) values ($1, $2, 'ROUTED-1')`, [id.routeWafer, id.project]);
@@ -1414,6 +1536,7 @@ console.log(JSON.stringify({
   authenticatedRole: "trigger helpers and reviewer-history RLS work without exposing mutation helpers",
   versioning: "legacy versioning remains compatible while active graph editing is restored",
   graphMovement: "reviewer drop approves later steps, marks same or earlier steps redo, and always begins at the destination",
+  beginningRouteCorrection: "wrong Beginning arrival is superseded and replaced without mutating checkpoint history",
   anytimeDetour: "active main work enters an anytime procedure while preserving its main-flow return step",
   checkpointedDelete: "history stays append-only and reused codes can be deleted repeatedly without tombstone collisions",
   attempts: 4

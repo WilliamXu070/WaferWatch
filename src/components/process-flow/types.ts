@@ -17,6 +17,8 @@ export type WaferPin = {
   requiredReviewerName?: string | null;
   canReview?: boolean;
   canWithdraw?: boolean;
+  canCorrectCheckpointRoute?: boolean;
+  checkpointRouteSourceStepId?: string | null;
   isArchivable?: boolean;
   anytimeReturnStepId?: string | null;
   anytimeReturnStepName?: string | null;
@@ -275,6 +277,7 @@ export type MoveApprovedCheckpointAction = (input: {
   sourceStepId: string;
   targetStepId: string;
   note: string;
+  correctCheckpointRoute?: boolean;
 }) => Promise<ActionResult<unknown>>;
 
 export type UpdateStepCheckpointReviewerAction = (input: {

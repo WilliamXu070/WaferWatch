@@ -22,6 +22,8 @@ type ProcessFlowWaferModel = {
   requiredReviewerName?: string | null;
   canReview?: boolean;
   canWithdraw?: boolean;
+  canCorrectCheckpointRoute?: boolean;
+  checkpointRouteSourceStepId?: string | null;
   anytimeReturnStepId?: string | null;
   anytimeReturnStepName?: string | null;
 };

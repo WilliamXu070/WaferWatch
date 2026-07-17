@@ -1101,12 +1101,17 @@ export async function moveApprovedCheckpointWafer(input: unknown) {
     await requireAccount();
     const parsed = moveApprovedCheckpointSchema.parse(input);
     const supabase = await createServerSupabaseClient();
-    const { data, error } = await supabase.rpc("move_approved_checkpoint_assignment", {
-      target_assignment_id: parsed.assignmentId,
-      target_step_id: parsed.targetStepId,
-      mutation_id: parsed.mutationId,
-      notes: parsed.note
-    });
+    const { data, error } = await supabase.rpc(
+      parsed.correctCheckpointRoute
+        ? "correct_checkpoint_route_assignment"
+        : "move_approved_checkpoint_assignment",
+      {
+        target_assignment_id: parsed.assignmentId,
+        target_step_id: parsed.targetStepId,
+        mutation_id: parsed.mutationId,
+        notes: parsed.note
+      }
+    );
 
     if (error) {
       return fail(error.message);

@@ -61,7 +61,8 @@ export const moveApprovedCheckpointSchema = z.object({
   assignmentId: uuidSchema,
   sourceStepId: uuidSchema,
   targetStepId: uuidSchema,
-  note: z.string().trim().min(1).max(4000)
+  note: z.string().trim().min(1).max(4000),
+  correctCheckpointRoute: z.boolean().default(false)
 }).refine((value) => value.sourceStepId !== value.targetStepId, {
   message: "Choose a different destination step.",
   path: ["targetStepId"]

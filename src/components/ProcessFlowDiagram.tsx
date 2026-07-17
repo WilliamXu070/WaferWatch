@@ -550,6 +550,7 @@ export function ProcessFlowDiagram({
       selectedWafer.nodeId,
       selectedWaferPin.anytimeReturnStepId
     ).filter((target) => canMoveToProcessStep({
+      canCorrectCheckpointRoute: selectedWaferPin.canCorrectCheckpointRoute,
       sourceMode: source.executionMode,
       status: selectedWaferPin.currentStepStatus,
       targetMode: target.executionMode
@@ -575,6 +576,7 @@ export function ProcessFlowDiagram({
     const canMove = (target.id !== source.id || drag.x < source.x + source.width / 2) &&
       draggedWafers.every((wafer) =>
         (target.id !== source.id && Boolean(onMoveApprovedWafer) && canMoveToProcessStep({
+          canCorrectCheckpointRoute: wafer.canCorrectCheckpointRoute,
           sourceMode: source.executionMode,
           status: wafer.currentStepStatus,
           targetMode: target.executionMode
@@ -2963,6 +2965,7 @@ export function ProcessFlowDiagram({
     );
     const allEligible = eligible.length === uniqueWafers.length && eligible.every((wafer) =>
       (sourceStepId !== targetStepId && Boolean(onMoveApprovedWafer) && canMoveToProcessStep({
+        canCorrectCheckpointRoute: wafer.canCorrectCheckpointRoute,
         sourceMode: sourceNode.executionMode,
         status: wafer.currentStepStatus,
         targetMode: target.executionMode
@@ -3158,10 +3161,16 @@ export function ProcessFlowDiagram({
     const sourceNode = previousNodes.find((node) => node.id === move.sourceStepId);
     const targetNode = previousNodes.find((node) => node.id === move.targetStepId);
     const parameterDraftId = `movement:${move.wafers.map((wafer) => wafer.mutationId).join(":")}`;
-    const destinationStatus = sourceNode && targetNode && getReviewerRouteDecision(
-      sourceNode.order,
+    const checkpointRouteSourceStepId = movingWafers.find(
+      (wafer) => wafer.canCorrectCheckpointRoute
+    )?.checkpointRouteSourceStepId;
+    const routeSourceNode = checkpointRouteSourceStepId
+      ? previousNodes.find((node) => node.id === checkpointRouteSourceStepId) ?? sourceNode
+      : sourceNode;
+    const destinationStatus = routeSourceNode && targetNode && getReviewerRouteDecision(
+      routeSourceNode.order,
       targetNode.order,
-      sourceNode.executionMode,
+      routeSourceNode.executionMode,
       targetNode.executionMode
     ) === "redo"
       ? "redo_required" as const
@@ -3232,7 +3241,10 @@ export function ProcessFlowDiagram({
                     assignmentId: waferMove.assignmentId,
                     sourceStepId: move.sourceStepId,
                     targetStepId: move.targetStepId,
-                    note: actionNote
+                    note: actionNote,
+                    correctCheckpointRoute: movingWafer?.canCorrectCheckpointRoute === true &&
+                      sourceNode?.executionMode === "main" &&
+                      targetNode?.executionMode === "main"
                   });
             let attachmentError: string | null = null;
 

@@ -62,6 +62,8 @@ type DiagramStep = {
     requiredReviewerName: string | null;
     canReview: boolean;
     canWithdraw: boolean;
+    canCorrectCheckpointRoute: boolean;
+    checkpointRouteSourceStepId: string | null;
     isArchivable: boolean;
     anytimeReturnStepId: string | null;
     anytimeReturnStepName: string | null;
@@ -118,6 +120,8 @@ function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null)
           requiredReviewerName: state.requiredReviewerName,
           canReview: Boolean(currentUserId && currentUserId === state.requiredReviewerId),
           canWithdraw: Boolean(currentUserId && currentUserId === state.latestStepAttemptSubmittedById),
+          canCorrectCheckpointRoute: state.canCorrectCheckpointRoute,
+          checkpointRouteSourceStepId: state.checkpointRouteSourceStepId,
           isArchivable: state.assignmentStatus === "completed",
           anytimeReturnStepId: state.anytimeReturnStepId,
           anytimeReturnStepName: state.anytimeReturnStepName

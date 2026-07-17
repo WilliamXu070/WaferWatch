@@ -3,6 +3,7 @@ import "server-only";
 import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import { readStepParameterDefinitions } from "@/features/process-flows/stepParameters";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getCheckpointRouteCorrectionState } from "@/features/process-flows/checkpointRouteCorrection";
 import type {
   Json,
   FabricationStatus,
@@ -949,7 +950,17 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   }
 
   const executions = (executionsResult.data ?? []) as WaferStatusExecutionRow[];
-  const processEvents = (processEventsResult.data ?? []) as WaferStatusProcessEventRow[];
+  const allProcessEvents = (processEventsResult.data ?? []) as WaferStatusProcessEventRow[];
+  const checkpointRouteState = getCheckpointRouteCorrectionState(allProcessEvents.map((event) => ({
+    id: event.id,
+    eventAt: event.event_at,
+    metadata: event.metadata
+  })));
+  const processEvents = allProcessEvents.filter((event) => checkpointRouteState.visibleEventIds.has(event.id));
+  const activeStepParameterRecordRows = stepParameterRecordRows.filter((row) => {
+    const processEventId = getUnknownString(row, "process_event_id");
+    return !processEventId || !checkpointRouteState.correctedEventIds.has(processEventId);
+  });
   const executionsByAssignmentId = new Map<string, WaferStatusExecutionRow[]>();
   for (const execution of executions) {
     const bucket = executionsByAssignmentId.get(execution.assignment_id);
@@ -1055,7 +1066,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     const actorId = getUnknownString(row, "withdrawn_by");
     if (actorId) actorIds.add(actorId);
   }
-  for (const row of stepParameterRecordRows) {
+  for (const row of activeStepParameterRecordRows) {
     const actorId = getUnknownString(row, "recorded_by");
     if (actorId) actorIds.add(actorId);
   }
@@ -1078,7 +1089,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     ])
   );
   const stepParameterRecordsByAssignmentStep = new Map<string, WaferStatusStepParameterRecord[]>();
-  for (const row of stepParameterRecordRows) {
+  for (const row of activeStepParameterRecordRows) {
     const id = getUnknownString(row, "id");
     const assignmentId = getUnknownString(row, "assignment_id");
     const stepId = getUnknownString(row, "process_step_id");
@@ -1151,11 +1162,13 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     }
 
     const actorId = getUnknownString(row, "decided_by");
-    const destinationStepId = getUnknownString(row, "target_step_id");
+    const correctedRoute = checkpointRouteState.correctionByDecisionId.get(id);
+    const destinationStepId = correctedRoute?.targetStepId ?? getUnknownString(row, "target_step_id");
+    const correctedOutcome = correctedRoute?.routeDecision;
     appendGrouped(decisionsByAssignmentId, assignmentId, {
       id,
       attemptId,
-      outcome: decision === "redo" ? "redo" : "approve",
+      outcome: correctedOutcome === "redo" || (!correctedOutcome && decision === "redo") ? "redo" : "approve",
       occurredAt,
       actor: getTimelineActor({
         actorId,
@@ -1165,6 +1178,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
       note: getUnknownString(row, "decision_notes"),
       destinationStepId,
       destinationStepName:
+        correctedRoute?.targetStepName ??
         getUnknownString(row, "target_step_name_snapshot") ??
         (destinationStepId ? stepsById.get(destinationStepId)?.name ?? null : null),
       supersedesDecisionId: getUnknownString(row, "supersedes_decision_id")
@@ -1227,7 +1241,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     if (!assignmentId || !historyAssignmentIds.has(assignmentId)) continue;
 
     const fromStepId = getString(metadata, "from_step_id");
-    const toStepId = getString(metadata, "to_step_id");
+    const toStepId = getString(metadata, "to_step_id") ?? getString(metadata, "target_step_id");
     appendGrouped(legacyByAssignmentId, assignmentId, {
       id: `legacy-event:${event.id}`,
       sourceEventId: event.id,

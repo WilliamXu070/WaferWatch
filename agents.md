@@ -1,5 +1,21 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 Beginning checkpoint route correction)
+
+- Added main-flow Beginning-to-Beginning correction for a destination chosen
+  incorrectly at the preceding Complete checkpoint. Only items whose active
+  Beginning was created by a checkpoint route are eligible; initial assignments
+  and ordinary anytime detours remain protected.
+- Corrections supersede the mistaken arrival and its parameter record in the
+  operator history, reset that execution to pending, preserve append-only
+  checkpoint audit rows, and open the normal hot-loaded parameter form for the
+  replacement Beginning. Repeated corrections and mutation retries are safe.
+- Applied migration `202607170001`. Verified 10 focused movement/history tests,
+  `npm run checkpoint:verify`, `npm run lint`, and `npm run build`. Authenticated
+  Process Flow at 390x844 selected real queued B1 and exposed every other main
+  step as a move target, with no production move submitted, page overflow, or
+  console warning/error.
+
 ## Recent development note (2026-07-17 hot-loaded movement parameters)
 
 - Removed the movement RPC from the post-movement parameter popup's display

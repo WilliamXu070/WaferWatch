@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getCheckpointRouteCorrectionState } from "@/features/process-flows/checkpointRouteCorrection";
 import { isDicedParentWafer } from "@/features/process-flows/waferVisibility";
 import type {
   Json,
@@ -40,6 +41,12 @@ type DashboardStepAttempt = {
   submission_notes: string | null;
 };
 
+type DashboardProcessEvent = {
+  id: string;
+  event_at: string;
+  metadata: Json;
+};
+
 export type ProcessTemplateWithSteps = ProcessTemplate & {
   process_steps: ProcessStep[];
   process_step_transitions: ProcessStepTransition[];
@@ -66,6 +73,8 @@ export type ProcessDashboardWaferState = {
   currentHandlerName: string | null;
   requiredReviewerId: string | null;
   requiredReviewerName: string | null;
+  canCorrectCheckpointRoute: boolean;
+  checkpointRouteSourceStepId: string | null;
   anytimeReturnStepId: string | null;
   anytimeReturnStepName: string | null;
   dieDescriptions: Record<string, string>;
@@ -561,7 +570,7 @@ export async function getProcessDashboardData(
         .in("id", waferIds)
     : Promise.resolve({ data: [], error: null } as const);
 
-  const [stepExecutionsResult, stepAttemptsResult, assignedWafersResult] = await Promise.all([
+  const [stepExecutionsResult, stepAttemptsResult, processEventsResult, assignedWafersResult] = await Promise.all([
     assignmentIds.length
       ? supabase
           .from("step_executions")
@@ -575,6 +584,14 @@ export async function getProcessDashboardData(
           .in("assignment_id", assignmentIds)
           .order("attempt_number", { ascending: false })
       : Promise.resolve({ data: [], error: null } as const),
+    assignmentIds.length
+      ? supabase
+          .from("process_events")
+          .select("id, event_at, metadata")
+          .in("wafer_id", waferIds)
+          .in("event_type", ["checkpoint_step_entered"])
+          .order("event_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null } as const),
     assignedWafersQuery
   ]);
 
@@ -584,6 +601,10 @@ export async function getProcessDashboardData(
 
   if (stepAttemptsResult.error) {
     throw stepAttemptsResult.error;
+  }
+
+  if (processEventsResult.error) {
+    throw processEventsResult.error;
   }
 
   if (assignedWafersResult.error) {
@@ -636,6 +657,13 @@ export async function getProcessDashboardData(
   const wafersById = mergedWafersById;
 
   const assignmentWaferIdById = new Map(assignments.map((assignment) => [assignment.id, assignment.wafer_id]));
+  const checkpointRouteState = getCheckpointRouteCorrectionState(
+    ((processEventsResult.data ?? []) as DashboardProcessEvent[]).map((event) => ({
+      id: event.id,
+      eventAt: event.event_at,
+      metadata: event.metadata
+    }))
+  );
 
   const stepExecutionsByAssignment = new Map<string, DashboardStepExecution[]>();
   const latestAttemptByAssignmentStep = new Map<string, DashboardStepAttempt>();
@@ -730,6 +758,7 @@ export async function getProcessDashboardData(
     const latestAttempt = currentStepId
       ? latestAttemptByAssignmentStep.get(`${assignment.id}:${currentStepId}`) ?? null
       : null;
+    const activeCheckpointRoute = checkpointRouteState.activeRouteByAssignmentId.get(assignment.id) ?? null;
 
     const waferState: ProcessDashboardWaferState = {
       assignmentId: assignment.id,
@@ -754,6 +783,10 @@ export async function getProcessDashboardData(
       currentHandlerName: handlerProfileId ? handlerNameById.get(handlerProfileId) ?? null : null,
       requiredReviewerId,
       requiredReviewerName: requiredReviewerId ? handlerNameById.get(requiredReviewerId) ?? null : null,
+      canCorrectCheckpointRoute: activeCheckpointRoute?.targetStepId === currentStepId,
+      checkpointRouteSourceStepId: activeCheckpointRoute?.targetStepId === currentStepId
+        ? activeCheckpointRoute.fromStepId
+        : null,
       anytimeReturnStepId: assignment.anytime_return_step_id,
       anytimeReturnStepName: assignment.anytime_return_step_id
         ? stepNameById.get(assignment.anytime_return_step_id) ?? null

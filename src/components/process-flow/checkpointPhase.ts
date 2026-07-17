@@ -17,10 +17,12 @@ export function canMoveToAnotherStep(status: StepStatus | null | undefined) {
 }
 
 export function canMoveToProcessStep({
+  canCorrectCheckpointRoute = false,
   sourceMode,
   status,
   targetMode
 }: {
+  canCorrectCheckpointRoute?: boolean;
   sourceMode: ProcessStepExecutionMode;
   status: StepStatus | null | undefined;
   targetMode: ProcessStepExecutionMode;
@@ -29,9 +31,19 @@ export function canMoveToProcessStep({
     return true;
   }
 
+  const isActiveBeginning = status === "queued" ||
+    status === "running" ||
+    status === "blocked" ||
+    status === "redo_required";
+
+  if (sourceMode === "main" && targetMode === "anytime" && isActiveBeginning) {
+    return true;
+  }
+
   return sourceMode === "main" &&
-    targetMode === "anytime" &&
-    (status === "queued" || status === "running" || status === "blocked" || status === "redo_required");
+    targetMode === "main" &&
+    canCorrectCheckpointRoute &&
+    isActiveBeginning;
 }
 
 export function canReviewerRouteCheckpoint({

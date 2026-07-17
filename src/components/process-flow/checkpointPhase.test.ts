@@ -29,8 +29,20 @@ test("allows active main work to detour only into an anytime step", () => {
   for (const status of ["queued", "running", "blocked", "redo_required"] as const) {
     assert.equal(canMoveToProcessStep({ sourceMode: "main", status, targetMode: "anytime" }), true);
     assert.equal(canMoveToProcessStep({ sourceMode: "main", status, targetMode: "main" }), false);
+    assert.equal(canMoveToProcessStep({
+      canCorrectCheckpointRoute: true,
+      sourceMode: "main",
+      status,
+      targetMode: "main"
+    }), true);
   }
 
+  assert.equal(canMoveToProcessStep({
+    canCorrectCheckpointRoute: true,
+    sourceMode: "main",
+    status: "awaiting_checkpoint",
+    targetMode: "main"
+  }), false);
   assert.equal(canMoveToProcessStep({ sourceMode: "anytime", status: "queued", targetMode: "main" }), false);
   assert.equal(canMoveToProcessStep({ sourceMode: "anytime", status: "ready_to_move", targetMode: "main" }), true);
 });
