@@ -4,9 +4,11 @@ import type { SetStateAction } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   StepParameterEntryDialog,
+  mergePendingStepParameterEntries,
   prepareLocalParametersForSave,
   saveStepParameterAttachmentsForEntries,
   saveStepParametersForEntries,
+  settlePendingStepParameterEntries,
   updateDraftParameterFromInput,
   type DraftParameter,
   type PendingStepParameterEntry
@@ -138,6 +140,58 @@ test("renders the moved item, global template values, and local parameter contro
   assert.match(markup, /Paste images or attach files for this step record/);
   assert.match(markup, /Add row/);
   assert.doesNotMatch(markup, /Edit template/);
+});
+
+test("renders the parameter form while movement persistence is still pending", () => {
+  const markup = renderToStaticMarkup(
+    <StepParameterEntryDialog
+      entries={[{
+        assignmentId: "00000000-0000-4000-8000-000000000001",
+        draftId: "movement:10000000-0000-4000-8000-000000000001",
+        movementMutationId: "10000000-0000-4000-8000-000000000001",
+        waferLabel: "A1",
+        stepId: "20000000-0000-4000-8000-000000000001",
+        stepName: "Post-Bake",
+        parametersSchema: {},
+        persistenceStatus: "persisting"
+      }]}
+      onSave={async () => ({ ok: false, error: "Must not save before movement persistence" })}
+      onComplete={() => undefined}
+      onSkipAll={() => undefined}
+    />
+  );
+
+  assert.match(markup, /Finishing the move… You can enter values now/);
+  assert.match(markup, /<button[^>]*type="submit"[^>]*disabled=""[^>]*>Finishing move…<\/button>/);
+  assert.match(markup, /Add row/);
+  assert.match(markup, /Additional notes/);
+});
+
+test("deduplicates hot-loaded entries and settles successful and failed batch items", () => {
+  const draftId = "movement:one:two";
+  const entries: PendingStepParameterEntry[] = ["one", "two"].map((movementMutationId, index) => ({
+    assignmentId: `assignment-${index}`,
+    draftId,
+    movementMutationId,
+    waferLabel: `A${index + 1}`,
+    stepId: "step-id",
+    stepName: "Cleaning",
+    parametersSchema: {},
+    persistenceStatus: "persisting"
+  }));
+
+  const merged = mergePendingStepParameterEntries(entries, [entries[0]]);
+  assert.equal(merged.length, 2);
+
+  const settled = settlePendingStepParameterEntries(
+    merged,
+    new Set(["two"]),
+    new Set(["one"])
+  );
+  assert.equal(settled.length, 1);
+  assert.equal(settled[0].movementMutationId, "two");
+  assert.equal(settled[0].draftId, draftId);
+  assert.equal(settled[0].persistenceStatus, "ready");
 });
 
 test("one shared submission saves the same parameters for every moved die", async () => {

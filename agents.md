@@ -1,5 +1,23 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 hot-loaded movement parameters)
+
+- Removed the movement RPC from the post-movement parameter popup's display
+  path. The shared batch form now opens immediately from the destination step's
+  in-memory schema, remains editable while the move persists, and enables Save
+  only after every retained movement succeeds.
+- Pending entries are stable by movement mutation and batch identity, so
+  rerenders and partial failures do not duplicate the form or discard typed
+  values. Failed entries leave the form, and an all-failed move dismisses it
+  while the existing optimistic canvas rollback restores the wafers.
+- Verified 22 focused tests, `npm run lint`, and `npm run build`. An isolated
+  authenticated Browser replay forced a three-second movement action: the form
+  appeared in 40 ms, accepted input by 60 ms, retained it through completion,
+  and became saveable afterward. An intentional failure dismissed the form and
+  restored the approved wafer; Beginning-to-Complete still showed its checkpoint
+  note at the first post-drag check. The temporary QA route was removed.
+  Tracking: GitHub issue #35.
+
 ## Recent development note (2026-07-17 stable Process Flow Organize)
 
 - Fixed Process Flow Organize appearing slow or ineffective. Organized positions

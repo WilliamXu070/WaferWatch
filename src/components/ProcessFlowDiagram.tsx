@@ -34,6 +34,8 @@ import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
 import { ProcessArchiveDock } from "./process-flow/ProcessArchiveDock";
 import { ProcessFlowToolbar } from "./process-flow/ProcessFlowToolbar";
 import {
+  mergePendingStepParameterEntries,
+  settlePendingStepParameterEntries,
   StepParameterEntryDialog,
   type PendingStepParameterEntry
 } from "./process-flow/StepParameterEntryDialog";
@@ -3155,6 +3157,7 @@ export function ProcessFlowDiagram({
     );
     const sourceNode = previousNodes.find((node) => node.id === move.sourceStepId);
     const targetNode = previousNodes.find((node) => node.id === move.targetStepId);
+    const parameterDraftId = `movement:${move.wafers.map((wafer) => wafer.mutationId).join(":")}`;
     const destinationStatus = sourceNode && targetNode && getReviewerRouteDecision(
       sourceNode.order,
       targetNode.order,
@@ -3163,6 +3166,22 @@ export function ProcessFlowDiagram({
     ) === "redo"
       ? "redo_required" as const
       : "queued" as const;
+
+    if (move.kind === "move" && onSaveStepParameters && targetNode) {
+      setPendingStepParameterEntries((current) => mergePendingStepParameterEntries(
+        current,
+        move.wafers.map((wafer) => ({
+          assignmentId: wafer.assignmentId,
+          draftId: parameterDraftId,
+          movementMutationId: wafer.mutationId,
+          waferLabel: wafer.waferLabel,
+          stepId: move.targetStepId,
+          stepName: move.targetLabel,
+          parametersSchema: targetNode.parametersSchema,
+          persistenceStatus: "persisting" as const
+        }))
+      ));
+    }
 
     setNodes((currentNodes) => move.kind === "submit"
       ? currentNodes.map((node) => node.id === move.sourceStepId ? {
@@ -3271,18 +3290,12 @@ export function ProcessFlowDiagram({
         const failedOutcomes = outcomes.filter((outcome) => !outcome.result.ok);
         const successfulOutcomes = outcomes.filter((outcome) => outcome.result.ok);
 
-        if (move.kind === "move" && onSaveStepParameters && targetNode && successfulOutcomes.length > 0) {
-          setPendingStepParameterEntries((current) => [
-            ...current,
-            ...successfulOutcomes.map((outcome) => ({
-              assignmentId: outcome.waferMove.assignmentId,
-              movementMutationId: outcome.waferMove.mutationId,
-              waferLabel: outcome.waferMove.waferLabel,
-              stepId: move.targetStepId,
-              stepName: move.targetLabel,
-              parametersSchema: targetNode.parametersSchema
-            }))
-          ]);
+        if (move.kind === "move" && onSaveStepParameters && targetNode) {
+          setPendingStepParameterEntries((current) => settlePendingStepParameterEntries(
+            current,
+            new Set(successfulOutcomes.map((outcome) => outcome.waferMove.mutationId)),
+            new Set(failedOutcomes.map((outcome) => outcome.waferMove.mutationId))
+          ));
         }
 
         if (failedOutcomes.length > 0) {
@@ -3814,7 +3827,7 @@ export function ProcessFlowDiagram({
     <section className="flow-map-shell">
       {!pendingWaferMove && pendingStepParameterEntries[0] && onSaveStepParameters ? (
         <StepParameterEntryDialog
-          key={pendingStepParameterEntries.map((entry) => entry.movementMutationId).join(":")}
+          key={pendingStepParameterEntries[0].draftId ?? pendingStepParameterEntries.map((entry) => entry.movementMutationId).join(":")}
           entries={pendingStepParameterEntries}
           onSave={onSaveStepParameters}
           currentUserName={currentUserName}

@@ -29,12 +29,41 @@ import type { SaveStepParameterRecordAction } from "./types";
 
 export type PendingStepParameterEntry = {
   assignmentId: string;
+  draftId?: string;
   movementMutationId: string;
   waferLabel: string;
   stepId: string;
   stepName: string;
   parametersSchema: Json;
+  persistenceStatus?: "persisting" | "ready";
 };
+
+export function mergePendingStepParameterEntries(
+  current: readonly PendingStepParameterEntry[],
+  additions: readonly PendingStepParameterEntry[]
+) {
+  const entriesByMutationId = new Map(
+    current.map((entry) => [entry.movementMutationId, entry])
+  );
+  additions.forEach((entry) => {
+    if (!entriesByMutationId.has(entry.movementMutationId)) {
+      entriesByMutationId.set(entry.movementMutationId, entry);
+    }
+  });
+  return Array.from(entriesByMutationId.values());
+}
+
+export function settlePendingStepParameterEntries(
+  current: readonly PendingStepParameterEntry[],
+  successfulMutationIds: ReadonlySet<string>,
+  failedMutationIds: ReadonlySet<string>
+) {
+  return current.flatMap((entry) => {
+    if (failedMutationIds.has(entry.movementMutationId)) return [];
+    if (!successfulMutationIds.has(entry.movementMutationId)) return [entry];
+    return [{ ...entry, persistenceStatus: "ready" as const }];
+  });
+}
 
 export type DraftParameter = RecordedLocalStepParameter & { valueText: string };
 
@@ -239,6 +268,7 @@ export function StepParameterEntryDialog({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const isMovementPersisting = entries.some((candidate) => candidate.persistenceStatus === "persisting");
 
   const appendAttachmentFiles = async (files: readonly File[]) => {
     await prepareNoteAttachmentFiles(files);
@@ -264,7 +294,7 @@ export function StepParameterEntryDialog({
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isPending) return;
+    if (isPending || isMovementPersisting) return;
 
     const missingRequired = definitions.find((definition) => definition.required && !globalValues[definition.key]?.trim());
     if (missingRequired) {
@@ -338,6 +368,11 @@ export function StepParameterEntryDialog({
               ? `Record once for ${entries.map((candidate) => candidate.waferLabel).join(", ")}.`
               : `Record the values for ${entry.waferLabel}.`}
           </p>
+          {isMovementPersisting ? (
+            <p className="mt-2 text-[12px] font-medium text-[#6f6f68]" role="status">
+              Finishing the move… You can enter values now.
+            </p>
+          ) : null}
         </header>
 
         <div className="grid max-h-[min(68vh,650px)] gap-4 overflow-y-auto px-5 py-4">
@@ -498,8 +533,14 @@ export function StepParameterEntryDialog({
           <button type="button" className="h-10 px-1 text-[13px] font-semibold text-[#6f6f68] hover:text-[#171714]" disabled={isPending} onClick={onSkipAll}>
             Skip for now
           </button>
-          <button type="submit" className="h-10 rounded-lg bg-[#171714] px-4 text-[13px] font-semibold text-white hover:bg-[#30302b] disabled:opacity-50" disabled={isPending}>
-            {isPending ? "Saving…" : total > 1 ? `Save for all ${total}` : "Save parameters"}
+          <button type="submit" className="h-10 rounded-lg bg-[#171714] px-4 text-[13px] font-semibold text-white hover:bg-[#30302b] disabled:opacity-50" disabled={isPending || isMovementPersisting}>
+            {isPending
+              ? "Saving…"
+              : isMovementPersisting
+                ? "Finishing move…"
+                : total > 1
+                  ? `Save for all ${total}`
+                  : "Save parameters"}
           </button>
         </footer>
       </form>
