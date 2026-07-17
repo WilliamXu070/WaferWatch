@@ -1157,12 +1157,22 @@ export async function updateProcessStepPositions(input: unknown) {
       return fail("One or more selected process steps no longer exist.");
     }
 
+    const persistedStepById = new Map((steps ?? []).map((step) => [step.id, step]));
     const templateIds = Array.from(new Set((steps ?? []).map((step) => step.template_id)));
     await Promise.all(templateIds.map((templateId) => getTemplateForWrite(templateId)));
 
+    const changedPositions = parsed.positions.filter((position) => {
+      const step = persistedStepById.get(position.stepId);
+      return step?.canvas_x !== position.canvasX || step?.canvas_y !== position.canvasY;
+    });
+
+    if (changedPositions.length === 0) {
+      return ok({ updated: 0, steps: [] });
+    }
+
     const { data: updatedSteps, error: positionsError } = await supabase.rpc(
       "update_process_step_positions_versioned",
-      { position_updates: parsed.positions as Json }
+      { position_updates: changedPositions as Json }
     );
 
     if (positionsError) {
@@ -1173,7 +1183,7 @@ export async function updateProcessStepPositions(input: unknown) {
       revalidateProcessFlow(templateId);
     }
 
-    return ok({ updated: parsed.positions.length, steps: updatedSteps });
+    return ok({ updated: changedPositions.length, steps: updatedSteps });
   } catch (error) {
     return fail(toErrorMessage(error));
   }

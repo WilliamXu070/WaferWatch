@@ -66,6 +66,13 @@ import { getGraphBounds, getSnappedNodePosition, nodeContainsPoint } from "./pro
 import { findEdgeSplitCandidate, splitEdgeWithNode } from "./process-flow/graphEdit";
 import { createLatestFrameQueue, type LatestFrameQueue } from "./process-flow/latestFrameQueue";
 import {
+  getExpectedCanvasPosition,
+  getStableLayoutCenter,
+  hasCanvasPositionChanged,
+  resolveCanvasPosition,
+  targetsSameCanvasPosition
+} from "./process-flow/positionPersistence";
+import {
   getProcessMoveActionNote,
   getStepParametersNavigation,
   hasCrossedWaferDragThreshold,
@@ -143,6 +150,13 @@ type QueuedStepCreate = {
   fallbackNode: FlowNode;
   stepArea: string;
   nodeType: ProcessStepNodeType;
+};
+
+type QueuedPositionUpdate = {
+  canvasX: number;
+  canvasY: number;
+  expectedCanvasX: number;
+  expectedCanvasY: number;
 };
 
 type GraphSnapshot = {
@@ -441,12 +455,10 @@ export function ProcessFlowDiagram({
   const pendingStepCreateRef = useRef<Map<string, QueuedStepCreate>>(new Map());
   const pendingStepParametersOpenRef = useRef<string | null>(null);
   const pendingTransitionCreateRef = useRef<Map<string, QueuedTransition>>(new Map());
-  const pendingPositionUpdateRef = useRef<Map<string, {
-    canvasX: number;
-    canvasY: number;
-    expectedCanvasX: number;
-    expectedCanvasY: number;
-  }>>(new Map());
+  const pendingPositionUpdateRef = useRef<Map<string, QueuedPositionUpdate>>(new Map());
+  const inFlightPositionUpdateRef = useRef<Map<string, QueuedPositionUpdate>>(new Map());
+  const protectedPositionUpdateRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const positionFlushInFlightRef = useRef(false);
   const pendingNameUpdateRef = useRef<Map<string, { name: string; expectedName: string }>>(new Map());
   const pendingWaferDeleteIdsRef = useRef<Set<string>>(new Set());
   const archiveDockRef = useRef<HTMLButtonElement | null>(null);
@@ -469,6 +481,7 @@ export function ProcessFlowDiagram({
   const pendingPositionTimerRef = useRef<TimerHandle>(null);
   const pendingNameTimerRef = useRef<TimerHandle>(null);
   const flushPendingTransitionCreatesRef = useRef<(() => Promise<void>) | null>(null);
+  const flushPendingPositionUpdatesRef = useRef<(() => Promise<void>) | null>(null);
   const panStateRef = useRef<{
     startX: number;
     startY: number;
@@ -756,6 +769,7 @@ export function ProcessFlowDiagram({
 
     remapQueuedTransitions(temporaryStepId, persistedStep.id);
     moveQueuedValues(temporaryStepId, persistedStep.id, pendingPositionUpdateRef.current);
+    moveQueuedValues(temporaryStepId, persistedStep.id, protectedPositionUpdateRef.current);
     moveQueuedValues(temporaryStepId, persistedStep.id, pendingNameUpdateRef.current);
 
     if (finalLabel !== persistedStep.name) {
@@ -788,6 +802,8 @@ export function ProcessFlowDiagram({
       }
     });
     pendingPositionUpdateRef.current.delete(stepId);
+    inFlightPositionUpdateRef.current.delete(stepId);
+    protectedPositionUpdateRef.current.delete(stepId);
     pendingNameUpdateRef.current.delete(stepId);
   };
 
@@ -796,6 +812,8 @@ export function ProcessFlowDiagram({
     pendingStepCreateRef.current.clear();
     pendingTransitionCreateRef.current.clear();
     pendingPositionUpdateRef.current.clear();
+    inFlightPositionUpdateRef.current.clear();
+    protectedPositionUpdateRef.current.clear();
     pendingNameUpdateRef.current.clear();
   }, []);
 
@@ -818,6 +836,16 @@ export function ProcessFlowDiagram({
       pendingTransitionCreateTimerRef,
       async () => {
         await flushPendingTransitionCreatesRef.current?.();
+      },
+      delay
+    );
+  }, [schedulePending]);
+
+  const schedulePositionFlush = useCallback((delay: number) => {
+    schedulePending(
+      pendingPositionTimerRef,
+      async () => {
+        await flushPendingPositionUpdatesRef.current?.();
       },
       delay
     );
@@ -870,6 +898,12 @@ export function ProcessFlowDiagram({
   const flushPendingPositionUpdates = useCallback(async () => {
     if (!onUpdateStepPositions) {
       pendingPositionUpdateRef.current.clear();
+      inFlightPositionUpdateRef.current.clear();
+      protectedPositionUpdateRef.current.clear();
+      return;
+    }
+
+    if (positionFlushInFlightRef.current) {
       return;
     }
 
@@ -878,24 +912,66 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    for (const [stepId] of entries) {
-      pendingPositionUpdateRef.current.delete(stepId);
+    for (const [stepId, position] of entries) {
+      if (pendingPositionUpdateRef.current.get(stepId) === position) {
+        pendingPositionUpdateRef.current.delete(stepId);
+      }
+      inFlightPositionUpdateRef.current.set(stepId, position);
     }
 
-    const result = await onUpdateStepPositions({
-      positions: entries.map(([stepId, position]) => ({
-        stepId,
-        canvasX: position.canvasX,
-        canvasY: position.canvasY,
-        expectedCanvasX: position.expectedCanvasX,
-        expectedCanvasY: position.expectedCanvasY
-      }))
-    });
+    positionFlushInFlightRef.current = true;
+    try {
+      const result = await onUpdateStepPositions({
+        positions: entries.map(([stepId, position]) => ({
+          stepId,
+          canvasX: position.canvasX,
+          canvasY: position.canvasY,
+          expectedCanvasX: position.expectedCanvasX,
+          expectedCanvasY: position.expectedCanvasY
+        }))
+      });
 
-    if (!result.ok) {
-      setMoveMessage(result.error);
+      if (!result.ok) {
+        for (const [stepId, position] of entries) {
+          const queuedPosition = pendingPositionUpdateRef.current.get(stepId);
+          if (
+            queuedPosition?.expectedCanvasX === position.canvasX &&
+            queuedPosition.expectedCanvasY === position.canvasY
+          ) {
+            pendingPositionUpdateRef.current.delete(stepId);
+            if (targetsSameCanvasPosition(protectedPositionUpdateRef.current.get(stepId), {
+              x: queuedPosition.canvasX,
+              y: queuedPosition.canvasY
+            })) {
+              protectedPositionUpdateRef.current.delete(stepId);
+            }
+          }
+          const protectedTarget = protectedPositionUpdateRef.current.get(stepId);
+          if (targetsSameCanvasPosition(protectedTarget, {
+            x: position.canvasX,
+            y: position.canvasY
+          })) {
+            protectedPositionUpdateRef.current.delete(stepId);
+          }
+        }
+        setMoveMessage(result.error);
+      }
+    } finally {
+      for (const [stepId, position] of entries) {
+        if (inFlightPositionUpdateRef.current.get(stepId) === position) {
+          inFlightPositionUpdateRef.current.delete(stepId);
+        }
+      }
+      positionFlushInFlightRef.current = false;
+      if (pendingPositionUpdateRef.current.size > 0) {
+        schedulePositionFlush(0);
+      }
     }
-  }, [isOptimisticStep, onUpdateStepPositions]);
+  }, [isOptimisticStep, onUpdateStepPositions, schedulePositionFlush]);
+
+  useEffect(() => {
+    flushPendingPositionUpdatesRef.current = flushPendingPositionUpdates;
+  }, [flushPendingPositionUpdates]);
 
   const flushPendingTransitionCreates = useCallback(async () => {
     if (!onCreateTransition || !processTemplateId) {
@@ -1011,7 +1087,7 @@ export function ProcessFlowDiagram({
     }
 
     if (pendingPositionUpdateRef.current.size > 0) {
-      schedulePending(pendingPositionTimerRef, flushPendingPositionUpdates, 0);
+      schedulePositionFlush(0);
     }
 
     if (pendingNameUpdateRef.current.size > 0) {
@@ -1020,12 +1096,12 @@ export function ProcessFlowDiagram({
   }, [
     editingNodeId,
     flushPendingNameUpdates,
-    flushPendingPositionUpdates,
     getLatestNode,
     onCreateStep,
     processTemplateId,
     replaceOptimisticStepId,
     schedulePending,
+    schedulePositionFlush,
     scheduleTransitionFlush
   ]);
 
@@ -1049,18 +1125,27 @@ export function ProcessFlowDiagram({
 
   const queueNodePositionPersist = useCallback((stepId: string, canvasX: number, canvasY: number) => {
     const persistedNode = serverGraph.nodes.find((node) => node.id === stepId);
+    const expectedPosition = getExpectedCanvasPosition({
+      queued: pendingPositionUpdateRef.current.get(stepId),
+      inFlight: inFlightPositionUpdateRef.current.get(stepId),
+      server: {
+        x: persistedNode?.x ?? canvasX,
+        y: persistedNode?.y ?? canvasY
+      }
+    });
     pendingPositionUpdateRef.current.set(stepId, {
       canvasX,
       canvasY,
-      expectedCanvasX: persistedNode?.x ?? canvasX,
-      expectedCanvasY: persistedNode?.y ?? canvasY
+      expectedCanvasX: expectedPosition.x,
+      expectedCanvasY: expectedPosition.y
     });
+    protectedPositionUpdateRef.current.set(stepId, { x: canvasX, y: canvasY });
     if (isOptimisticStep(stepId)) {
       return;
     }
 
-    schedulePending(pendingPositionTimerRef, flushPendingPositionUpdates, POSITION_DEBOUNCE_MS);
-  }, [flushPendingPositionUpdates, isOptimisticStep, schedulePending, serverGraph.nodes]);
+    schedulePositionFlush(POSITION_DEBOUNCE_MS);
+  }, [isOptimisticStep, schedulePositionFlush, serverGraph.nodes]);
 
   const queueTransitionPersist = useCallback((transitionId: string, payload: QueuedTransition) => {
     pendingTransitionCreateRef.current.set(transitionId, payload);
@@ -1463,14 +1548,17 @@ export function ProcessFlowDiagram({
 
     pushUndoSnapshot();
 
-    const targetCenter = getCanvasSceneCenter();
+    const targetCenter = getStableLayoutCenter(displayNodes, getCanvasSceneCenter());
     const nextNodes = autoLayoutNodes(displayNodes, edges, targetCenter);
+    const currentNodeById = new Map(displayNodes.map((node) => [node.id, node]));
+    const changedNodes = nextNodes.filter((node) =>
+      hasCanvasPositionChanged(currentNodeById.get(node.id), node)
+    );
     setNodes(nextNodes);
     setSelectedNodeIds(new Set());
     setRoleMenu(null);
-    setMoveMessage("Organized process flow.");
     centerView(nextNodes, targetCenter);
-    nextNodes.forEach((node) => {
+    changedNodes.forEach((node) => {
       queueNodePositionPersist(node.id, node.x, node.y);
     });
   };
@@ -1838,12 +1926,20 @@ export function ProcessFlowDiagram({
         seenNodeIds.add(node.id);
         undoRecoveredNodeIdsRef.current.delete(node.id);
         const hasPendingName = pendingNameUpdateRef.current.has(node.id) || editingNodeId === node.id;
-        const hasPendingPosition = pendingPositionUpdateRef.current.has(node.id);
+        const protectedTarget = protectedPositionUpdateRef.current.get(node.id);
+        const resolvedPosition = resolveCanvasPosition({
+          local: node,
+          server: serverNode,
+          protectedTarget
+        });
+        if (resolvedPosition.settled) {
+          protectedPositionUpdateRef.current.delete(node.id);
+        }
         nextNodes.push({
           ...serverNode,
           label: hasPendingName ? node.label : serverNode.label,
-          x: hasPendingPosition ? node.x : serverNode.x,
-          y: hasPendingPosition ? node.y : serverNode.y,
+          x: resolvedPosition.position.x,
+          y: resolvedPosition.position.y,
           height: getNodeHeightForWaferCount(serverNode.wafers.length),
           isOptimistic: false
         });

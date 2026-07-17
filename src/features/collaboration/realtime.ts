@@ -3,6 +3,8 @@ export const TEAM_MESSAGE_BROADCAST_EVENT = "team_message_inserted";
 export const WORKFLOW_REALTIME_EVENT = "waferwatch:realtime-change";
 export const WORKFLOW_LIBRARY_TOPIC = "workflow:library";
 export const TEAM_MESSAGES_TOPIC = "team:messages";
+export const DEFAULT_WORKFLOW_REFRESH_DEBOUNCE_MS = 350;
+export const PROCESS_STEP_REFRESH_DEBOUNCE_MS = 1_000;
 
 export type WorkflowBroadcastPayload = {
   table: string;
@@ -31,6 +33,12 @@ export function isWorkflowBroadcastPayload(value: unknown): value is WorkflowBro
     ["INSERT", "UPDATE", "DELETE"].includes(String(payload.operation)) &&
     typeof payload.changedAt === "string"
   );
+}
+
+export function getWorkflowRefreshDebounceMs(payload: WorkflowBroadcastPayload) {
+  return payload.table === "process_steps"
+    ? PROCESS_STEP_REFRESH_DEBOUNCE_MS
+    : DEFAULT_WORKFLOW_REFRESH_DEBOUNCE_MS;
 }
 
 export function getBroadcastRecord<T>(value: unknown): T | null {

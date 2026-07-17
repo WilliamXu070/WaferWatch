@@ -1,5 +1,20 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 stable Process Flow Organize)
+
+- Fixed Process Flow Organize appearing slow or ineffective. Organized positions
+  now remain authoritative until their save reaches the server, position batches
+  serialize newer drags, and stale realtime refreshes cannot snap the canvas back.
+- Made Organize idempotent around the graph center, skipped unchanged client and
+  server coordinates, and extended only process-step broadcast coalescing so a
+  batch does not repeatedly reconcile the canvas. Removed its success warning.
+- Authenticated production-mode Playwright dragged a visible step while a save
+  was active, then Organize updated it in 260ms and retained
+  `translate(2709 1192)` through the 5.12s server window and a full reload.
+  Repeated Organize clicks retained the exact transform with no console warning
+  or error. Verified 21 focused tests, `npm run lint`, and `npm run build`.
+  Tracking: GitHub issue #34.
+
 ## Recent development note (2026-07-17 content-deduplicated note attachments)
 
 - Fixed one image appearing twice when it was pasted under a browser-generated
