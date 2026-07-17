@@ -1,5 +1,15 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 removed parameter-set note)
+
+- Removed the redundant parameter-set note field from the Notes-tab parameter
+  sheet while preserving editable Notes cells on each parameter row and existing
+  stored set-note data during subsequent saves.
+- Verified the focused parameter history test, `npm run lint`, and `npm run build`.
+  Authenticated `/wafer-status?processId=9fb7de9e-31b8-4b5a-aea7-8ee64eedb699`
+  at 1280x720 and 390x844 showed no Set note field, horizontal overflow, or
+  console errors. No live wafer data was changed.
+
 ## Recent development note (2026-07-16 compact editable step workspace)
 
 - Reduced Notes-tab history rows to the two operator-relevant lines: step name

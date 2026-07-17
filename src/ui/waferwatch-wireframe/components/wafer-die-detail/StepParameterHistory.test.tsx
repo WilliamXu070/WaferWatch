@@ -54,6 +54,7 @@ test("shows the latest selected-step parameter snapshot", () => {
   assert.match(markup, /Nominal spindle setting/);
   assert.match(markup, /Operator observation/);
   assert.match(markup, /No visible chipping/);
-  assert.match(markup, /Used the standard cleaning sequence/);
   assert.match(markup, /Add parameter/);
+  assert.doesNotMatch(markup, /Set note/);
+  assert.doesNotMatch(markup, /Optional context for this parameter set/);
 });

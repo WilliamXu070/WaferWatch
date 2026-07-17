@@ -117,7 +117,7 @@ export function StepParameterHistory({
   const [parameters, setParameters] = useState<DraftParameter[]>(() =>
     buildDraftParameters(latestRecord, templateSchema)
   );
-  const [additionalNotes, setAdditionalNotes] = useState(latestRecord?.notes ?? "");
+  const [additionalNotes] = useState(latestRecord?.notes ?? "");
   const [message, setMessage] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(!latestRecord && parameters.length > 0);
   const [isPending, startTransition] = useTransition();
@@ -301,21 +301,6 @@ export function StepParameterHistory({
         </div>
       </div>
 
-      <label className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-t border-[#e7e7e1] bg-[#fafaf7] px-3 py-1 text-[11px] font-semibold text-[#696963]">
-        Set note
-        <input
-          value={additionalNotes}
-          disabled={!canEdit}
-          maxLength={4000}
-          placeholder="Optional context for this parameter set"
-          onChange={(event) => {
-            setAdditionalNotes(event.currentTarget.value);
-            setIsDirty(true);
-            setMessage(null);
-          }}
-          className="h-7 min-w-0 rounded-md border border-[#deded8] bg-white px-2.5 text-[12px] font-normal text-[#252521] outline-none focus:border-[#777770] disabled:bg-[#f7f7f3]"
-        />
-      </label>
     </section>
   );
 }
