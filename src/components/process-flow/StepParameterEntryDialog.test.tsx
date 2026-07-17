@@ -100,8 +100,12 @@ test("captures local row input before React clears the event target", () => {
     );
     event.currentTarget = null;
 
-    assert.equal(typeof queuedUpdate, "function");
-    const next = (queuedUpdate as (current: DraftParameter[]) => DraftParameter[])([makeDraftParameter()]);
+    const applyQueuedUpdate: unknown = queuedUpdate;
+    assert.equal(typeof applyQueuedUpdate, "function");
+    if (typeof applyQueuedUpdate !== "function") {
+      throw new Error("Expected a queued state update.");
+    }
+    const next = applyQueuedUpdate([makeDraftParameter()]);
     assert.equal(next[0][key], value);
   }
 });

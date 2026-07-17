@@ -345,15 +345,30 @@ export type UpdateProcessStepNameAction = (input: {
   expectedName: string;
 }) => Promise<ActionResult<PersistedStepPayload>>;
 
-export type UpdateProcessStepNodeTypeAction = (input: {
-  stepId: string;
-  nodeType: ProcessStepNodeType;
-}) => Promise<ActionResult<PersistedStepPayload>>;
-
 export type UpdateProcessStepExecutionModeAction = (input: {
   stepId: string;
   executionMode: ProcessStepExecutionMode;
 }) => Promise<ActionResult<PersistedStepPayload>>;
+
+export type ProcessFlowActions = {
+  createStep?: CreateProcessFlowStepAction;
+  createWafer?: CreateWaferAtProcessStartAction;
+  updatePositions?: UpdateProcessStepPositionsAction;
+  updateName?: UpdateProcessStepNameAction;
+  updateExecutionMode?: UpdateProcessStepExecutionModeAction;
+  createTransition?: CreateProcessStepTransitionAction;
+  deleteSteps?: DeleteProcessStepsAction;
+  deleteTransitions?: DeleteProcessTransitionsAction;
+  deleteWafer?: DeleteProcessFlowWaferAction;
+  archiveWafers?: ArchiveCompletedProcessWafersAction;
+  restoreWafer?: RestoreArchivedProcessWaferAction;
+  submitCheckpoint?: SubmitStepCheckpointAction;
+  routeCheckpoint?: RouteCheckpointAction;
+  moveApprovedWafer?: MoveApprovedCheckpointAction;
+  undoHistory?: UndoDieProcessHistoryAction;
+  saveParameters?: SaveStepParameterRecordAction;
+  updateReviewer?: UpdateStepCheckpointReviewerAction;
+};
 
 export type CreateProcessStepTransitionAction = (input: {
   templateId: string;

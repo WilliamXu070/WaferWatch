@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+// Stable ids preserve compatibility with existing seeded QA data.
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -798,10 +799,10 @@ async function verifyFixture(supabase) {
     })),
     expectedStartDies,
     routeHints: {
-      dashboard: "/wireframe/dashboard",
-      calendar: `/wireframe/calendar?processId=${FIXTURE.templateId}`,
-      processFlow: `/wireframe/process-flow?processId=${FIXTURE.templateId}`,
-      waferStatus: "/wireframe/wafer-status"
+      dashboard: "/dashboard",
+      calendar: `/calendar?processId=${FIXTURE.templateId}`,
+      processFlow: `/process-flow?processId=${FIXTURE.templateId}`,
+      waferStatus: "/wafer-status"
     }
   };
 }

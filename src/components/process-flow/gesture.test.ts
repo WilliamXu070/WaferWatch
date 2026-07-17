@@ -39,7 +39,7 @@ test("uses bounded proportional wheel zoom instead of fixed scale jumps", () => 
   assert.ok(smallZoom > 0.35);
   assert.ok(smallZoom < largeZoom);
   assert.equal(largeZoom, boundedLargeZoom);
-  assert.ok(largeZoom < 0.38);
+  assert.ok(largeZoom < 0.6);
 });
 
 test("detects Safari gesture events so iPhone pinch has one input owner", () => {

@@ -28,7 +28,7 @@ const tiles: WaferStatusTileModel[] = [
     family: "BETA",
     dieLabel: "B2",
     stepLabel: "EBL",
-    status: "running",
+    status: "litho",
     waferStateName: "post-dice",
     mode: "diced"
   }

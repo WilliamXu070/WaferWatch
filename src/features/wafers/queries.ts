@@ -48,6 +48,10 @@ type WaferStatusWaferRow = {
   id: string;
   project_id: string;
   wafer_code: string;
+  parent_wafer_id: string | null;
+  die_label: string | null;
+  wafer_family: string;
+  die_count: number | null;
   status: FabricationStatus;
   notes: string | null;
   metadata: Json;
@@ -760,7 +764,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
 
   const wafersQuery = supabase
     .from("wafers")
-    .select("id, project_id, wafer_code, status, notes, metadata, created_at")
+    .select("id, project_id, wafer_code, parent_wafer_id, die_label, wafer_family, die_count, status, notes, metadata, created_at")
     .is("deleted_at", null)
     .is("archived_at", null)
     .order("wafer_code", { ascending: true });
@@ -789,7 +793,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   const wafersById = new Map(allWafers.map((wafer) => [wafer.id, wafer]));
   const parentWaferIds = Array.from(new Set(
     wafers
-      .map((wafer) => getString(toJsonRecord(wafer.metadata), "parent_wafer_id"))
+      .map((wafer) => wafer.parent_wafer_id)
       .filter((waferId): waferId is string => Boolean(waferId))
   ));
   const projectIds = Array.from(new Set(wafers.map((wafer) => wafer.project_id)));
@@ -873,7 +877,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     { assignment: WaferStatusAssignmentRow; wafer: WaferStatusWaferRow }
   >();
   for (const wafer of wafers) {
-    const parentWaferId = getString(toJsonRecord(wafer.metadata), "parent_wafer_id");
+    const parentWaferId = wafer.parent_wafer_id;
     const childAssignment = assignmentsByWaferId.get(wafer.id);
     const parentWafer = parentWaferId ? wafersById.get(parentWaferId) : null;
     if (!parentWaferId || !childAssignment || !parentWafer) continue;
@@ -1315,40 +1319,6 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     checkpointHistoryByAssignmentId,
     stepParameterRecordsByAssignmentStep
   });
-}
-
-export async function listWafers(projectId: string) {
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("wafers")
-    .select("*, wafer_lots(*)")
-    .eq("project_id", projectId)
-    .is("deleted_at", null)
-    .is("archived_at", null)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
-export async function getWafer(waferId: string) {
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("wafers")
-    .select("*, wafer_lots(*), wafer_process_assignments(*)")
-    .eq("id", waferId)
-    .is("deleted_at", null)
-    .is("archived_at", null)
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
 }
 
 export async function getWaferTimeline(waferId: string) {

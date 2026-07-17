@@ -1,81 +1,73 @@
 # WaferWatch
 
-WaferWatch is a backend-first Next.js/Supabase scaffold for wafer fabrication tracking, cycle-time analysis, and process metric generation for the McMaster Quantum Photonic Group.
+WaferWatch tracks fabrication processes, die movement, checkpoints, parameters, notes, inspections, and schedules for the McMaster Quantum Photonic Group.
 
-## What is included
+## Stack
 
-- Next.js App Router project with TypeScript.
-- Supabase SSR, browser, and admin clients.
-- Cookie-aware auth proxy.
-- Account/session guards and role checks.
-- Supabase SQL migration for the core wafer fabrication domain.
-- Row Level Security policies for project-scoped access.
-- Supabase Storage buckets and storage policies.
-- Server Actions for accounts, projects, wafers, process flows, step runs, reservations, measurements, issues, and attachments.
-- API routes for health, metrics, calendar events, wafer timelines, signed uploads, and wafer imports.
-- Metric views for cycle time, step duration, WIP by stage, and tool utilization.
+- Next.js App Router, React, and TypeScript
+- Supabase Auth, Postgres, Realtime, and Storage
+- Server Actions for workflow mutations
+- Row Level Security for project-scoped access
+
+## Product routes
+
+- `/dashboard`
+- `/calendar`
+- `/process-flow`
+- `/wafer-status`
+
+All product routes require an authenticated account. `/api/health` is the deployment health surface.
 
 ## Local setup
 
-1. Install Node.js `>=20.9.0`.
-2. Install dependencies:
-
 ```bash
 npm install
-```
-
-3. Copy `.env.example` to `.env.local` and fill in the Supabase values.
-4. Apply `supabase/migrations/202606150001_core_architecture.sql` to your Supabase project.
-5. If your project already has the tables but RPC helpers or storage policies are missing, apply `supabase/migrations/202606150002_repair_auth_storage.sql`.
-6. Optionally run `supabase/seed.sql` to load a baseline MQPG process flow and example tools.
-7. Start the dev server:
-
-```bash
+cp .env.example .env.local
 npm run dev
 ```
 
-## Required Supabase values
+Required environment values:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (alias `NEXT_PUBLIC_SUPABASE_ANON_KEY` also accepted)
-- `SUPABASE_SERVICE_ROLE_KEY` (alias `SUPABASE_SECRET_KEY` also accepted)
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `NEXT_PUBLIC_APP_URL`
 
-Copy `.env.example` to `.env.local` and fill these values.
+Link the existing Supabase project before migration or type commands:
 
-## First account setup
-
-Supabase Auth creates a `profiles` row automatically when a user signs up. New users default to the `researcher` role.
-
-After creating your first account, promote it to admin from the Supabase SQL editor:
-
-```sql
-update public.profiles
-set role = 'admin'
-where email = 'your.email@mcmaster.ca';
+```bash
+npm run db:link
+npm run migration:list
 ```
 
-## Storage path convention
-
-All uploaded objects must start with the project UUID:
-
-```text
-{project_id}/characterization/{wafer_code}/file.csv
-{project_id}/process-files/{wafer_code}/run-sheet.pdf
-{project_id}/wafer-maps/{wafer_code}/map.png
-```
-
-The RLS storage policies depend on that first path segment.
+Never edit an applied migration. Add a new file under `supabase/migrations` and use `npm run db:push:dry` before pushing it.
 
 ## Verification
 
-The scaffold currently passes:
-
 ```bash
+npm test
 npm run typecheck
 npm run lint
 npm run build
 ```
 
-## Deploy
+Workflow changes may also require:
 
-See `docs/vercel-deploy.md` for the Vercel sign-in, env var, and deploy steps.
+```bash
+npm run checkpoint:verify
+npm run archive:verify
+npm run collaboration:verify
+```
+
+## Architecture
+
+- `src/app/(app)` — authenticated routes
+- `src/components/process-flow` — Process Flow interaction logic
+- `src/components/process-dashboard/calendar` — Calendar interaction logic
+- `src/features` — domain queries, mutations, schemas, and projections
+- `src/ui/waferwatch-wireframe` — active product UI under a historical namespace
+- `src/types/database.ts` — runtime database contract
+- `supabase/migrations` — append-only database history
+- `scripts` — deterministic workflow verification
+
+See `agents.md` for invariants and the required release loop. See `docs/refactor-plan.md` for the current simplification sequence.

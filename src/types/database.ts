@@ -162,6 +162,11 @@ export type Wafer = {
   project_id: string;
   lot_id: string | null;
   wafer_code: string;
+  item_type: "wafer" | "die";
+  parent_wafer_id: string | null;
+  die_label: string | null;
+  wafer_family: string;
+  die_count: number | null;
   material_stack: string | null;
   diameter_mm: number | null;
   status: FabricationStatus;

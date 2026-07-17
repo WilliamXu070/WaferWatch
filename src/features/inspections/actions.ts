@@ -257,46 +257,6 @@ export async function createDieInspection(input: unknown) {
   }
 }
 
-export async function listDieInspectionCells(input: unknown) {
-  try {
-    const parsed = dieInspectionCellSummarySchema.parse(input);
-    const supabase = await createServerSupabaseClient();
-    const { data: wafer, error: waferError } = await supabase
-      .from("wafers")
-      .select("id, project_id")
-      .eq("id", parsed.waferId)
-      .single();
-
-    if (waferError) {
-      return fail(waferError.message);
-    }
-
-    await assertProjectAccess(wafer.project_id, "read");
-
-    const { data, error } = await supabase
-      .from("die_inspections")
-      .select("pattern_row, pattern_column")
-      .eq("wafer_id", parsed.waferId)
-      .eq("die_code", parsed.dieCode);
-
-    if (error) {
-      return fail(error.message);
-    }
-
-    const uniqueCells = new Map<string, { row: number; column: number }>();
-    for (const row of data ?? []) {
-      uniqueCells.set(`${row.pattern_row}:${row.pattern_column}`, {
-        row: row.pattern_row,
-        column: row.pattern_column
-      });
-    }
-
-    return ok(Array.from(uniqueCells.values()));
-  } catch (error) {
-    return fail(toErrorMessage(error));
-  }
-}
-
 export async function deleteDieInspection(input: unknown) {
   try {
     const parsed = dieInspectionDeleteSchema.parse(input);

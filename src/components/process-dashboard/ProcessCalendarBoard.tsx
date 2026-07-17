@@ -46,8 +46,7 @@ import {
   LOCATIONS,
   LOCATION_REGIONS,
   MANUAL_STAGE_FILTER_ID,
-  MAX_WEEK_ZOOM_MS,
-  MAX_WIREFRAME_ZOOM_MS,
+  MAX_CALENDAR_ZOOM_MS,
   MIN_EVENT_MS,
   MIN_ZOOM_MS,
   SNAP_MS,
@@ -61,26 +60,25 @@ import {
   clamp,
   clampVisibleWindow,
   createCurrentDayHeaderRenderer,
-  createWireframeHeaderRenderer,
+  createCalendarHeaderRenderer,
   formatDateTime,
   formatTimelineItemWindow,
   formatWindow,
   getCurrentWeekStart,
   getDayAndHour,
   getHeaderScale,
-  getWireframeHeaderScale,
+  getCalendarHeaderScale,
   isCurrentDay,
   snapTime
 } from "./calendar/date-helpers";
 import {
   applyMoveWindow,
   areMoveWindowsEqual,
-  buildWireframePeopleSummary,
+  buildPeopleSummary,
   eventLabel,
-  eventTone,
+  getCalendarEventBadge,
+  getCalendarEventTitle,
   getEventDuration,
-  getWireframeEventBadge,
-  getWireframeEventTitle,
   intervalsOverlap,
   isBlankTimelineTarget,
   locationTone,
@@ -141,29 +139,22 @@ export function ProcessCalendarBoard({
   people,
   initialEvents,
   initialVisibleStartDate = calendarStartDate,
-  persistenceMode = "server",
-  presentationMode = "default",
   canEdit = true
 }: ProcessCalendarBoardProps) {
   const [events, setEvents] = useState(initialEvents);
   const [liveSteps, setLiveSteps] = useState<ProcessStepOption[]>(() => [...initialSteps]);
   const [liveWafers, setLiveWafers] = useState<ProcessCalendarWaferOption[]>(() => [...initialWafers]);
-  const initialSelection = presentationMode === "wireframe" ? null : initialEvents[0] ?? null;
   const [draft, setDraft] = useState<DraftEvent | null>(null);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(initialSelection?.id ?? null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [previewEventId, setPreviewEventId] = useState<string | null>(null);
   const [actionMode, setActionMode] = useState<ActionMode>(
-    initialSelection ? getActionModeForEvent(initialSelection, initialSteps) : initialSteps.length ? "step" : "manual"
+    initialSteps.length ? "step" : "manual"
   );
-  const [selectedStepId, setSelectedStepId] = useState(initialSelection?.process_step_id ?? initialSteps[0]?.id ?? "");
-  const [selectedWaferId, setSelectedWaferId] = useState(initialSelection?.wafer_id ?? "");
-  const [manualAction, setManualAction] = useState(
-    initialSelection?.manual_action ?? (initialSelection?.process_step_id ? "" : initialSelection?.process_step_name_snapshot ?? "")
-  );
-  const [description, setDescription] = useState(initialSelection?.description ?? "");
-  const [selectedPersonIds, setSelectedPersonIds] = useState(
-    initialSelection?.people.map((person) => person.id) ?? []
-  );
+  const [selectedStepId, setSelectedStepId] = useState(initialSteps[0]?.id ?? "");
+  const [selectedWaferId, setSelectedWaferId] = useState("");
+  const [manualAction, setManualAction] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
   const [personQuery, setPersonQuery] = useState("");
   const [draftDragSelection, setDraftDragSelection] = useState<DraftDragSelection | null>(null);
   const [filterPersonIds, setFilterPersonIds] = useState<string[]>([]);
@@ -186,7 +177,7 @@ export function ProcessCalendarBoard({
   } | null>(null);
   const isItemDragActiveRef = useRef(false);
   const isShiftPressedRef = useRef(false);
-  const selectedEventIdRef = useRef<string | null>(initialSelection?.id ?? null);
+  const selectedEventIdRef = useRef<string | null>(null);
   const suppressedItemSelectionIdRef = useRef<string | null>(null);
   const ignoreStaleItemSelectionUntilRef = useRef(0);
   const ignoreBlankCalendarClickUntilRef = useRef(0);
@@ -216,10 +207,6 @@ export function ProcessCalendarBoard({
   }, [initialEvents]);
 
   const refreshCalendarOptions = useCallback(async () => {
-    if (persistenceMode === "local") {
-      return;
-    }
-
     try {
       const response = await fetch(`/api/processes/${processTemplateId}/calendar/options`, {
         cache: "no-store",
@@ -244,7 +231,7 @@ export function ProcessCalendarBoard({
     } catch {
       // Keep the last known options usable if a background refresh fails.
     }
-  }, [persistenceMode, processTemplateId]);
+  }, [processTemplateId]);
 
   useEffect(() => {
     const refreshTimer = window.setTimeout(() => {
@@ -274,10 +261,9 @@ export function ProcessCalendarBoard({
     () => buildDateAtMinute(addDays(startDate, Math.max(0, days - 1)), END_MINUTE).getTime(),
     [days, startDate]
   );
-  const maxAllowedZoomMs = presentationMode === "wireframe" ? MAX_WIREFRAME_ZOOM_MS : MAX_WEEK_ZOOM_MS;
   const maxZoomMs = useMemo(
-    () => Math.min(maxAllowedZoomMs, Math.max(1, timelineEnd - timelineStart)),
-    [maxAllowedZoomMs, timelineEnd, timelineStart]
+    () => Math.min(MAX_CALENDAR_ZOOM_MS, Math.max(1, timelineEnd - timelineStart)),
+    [timelineEnd, timelineStart]
   );
 
   useEffect(() => {
@@ -319,9 +305,9 @@ export function ProcessCalendarBoard({
 
   const initialVisibleWindow = useMemo(() => {
     const requestedDate = new Date(`${initialVisibleStartDate}T00:00:00`);
-    const requestedMinute = presentationMode === "wireframe" ? 0 : START_MINUTE;
+    const requestedMinute = 0;
     const requestedStart = Number.isNaN(requestedDate.getTime())
-      ? getCurrentWeekStart(new Date()) - (presentationMode === "wireframe" ? START_MINUTE * 60 * 1000 : 0)
+      ? getCurrentWeekStart(new Date()) - START_MINUTE * 60 * 1000
       : buildDateAtMinute(requestedDate, requestedMinute).getTime();
     const requestedSpanMs = DEFAULT_VISIBLE_RANGE_DAYS * DAY_MS;
 
@@ -332,7 +318,7 @@ export function ProcessCalendarBoard({
       timelineEnd,
       maxZoomMs
     );
-  }, [initialVisibleStartDate, maxZoomMs, presentationMode, timelineEnd, timelineStart]);
+  }, [initialVisibleStartDate, maxZoomMs, timelineEnd, timelineStart]);
   const [visibleRange, setVisibleRange] = useState(() => ({
     boundsStart: timelineStart,
     boundsEnd: timelineEnd,
@@ -371,8 +357,8 @@ export function ProcessCalendarBoard({
     () => getHeaderScale(effectiveVisibleRange.end - effectiveVisibleRange.start),
     [effectiveVisibleRange.end, effectiveVisibleRange.start]
   );
-  const wireframeHeaderScale = useMemo(
-    () => getWireframeHeaderScale(effectiveVisibleRange.end - effectiveVisibleRange.start),
+  const calendarHeaderScale = useMemo(
+    () => getCalendarHeaderScale(effectiveVisibleRange.end - effectiveVisibleRange.start),
     [effectiveVisibleRange.end, effectiveVisibleRange.start]
   );
   const timelineVerticalLineClassNames = useCallback(
@@ -390,13 +376,6 @@ export function ProcessCalendarBoard({
   const stepsById = useMemo(() => new Map(liveSteps.map((step) => [step.id, step.name])), [liveSteps]);
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
   const eventById = useMemo(() => new Map(events.map((event) => [event.id, event])), [events]);
-  const selectedPeopleForSave = useCallback(
-    () =>
-      selectedPersonIds
-        .map((personId) => peopleById.get(personId))
-        .filter((person): person is ProcessCalendarPersonOption => Boolean(person)),
-    [peopleById, selectedPersonIds]
-  );
   const stageFilterOptions = useMemo(
     () => [
       ...liveSteps.map((step) => ({ id: step.id as StageFilterId, name: step.name })),
@@ -460,23 +439,18 @@ export function ProcessCalendarBoard({
     () =>
       LOCATIONS.map((location) => ({
         id: location,
-        title:
-          presentationMode === "wireframe"
-            ? isCompactViewport
-              ? location
-              : `${location}\n${LOCATION_REGIONS[location]}`
-            : location,
+        title: isCompactViewport ? location : `${location}\n${LOCATION_REGIONS[location]}`,
         rightTitle: `${visibleEvents.filter((event) => event.location === location).length}`,
         stackItems: true
       })),
-    [isCompactViewport, presentationMode, visibleEvents]
+    [isCompactViewport, visibleEvents]
   );
 
   const timelineItems = useMemo<CalendarTimelineItem[]>(
     () => {
       const items: CalendarTimelineItem[] = visibleEvents.map((event) => {
         const label = eventLabel(event, stepsById);
-        const displayTitle = getWireframeEventTitle(event, label, presentationMode);
+        const displayTitle = getCalendarEventTitle(event, label);
         const waferLabel = event.wafer?.wafer_code ?? null;
         const descriptionLabel = [
           waferLabel ? `Wafer ${waferLabel}` : null,
@@ -485,32 +459,28 @@ export function ProcessCalendarBoard({
         const startsAt = new Date(event.starts_at);
         const endsAt = new Date(event.ends_at);
         const peopleLabel = event.people
-          .map((person) => presentationMode === "wireframe" ? toDisplayName(person.display_name) : person.display_name)
+          .map((person) => toDisplayName(person.display_name))
           .join(", ");
-        const wireframePeopleSummary =
-          presentationMode === "wireframe"
-            ? buildWireframePeopleSummary(event.people.map((person) => toDisplayName(person.display_name)))
-            : peopleLabel;
+        const peopleSummary = buildPeopleSummary(
+          event.people.map((person) => toDisplayName(person.display_name))
+        );
 
         return {
           id: event.id,
           group: event.location as ProcessCalendarLocation,
           title: displayTitle,
-          badgeLabel: getWireframeEventBadge(event, presentationMode),
+          badgeLabel: getCalendarEventBadge(event),
           descriptionLabel,
           event,
-          peopleLabel: wireframePeopleSummary,
-          timeLabel: formatTimelineItemWindow(startsAt, endsAt, presentationMode),
-          toneClass:
-            presentationMode === "wireframe"
-              ? locationTone(event.location as ProcessCalendarLocation)
-              : eventTone(label, presentationMode),
+          peopleLabel: peopleSummary || peopleLabel,
+          timeLabel: formatTimelineItemWindow(startsAt, endsAt),
+          toneClass: locationTone(event.location as ProcessCalendarLocation),
           start_time: startsAt.getTime(),
           end_time: endsAt.getTime(),
           canMove: canEdit,
           canChangeGroup: canEdit,
           canResize: canEdit ? "both" : false,
-          height: presentationMode === "wireframe" ? (isCompactViewport ? 48 : 100) : 30
+          height: isCompactViewport ? 48 : 100
         };
       });
 
@@ -529,21 +499,21 @@ export function ProcessCalendarBoard({
           title: "New event",
           descriptionLabel: draftDragSelection ? "Release to place" : undefined,
           peopleLabel: draftDragSelection ? "No one" : "Draft",
-          timeLabel: formatTimelineItemWindow(draftWindow.startsAt, draftWindow.endsAt, presentationMode),
+          timeLabel: formatTimelineItemWindow(draftWindow.startsAt, draftWindow.endsAt),
           toneClass: `ww-timeline-item--draft ${draftDragSelection ? "ww-timeline-item--draft-active" : ""}`,
           start_time: draftWindow.startsAt.getTime(),
           end_time: draftWindow.endsAt.getTime(),
           canMove: !draftDragSelection,
           canChangeGroup: !draftDragSelection,
           canResize: draftDragSelection ? false : "both",
-          height: presentationMode === "wireframe" ? (isCompactViewport ? 48 : 100) : 30,
+          height: isCompactViewport ? 48 : 100,
           isDraft: true
         });
       }
 
       return items;
     },
-    [canEdit, draft, draftDragSelection, isCompactViewport, presentationMode, stepsById, timelineEnd, timelineStart, visibleEvents]
+    [canEdit, draft, draftDragSelection, isCompactViewport, stepsById, timelineEnd, timelineStart, visibleEvents]
   );
 
   const personConflictById = useMemo(() => {
@@ -704,10 +674,6 @@ export function ProcessCalendarBoard({
       });
     }
 
-    if (persistenceMode === "local") {
-      return;
-    }
-
     const persistMove = async () => {
       const result = await moveProcessCalendarEvent({
         eventId: input.eventId,
@@ -762,7 +728,7 @@ export function ProcessCalendarBoard({
           setError(moveError instanceof Error ? moveError.message : "Move failed. Try again.");
         }
     });
-  }, [eventById, persistenceMode]);
+  }, [eventById]);
 
   const clearQueuedItemMove = useCallback(() => {
     if (itemMoveFrameRef.current !== null) {
@@ -1443,7 +1409,6 @@ export function ProcessCalendarBoard({
   const renderTimelineItem = useCallback<NonNullable<ReactCalendarTimelineProps<CalendarTimelineItem, TimelineLocationGroup>["itemRenderer"]>>(
     (rendererProps) => renderCalendarTimelineItem({
       draft,
-      presentationMode,
       selectedEventId,
       suppressedItemSelectionIdRef,
       ignoreStaleItemSelectionUntilRef,
@@ -1451,7 +1416,7 @@ export function ProcessCalendarBoard({
       stopItemDragSelectionBlock,
       rendererProps
     }),
-    [draft, presentationMode, selectedEventId, startItemDragSelectionBlock, stopItemDragSelectionBlock]
+    [draft, selectedEventId, startItemDragSelectionBlock, stopItemDragSelectionBlock]
   );
 
   function addPerson(person: ProcessCalendarPersonOption) {
@@ -1463,40 +1428,12 @@ export function ProcessCalendarBoard({
     setSelectedPersonIds((current) => current.filter((id) => id !== personId));
   }
 
-  function selectedStepSnapshot() {
-    return actionMode === "step" && selectedStepId ? stepsById.get(selectedStepId) ?? null : null;
-  }
-
   function saveDraft() {
     if (!draft) {
       return;
     }
 
     setError(null);
-
-    if (persistenceMode === "local") {
-      const createdEvent: ProcessCalendarEventView = {
-        id: `local-${Date.now().toString(36)}`,
-        revision: 0,
-        process_template_id: processTemplateId,
-        location: draft.location,
-        starts_at: draft.startsAt.toISOString(),
-        ends_at: draft.endsAt.toISOString(),
-        process_step_id: actionMode === "step" && selectedStepId ? selectedStepId : null,
-        wafer_id: selectedWaferId || null,
-        wafer: liveWafers.find((wafer) => wafer.id === selectedWaferId) ?? null,
-        process_step_name_snapshot: selectedStepSnapshot(),
-        manual_action: getManualActionForMode(actionMode, manualAction)?.trim() || null,
-        description: description.trim() || null,
-        people: selectedPeopleForSave()
-      };
-
-      setEvents((current) => sortCalendarEvents([...current, createdEvent]));
-      setDraft(null);
-      setSelectedEventId(createdEvent.id);
-      syncSelectionForm(createdEvent);
-      return;
-    }
 
     startTransition(async () => {
       const result = await createProcessCalendarEvent({
@@ -1531,27 +1468,6 @@ export function ProcessCalendarBoard({
 
     setError(null);
 
-    if (persistenceMode === "local") {
-      const updatedEvent: ProcessCalendarEventView = {
-        ...selectedEvent,
-        process_step_id: actionMode === "step" && selectedStepId ? selectedStepId : null,
-        wafer_id: selectedWaferId || null,
-        wafer: liveWafers.find((wafer) => wafer.id === selectedWaferId) ?? null,
-        process_step_name_snapshot: selectedStepSnapshot(),
-        manual_action: getManualActionForMode(actionMode, manualAction)?.trim() || null,
-        description: description.trim() || null,
-        people: selectedPeopleForSave()
-      };
-
-      syncSelectionForm(updatedEvent);
-      setEvents((current) =>
-        sortCalendarEvents(
-          current.map((event) => (event.id === updatedEvent.id ? updatedEvent : event))
-        )
-      );
-      return;
-    }
-
     startTransition(async () => {
       const result = await updateProcessCalendarEvent({
         eventId: selectedEvent.id,
@@ -1584,12 +1500,6 @@ export function ProcessCalendarBoard({
     }
 
     setError(null);
-
-    if (persistenceMode === "local") {
-      setEvents((current) => current.filter((event) => event.id !== selectedEvent.id));
-      clearSelectedEvent();
-      return;
-    }
 
     startTransition(async () => {
       const result = await deleteProcessCalendarEvent({
@@ -1800,13 +1710,7 @@ export function ProcessCalendarBoard({
 
   return (
     <div
-      className={[
-        "calendar-scheduler",
-        "calendar-scheduler--timeline",
-        presentationMode === "wireframe" ? "calendar-scheduler--wireframe" : undefined
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      className="calendar-scheduler calendar-scheduler--timeline calendar-scheduler--wireframe"
     >
       <div
         className={`calendar-timeline-panel ${isTimelinePanning ? "calendar-timeline-panel--panning" : ""}`}
@@ -1843,10 +1747,10 @@ export function ProcessCalendarBoard({
           itemHeightRatio={0.76}
           itemRenderer={renderTimelineItem}
           itemTouchSendsClick
-          itemVerticalGap={presentationMode === "wireframe" ? (isCompactViewport ? 4 : 12) : 6}
+          itemVerticalGap={isCompactViewport ? 4 : 12}
           items={timelineItems}
           keys={TIMELINE_KEYS}
-          lineHeight={presentationMode === "wireframe" ? (isCompactViewport ? 64 : 172) : 46}
+          lineHeight={isCompactViewport ? 64 : 172}
           maxZoom={maxZoomMs}
           minZoom={MIN_ZOOM_MS}
           moveResizeValidator={moveResizeValidator}
@@ -1859,7 +1763,7 @@ export function ProcessCalendarBoard({
           onTimeChange={handleTimeChange}
           ref={setTimelineRef}
           selected={draft ? ["__draft-create__"] : selectedEventId ? [selectedEventId] : []}
-          sidebarWidth={presentationMode === "wireframe" ? (isCompactViewport ? 78 : 136) : 132}
+          sidebarWidth={isCompactViewport ? 78 : 136}
           verticalLineClassNamesForTime={timelineVerticalLineClassNames}
           stackItems
           timeSteps={{ second: 1, minute: 15, hour: headerScale.hourStep, day: 1, month: 1, year: 1 }}
@@ -1879,44 +1783,25 @@ export function ProcessCalendarBoard({
                     {...rootProps}
                     className={[rootProps.className, "ww-timeline-sidebar-header"].filter(Boolean).join(" ")}
                   >
-                    {presentationMode === "wireframe" ? "Sites" : "Location"}
+                    Sites
                   </div>
                 );
               }}
             </SidebarHeader>
-            {presentationMode === "wireframe" ? (
-              <>
+            <DateHeader
+              key={`calendar-${calendarHeaderScale.id}`}
+              labelFormat={calendarHeaderScale.labelFormat}
+              unit={calendarHeaderScale.unit}
+              intervalRenderer={createCalendarHeaderRenderer(calendarHeaderScale.id)}
+            />
+            {headerScale.secondaryUnit !== "day" ? (
                 <DateHeader
-                  key={`wireframe-${wireframeHeaderScale.id}`}
-                  labelFormat={wireframeHeaderScale.labelFormat}
-                  unit={wireframeHeaderScale.unit}
-                  intervalRenderer={createWireframeHeaderRenderer(wireframeHeaderScale.id)}
-                />
-                {headerScale.secondaryUnit !== "day" ? (
-                  <DateHeader
-                    key={`wireframe-sub-${headerScale.id}`}
-                    labelFormat={headerScale.secondaryLabelFormat}
-                    unit={headerScale.secondaryUnit}
-                    intervalRenderer={createCurrentDayHeaderRenderer(false)}
-                  />
-                ) : null}
-              </>
-            ) : (
-              <>
-                <DateHeader
-                  key={`primary-${headerScale.id}`}
-                  labelFormat={headerScale.primaryLabelFormat}
-                  unit={headerScale.primaryUnit}
-                  intervalRenderer={createCurrentDayHeaderRenderer(headerScale.primaryUnit === "day")}
-                />
-                <DateHeader
-                  key={`secondary-${headerScale.id}`}
+                  key={`calendar-sub-${headerScale.id}`}
                   labelFormat={headerScale.secondaryLabelFormat}
                   unit={headerScale.secondaryUnit}
-                  intervalRenderer={createCurrentDayHeaderRenderer(headerScale.secondaryUnit === "day")}
+                  intervalRenderer={createCurrentDayHeaderRenderer(false)}
                 />
-              </>
-            )}
+            ) : null}
           </TimelineHeaders>
         </Timeline>
       </div>
@@ -1924,7 +1809,7 @@ export function ProcessCalendarBoard({
       <aside
         className={[
           "calendar-inspector",
-          presentationMode === "wireframe" ? "calendar-inspector--wireframe" : undefined,
+          "calendar-inspector--wireframe",
           draft || selectedEvent || error ? "calendar-inspector--active" : "calendar-inspector--empty"
         ]
           .filter(Boolean)

@@ -242,7 +242,6 @@ export function CalendarView({ result }: CalendarViewProps) {
                 people={resolvedPeople}
                 initialEvents={resolvedEvents}
                 initialVisibleStartDate={visibleStartDate}
-                presentationMode="wireframe"
                 canEdit={calendarData.canEdit}
               />
             </>

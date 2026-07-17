@@ -9,9 +9,8 @@ import {
   START_HOUR
 } from "./constants";
 import type {
-  CalendarPresentationMode,
-  TimelineHeaderScale,
-  WireframeHeaderScale
+  CalendarHeaderScale,
+  TimelineHeaderScale
 } from "./types";
 
 export function addDays(date: Date, days: number) {
@@ -100,11 +99,7 @@ export function getCurrentWeekStart(date: Date) {
     .valueOf();
 }
 
-export function formatTimelineItemWindow(startsAt: Date, endsAt: Date, presentationMode: CalendarPresentationMode) {
-  if (presentationMode !== "wireframe") {
-    return formatWindow(startsAt, endsAt);
-  }
-
+export function formatTimelineItemWindow(startsAt: Date, endsAt: Date) {
   if (isSameCalendarDay(startsAt, endsAt)) {
     return `${formatMinute(startsAt.getHours() * 60 + startsAt.getMinutes())} - ${formatMinute(
       endsAt.getHours() * 60 + endsAt.getMinutes()
@@ -166,7 +161,7 @@ const HEADER_SCALES: Record<TimelineHeaderScale["id"], TimelineHeaderScale> = {
   }
 };
 
-const WIREFRAME_HEADER_SCALES: Record<WireframeHeaderScale["id"], WireframeHeaderScale> = {
+const CALENDAR_HEADER_SCALES: Record<CalendarHeaderScale["id"], CalendarHeaderScale> = {
   days: {
     id: "days",
     unit: "day",
@@ -200,16 +195,16 @@ export function getHeaderScale(visibleSpan: number): TimelineHeaderScale {
   return HEADER_SCALES.days;
 }
 
-export function getWireframeHeaderScale(visibleSpan: number): WireframeHeaderScale {
+export function getCalendarHeaderScale(visibleSpan: number): CalendarHeaderScale {
   if (visibleSpan <= 14 * DAY_MS) {
-    return WIREFRAME_HEADER_SCALES.days;
+    return CALENDAR_HEADER_SCALES.days;
   }
 
   if (visibleSpan <= 70 * DAY_MS) {
-    return WIREFRAME_HEADER_SCALES.weeks;
+    return CALENDAR_HEADER_SCALES.weeks;
   }
 
-  return WIREFRAME_HEADER_SCALES.months;
+  return CALENDAR_HEADER_SCALES.months;
 }
 
 export function isCurrentDay(timestamp: number) {
@@ -254,8 +249,8 @@ export function createCurrentDayHeaderRenderer(highlightDay: boolean) {
   };
 }
 
-export function createWireframeHeaderRenderer(scaleId: WireframeHeaderScale["id"]) {
-  return function WireframeHeaderRenderer({
+export function createCalendarHeaderRenderer(scaleId: CalendarHeaderScale["id"]) {
+  return function CalendarHeaderRenderer({
     intervalContext,
     getIntervalProps
   }: {

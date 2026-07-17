@@ -57,8 +57,6 @@ export type MoveWindow = {
 
 export type ActionMode = "step" | "process" | "manual";
 export type StageFilterId = string | "__manual__";
-export type CalendarPresentationMode = "default" | "wireframe";
-export type CalendarPersistenceMode = "server" | "local";
 
 export type TimelineHeaderScale = {
   id: "minutes" | "hours" | "blocks" | "days";
@@ -69,7 +67,7 @@ export type TimelineHeaderScale = {
   hourStep: 1 | 6;
 };
 
-export type WireframeHeaderScale = {
+export type CalendarHeaderScale = {
   id: "days" | "weeks" | "months";
   unit: "day" | "month";
   labelFormat: (timeRange: [Dayjs, Dayjs]) => string;
@@ -107,7 +105,5 @@ export type ProcessCalendarBoardProps = {
   people: ProcessCalendarPersonOption[];
   initialEvents: ProcessCalendarEventView[];
   initialVisibleStartDate?: string;
-  persistenceMode?: CalendarPersistenceMode;
-  presentationMode?: CalendarPresentationMode;
   canEdit?: boolean;
 };

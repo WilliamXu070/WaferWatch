@@ -2,7 +2,7 @@
 
 import { ProcessFlowDiagram } from "@/components/ProcessFlowDiagram";
 import type { Json, ProcessStepExecutionMode, ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
-import type { CheckpointReviewerOption } from "@/components/process-flow/types";
+import type { CheckpointReviewerOption, ProcessFlowActions } from "@/components/process-flow/types";
 import type { FlowStatModel } from "../types";
 import { ProcessFlowStatsBar } from "./ProcessFlowStatsBar";
 
@@ -68,24 +68,7 @@ type ProcessFlowViewProps = {
   archiveItems?: Parameters<typeof ProcessFlowDiagram>[0]["archiveItems"];
   currentUserId?: string;
   currentUserName?: string;
-  onCreateStep?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateStep"];
-  onCreateWaferAtProcessStart?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateWaferAtProcessStart"];
-  onUpdateStepPositions?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepPositions"];
-  onUpdateStepName?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepName"];
-  onUpdateStepNodeType?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepNodeType"];
-  onUpdateStepExecutionMode?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepExecutionMode"];
-  onCreateTransition?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateTransition"];
-  onDeleteSteps?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteSteps"];
-  onDeleteTransitions?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteTransitions"];
-  onDeleteWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onDeleteWafer"];
-  onArchiveWafers?: Parameters<typeof ProcessFlowDiagram>[0]["onArchiveWafers"];
-  onRestoreArchivedWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onRestoreArchivedWafer"];
-  onSubmitCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onSubmitCheckpoint"];
-  onRouteCheckpoint?: Parameters<typeof ProcessFlowDiagram>[0]["onRouteCheckpoint"];
-  onMoveApprovedWafer?: Parameters<typeof ProcessFlowDiagram>[0]["onMoveApprovedWafer"];
-  onUndoDieProcessHistory?: Parameters<typeof ProcessFlowDiagram>[0]["onUndoDieProcessHistory"];
-  onSaveStepParameters?: Parameters<typeof ProcessFlowDiagram>[0]["onSaveStepParameters"];
-  onUpdateStepReviewer?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepReviewer"];
+  actions?: ProcessFlowActions;
 };
 
 export function ProcessFlowView({
@@ -103,24 +86,7 @@ export function ProcessFlowView({
   archiveItems,
   currentUserId,
   currentUserName,
-  onCreateStep,
-  onCreateWaferAtProcessStart,
-  onUpdateStepPositions,
-  onUpdateStepName,
-  onUpdateStepNodeType,
-  onUpdateStepExecutionMode,
-  onCreateTransition,
-  onDeleteSteps,
-  onDeleteTransitions,
-  onDeleteWafer,
-  onArchiveWafers,
-  onRestoreArchivedWafer,
-  onSubmitCheckpoint,
-  onRouteCheckpoint,
-  onMoveApprovedWafer,
-  onUndoDieProcessHistory,
-  onSaveStepParameters,
-  onUpdateStepReviewer
+  actions
 }: ProcessFlowViewProps) {
   return (
     <div className="process-flow-view flex h-full min-h-0 flex-col gap-2 p-2 md:gap-3 md:p-4">
@@ -159,24 +125,7 @@ export function ProcessFlowView({
             currentUserId={currentUserId}
             currentUserName={currentUserName}
             canEdit={canEdit}
-            onCreateStep={onCreateStep}
-            onCreateWaferAtProcessStart={onCreateWaferAtProcessStart}
-            onUpdateStepPositions={onUpdateStepPositions}
-            onUpdateStepName={onUpdateStepName}
-            onUpdateStepNodeType={onUpdateStepNodeType}
-            onUpdateStepExecutionMode={onUpdateStepExecutionMode}
-            onCreateTransition={onCreateTransition}
-            onDeleteSteps={onDeleteSteps}
-            onDeleteTransitions={onDeleteTransitions}
-            onDeleteWafer={onDeleteWafer}
-            onArchiveWafers={onArchiveWafers}
-            onRestoreArchivedWafer={onRestoreArchivedWafer}
-            onSubmitCheckpoint={onSubmitCheckpoint}
-            onRouteCheckpoint={onRouteCheckpoint}
-            onMoveApprovedWafer={onMoveApprovedWafer}
-            onUndoDieProcessHistory={onUndoDieProcessHistory}
-            onSaveStepParameters={onSaveStepParameters}
-            onUpdateStepReviewer={onUpdateStepReviewer}
+            actions={actions}
           />
         </div>
       </section>

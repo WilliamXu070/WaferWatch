@@ -16,30 +16,12 @@ export const wireframeBrand = {
   name: "WaferWatch"
 } as const;
 
-export type NavBasePath = "" | "/wireframe";
-
-function withBasePath(path: string, navBasePath: NavBasePath) {
-  return `${navBasePath}${path}`;
-}
-
-export function getMainNav(navBasePath: NavBasePath = ""): readonly SidebarNavItem[] {
-  return [
-    { key: "dashboard", label: "Dashboard", href: withBasePath("/dashboard", navBasePath), icon: "grid" },
-    { key: "calendar", label: "Calendar", href: withBasePath("/calendar", navBasePath), icon: "calendar" }
-  ];
-}
-
-export function getProcessNav(navBasePath: NavBasePath = ""): readonly SidebarNavItem[] {
-  return [
-    { key: "process-flow", label: "Process Flow", href: withBasePath("/process-flow", navBasePath), icon: "flow" },
-    { key: "wafer-status", label: "Wafer / Die Status", href: withBasePath("/wafer-status", navBasePath), icon: "waferStatus" }
-  ];
-}
-
 export const mainNav: readonly SidebarNavItem[] = [
-  ...getMainNav("/wireframe")
+  { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "grid" },
+  { key: "calendar", label: "Calendar", href: "/calendar", icon: "calendar" }
 ];
 
 export const processNav: readonly SidebarNavItem[] = [
-  ...getProcessNav("/wireframe")
+  { key: "process-flow", label: "Process Flow", href: "/process-flow", icon: "flow" },
+  { key: "wafer-status", label: "Wafer / Die Status", href: "/wafer-status", icon: "waferStatus" }
 ];

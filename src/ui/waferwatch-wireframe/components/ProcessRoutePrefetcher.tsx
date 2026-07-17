@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { NavBasePath } from "../nav";
 import { getProcessRoutesToPrefetch } from "./processRoutePrefetch";
 
 /**
@@ -11,11 +10,9 @@ import { getProcessRoutesToPrefetch } from "./processRoutePrefetch";
  * payload cannot contend with the rest of the application shell.
  */
 export function ProcessRoutePrefetcher({
-  defaultProcessId,
-  navBasePath = ""
+  defaultProcessId
 }: {
   defaultProcessId?: string | null;
-  navBasePath?: NavBasePath;
 }) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
@@ -25,7 +22,7 @@ export function ProcessRoutePrefetcher({
   useEffect(() => {
     if (!processId) return;
 
-    const pendingHrefs = getProcessRoutesToPrefetch(processId, navBasePath, pathname);
+    const pendingHrefs = getProcessRoutesToPrefetch(processId, pathname);
     let cancelled = false;
     let timeoutId: number | null = null;
     let idleId: number | null = null;
@@ -69,7 +66,7 @@ export function ProcessRoutePrefetcher({
         window.cancelIdleCallback(idleId);
       }
     };
-  }, [navBasePath, pathname, processId, router]);
+  }, [pathname, processId, router]);
 
   return null;
 }

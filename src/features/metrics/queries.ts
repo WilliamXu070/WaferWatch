@@ -47,30 +47,6 @@ export async function getWipByStage(projectId: string) {
   return data;
 }
 
-export async function getToolUtilization(fromIso?: string, toIso?: string) {
-  const supabase = await createServerSupabaseClient();
-  let query = supabase
-    .from("vw_tool_utilization_daily")
-    .select("*")
-    .order("utilization_day", { ascending: false });
-
-  if (fromIso) {
-    query = query.gte("utilization_day", fromIso);
-  }
-
-  if (toIso) {
-    query = query.lte("utilization_day", toIso);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
 export async function getProjectMetricSummary(projectId: string) {
   const [cycleTimes, stepMetrics, wip] = await Promise.all([
     getWaferCycleMetrics(projectId),

@@ -16,7 +16,7 @@ test("finds an existing edge when a new node is created near the connection", ()
     { id: "poling-inspect", from: "poling", to: "inspect", kind: "flow" }
   ];
 
-  const candidate = findEdgeSplitCandidate({ x: 340, y: 167 }, edges, nodes, 28);
+  const candidate = findEdgeSplitCandidate({ x: 418, y: 167 }, edges, nodes, 28);
 
   assert.equal(candidate?.edge.id, "clean-poling");
 });

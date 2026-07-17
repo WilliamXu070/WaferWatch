@@ -4,11 +4,9 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { fail, ok } from "@/lib/action-result";
-import { requireAccount } from "@/lib/auth/session";
+import { fail } from "@/lib/action-result";
 import { PASSWORD_RECOVERY_COOKIE } from "@/lib/auth/password-recovery";
-import { toErrorMessage } from "@/lib/errors";
-import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formString } from "@/lib/validation";
 import { getAppUrl } from "@/lib/app-url";
 
@@ -37,11 +35,6 @@ function isHtmlParseError(error: unknown) {
     error.message.includes("Unexpected token '<'")
   );
 }
-
-const profileUpdateSchema = z.object({
-  displayName: z.string().trim().min(1).max(120),
-  labGroup: z.string().trim().min(1).max(160).default("McMaster Quantum Photonic Group")
-});
 
 export async function signInWithPassword(formData: FormData) {
   const parsed = authSchema.parse({
@@ -104,37 +97,6 @@ export async function signInFormAction(
 
   revalidatePath("/", "layout");
   redirect("/dashboard");
-}
-
-export async function signUpWithPassword(formData: FormData) {
-  const parsed = authSchema
-    .extend({
-      displayName: z.string().trim().min(1).max(120).optional()
-    })
-    .parse({
-      email: formString(formData, "email"),
-      password: formString(formData, "password"),
-      displayName: formString(formData, "displayName") || undefined
-    });
-
-  const supabase = await createServerSupabaseClient();
-  const emailRedirectTo = `${getAppUrl()}/auth/confirm?next=/dashboard`;
-  const { error } = await supabase.auth.signUp({
-    email: parsed.email,
-    password: parsed.password,
-    options: {
-      emailRedirectTo,
-      data: {
-        display_name: parsed.displayName
-      }
-    }
-  });
-
-  if (error) {
-    return fail(error.message);
-  }
-
-  return ok({ message: "Check your email to confirm your account if email confirmation is enabled." });
 }
 
 export async function signUpFormAction(
@@ -307,34 +269,4 @@ export async function signOut() {
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
   redirect("/");
-}
-
-export async function updateCurrentProfile(formData: FormData) {
-  try {
-    const account = await requireAccount();
-    const parsed = profileUpdateSchema.parse({
-      displayName: formString(formData, "displayName"),
-      labGroup: formString(formData, "labGroup") || "McMaster Quantum Photonic Group"
-    });
-
-    const admin = createSupabaseAdminClient();
-    const { data, error } = await admin
-      .from("profiles")
-      .update({
-        display_name: parsed.displayName,
-        lab_group: parsed.labGroup
-      })
-      .eq("id", account.userId)
-      .select("*")
-      .single();
-
-    if (error) {
-      return fail(error.message);
-    }
-
-    revalidatePath("/", "layout");
-    return ok(data);
-  } catch (error) {
-    return fail(toErrorMessage(error));
-  }
 }

@@ -7,7 +7,6 @@ import {
 } from "react";
 import type { ReactCalendarTimelineProps } from "react-calendar-timeline";
 import type {
-  CalendarPresentationMode,
   CalendarTimelineItem,
   DraftEvent,
   TimelineLocationGroup
@@ -19,7 +18,6 @@ type TimelineItemRendererProps = Parameters<
 
 type RenderCalendarTimelineItemInput = {
   draft: DraftEvent | null;
-  presentationMode: CalendarPresentationMode;
   selectedEventId: string | null;
   suppressedItemSelectionIdRef: RefObject<string | null>;
   ignoreStaleItemSelectionUntilRef: RefObject<number>;
@@ -36,7 +34,6 @@ export function getTimelineItemLabelMode(visibleItemWidth: number) {
 
 export function renderCalendarTimelineItem({
   draft,
-  presentationMode,
   selectedEventId,
   suppressedItemSelectionIdRef,
   ignoreStaleItemSelectionUntilRef,
@@ -108,23 +105,14 @@ export function renderCalendarTimelineItem({
         className={`ww-timeline-item-content ww-timeline-item-content--${itemLabelMode}`}
         style={contentStyle}
       >
-        {presentationMode === "wireframe" ? (
-          <>
-            <div className="ww-timeline-item-title-row">
-              <strong title={item.title}>{item.title}</strong>
-              {item.badgeLabel ? <span className="ww-timeline-item-badge">{item.badgeLabel}</span> : null}
-            </div>
-            <span className="ww-timeline-item-person">
-              {item.peopleLabel ? item.peopleLabel : "No one"}
-            </span>
-            <span className="ww-timeline-item-time">{item.timeLabel}</span>
-          </>
-        ) : (
-          <>
-            <strong>{item.title}</strong>
-            <span>{item.peopleLabel || "Unassigned"}</span>
-          </>
-        )}
+        <div className="ww-timeline-item-title-row">
+          <strong title={item.title}>{item.title}</strong>
+          {item.badgeLabel ? <span className="ww-timeline-item-badge">{item.badgeLabel}</span> : null}
+        </div>
+        <span className="ww-timeline-item-person">
+          {item.peopleLabel ? item.peopleLabel : "No one"}
+        </span>
+        <span className="ww-timeline-item-time">{item.timeLabel}</span>
       </div>
       {itemContext.useResizeHandle ? (
         <div {...resizeProps.right} className="ww-timeline-resize ww-timeline-resize--right" />

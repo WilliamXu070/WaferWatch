@@ -103,42 +103,25 @@ import {
 } from "./process-flow/checkpointPhase";
 import type {
   CheckpointReviewerOption,
-  ArchiveCompletedProcessWafersAction,
   ConnectionDraft,
-  CreateWaferAtProcessStartAction,
-  CreateProcessFlowStepAction,
-  CreateProcessStepTransitionAction,
-  DeleteProcessFlowWaferAction,
-  DeleteProcessStepsAction,
-  DeleteProcessTransitionsAction,
   DiagramStep,
   DiagramTransition,
   FlowEdge,
   FlowNode,
   GraphViewportFit,
-  MoveApprovedCheckpointAction,
   NodeDrag,
   PanePoint,
   PendingWaferMove,
   ProcessArchiveItem,
+  ProcessFlowActions,
   PersistedStepPayload,
   RoleMenu,
-  RouteCheckpointAction,
-  RestoreArchivedProcessWaferAction,
-  SaveStepParameterRecordAction,
   ScenePoint,
   SelectionBox,
   SelectionRect,
   SnapGuide,
-  UndoDieProcessHistoryAction,
-  UpdateProcessStepExecutionModeAction,
-  UpdateProcessStepNameAction,
-  UpdateStepCheckpointReviewerAction,
-  UpdateProcessStepNodeTypeAction,
-  UpdateProcessStepPositionsAction,
   WaferDrag,
   WaferPin,
-  SubmitStepCheckpointAction,
   ZoomAnchor
 } from "./process-flow/types";
 
@@ -331,23 +314,7 @@ export function ProcessFlowDiagram({
   processTemplateId,
   suggestedWaferCode,
   archiveItems = [],
-  onCreateStep,
-  onCreateWaferAtProcessStart,
-  onUpdateStepPositions,
-  onUpdateStepName,
-  onUpdateStepExecutionMode,
-  onCreateTransition,
-  onDeleteSteps,
-  onDeleteTransitions,
-  onDeleteWafer,
-  onArchiveWafers,
-  onRestoreArchivedWafer,
-  onSubmitCheckpoint,
-  onRouteCheckpoint,
-  onMoveApprovedWafer,
-  onUndoDieProcessHistory,
-  onSaveStepParameters,
-  onUpdateStepReviewer,
+  actions,
   reviewerOptions = [],
   currentUserId,
   currentUserName,
@@ -358,29 +325,31 @@ export function ProcessFlowDiagram({
   processTemplateId?: string;
   suggestedWaferCode?: string;
   archiveItems?: ProcessArchiveItem[];
+  actions?: ProcessFlowActions;
   canEdit?: boolean;
-  onCreateStep?: CreateProcessFlowStepAction;
-  onCreateWaferAtProcessStart?: CreateWaferAtProcessStartAction;
-  onUpdateStepPositions?: UpdateProcessStepPositionsAction;
-  onUpdateStepName?: UpdateProcessStepNameAction;
-  onUpdateStepExecutionMode?: UpdateProcessStepExecutionModeAction;
-  onUpdateStepNodeType?: UpdateProcessStepNodeTypeAction;
-  onCreateTransition?: CreateProcessStepTransitionAction;
-  onDeleteSteps?: DeleteProcessStepsAction;
-  onDeleteTransitions?: DeleteProcessTransitionsAction;
-  onDeleteWafer?: DeleteProcessFlowWaferAction;
-  onArchiveWafers?: ArchiveCompletedProcessWafersAction;
-  onRestoreArchivedWafer?: RestoreArchivedProcessWaferAction;
-  onSubmitCheckpoint?: SubmitStepCheckpointAction;
-  onRouteCheckpoint?: RouteCheckpointAction;
-  onMoveApprovedWafer?: MoveApprovedCheckpointAction;
-  onUndoDieProcessHistory?: UndoDieProcessHistoryAction;
-  onSaveStepParameters?: SaveStepParameterRecordAction;
-  onUpdateStepReviewer?: UpdateStepCheckpointReviewerAction;
   reviewerOptions?: CheckpointReviewerOption[];
   currentUserId?: string;
   currentUserName?: string;
 }) {
+  const {
+    createStep: onCreateStep,
+    createWafer: onCreateWaferAtProcessStart,
+    updatePositions: onUpdateStepPositions,
+    updateName: onUpdateStepName,
+    updateExecutionMode: onUpdateStepExecutionMode,
+    createTransition: onCreateTransition,
+    deleteSteps: onDeleteSteps,
+    deleteTransitions: onDeleteTransitions,
+    deleteWafer: onDeleteWafer,
+    archiveWafers: onArchiveWafers,
+    restoreWafer: onRestoreArchivedWafer,
+    submitCheckpoint: onSubmitCheckpoint,
+    routeCheckpoint: onRouteCheckpoint,
+    moveApprovedWafer: onMoveApprovedWafer,
+    undoHistory: onUndoDieProcessHistory,
+    saveParameters: onSaveStepParameters,
+    updateReviewer: onUpdateStepReviewer
+  } = actions ?? {};
 
   const router = useRouter();
   const [scale, setScale] = useState(1);

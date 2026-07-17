@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import type { WireframeShellDto } from "@/features/wireframe/types";
-import type { CreateProcessAction } from "./WaferWatchShell";
+import type { CreateProcessAction } from "./shellActions";
 import {
   CalendarIcon,
   CloseIcon,
@@ -18,9 +18,8 @@ import {
   WaferStatusIcon
 } from "../icons";
 import {
-  getMainNav,
-  getProcessNav,
-  type NavBasePath,
+  mainNav as mainNavItems,
+  processNav as processNavItems,
   type SidebarNavItem,
   wireframeBrand
 } from "../nav";
@@ -79,12 +78,10 @@ function MobileNavLink({
 
 export function WireframeMobileChrome({
   shell,
-  navBasePath = "",
   onSignOut,
   onCreateProcess
 }: {
   shell: WireframeShellDto;
-  navBasePath?: NavBasePath;
   onSignOut?: () => void | Promise<void>;
   onCreateProcess?: CreateProcessAction;
 }) {
@@ -101,17 +98,17 @@ export function WireframeMobileChrome({
   const createInFlightRef = useRef(false);
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
-  const mainNav = getMainNav(navBasePath).map((item) => ({
+  const mainNav = mainNavItems.map((item) => ({
     ...item,
     href: withCurrentProcess(item.href, currentProcess?.id),
     badge: item.key === "calendar" && shell.calendarEventCount > 0 ? shell.calendarEventCount : item.badge
   }));
   const processNav = currentProcess
-    ? getProcessNav(navBasePath).map((item) => ({
+    ? processNavItems.map((item) => ({
         ...item,
         href: hrefWithProcess(item.href, currentProcess.id)
       }))
-    : getProcessNav(navBasePath);
+    : processNavItems;
   const bottomNav = [...mainNav, ...processNav];
   const currentProcessSelected = Boolean(currentProcess && selectedProcessId === currentProcess.id);
 
@@ -149,7 +146,7 @@ export function WireframeMobileChrome({
         setCreateNameDraft("");
         setDrawerOpen(false);
         router.refresh();
-        router.push(hrefWithProcess(`${navBasePath}/process-flow`, res.data.id));
+        router.push(hrefWithProcess("/process-flow", res.data.id));
       }).catch(() => {
         createInFlightRef.current = false;
       });
@@ -168,7 +165,7 @@ export function WireframeMobileChrome({
         >
           <MenuIcon />
         </button>
-        <Link href={`${navBasePath}/dashboard`} className="wireframe-mobile-brand" aria-label="Dashboard">
+        <Link href="/dashboard" className="wireframe-mobile-brand" aria-label="Dashboard">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#141412] text-white">
             <WaferLogoIcon />
           </span>

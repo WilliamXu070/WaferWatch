@@ -1,11 +1,9 @@
-import type { NavBasePath } from "../nav";
-
 const processRoutePaths = ["/dashboard", "/calendar", "/process-flow", "/wafer-status"] as const;
 
-export function getProcessRouteHrefs(processId: string, navBasePath: NavBasePath) {
+export function getProcessRouteHrefs(processId: string) {
   const query = `?processId=${encodeURIComponent(processId)}`;
 
-  return processRoutePaths.map((path) => `${navBasePath}${path}${query}`);
+  return processRoutePaths.map((path) => `${path}${query}`);
 }
 
 /**
@@ -14,10 +12,9 @@ export function getProcessRouteHrefs(processId: string, navBasePath: NavBasePath
  */
 export function getProcessRoutesToPrefetch(
   processId: string,
-  navBasePath: NavBasePath,
   pathname: string
 ) {
-  return getProcessRouteHrefs(processId, navBasePath).filter(
+  return getProcessRouteHrefs(processId).filter(
     (href) => !href.startsWith(`${pathname}?`)
   );
 }

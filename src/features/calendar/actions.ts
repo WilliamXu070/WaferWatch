@@ -17,7 +17,6 @@ const TRAVEL_BUFFER_MS = 60 * 60 * 1000;
 const MISSING_CALENDAR_TABLES_MESSAGE =
   "Calendar storage is not migrated yet. Apply the latest Supabase migration and seed data, then try again.";
 const CALENDAR_PATH = "/calendar";
-const WIREFRAME_CALENDAR_PATH = "/wireframe/calendar";
 const CALENDAR_EVENT_SELECT =
   "id, process_template_id, wafer_id, location, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description, revision";
 
@@ -321,7 +320,6 @@ export async function createProcessCalendarEvent(input: unknown) {
 
     revalidatePath(`/processes/${parsed.processTemplateId}`);
     revalidatePath(CALENDAR_PATH);
-    revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({
       ...event,
       wafer,
@@ -370,7 +368,6 @@ export async function deleteProcessCalendarEvent(input: unknown) {
 
     revalidatePath(`/processes/${event.process_template_id}`);
     revalidatePath(CALENDAR_PATH);
-    revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({ id: parsed.eventId });
   } catch (error) {
     if (isMissingCalendarTableError(error)) {
@@ -444,7 +441,6 @@ export async function moveProcessCalendarEvent(input: unknown) {
 
     revalidatePath(`/processes/${event.process_template_id}`);
     revalidatePath(CALENDAR_PATH);
-    revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({
       ...updatedEvent,
       wafer: null,
@@ -539,7 +535,6 @@ export async function updateProcessCalendarEvent(input: unknown) {
 
     revalidatePath(`/processes/${existingEvent.process_template_id}`);
     revalidatePath(CALENDAR_PATH);
-    revalidatePath(WIREFRAME_CALENDAR_PATH);
     return ok({
       ...updatedEvent,
       wafer,

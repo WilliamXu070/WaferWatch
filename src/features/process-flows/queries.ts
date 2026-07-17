@@ -124,75 +124,6 @@ export type ProcessArchiveItem = {
 
 export type ProcessDashboardWaferData = Omit<ProcessDashboardData, "calendarDays">;
 
-function mapProcessStepsByTemplate(steps: ProcessStep[] | null) {
-  const grouped: Record<string, ProcessStep[]> = {};
-
-  for (const step of steps ?? []) {
-    const key = step.template_id;
-    const existing = grouped[key];
-    if (existing) {
-      existing.push(step);
-    } else {
-      grouped[key] = [step];
-    }
-  }
-
-  return grouped;
-}
-
-function mapProcessStepTransitionsByTemplate(transitions: ProcessStepTransition[] | null) {
-  const grouped: Record<string, ProcessStepTransition[]> = {};
-
-  for (const transition of transitions ?? []) {
-    const key = transition.template_id;
-    const existing = grouped[key];
-    if (existing) {
-      existing.push(transition);
-    } else {
-      grouped[key] = [transition];
-    }
-  }
-
-  return grouped;
-}
-
-export async function listProcessTemplates() {
-  const supabase = await createServerSupabaseClient();
-  const [templatesResult, stepsResult, transitionsResult] = await Promise.all([
-    supabase
-      .from("process_templates")
-      .select("*")
-      .order("name", { ascending: true }),
-    supabase.from("process_steps").select("*").is("archived_at", null).order("step_order", { ascending: true }),
-    supabase
-      .from("process_step_transitions")
-      .select("*")
-      .order("priority", { ascending: true })
-      .order("created_at", { ascending: true })
-  ]);
-
-  if (templatesResult.error) {
-    throw templatesResult.error;
-  }
-
-  if (stepsResult.error) {
-    throw stepsResult.error;
-  }
-
-  if (transitionsResult.error) {
-    throw transitionsResult.error;
-  }
-
-  const stepsByTemplate = mapProcessStepsByTemplate(stepsResult.data);
-  const transitionsByTemplate = mapProcessStepTransitionsByTemplate(transitionsResult.data);
-
-  return (templatesResult.data ?? []).map((processTemplate) => ({
-    ...processTemplate,
-    process_steps: stepsByTemplate[processTemplate.id] ?? [],
-    process_step_transitions: transitionsByTemplate[processTemplate.id] ?? []
-  }));
-}
-
 export async function getProcessTemplate(templateId: string) {
   const supabase = await createServerSupabaseClient();
   const [templateResult, stepsResult, transitionsResult] = await Promise.all([
@@ -427,26 +358,6 @@ function createEmptyCalendarDays(fromDate: Date, totalDays: number): ProcessDash
   });
 }
 
-export async function getActiveAssignmentForWafer(waferId: string) {
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("wafer_process_assignments")
-    .select("*, process_templates(*)")
-    .eq("wafer_id", waferId)
-    .is("deleted_at", null)
-    .is("archived_at", null)
-    .in("status", ["planned", "queued", "in_progress", "on_hold"])
-    .order("assigned_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
 export async function getProcessArchiveItems(processTemplateId: string): Promise<ProcessArchiveItem[]> {
   const supabase = await createServerSupabaseClient();
   const { data: assignments, error: assignmentsError } = await supabase
@@ -475,7 +386,7 @@ export async function getProcessArchiveItems(processTemplateId: string): Promise
 
   const { data: wafers, error: wafersError } = await supabase
     .from("wafers")
-    .select("id, wafer_code, metadata, archived_at")
+    .select("id, wafer_code, die_label, metadata, archived_at")
     .in("id", waferIds)
     .is("deleted_at", null)
     .not("archived_at", "is", null);
@@ -512,7 +423,7 @@ export async function getProcessArchiveItems(processTemplateId: string): Promise
       assignmentId: assignment.id,
       waferId: wafer.id,
       waferCode: wafer.wafer_code,
-      dieLabel: extractDieLabel(wafer.metadata as Json),
+      dieLabel: wafer.die_label ?? extractDieLabel(wafer.metadata as Json),
       archivedAt,
       archivedByName: assignment.archived_by ? actorNameById.get(assignment.archived_by) ?? null : null,
       completedAt: assignment.completed_at
@@ -573,7 +484,7 @@ export async function getProcessDashboardData(
   const assignedWafersQuery = waferIds.length
     ? supabase
         .from("wafers")
-        .select("id, wafer_code, project_id, metadata")
+        .select("id, wafer_code, project_id, die_label, metadata")
         .is("deleted_at", null)
         .is("archived_at", null)
         .in("id", waferIds)
@@ -620,7 +531,13 @@ export async function getProcessDashboardData(
     throw assignedWafersResult.error;
   }
 
-  const mergedWafersById = new Map<string, { id: string; wafer_code: string; project_id: string; metadata: unknown }>();
+  const mergedWafersById = new Map<string, {
+    id: string;
+    wafer_code: string;
+    project_id: string;
+    die_label: string | null;
+    metadata: unknown;
+  }>();
   for (const wafer of assignedWafersResult.data ?? []) {
     mergedWafersById.set(wafer.id, wafer);
   }
@@ -813,7 +730,7 @@ export async function getProcessDashboardData(
       waferId: wafer.id,
       waferCode: wafer.wafer_code,
       projectId: wafer.project_id,
-      dieLabel: extractDieLabel(wafer.metadata as Json),
+      dieLabel: wafer.die_label ?? extractDieLabel(wafer.metadata as Json),
       currentStepId,
       currentStepExecutionId: currentExecution?.id ?? null,
       latestStepAttemptId: latestAttempt?.id ?? null,

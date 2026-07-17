@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { WireframeShellDto } from "@/features/wireframe/types";
-import type { CreateProcessAction, DeleteProcessAction, UpdateProcessNameAction } from "./WaferWatchShell";
+import type { CreateProcessAction, DeleteProcessAction, UpdateProcessNameAction } from "./shellActions";
 import {
   CalendarIcon,
   ChevronRightIcon,
@@ -17,9 +17,8 @@ import {
   WaferStatusIcon
 } from "../icons";
 import {
-  getMainNav,
-  getProcessNav,
-  type NavBasePath,
+  mainNav as mainNavItems,
+  processNav as processNavItems,
   wireframeBrand,
   type SidebarNavItem
 } from "../nav";
@@ -77,13 +76,11 @@ function withCurrentProcess(href: string, processId: string | null | undefined) 
 
 export function WireframeSidebar({
   shell,
-  navBasePath = "",
   onUpdateProcessName,
   onCreateProcess,
   onDeleteProcess
 }: {
   shell: WireframeShellDto;
-  navBasePath?: NavBasePath;
   onUpdateProcessName?: UpdateProcessNameAction;
   onCreateProcess?: CreateProcessAction;
   onDeleteProcess?: DeleteProcessAction;
@@ -102,11 +99,11 @@ export function WireframeSidebar({
     shell.currentProcess ??
     processes[0] ??
     null;
-  const mainNav = getMainNav(navBasePath).map((item) => ({
+  const mainNav = mainNavItems.map((item) => ({
     ...item,
     href: withCurrentProcess(item.href, currentProcess?.id)
   }));
-  const processNav = getProcessNav(navBasePath);
+  const processNav = processNavItems;
 
   const [expandedProcessState, setExpandedProcessState] = useState<{
     routeProcessId: string | null;
@@ -210,7 +207,7 @@ export function WireframeSidebar({
         setIsCreatingProcess(false);
         setCreateNameDraft("");
         router.refresh();
-        router.push(hrefWithProcess(`${navBasePath}/process-flow`, res.data.id));
+        router.push(hrefWithProcess("/process-flow", res.data.id));
       }).catch(() => {
         createInFlightRef.current = false;
       });
@@ -236,7 +233,7 @@ export function WireframeSidebar({
         }
         router.refresh();
         if (selectedProcessId === process.id) {
-          router.push(`${navBasePath}/dashboard`);
+          router.push("/dashboard");
         }
       }).catch(() => {
         deletingProcessIdsRef.current.delete(process.id);

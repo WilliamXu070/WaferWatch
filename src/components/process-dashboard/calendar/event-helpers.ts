@@ -4,7 +4,6 @@ import {
   MIN_EVENT_MS
 } from "./constants";
 import type {
-  CalendarPresentationMode,
   DraftDragSelection,
   DraftEvent,
   MoveWindow
@@ -30,45 +29,20 @@ export function eventLabel(event: ProcessCalendarEventView, stepsById: Map<strin
   return event.manual_action ?? "Manual action";
 }
 
-export function eventTone(label: string, presentationMode: CalendarPresentationMode) {
-  const normalized = label.toLowerCase();
-
-  if (presentationMode === "wireframe") {
-    if (normalized.includes("lith") || normalized.includes("expose") || normalized.includes("inspect")) {
-      return "ww-timeline-item--blue";
-    }
-
-    if (normalized.includes("clean") || normalized.includes("pol")) {
-      return "ww-timeline-item--green";
-    }
-
-    return "ww-timeline-item--amber";
-  }
-
-  if (normalized.includes("pol")) return "ww-timeline-item--green";
-  if (normalized.includes("inspect")) return "ww-timeline-item--blue";
-  if (normalized.includes("clean")) return "ww-timeline-item--soft";
-  return "ww-timeline-item--pink";
-}
-
 export function locationTone(location: ProcessCalendarLocation) {
   return LOCATION_TONE_CLASSES[location] ?? "ww-timeline-item--amber";
 }
 
-export function getWireframeEventTitle(
-  event: ProcessCalendarEventView,
-  label: string,
-  presentationMode: CalendarPresentationMode
-) {
-  if (presentationMode === "wireframe" && event.id === "evt-intake") {
+export function getCalendarEventTitle(event: ProcessCalendarEventView, label: string) {
+  if (event.id === "evt-intake") {
     return "New event";
   }
 
   return label;
 }
 
-export function getWireframeEventBadge(event: ProcessCalendarEventView, presentationMode: CalendarPresentationMode) {
-  return presentationMode === "wireframe" && event.id === "evt-intake" ? "Draft" : undefined;
+export function getCalendarEventBadge(event: ProcessCalendarEventView) {
+  return event.id === "evt-intake" ? "Draft" : undefined;
 }
 
 export function intervalsOverlap(startsAt: Date, endsAt: Date, otherStartsAt: Date, otherEndsAt: Date) {
@@ -143,7 +117,7 @@ export function isBlankTimelineTarget(target: EventTarget | null) {
   return true;
 }
 
-export function buildWireframePeopleSummary(persons: string[]) {
+export function buildPeopleSummary(persons: string[]) {
   if (persons.length === 0) {
     return "No one";
   }
