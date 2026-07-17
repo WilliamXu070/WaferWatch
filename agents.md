@@ -12,9 +12,8 @@
   It receives the current week on the server, retains recently viewed weeks in
   a small client cache, and fetches only the newly selected week in the
   background. The heavy Flow, Calendar, and Status DOM trees are not kept mounted.
-- Added a shell-contained loading surface for uncached route changes. Verified
-  `npm run lint` and `npm run build`; production desktop and 390x844 navigation
-  replay is required after deployment. Tracking: GitHub issue #43.
+- Verified `npm run lint` and `npm run build`; production desktop and 390x844
+  navigation replay is required after deployment. Tracking: GitHub issue #43.
 
 ## Recent development note (2026-07-17 visible iPhone Notes timeline correction)
 
