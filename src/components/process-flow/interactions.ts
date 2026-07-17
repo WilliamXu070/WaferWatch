@@ -9,6 +9,14 @@ import {
 
 export const WAFER_DRAG_THRESHOLD_PX = 10;
 
+/**
+ * Safari can drop pointer capture from SVG <g> elements during a touch drag.
+ * Keep the phone gesture on the stable HTML scroll frame from its first touch.
+ */
+export function getWaferDragCaptureTarget(pointerType: string) {
+  return pointerType === "touch" ? "frame" : "source";
+}
+
 export function getStepParametersNavigation({
   stepId,
   processTemplateId

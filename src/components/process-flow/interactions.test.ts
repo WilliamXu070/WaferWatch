@@ -5,6 +5,7 @@ import {
   getStepParametersNavigation,
   getStepDoubleClickAction,
   getNearestWaferGridIndex,
+  getWaferDragCaptureTarget,
   hasCrossedWaferDragThreshold,
   shouldCommitWaferDrop
 } from "./interactions";
@@ -59,6 +60,12 @@ test("starts a wafer drag after intentional physical movement", () => {
     clientX: 110,
     clientY: 100
   }), true);
+});
+
+test("routes an iPhone wafer drag through the stable canvas frame from touch-down", () => {
+  assert.equal(getWaferDragCaptureTarget("touch"), "frame");
+  assert.equal(getWaferDragCaptureTarget("mouse"), "source");
+  assert.equal(getWaferDragCaptureTarget("pen"), "source");
 });
 
 test("maps either phone lane to the nearest existing wafer chip", () => {

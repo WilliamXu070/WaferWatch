@@ -77,6 +77,7 @@ import {
 import {
   getProcessMoveActionNote,
   getStepParametersNavigation,
+  getWaferDragCaptureTarget,
   hasCrossedWaferDragThreshold,
   shouldCommitWaferDrop
 } from "./process-flow/interactions";
@@ -2634,7 +2635,15 @@ export function ProcessFlowDiagram({
       hasMoved: false
     };
     waferDragRef.current = nextDrag;
-    safelySetPointerCapture(event.currentTarget, event.pointerId);
+    // iPhone Safari does not reliably retain capture on an SVG <g>. Capture
+    // on the stable HTML frame before the first movement reaches the 10px
+    // threshold, so the drag continues even after leaving the tiny chip.
+    const captureTarget = getWaferDragCaptureTarget(event.pointerType) === "frame"
+      ? frameRef.current
+      : event.currentTarget;
+    if (captureTarget) {
+      safelySetPointerCapture(captureTarget, event.pointerId);
+    }
   };
 
   const updateWaferDrag = (event: PointerEvent<Element>) => {
@@ -2917,6 +2926,14 @@ export function ProcessFlowDiagram({
     clearWaferDragState();
 
     if (!shouldCommitWaferDrop(event.type, finishedDrag.hasMoved)) {
+      if (event.type === "pointerup" && !finishedDrag.hasMoved) {
+        const sourcePin = nodeById.get(finishedDrag.sourceStepId)?.wafers.find(
+          (wafer) => wafer.assignmentId === finishedDrag.assignmentId
+        );
+        if (sourcePin) {
+          selectWafer(finishedDrag.sourceStepId, sourcePin);
+        }
+      }
       return;
     }
 

@@ -1,5 +1,20 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 reliable iPhone Process Flow wafer drag)
+
+- Fixed phone wafer/die drags failing to register after the compact selection
+  bar removed the old destination-button fallback. A touch drag now captures
+  immediately on the stable HTML flow frame instead of first relying on an SVG
+  chip/lane capture that Safari can lose before the 10px drag threshold.
+- A stationary phone press is still a tap selection, a moved touch still opens
+  the existing Beginning/Complete drop workflow, and two-finger pinch remains
+  separate from both paths. Mouse and pen retain their source-element capture.
+- Added a focused touch-routing regression. Verified the touched interaction
+  suite, `npm run lint`, and `npm run build`. The isolated legacy wheel-zoom
+  assertion remains baseline-failing because its expected `<0.38` conflicts
+  with its unchanged bounded zoom constants (which produce about `0.59`).
+  Tracking: GitHub issue #41.
+
 ## Recent development note (2026-07-17 flush iPhone Calendar timeline)
 
 - Removed the nested horizontal scroll surface from the iPhone Calendar. The
