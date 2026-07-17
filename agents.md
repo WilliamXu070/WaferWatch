@@ -1,5 +1,14 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 flush iPhone Calendar timeline)
+
+- Removed the nested horizontal scroll surface from the iPhone Calendar. The
+  seven-day timeline now takes the available viewport width, clips overflow at
+  the board edge, and no longer reserves an empty fixed-height timeline area.
+- Preserved Calendar editing controls and normal vertical page movement. Verified
+  `npm run lint` and `npm run build`; browser replay was not run for this
+  CSS-contained layout change.
+
 ## Recent development note (2026-07-17 compact iPhone Process Flow selection)
 
 - Removed the phone-only wall of Complete, Archive, and every `Move to` target
