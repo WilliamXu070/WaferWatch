@@ -1,5 +1,19 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 compact iPhone Process Flow selection)
+
+- Removed the phone-only wall of Complete, Archive, and every `Move to` target
+  that appeared after selecting a wafer or die. The compact selection bar now
+  labels the selection, tells the operator to drag it, and retains only Clear
+  plus Delete; direct drag to a Beginning lane moves work and direct drag to
+  Complete submits it for checkpoint review.
+- Kept the existing mobile hit areas, multi-die drag selection, 10px drag
+  threshold, cancellation behavior, and all server-side eligibility checks.
+  No data schema or movement API changed.
+- Added a focused mobile markup regression and verified it with the existing
+  Beginning/Complete touch-layer and drag interaction tests, `npm run lint`,
+  and `npm run build`. Tracking: GitHub issue #40.
+
 ## Recent development note (2026-07-17 production navigation payload and Calendar waterfall)
 
 - Production Playwright with a disposable signed-in account measured Dashboard at

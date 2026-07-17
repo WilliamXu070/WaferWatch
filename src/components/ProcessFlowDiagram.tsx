@@ -81,9 +81,9 @@ import {
   shouldCommitWaferDrop
 } from "./process-flow/interactions";
 import {
-  getAvailableWaferMoveTargets,
   getSelectedLinkedStepEdge
 } from "./process-flow/mobileActions";
+import { MobileWaferSelectionBar } from "./process-flow/MobileWaferSelectionBar";
 import {
   clampScale,
   getWaferChipLabel,
@@ -512,37 +512,10 @@ export function ProcessFlowDiagram({
     () => new Set(activeSelectedWafers.map((wafer) => wafer.assignmentId)),
     [activeSelectedWafers]
   );
-  const selectedArchivePins = useMemo(() => {
-    if (!selectedWafer) return [];
-    const selectedIds = new Set(
-      activeSelectedWafers
-        .filter((selection) => selection.nodeId === selectedWafer.nodeId)
-        .map((selection) => selection.assignmentId)
-    );
-    return nodeById.get(selectedWafer.nodeId)?.wafers.filter((wafer) => selectedIds.has(wafer.assignmentId)) ?? [];
-  }, [activeSelectedWafers, nodeById, selectedWafer]);
-  const canArchiveSelected = areWafersArchivable(selectedArchivePins);
   const selectedLinkedStepEdge = useMemo(
     () => getSelectedLinkedStepEdge(edges, selectedNodeIds),
     [edges, selectedNodeIds]
   );
-  const selectedWaferMoveTargets = useMemo(() => {
-    if (!selectedWafer || !selectedWaferPin) return [];
-    const source = nodeById.get(selectedWafer.nodeId);
-    if (!source) return [];
-
-    return getAvailableWaferMoveTargets(
-      displayNodes,
-      edges,
-      selectedWafer.nodeId,
-      selectedWaferPin.anytimeReturnStepId
-    ).filter((target) => canMoveToProcessStep({
-      canCorrectCheckpointRoute: selectedWaferPin.canCorrectCheckpointRoute,
-      sourceMode: source.executionMode,
-      status: selectedWaferPin.currentStepStatus,
-      targetMode: target.executionMode
-    }));
-  }, [displayNodes, edges, nodeById, selectedWafer, selectedWaferPin]);
   const resolveWaferDropTarget = useCallback((drag: WaferDrag) => {
     if (!drag.hasMoved) {
       return null;
@@ -3907,92 +3880,14 @@ export function ProcessFlowDiagram({
         canEdit={canEdit}
       />
       {selectedWafer && selectedWaferPin ? (
-        <div
-          aria-label={`Selection actions for ${activeSelectedWafers.map((wafer) => wafer.label).join(", ")}`}
-          className="mx-3 mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-[#e5e5db] bg-[#fafaf4] p-3 md:hidden"
-        >
-          <span
-            className="mr-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#6b6a5f]"
-            title={activeSelectedWafers.map((wafer) => wafer.label).join(", ")}
-          >
-            {getWaferSelectionLabel(activeSelectedWafers)} selected
-          </span>
-          <button
-            className="button ghost-button"
-            disabled={isMovePending}
-            onClick={() => setSelectedWafers([])}
-            type="button"
-          >
-            Clear
-          </button>
-          {canEdit && onDeleteWafer ? (
-            <button
-              className="button button-secondary"
-              disabled={isMovePending}
-              onClick={deleteSelectedWafer}
-              type="button"
-            >
-              Delete {selectedWafer.isDie ? "die" : "wafer"}
-            </button>
-          ) : null}
-          {canEdit && onArchiveWafers && canArchiveSelected && selectedWafer ? (
-            <button
-              className="button button-secondary"
-              disabled={isWaferMutationPending}
-              onClick={() => archiveDraggedWafers({
-                assignmentId: selectedWafer.assignmentId,
-                sourceStepId: selectedWafer.nodeId,
-                waferLabel: getWaferSelectionLabel(activeSelectedWafers),
-                wafers: selectedArchivePins.map((wafer) => ({
-                  assignmentId: wafer.assignmentId,
-                  waferLabel: getWaferChipLabel(wafer),
-                  isDie: Boolean(wafer.dieLabel)
-                })),
-                pointerId: -1,
-                startClientX: 0,
-                startClientY: 0,
-                clientX: 0,
-                clientY: 0,
-                startX: 0,
-                startY: 0,
-                x: 0,
-                y: 0,
-                hasMoved: true
-              })}
-              type="button"
-            >
-              Archive {selectedArchivePins.length > 1 ? "selected" : selectedWafer.isDie ? "die" : "wafer"}
-            </button>
-          ) : null}
-          {activeSelectedWafers.every((selection) => {
-            const wafer = nodeById.get(selection.nodeId)?.wafers.find((item) => item.assignmentId === selection.assignmentId);
-            return wafer && canSubmitCheckpoint(wafer.currentStepStatus);
-          }) ? (
-            <button
-              className="button primary-button"
-              disabled={isMovePending}
-              onClick={() => openCheckpointSubmitDialog(activeSelectedWafers, selectedWafer.nodeId)}
-              type="button"
-            >Complete{activeSelectedWafers.length > 1 ? " selected" : ""}</button>
-          ) : null}
-          {selectedWaferMoveTargets.map((target) => (
-            <button
-              className="button button-secondary"
-              disabled={isMovePending}
-              key={target.id}
-              onClick={() => openWaferMoveDialog(
-                activeSelectedWafers,
-                selectedWafer.nodeId,
-                target.id
-              )}
-              type="button"
-            >
-              {target.id === selectedWaferPin.anytimeReturnStepId
-                ? `Return${activeSelectedWafers.length > 1 ? " all" : ""} to ${target.label}`
-                : `Move${activeSelectedWafers.length > 1 ? " all" : ""} to ${target.label}`}
-            </button>
-          ))}
-        </div>
+        <MobileWaferSelectionBar
+          label={`${getWaferSelectionLabel(activeSelectedWafers)} selected`}
+          canDelete={Boolean(canEdit && onDeleteWafer)}
+          deleteLabel={`Delete ${selectedWafer.isDie ? "die" : "wafer"}`}
+          isPending={isMovePending}
+          onClear={() => setSelectedWafers([])}
+          onDelete={deleteSelectedWafer}
+        />
       ) : null}
       {selectedNodeIds.size > 0 ? (
         <div
