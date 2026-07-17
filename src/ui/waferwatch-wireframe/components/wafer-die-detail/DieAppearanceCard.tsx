@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { type ChangeEvent, type ClipboardEvent, useCallback, useRef, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { getAttachmentDownloadUrl } from "@/features/measurements/actions";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
@@ -90,18 +90,33 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
     if (file) void uploadImage(file);
   };
 
-  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
-    const [image] = getClipboardImageFiles(event.clipboardData);
-    if (!image) return;
-    event.preventDefault();
-    void uploadImage(image);
-  };
+  useEffect(() => {
+    if (!canEdit) return;
+
+    const handlePaste = (event: ClipboardEvent) => {
+      if (event.defaultPrevented || isBusy) return;
+
+      const clipboardData = event.clipboardData;
+      if (!clipboardData) return;
+
+      const [image] = getClipboardImageFiles(clipboardData);
+      if (!image) return;
+
+      event.preventDefault();
+      void uploadImage(image);
+    };
+
+    // The native file picker moves focus away from the canvas. Listening while
+    // this editor is open makes ⌘V / clipboard paste a first-class replacement
+    // path, even when the operator did not first tab to the preview.
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [canEdit, isBusy, uploadImage]);
 
   return (
     <DetailCard title="Die appearance" className="die-appearance-card">
       <div
         className="die-appearance-card__canvas group relative grid min-h-[260px] place-items-center overflow-hidden rounded-lg border border-[#e5e5e0] bg-[#fafaf7] outline-none focus-within:border-[#111111] focus:border-[#111111]"
-        onPaste={handlePaste}
         tabIndex={canEdit ? 0 : -1}
       >
         {imageUrl ? (
@@ -120,7 +135,7 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
               <p className="text-[14px] font-semibold text-[#22221f]">
                 {isBusy ? "Loading image..." : "Die image template"}
               </p>
-              {canEdit ? <p className="mt-1 text-[12px] leading-5 text-[#777770]">Upload or paste an image to replace this template.</p> : null}
+              {canEdit ? <p className="mt-1 text-[12px] leading-5 text-[#777770]">Choose an image or paste a copied PNG, JPEG, or WebP with ⌘V.</p> : null}
             </div>
           </div>
         )}

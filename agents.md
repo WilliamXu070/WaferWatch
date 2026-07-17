@@ -1,5 +1,15 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 die appearance clipboard replacement)
+
+- The editable Die Appearance overview now accepts clipboard images with ⌘V,
+  even when the native Replace image picker has moved focus away from its
+  canvas. Clipboard files share the same PNG/JPEG/WebP, 50 MB, upload, and
+  saved-appearance path as picker files.
+- Paste capture is mounted only on the editable Appearance overview, so it
+  cannot intercept Notes or Parameters clipboard input. Verified focused
+  clipboard/editor coverage, `npm run lint`, and `npm run build`.
+
 ## Recent development note (2026-07-17 all-section post-load route warming)
 
 - Once an authenticated page finishes loading, the persistent shell warms all
