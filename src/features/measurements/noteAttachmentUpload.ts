@@ -1,10 +1,18 @@
 "use client";
 
 import { registerAttachment } from "@/features/measurements/actions";
+import {
+  MAX_NOTE_ATTACHMENTS,
+  NOTE_ATTACHMENT_MAX_BYTES
+} from "@/features/measurements/noteAttachmentDraft";
+import { mutateTextSurfaceJsonArray } from "@/features/text-surfaces/actions";
 import { createClient } from "@/lib/supabase/client";
+import {
+  getWaferDieStepNotesScopeKey,
+  waferDieNotesSurface
+} from "@/ui/waferwatch-wireframe/components/wafer-die-detail/waferDieDetailData";
 
-export const MAX_NOTE_ATTACHMENTS = 8;
-export const NOTE_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
+export { MAX_NOTE_ATTACHMENTS, NOTE_ATTACHMENT_MAX_BYTES } from "@/features/measurements/noteAttachmentDraft";
 
 const NOTE_ATTACHMENT_BUCKET = "wafer-process-files";
 
@@ -102,4 +110,65 @@ export async function uploadWaferNoteAttachments({
   }
 
   return uploaded;
+}
+
+export async function persistWaferStepNoteAttachments({
+  projectId,
+  waferId,
+  dieLabel,
+  stepId,
+  stepName,
+  stepExecutionId,
+  noteId,
+  authorId,
+  author,
+  body,
+  files
+}: {
+  projectId: string;
+  waferId: string;
+  dieLabel: string;
+  stepId: string;
+  stepName: string;
+  stepExecutionId?: string | null;
+  noteId: string;
+  authorId?: string | null;
+  author: string;
+  body: string;
+  files: readonly File[];
+}) {
+  const attachments = await uploadWaferNoteAttachments({
+    projectId,
+    waferId,
+    dieLabel,
+    stepExecutionId,
+    noteId,
+    files
+  });
+  const timestamp = new Date().toISOString();
+  const noteMutation = await mutateTextSurfaceJsonArray({
+    projectId,
+    scopeType: waferDieNotesSurface.scopeType,
+    scopeKey: getWaferDieStepNotesScopeKey(waferId, dieLabel, stepId),
+    fieldKey: waferDieNotesSurface.fieldKey,
+    operation: "add",
+    itemId: noteId,
+    item: {
+      id: noteId,
+      authorId: authorId ?? null,
+      author,
+      body,
+      attachments,
+      processStepId: stepId,
+      processStepName: stepName,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  });
+
+  if (!noteMutation.ok) {
+    throw new Error(noteMutation.error);
+  }
+
+  return attachments;
 }

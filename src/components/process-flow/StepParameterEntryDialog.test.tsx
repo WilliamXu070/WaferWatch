@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   StepParameterEntryDialog,
   prepareLocalParametersForSave,
+  saveStepParameterAttachmentsForEntries,
   saveStepParametersForEntries,
   updateDraftParameterFromInput,
   type DraftParameter,
@@ -133,6 +134,8 @@ test("renders the moved item, global template values, and local parameter contro
   assert.match(markup, /Value/);
   assert.match(markup, /Notes/);
   assert.match(markup, /Additional notes/);
+  assert.match(markup, /Attach files/);
+  assert.match(markup, /Paste images or attach files for this step record/);
   assert.match(markup, /Add row/);
   assert.doesNotMatch(markup, /Edit template/);
 });
@@ -166,7 +169,9 @@ test("one shared submission saves the same parameters for every moved die", asyn
     return { ok: true, data: {} as never };
   });
 
-  assert.deepEqual(result, { ok: true });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.length, 8);
   assert.equal(savedInputs.length, 8);
   assert.deepEqual(savedInputs.map((input) => input.assignmentId), entries.map((entry) => entry.assignmentId));
   assert.deepEqual(savedInputs.map((input) => input.movementMutationId), entries.map((entry) => entry.movementMutationId));
@@ -199,4 +204,52 @@ test("renders one form that explicitly applies to every moved item", () => {
   assert.match(markup, /Record once for A7, A8, A9, A10/);
   assert.match(markup, /Save for all 4/);
   assert.doesNotMatch(markup, /moved items remaining/);
+});
+
+test("persists one parameter attachment note for each moved item", async () => {
+  const entries: PendingStepParameterEntry[] = ["A1", "A2"].map((waferLabel, index) => ({
+    assignmentId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    movementMutationId: `10000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    waferLabel,
+    stepId: "20000000-0000-4000-8000-000000000001",
+    stepName: "Cleaning",
+    parametersSchema: {}
+  }));
+  const records = entries.map((entry, index) => ({
+    id: `30000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    project_id: "40000000-0000-4000-8000-000000000001",
+    wafer_id: `50000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    assignment_id: entry.assignmentId,
+    process_step_id: entry.stepId,
+    step_execution_id: `60000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    process_event_id: `70000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    movement_mutation_id: entry.movementMutationId,
+    schema_snapshot: {},
+    global_values: {},
+    local_parameters: [],
+    notes: "Shared note",
+    recorded_by: "80000000-0000-4000-8000-000000000001",
+    revision: 1,
+    created_at: "2026-07-16T12:00:00.000Z",
+    updated_at: "2026-07-16T12:00:00.000Z"
+  }));
+  const image = new File(["image"], "screenshot.png", { type: "image/png", lastModified: 123 });
+  const persisted: Array<{ noteId: string; waferId: string; files: readonly File[] }> = [];
+
+  await saveStepParameterAttachmentsForEntries(
+    entries,
+    records,
+    [image],
+    "Shared note",
+    "Ada Lovelace",
+    async (input) => {
+      persisted.push({ noteId: input.noteId, waferId: input.waferId, files: input.files });
+      return [];
+    }
+  );
+
+  assert.equal(persisted.length, 2);
+  assert.deepEqual(persisted.map((item) => item.noteId), records.map((record) => `step-parameters:${record.id}`));
+  assert.deepEqual(persisted.map((item) => item.waferId), records.map((record) => record.wafer_id));
+  assert.ok(persisted.every((item) => item.files.length === 1 && item.files[0] === image));
 });

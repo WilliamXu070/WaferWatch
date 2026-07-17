@@ -268,6 +268,7 @@ export default async function ProcessFlowWireframePage({
       reviewerOptions={reviewerOptions}
       archiveItems={archiveItems}
       currentUserId={account?.userId}
+      currentUserName={account?.profile.display_name ?? account?.email ?? undefined}
       canEdit={canEdit}
       onCreateStep={canEdit ? createProcessFlowStep : undefined}
       onCreateWaferAtProcessStart={canEdit ? createWaferAtProcessStart : undefined}

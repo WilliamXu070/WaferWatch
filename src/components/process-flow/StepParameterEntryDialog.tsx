@@ -2,6 +2,7 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import {
+  ClipboardEvent,
   FormEvent,
   useMemo,
   useState,
@@ -10,6 +11,9 @@ import {
   type Dispatch,
   type SetStateAction
 } from "react";
+import { PendingNoteAttachments } from "@/components/notes/PendingNoteAttachments";
+import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
+import { mergeNoteAttachmentFiles } from "@/features/measurements/noteAttachmentDraft";
 import {
   normalizeStepParameterKey,
   readStepParameterDefinitions,
@@ -17,7 +21,7 @@ import {
   type StepParameterDefinition,
   type StepParameterValue
 } from "@/features/process-flows/stepParameters";
-import type { Json } from "@/types/database";
+import type { Json, StepParameterRecord } from "@/types/database";
 import type { SaveStepParameterRecordAction } from "./types";
 
 export type PendingStepParameterEntry = {
@@ -30,6 +34,20 @@ export type PendingStepParameterEntry = {
 };
 
 export type DraftParameter = RecordedLocalStepParameter & { valueText: string };
+
+export type PersistStepParameterAttachment = (input: {
+  projectId: string;
+  waferId: string;
+  dieLabel: string;
+  stepId: string;
+  stepName: string;
+  stepExecutionId?: string | null;
+  noteId: string;
+  authorId?: string | null;
+  author: string;
+  body: string;
+  files: readonly File[];
+}) => Promise<unknown>;
 
 type SharedStepParameterValues = Omit<
   Parameters<SaveStepParameterRecordAction>[0],
@@ -58,7 +76,37 @@ export async function saveStepParametersForEntries(
     };
   }
 
-  return { ok: true as const };
+  return {
+    ok: true as const,
+    data: results.flatMap((result) => result.ok ? [result.data] : [])
+  };
+}
+
+export async function saveStepParameterAttachmentsForEntries(
+  entries: readonly PendingStepParameterEntry[],
+  records: readonly StepParameterRecord[],
+  files: readonly File[],
+  noteBody: string,
+  currentUserName: string | undefined,
+  persist: PersistStepParameterAttachment
+) {
+  if (entries.length !== records.length) {
+    throw new Error("The saved parameter records do not match the moved items.");
+  }
+
+  await Promise.all(records.map((record, index) => persist({
+    projectId: record.project_id,
+    waferId: record.wafer_id,
+    dieLabel: entries[index].waferLabel,
+    stepId: record.process_step_id,
+    stepName: entries[index].stepName,
+    stepExecutionId: record.step_execution_id,
+    noteId: `step-parameters:${record.id}`,
+    authorId: record.recorded_by,
+    author: currentUserName?.trim() || "Unknown user",
+    body: noteBody.trim() || "Step parameter attachment",
+    files
+  })));
 }
 
 export function updateDraftParameterFromInput(
@@ -165,12 +213,16 @@ export function StepParameterEntryDialog({
   entries,
   onSave,
   onComplete,
-  onSkipAll
+  onSkipAll,
+  currentUserName,
+  onPersistAttachment
 }: {
   entries: PendingStepParameterEntry[];
   onSave: SaveStepParameterRecordAction;
   onComplete: (message: string) => void;
   onSkipAll: () => void;
+  currentUserName?: string;
+  onPersistAttachment?: PersistStepParameterAttachment;
 }) {
   const entry = entries[0];
   const total = entries.length;
@@ -180,8 +232,31 @@ export function StepParameterEntryDialog({
   ));
   const [localParameters, setLocalParameters] = useState<DraftParameter[]>([]);
   const [additionalNotes, setAdditionalNotes] = useState("");
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const appendAttachmentFiles = (files: readonly File[]) => {
+    setAttachmentFiles((current) => {
+      const merged = mergeNoteAttachmentFiles(current, files);
+      setAttachmentError(
+        merged.oversizedCount > 0
+          ? "Files must be 50 MB or smaller."
+          : merged.overflowCount > 0
+            ? "You can attach up to 8 files."
+            : null
+      );
+      return merged.files;
+    });
+  };
+
+  const pasteAttachmentImages = (event: ClipboardEvent<HTMLElement>) => {
+    const images = getClipboardImageFiles(event.clipboardData);
+    if (!images.length) return;
+    event.preventDefault();
+    appendAttachmentFiles(images);
+  };
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -217,6 +292,27 @@ export function StepParameterEntryDialog({
         setMessage(result.error);
         return;
       }
+
+      if (attachmentFiles.length > 0) {
+        if (!onPersistAttachment) {
+          setMessage("Attachments are unavailable for this process view.");
+          return;
+        }
+        try {
+          await saveStepParameterAttachmentsForEntries(
+            entries,
+            result.data,
+            attachmentFiles,
+            additionalNotes,
+            currentUserName,
+            onPersistAttachment
+          );
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "The attachments could not be saved.");
+          return;
+        }
+      }
+
       onComplete(total > 1
         ? `Parameters saved for all ${total} moved items.`
         : `Parameters saved for ${entry.waferLabel}.`);
@@ -225,7 +321,7 @@ export function StepParameterEntryDialog({
 
   return (
     <div className="flow-wafer-move-dialog-backdrop" role="presentation">
-      <form className="flow-wafer-move-dialog process-flow-parameter-dialog" role="dialog" aria-modal="true" aria-labelledby="step-parameter-entry-title" onSubmit={submit}>
+      <form className="flow-wafer-move-dialog process-flow-parameter-dialog" role="dialog" aria-modal="true" aria-labelledby="step-parameter-entry-title" onPaste={pasteAttachmentImages} onSubmit={submit}>
         <header className="border-b border-[#e8e8e1] px-5 py-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#85857d]">
             {total > 1 ? `Applies to all ${total} moved items` : "Step parameters"}
@@ -379,6 +475,17 @@ export function StepParameterEntryDialog({
               }}
             />
           </label>
+
+          <PendingNoteAttachments
+            files={attachmentFiles}
+            disabled={isPending}
+            error={attachmentError}
+            description={total > 1
+              ? `Paste images or attach files for all ${total} moved items.`
+              : "Paste images or attach files for this step record."}
+            onAddFiles={appendAttachmentFiles}
+            onRemoveFile={(file) => setAttachmentFiles((current) => current.filter((candidate) => candidate !== file))}
+          />
 
           {message ? <p className="text-[13px] font-semibold text-[#9c3028]" role="status">{message}</p> : null}
         </div>

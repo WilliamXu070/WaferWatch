@@ -64,6 +64,7 @@ type ProcessFlowViewProps = {
   reviewerOptions?: CheckpointReviewerOption[];
   archiveItems?: Parameters<typeof ProcessFlowDiagram>[0]["archiveItems"];
   currentUserId?: string;
+  currentUserName?: string;
   onCreateStep?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateStep"];
   onCreateWaferAtProcessStart?: Parameters<typeof ProcessFlowDiagram>[0]["onCreateWaferAtProcessStart"];
   onUpdateStepPositions?: Parameters<typeof ProcessFlowDiagram>[0]["onUpdateStepPositions"];
@@ -97,6 +98,7 @@ export function ProcessFlowView({
   reviewerOptions,
   archiveItems,
   currentUserId,
+  currentUserName,
   onCreateStep,
   onCreateWaferAtProcessStart,
   onUpdateStepPositions,
@@ -150,6 +152,7 @@ export function ProcessFlowView({
             reviewerOptions={reviewerOptions}
             archiveItems={archiveItems}
             currentUserId={currentUserId}
+            currentUserName={currentUserName}
             canEdit={canEdit}
             onCreateStep={onCreateStep}
             onCreateWaferAtProcessStart={onCreateWaferAtProcessStart}

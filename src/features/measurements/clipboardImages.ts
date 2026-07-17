@@ -34,14 +34,19 @@ export function getClipboardImageFiles(source: ClipboardImageSource) {
   const directFiles = Array.from(source.files ?? []).filter(isImageFile);
   const seen = new Set<string>();
 
-  return [...itemFiles, ...directFiles]
-    .map(withClipboardFileName)
+  // Browsers commonly expose the same clipboard image through both collections.
+  // Prefer the direct FileList when it is populated and use DataTransferItemList
+  // as the compatibility fallback. Combining both can enqueue one paste twice.
+  const clipboardFiles = directFiles.length > 0 ? directFiles : itemFiles;
+
+  return clipboardFiles
     .filter((file) => {
-      const key = `${file.name}:${file.type}:${file.size}:${file.lastModified}`;
+      const key = `${file.name}:${file.type}:${file.size}`;
       if (seen.has(key)) {
         return false;
       }
       seen.add(key);
       return true;
-    });
+    })
+    .map(withClipboardFileName);
 }

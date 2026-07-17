@@ -6,17 +6,22 @@ import {
   useMemo,
   useState
 } from "react";
-import { Camera, ImagePlus, Paperclip } from "lucide-react";
 import Image from "next/image";
-import {
-  getAttachmentDownloadUrl,
-  registerAttachment
-} from "@/features/measurements/actions";
+import { PendingNoteAttachments } from "@/components/notes/PendingNoteAttachments";
+import { getAttachmentDownloadUrl } from "@/features/measurements/actions";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
+import {
+  formatNoteAttachmentSize,
+  MAX_NOTE_ATTACHMENTS,
+  mergeNoteAttachmentFiles
+} from "@/features/measurements/noteAttachmentDraft";
+import {
+  uploadWaferNoteAttachments,
+  type UploadedNoteAttachment
+} from "@/features/measurements/noteAttachmentUpload";
 import { saveWaferStatusStepParameterRecord } from "@/features/process-flows/actions";
 import { isGeneratedDicedPieceNote } from "@/features/runs/dicingNoteTransfer";
 import { mutateTextSurfaceJsonArray } from "@/features/text-surfaces/actions";
-import { createClient } from "@/lib/supabase/client";
 import type { WaferStatusTileModel } from "../../types";
 import { StepFileIcon } from "../../icons";
 import { DetailCard } from "./DetailCard";
@@ -30,14 +35,7 @@ import {
   waferDieNotesSurface
 } from "./waferDieDetailData";
 
-export type WaferDieNoteAttachment = {
-  id: string;
-  bucketName: string;
-  objectPath: string;
-  fileName: string;
-  mimeType: string | null;
-  sizeBytes: number | null;
-};
+export type WaferDieNoteAttachment = UploadedNoteAttachment;
 
 export type WaferDieNote = {
   id: string;
@@ -58,30 +56,6 @@ export type WaferDieNoteViewer = {
 };
 
 const MAX_NOTE_LENGTH = 1600;
-const MAX_ATTACHMENTS_PER_NOTE = 8;
-const NOTE_ATTACHMENT_BUCKET = "wafer-process-files";
-const NOTE_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
-const NOTE_ATTACHMENT_ACCEPT = [
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".heic",
-  ".heif",
-  ".tif",
-  ".tiff",
-  ".pdf",
-  ".doc",
-  ".docx",
-  ".ppt",
-  ".pptx",
-  ".xls",
-  ".xlsx",
-  ".csv",
-  ".json"
-].join(",");
-const NOTE_IMAGE_ACCEPT = "image/*,.heic,.heif";
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const EMPTY_NOTES: readonly WaferDieNote[] = [];
 const NOTE_AUTHOR_THEMES = [
@@ -154,20 +128,8 @@ function getNoteAuthorName(note: WaferDieNote, currentUser: WaferDieNoteViewer |
   return isOwnNote(note, currentUser) ? currentUser?.displayName ?? note.author : note.author;
 }
 
-function sanitizeFileName(fileName: string) {
-  return fileName.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120) || "attachment";
-}
-
 function formatFileSize(sizeBytes: number | null | undefined) {
-  if (!sizeBytes) {
-    return "";
-  }
-
-  if (sizeBytes < 1024 * 1024) {
-    return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
-  }
-
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  return formatNoteAttachmentSize(sizeBytes);
 }
 
 function isImageAttachment(attachment: WaferDieNoteAttachment) {
@@ -498,82 +460,6 @@ export function WaferDieNotesDashboard({
     [tile.code, tile.dieLabel, tile.projectId, tile.waferId]
   );
 
-  const uploadNoteAttachments = useCallback(
-    async (
-      stepExecutionId: string | null | undefined,
-      noteId: string,
-      files: readonly File[]
-    ): Promise<WaferDieNoteAttachment[]> => {
-      const uploaded: WaferDieNoteAttachment[] = [];
-
-      for (const file of files.slice(0, MAX_ATTACHMENTS_PER_NOTE)) {
-        if (file.size > NOTE_ATTACHMENT_MAX_BYTES) {
-          throw new Error(`${file.name} is larger than 50 MB.`);
-        }
-
-        const uploadId = crypto.randomUUID();
-        const safeFileName = sanitizeFileName(file.name);
-        const dieLabel = sanitizeFileName(tile.dieLabel || tile.code);
-        const objectPath = `${tile.projectId}/wafers/${tile.waferId}/dies/${dieLabel}/notes/${noteId}/${uploadId}-${safeFileName}`;
-        const signedResponse = await fetch("/api/storage/signed-upload", {
-          method: "POST",
-          headers: {
-            "content-type": "application/json"
-          },
-          body: JSON.stringify({
-            projectId: tile.projectId,
-            bucketName: NOTE_ATTACHMENT_BUCKET,
-            objectPath
-          })
-        });
-
-        if (!signedResponse.ok) {
-          const payload = await signedResponse.json().catch(() => null) as { error?: string } | null;
-          throw new Error(payload?.error ?? "Unable to create note attachment upload.");
-        }
-
-        const signedUpload = await signedResponse.json() as { path: string; token: string };
-        const supabase = createClient();
-        const { error: uploadError } = await supabase.storage
-          .from(NOTE_ATTACHMENT_BUCKET)
-          .uploadToSignedUrl(signedUpload.path, signedUpload.token, file, {
-            contentType: file.type || "application/octet-stream"
-          });
-
-        if (uploadError) {
-          throw new Error(uploadError.message);
-        }
-
-        const registered = await registerAttachment({
-          projectId: tile.projectId,
-          waferId: tile.waferId,
-          stepExecutionId: stepExecutionId ?? null,
-          bucketName: NOTE_ATTACHMENT_BUCKET,
-          objectPath,
-          fileName: file.name || safeFileName,
-          mimeType: file.type || null,
-          sizeBytes: file.size
-        });
-
-        if (!registered.ok) {
-          throw new Error(registered.error);
-        }
-
-        uploaded.push({
-          id: registered.data.id,
-          bucketName: registered.data.bucket_name,
-          objectPath: registered.data.object_path,
-          fileName: registered.data.file_name,
-          mimeType: registered.data.mime_type,
-          sizeBytes: registered.data.size_bytes
-        });
-      }
-
-      return uploaded;
-    },
-    [tile.code, tile.dieLabel, tile.projectId, tile.waferId]
-  );
-
   const openAttachment = useCallback(async (attachment: WaferDieNoteAttachment) => {
     setOpeningAttachmentId(attachment.id);
     setError(null);
@@ -630,26 +516,20 @@ export function WaferDieNotesDashboard({
   );
 
   const appendDraftFiles = useCallback((stepId: string, files: readonly File[]) => {
-    const acceptedFiles = files.filter((file) => file.size <= NOTE_ATTACHMENT_MAX_BYTES);
-    if (acceptedFiles.length !== files.length) {
-      setError("Images and files must be 50 MB or smaller.");
-    }
-
     setDraftFilesByStepId((current) => {
       const existing = current[stepId] ?? [];
-      const knownFiles = new Set(existing.map((file) => `${file.name}:${file.size}:${file.lastModified}`));
-      const additions = acceptedFiles.filter((file) => {
-        const key = `${file.name}:${file.size}:${file.lastModified}`;
-        if (knownFiles.has(key)) {
-          return false;
-        }
-        knownFiles.add(key);
-        return true;
-      });
+      const merged = mergeNoteAttachmentFiles(existing, files);
+      setError(
+        merged.oversizedCount > 0
+          ? "Files must be 50 MB or smaller."
+          : merged.overflowCount > 0
+            ? `You can attach up to ${MAX_NOTE_ATTACHMENTS} files.`
+            : null
+      );
 
       return {
         ...current,
-        [stepId]: [...existing, ...additions].slice(0, MAX_ATTACHMENTS_PER_NOTE)
+        [stepId]: merged.files
       };
     });
   }, []);
@@ -675,7 +555,14 @@ export function WaferDieNotesDashboard({
 
     let attachments: WaferDieNoteAttachment[];
     try {
-      attachments = await uploadNoteAttachments(stepExecutionId, noteId, files);
+      attachments = await uploadWaferNoteAttachments({
+        projectId: tile.projectId,
+        waferId: tile.waferId,
+        dieLabel: tile.dieLabel || tile.code,
+        stepExecutionId,
+        noteId,
+        files
+      });
     } catch (uploadError) {
       setIsSaving(false);
       setError(uploadError instanceof Error ? uploadError.message : "Unable to upload note attachments.");
@@ -1014,77 +901,19 @@ export function WaferDieNotesDashboard({
 
         {canEdit ? (
         <div className="wafer-step-detail__composer row-start-5 min-w-0 w-full max-w-full border-t border-[#e6e6e0] bg-white p-2">
-          {selectedDraftFiles.length ? (
-            <div className="mb-2 flex flex-wrap gap-2">
-              {selectedDraftFiles.map((file) => (
-                <span
-                  key={`${file.name}:${file.size}:${file.lastModified}`}
-                  className="inline-flex h-8 max-w-full items-center gap-2 rounded-md border border-[#e1e1dc] bg-[#fafafa] px-3 text-[12px] font-semibold text-[#44443f]"
-                >
-                  <span className="max-w-[220px] truncate">{file.name}</span>
-                  <span className="text-[#8a8a83]">{formatFileSize(file.size)}</span>
-                  <button
-                    type="button"
-                    onClick={() => setDraftFilesByStepId((current) => ({
-                      ...current,
-                      [selectedDraftKey]: (current[selectedDraftKey] ?? []).filter((candidate) => candidate !== file)
-                    }))}
-                    className="text-[#8a3b30]"
-                  >
-                    Remove
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
+          <div className="mb-2">
+            <PendingNoteAttachments
+              files={selectedDraftFiles}
+              disabled={isSaving}
+              description="Paste an image or attach a file to this note."
+              onAddFiles={(files) => appendDraftFiles(selectedDraftKey, files)}
+              onRemoveFile={(file) => setDraftFilesByStepId((current) => ({
+                ...current,
+                [selectedDraftKey]: (current[selectedDraftKey] ?? []).filter((candidate) => candidate !== file)
+              }))}
+            />
+          </div>
           <div className="wafer-step-detail__composer-row flex min-w-0 items-end gap-1.5">
-            <div className="flex shrink-0 items-center gap-1.5">
-              <label className="grid h-8 w-8 cursor-pointer place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Attach files" aria-label="Attach files">
-                <Paperclip size={16} aria-hidden />
-                <input
-                  type="file"
-                  multiple
-                  accept={NOTE_ATTACHMENT_ACCEPT}
-                  className="sr-only"
-                  disabled={isSaving}
-                  onChange={(event) => {
-                    const selectedFiles = Array.from(event.currentTarget.files ?? []);
-                    event.currentTarget.value = "";
-                    appendDraftFiles(selectedDraftKey, selectedFiles);
-                  }}
-                />
-              </label>
-              <label className="grid h-8 w-8 cursor-pointer place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Choose photos" aria-label="Choose photos">
-                <ImagePlus size={16} aria-hidden />
-                <input
-                  type="file"
-                  multiple
-                  accept={NOTE_IMAGE_ACCEPT}
-                  className="sr-only"
-                  disabled={isSaving}
-                  onChange={(event) => {
-                    const selectedFiles = Array.from(event.currentTarget.files ?? []);
-                    event.currentTarget.value = "";
-                    appendDraftFiles(selectedDraftKey, selectedFiles);
-                  }}
-                />
-              </label>
-              <label className="grid h-8 w-8 cursor-pointer place-items-center rounded-md border border-[#e1e1dc] bg-white text-[#55554f] hover:bg-[#fafafa]" title="Take photo" aria-label="Take photo">
-                <Camera size={16} aria-hidden />
-                <input
-                  type="file"
-                  accept={NOTE_IMAGE_ACCEPT}
-                  capture="environment"
-                  className="sr-only"
-                  disabled={isSaving}
-                  onChange={(event) => {
-                    const selectedFiles = Array.from(event.currentTarget.files ?? []);
-                    event.currentTarget.value = "";
-                    appendDraftFiles(selectedDraftKey, selectedFiles);
-                  }}
-                />
-              </label>
-            </div>
             <textarea
               id={`wafer-die-note-${selectedDraftKey}`}
               name="waferDieNote"

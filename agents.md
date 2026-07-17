@@ -1,5 +1,20 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 unified note attachments)
+
+- Unified movement/checkpoint, post-movement step-parameter, and Wafer / Die
+  Status note attachments around one queue, compact image preview, file picker,
+  upload helper, and step-note persistence path. Removed the duplicated Notes
+  uploader and obsolete movement attachment CSS.
+- Fixed one clipboard image being exposed through both browser clipboard lists,
+  repeated pastes gaining a new timestamp, and Strict Mode revoking preview URLs.
+  One image now stays one queued attachment and one live thumbnail.
+- Verified 12 focused tests, `npm run lint`, and `npm run build`. Authenticated
+  checkpoint QA at 390x844 pasted the same tracked PNG twice and retained one
+  1728px-wide decoded preview, one remove control, no page overflow, and no live
+  submission. The parameter popup render and two-item persistence fan-out are
+  regression-covered. Tracking: GitHub issue #32.
+
 ## Recent development note (2026-07-16 completion-ordered step history)
 
 - Fixed a Wafer / Die Status Notes bug that ordered completed visits by their

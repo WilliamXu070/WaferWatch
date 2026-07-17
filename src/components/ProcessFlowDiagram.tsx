@@ -16,22 +16,15 @@ import {
   type TouchPoint
 } from "@/components/process-flow/gesture";
 import { useRouter } from "next/navigation";
+import { PendingNoteAttachments } from "@/components/notes/PendingNoteAttachments";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
-import {
-  MAX_NOTE_ATTACHMENTS,
-  NOTE_ATTACHMENT_MAX_BYTES,
-  uploadWaferNoteAttachments
-} from "@/features/measurements/noteAttachmentUpload";
+import { mergeNoteAttachmentFiles } from "@/features/measurements/noteAttachmentDraft";
+import { persistWaferStepNoteAttachments } from "@/features/measurements/noteAttachmentUpload";
 import {
   getNextGreekWaferCode,
   getWaferCodeValidationError,
   normalizeWaferCode
 } from "@/features/process-flows/waferNaming";
-import { mutateTextSurfaceJsonArray } from "@/features/text-surfaces/actions";
-import {
-  getWaferDieStepNotesScopeKey,
-  waferDieNotesSurface
-} from "@/ui/waferwatch-wireframe/components/wafer-die-detail/waferDieDetailData";
 import type { ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
 import { readDeletedWaferIds } from "@/features/process-flows/waferDeletion";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
@@ -343,6 +336,7 @@ export function ProcessFlowDiagram({
   onUpdateStepReviewer,
   reviewerOptions = [],
   currentUserId,
+  currentUserName,
   canEdit = true
 }: {
   steps: DiagramStep[];
@@ -370,6 +364,7 @@ export function ProcessFlowDiagram({
   onUpdateStepReviewer?: UpdateStepCheckpointReviewerAction;
   reviewerOptions?: CheckpointReviewerOption[];
   currentUserId?: string;
+  currentUserName?: string;
 }) {
 
   const router = useRouter();
@@ -2971,25 +2966,20 @@ export function ProcessFlowDiagram({
   };
 
   const appendPendingWaferMoveFiles = (files: readonly File[]) => {
-    const acceptedFiles = files.filter((file) => file.size <= NOTE_ATTACHMENT_MAX_BYTES);
-    setPendingWaferMoveFileError(
-      acceptedFiles.length === files.length ? null : "Images must be 50 MB or smaller."
-    );
     setPendingWaferMoveFiles((current) => {
-      const keys = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`));
-      const additions = acceptedFiles.filter((file) => {
-        const key = `${file.name}:${file.size}:${file.lastModified}`;
-        if (keys.has(key)) {
-          return false;
-        }
-        keys.add(key);
-        return true;
-      });
-      return [...current, ...additions].slice(0, MAX_NOTE_ATTACHMENTS);
+      const merged = mergeNoteAttachmentFiles(current, files);
+      setPendingWaferMoveFileError(
+        merged.oversizedCount > 0
+          ? "Files must be 50 MB or smaller."
+          : merged.overflowCount > 0
+            ? "You can attach up to 8 files."
+            : null
+      );
+      return merged.files;
     });
   };
 
-  const pastePendingWaferMoveImages = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+  const pastePendingWaferMoveImages = (event: ClipboardEvent<HTMLElement>) => {
     const images = getClipboardImageFiles(event.clipboardData);
     if (!images.length) {
       return;
@@ -3112,49 +3102,26 @@ export function ProcessFlowDiagram({
                 const stepExecutionId = move.kind === "submit"
                   ? movingWafer.currentStepExecutionId ?? null
                   : payload.id ?? payload.step_execution_id ?? null;
-                const noteId = `execution-note:${stepExecutionId ?? crypto.randomUUID()}`;
-                const attachments = await uploadWaferNoteAttachments({
+                const noteId = `execution-note:${stepExecutionId ?? waferMove.mutationId}`;
+                const authorId = typeof payload.metadata?.note_author_id === "string"
+                  ? payload.metadata.note_author_id
+                  : currentUserId ?? null;
+                const author = typeof payload.metadata?.note_author_name === "string"
+                  ? payload.metadata.note_author_name
+                  : currentUserName?.trim() || "Unknown user";
+                await persistWaferStepNoteAttachments({
                   projectId: movingWafer.projectId,
                   waferId: movingWafer.waferId,
                   dieLabel: movingWafer.dieLabel || movingWafer.waferCode,
+                  stepId,
+                  stepName: move.kind === "submit" ? move.sourceLabel : move.targetLabel,
                   stepExecutionId,
                   noteId,
+                  authorId,
+                  author,
+                  body: actionNote,
                   files
                 });
-                const timestamp = new Date().toISOString();
-                const authorId = typeof payload.metadata?.note_author_id === "string"
-                  ? payload.metadata.note_author_id
-                  : null;
-                const author = typeof payload.metadata?.note_author_name === "string"
-                  ? payload.metadata.note_author_name
-                  : "Process move";
-                const noteMutation = await mutateTextSurfaceJsonArray({
-                  projectId: movingWafer.projectId,
-                  scopeType: waferDieNotesSurface.scopeType,
-                  scopeKey: getWaferDieStepNotesScopeKey(
-                    movingWafer.waferId,
-                    movingWafer.dieLabel || movingWafer.waferCode,
-                    stepId
-                  ),
-                  fieldKey: waferDieNotesSurface.fieldKey,
-                  operation: "add",
-                  itemId: noteId,
-                  item: {
-                    id: noteId,
-                    authorId,
-                    author,
-                    body: actionNote,
-                    attachments,
-                    processStepId: stepId,
-                    processStepName: move.kind === "submit" ? move.sourceLabel : move.targetLabel,
-                    createdAt: timestamp,
-                    updatedAt: timestamp
-                  }
-                });
-
-                if (!noteMutation.ok) {
-                  throw new Error(noteMutation.error);
-                }
               } catch (error) {
                 attachmentError = error instanceof Error
                   ? error.message
@@ -3724,6 +3691,8 @@ export function ProcessFlowDiagram({
           key={pendingStepParameterEntries.map((entry) => entry.movementMutationId).join(":")}
           entries={pendingStepParameterEntries}
           onSave={onSaveStepParameters}
+          currentUserName={currentUserName}
+          onPersistAttachment={persistWaferStepNoteAttachments}
           onComplete={(message) => {
             const completedMutationIds = new Set(
               pendingStepParameterEntries.map((entry) => entry.movementMutationId)
@@ -3758,6 +3727,7 @@ export function ProcessFlowDiagram({
             aria-labelledby="flow-wafer-move-title"
             aria-modal="true"
             className="flow-wafer-move-dialog"
+            onPaste={pastePendingWaferMoveImages}
             role="dialog"
           >
             <div className="flow-wafer-move-dialog__header">
@@ -3787,7 +3757,6 @@ export function ProcessFlowDiagram({
                 maxLength={4000}
                 name="processWaferMoveNote"
                 onChange={(event) => setPendingWaferMoveNote(event.currentTarget.value)}
-                onPaste={pastePendingWaferMoveImages}
                 placeholder={
                   pendingWaferMove.kind === "submit"
                     ? "Summarize completed work and any review details."
@@ -3797,30 +3766,16 @@ export function ProcessFlowDiagram({
                 value={pendingWaferMoveNote}
               />
             </label>
-            <div className="flow-wafer-move-dialog__attachments">
-              <p>
-                Paste up to {MAX_NOTE_ATTACHMENTS} screenshots with ⌘V.
-                {pendingWaferMove.wafers.length > 1 ? " Attachments apply to all selected dies." : ""}
-              </p>
-              {pendingWaferMoveFiles.length ? (
-                <div className="flow-wafer-move-dialog__attachment-list">
-                  {pendingWaferMoveFiles.map((file) => (
-                    <span key={`${file.name}:${file.size}:${file.lastModified}`}>
-                      <span title={file.name}>{file.name}</span>
-                      <button
-                        aria-label={`Remove ${file.name}`}
-                        disabled={isMovePending}
-                        onClick={() => setPendingWaferMoveFiles((current) => current.filter((candidate) => candidate !== file))}
-                        type="button"
-                      >
-                        Remove
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              {pendingWaferMoveFileError ? <p className="form-error">{pendingWaferMoveFileError}</p> : null}
-            </div>
+            <PendingNoteAttachments
+              files={pendingWaferMoveFiles}
+              disabled={isMovePending}
+              error={pendingWaferMoveFileError}
+              description={pendingWaferMove.wafers.length > 1
+                ? "Paste images or attach files for all selected dies."
+                : "Paste images or attach files for this step note."}
+              onAddFiles={appendPendingWaferMoveFiles}
+              onRemoveFile={(file) => setPendingWaferMoveFiles((current) => current.filter((candidate) => candidate !== file))}
+            />
             <div className="flow-wafer-move-dialog__actions">
               <button
                 className="button ghost-button"
