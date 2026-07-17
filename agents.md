@@ -1,5 +1,19 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 reliable added step parameters)
+
+- Fixed the post-movement parameter dialog rejecting a valid added parameter
+  when another newly added row was left untouched. Blank rows are now omitted,
+  partially filled rows ask only for the visible parameter name, and collision-safe
+  internal keys are generated automatically without exposing database terminology.
+- Added exact regression coverage for one filled row plus one unused blank row,
+  internal-key collisions, and partially filled unnamed rows. Verified seven
+  focused tests, `npm run lint`, and `npm run build`.
+- Exercised the real Cleaning dialog in an isolated browser QA route at 1280x720:
+  filled row 1, left row 2 blank, and Save submitted exactly one parameter with no
+  horizontal overflow or console errors. The temporary route was removed and no
+  live wafer data was changed. Tracking: GitHub issue #31.
+
 ## Recent development note (2026-07-16 removed parameter-set note)
 
 - Removed the redundant parameter-set note field from the Notes-tab parameter

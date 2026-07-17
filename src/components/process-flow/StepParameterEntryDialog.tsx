@@ -78,7 +78,7 @@ const inputClassName = "h-10 w-full min-w-0 border border-transparent bg-transpa
 function makeLocalParameter(): DraftParameter {
   return {
     id: crypto.randomUUID(),
-    key: "parameter",
+    key: "",
     label: "",
     type: "text",
     unit: "",
@@ -87,6 +87,36 @@ function makeLocalParameter(): DraftParameter {
     notes: "",
     scope: "local"
   };
+}
+
+export function prepareLocalParametersForSave(
+  parameters: readonly DraftParameter[],
+  reservedKeys: readonly string[]
+) {
+  const activeParameters = parameters.filter((parameter) =>
+    parameter.label.trim() || parameter.valueText.trim() || parameter.notes.trim()
+  );
+  if (activeParameters.some((parameter) => !parameter.label.trim())) {
+    return {
+      ok: false as const,
+      error: "Name each added parameter before saving."
+    };
+  }
+
+  const usedKeys = new Set(reservedKeys.map((key) => key.trim()).filter(Boolean));
+  const preparedParameters = activeParameters.map((parameter) => {
+    const baseKey = normalizeStepParameterKey(parameter.label);
+    let key = baseKey;
+    let suffix = 2;
+    while (usedKeys.has(key)) {
+      key = `${baseKey.slice(0, 76)}_${suffix}`;
+      suffix += 1;
+    }
+    usedKeys.add(key);
+    return { ...parameter, key };
+  });
+
+  return { ok: true as const, parameters: preparedParameters };
 }
 
 function parseValue(type: StepParameterDefinition["type"], raw: string): StepParameterValue {
@@ -162,14 +192,12 @@ export function StepParameterEntryDialog({
       setMessage(`${missingRequired.label} is required.`);
       return;
     }
-    const emptyLocal = localParameters.find((parameter) => !parameter.label.trim() || !parameter.key.trim());
-    if (emptyLocal) {
-      setMessage("Each added parameter needs a label and database key.");
-      return;
-    }
-    const keys = [...definitions.map((definition) => definition.key), ...localParameters.map((parameter) => parameter.key)];
-    if (new Set(keys).size !== keys.length) {
-      setMessage("Each parameter needs a unique database key.");
+    const preparedLocalParameters = prepareLocalParametersForSave(
+      localParameters,
+      definitions.map((definition) => definition.key)
+    );
+    if (!preparedLocalParameters.ok) {
+      setMessage(preparedLocalParameters.error);
       return;
     }
 
@@ -179,7 +207,7 @@ export function StepParameterEntryDialog({
         globalValues: Object.fromEntries(
           definitions.map((definition) => [definition.key, parseValue(definition.type, globalValues[definition.key] ?? "")])
         ),
-        localParameters: localParameters.map(({ valueText, ...parameter }) => ({
+        localParameters: preparedLocalParameters.parameters.map(({ valueText, ...parameter }) => ({
           ...parameter,
           value: parseValue(parameter.type, valueText)
         }))
@@ -266,6 +294,7 @@ export function StepParameterEntryDialog({
                               setLocalParameters((current) => current.map((candidate) => candidate.id === parameter.id
                                 ? { ...candidate, label, key: normalizeStepParameterKey(label) }
                                 : candidate));
+                              setMessage(null);
                             }}
                           />
                         </td>
@@ -275,12 +304,15 @@ export function StepParameterEntryDialog({
                             aria-label={`${parameter.label || `Parameter ${index + 1}`} value`}
                             placeholder="Enter value"
                             value={parameter.valueText}
-                            onChange={(event) => updateDraftParameterFromInput(
-                              setLocalParameters,
-                              parameter.id,
-                              "valueText",
-                              event
-                            )}
+                            onChange={(event) => {
+                              updateDraftParameterFromInput(
+                                setLocalParameters,
+                                parameter.id,
+                                "valueText",
+                                event
+                              );
+                              setMessage(null);
+                            }}
                           />
                         </td>
                         <td className="border-r border-[#e5e5df] p-0">
@@ -289,12 +321,15 @@ export function StepParameterEntryDialog({
                             aria-label={`${parameter.label || `Parameter ${index + 1}`} notes`}
                             placeholder="Add a note"
                             value={parameter.notes}
-                            onChange={(event) => updateDraftParameterFromInput(
-                              setLocalParameters,
-                              parameter.id,
-                              "notes",
-                              event
-                            )}
+                            onChange={(event) => {
+                              updateDraftParameterFromInput(
+                                setLocalParameters,
+                                parameter.id,
+                                "notes",
+                                event
+                              );
+                              setMessage(null);
+                            }}
                           />
                         </td>
                         <td className="p-0 text-center">
@@ -302,7 +337,10 @@ export function StepParameterEntryDialog({
                             type="button"
                             className="grid size-10 place-items-center text-[#8a8a82] hover:bg-[#f2e8e6] hover:text-[#9c3028]"
                             aria-label={`Remove ${parameter.label || `parameter ${index + 1}`}`}
-                            onClick={() => setLocalParameters((current) => current.filter((candidate) => candidate.id !== parameter.id))}
+                            onClick={() => {
+                              setLocalParameters((current) => current.filter((candidate) => candidate.id !== parameter.id));
+                              setMessage(null);
+                            }}
                           >
                             <Trash2 className="size-3.5" aria-hidden />
                           </button>
@@ -319,7 +357,10 @@ export function StepParameterEntryDialog({
             <button
               type="button"
               className="flex h-10 w-full items-center gap-2 border-t border-[#dcdcd5] bg-[#f8f8f4] px-3 text-left text-[12px] font-semibold text-[#55554f] hover:bg-[#f1f1eb] hover:text-[#1f1f1b]"
-              onClick={() => setLocalParameters((current) => [...current, makeLocalParameter()])}
+              onClick={() => {
+                setLocalParameters((current) => [...current, makeLocalParameter()]);
+                setMessage(null);
+              }}
             >
               <Plus className="size-3.5" aria-hidden /> Add row
             </button>
@@ -332,7 +373,10 @@ export function StepParameterEntryDialog({
               maxLength={4000}
               placeholder={total > 1 ? "Add context for all moved items" : "Add any context for this wafer or die"}
               value={additionalNotes}
-              onChange={(event) => setAdditionalNotes(event.currentTarget.value)}
+              onChange={(event) => {
+                setAdditionalNotes(event.currentTarget.value);
+                setMessage(null);
+              }}
             />
           </label>
 

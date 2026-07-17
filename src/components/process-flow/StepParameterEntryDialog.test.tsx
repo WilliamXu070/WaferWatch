@@ -4,6 +4,7 @@ import type { SetStateAction } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   StepParameterEntryDialog,
+  prepareLocalParametersForSave,
   saveStepParametersForEntries,
   updateDraftParameterFromInput,
   type DraftParameter,
@@ -23,6 +24,59 @@ function makeDraftParameter(): DraftParameter {
     scope: "local"
   };
 }
+
+test("ignores an untouched extra row when saving an added parameter", () => {
+  const filledParameter = {
+    ...makeDraftParameter(),
+    label: "Temperature",
+    valueText: "100",
+    notes: "Measured after cleaning"
+  };
+  const blankParameter: DraftParameter = {
+    ...makeDraftParameter(),
+    id: "unused-local-parameter",
+    key: "",
+    label: "",
+    valueText: "",
+    notes: ""
+  };
+
+  const prepared = prepareLocalParametersForSave(
+    [filledParameter, blankParameter],
+    []
+  );
+
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) return;
+  assert.equal(prepared.parameters.length, 1);
+  assert.equal(prepared.parameters[0].label, "Temperature");
+  assert.equal(prepared.parameters[0].key, "temperature");
+});
+
+test("generates collision-safe internal keys without exposing a database key field", () => {
+  const prepared = prepareLocalParametersForSave([
+    { ...makeDraftParameter(), id: "temperature-2", label: "Temperature" },
+    { ...makeDraftParameter(), id: "temperature-3", label: "Temperature" }
+  ], ["temperature"]);
+
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) return;
+  assert.deepEqual(prepared.parameters.map((parameter) => parameter.key), [
+    "temperature_2",
+    "temperature_3"
+  ]);
+});
+
+test("asks for the visible parameter name when a partial row has no label", () => {
+  const prepared = prepareLocalParametersForSave([
+    { ...makeDraftParameter(), key: "", label: "", valueText: "100" }
+  ], []);
+
+  assert.deepEqual(prepared, {
+    ok: false,
+    error: "Name each added parameter before saving."
+  });
+});
 
 test("captures local row input before React clears the event target", () => {
   for (const [key, value] of [["valueText", "425"], ["notes", "Measured after settling"]] as const) {
