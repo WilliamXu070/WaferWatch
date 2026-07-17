@@ -9,3 +9,9 @@ test("keeps clipboard paste available for the complete Die Appearance editor", a
   assert.match(source, /getClipboardImageFiles\(clipboardData\)/);
   assert.match(source, /paste a copied PNG, JPEG, or WebP with ⌘V/);
 });
+
+test("does not mount the native appearance picker in read-only status", async () => {
+  const source = await readFile(new URL("./DieAppearanceCard.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /\{canEdit \? \(\s*<input[\s\S]*?name="dieAppearanceImage"/);
+});

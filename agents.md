@@ -39,6 +39,7 @@ Prefer small domain modules over adding more state or handlers to the two large 
 
 - Never delete compatibility tables or metadata keys until a backfill and shadow comparison prove parity on production-shaped data.
 - Additive migrations must be reversible in effect and safe to rerun where practical.
+- Researchers are lab-wide readers of active projects. Viewers remain group/member scoped, and writes still require `can_edit_project`.
 - Use the user-scoped Supabase client by default. The admin client is limited to trusted server reads/writes that RLS cannot perform.
 - Do not edit an applied migration. Add a new migration.
 - `src/types/database.ts` is the current runtime type source. `npm run db:types` is inspection output until the generated contract is intentionally adopted.
@@ -60,6 +61,7 @@ For workflow/database changes also run the relevant verifier:
 npm run checkpoint:verify
 npm run archive:verify
 npm run collaboration:verify
+npm run researcher:verify
 ```
 
 Use a signed-in desktop and 390x844 browser replay for interaction changes when available. State exactly what was not replayed. Never mutate real wafer data merely to prove UI behavior.
@@ -80,7 +82,7 @@ Delegated branches must be integrated before production deployment.
 ## Refactor handoff — 2026-07-17
 
 - Removed prototype routes, duplicate route trees, orphaned components/modules, unused server APIs/schemas, and the unused `interactjs` dependency.
-- Added a single full test command; typecheck, lint, build, and 137 focused tests are the baseline gate.
+- Added a single full test command; typecheck, lint, build, and 138 focused tests are the baseline gate.
 - Canonical routes now own their implementations directly. Cache invalidation and navigation no longer branch on `/wireframe`.
 - Process Flow exposes one typed server-action boundary, and Calendar has one production presentation/persistence path.
 - Migration `202607170005` adds generated, indexed wafer/die identity columns while keeping metadata as the compatibility write source; production parity is verified.

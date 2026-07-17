@@ -154,14 +154,16 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
           </div>
         ) : null}
       </div>
-      <input
-        ref={inputRef}
-        accept="image/png,image/jpeg,image/webp"
-        className="sr-only"
-        name="dieAppearanceImage"
-        onChange={handleFileChange}
-        type="file"
-      />
+      {canEdit ? (
+        <input
+          ref={inputRef}
+          accept="image/png,image/jpeg,image/webp"
+          className="sr-only"
+          name="dieAppearanceImage"
+          onChange={handleFileChange}
+          type="file"
+        />
+      ) : null}
       {error || appearanceError ? <p className="form-error mt-2" role="alert">{error || appearanceError}</p> : null}
     </DetailCard>
   );

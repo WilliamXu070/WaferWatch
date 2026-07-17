@@ -24,6 +24,7 @@
     "collaboration:verify": "node scripts/verify-collaboration-db.mjs",
     "checkpoint:verify": "node scripts/verify-checkpoint-workflow.mjs",
     "archive:verify": "node scripts/verify-archive-workflow.mjs",
+    "researcher:verify": "node scripts/verify-researcher-access.mjs",
     "process:seed": "node --env-file=.env.local scripts/current-process-flow.mjs seed",
     "process:verify": "node --env-file=.env.local scripts/current-process-flow.mjs verify",
     "process:clear-wafers": "node --env-file=.env.local scripts/current-process-flow.mjs clear-wafers",
