@@ -3,7 +3,7 @@ import {
   getWaferStatusModel
 } from "@/features/wafers/queries";
 import { canEditProject, getCurrentAccount } from "@/lib/auth/session";
-import { WaferStatusView } from "@/ui/waferwatch-wireframe";
+import { WaferStatusView } from "@/ui/waferwatch-wireframe/components/WaferStatusView";
 
 export const dynamic = "force-dynamic";
 

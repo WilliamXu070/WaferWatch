@@ -28,7 +28,7 @@ import {
 import { getNextGreekWaferCode } from "@/features/process-flows/waferNaming";
 import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { ProcessFlowView } from "@/ui/waferwatch-wireframe";
+import { ProcessFlowView } from "@/ui/waferwatch-wireframe/components/ProcessFlowView";
 import type { FlowStatModel } from "@/ui/waferwatch-wireframe/types";
 import type { Json, ProcessStepExecutionMode, ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
 

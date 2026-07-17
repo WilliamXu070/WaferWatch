@@ -7,7 +7,7 @@ import {
 } from "@/features/process-flows/actions";
 import { getWireframeShellModel } from "@/features/wireframe/queries";
 import { requireAccountOrRedirect } from "@/lib/auth/session";
-import { WaferWatchShell } from "@/ui/waferwatch-wireframe";
+import { WaferWatchShell } from "@/ui/waferwatch-wireframe/components/WaferWatchShell";
 import { RealtimeWorkflowBridge } from "@/features/collaboration/RealtimeWorkflowBridge";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {

@@ -1,4 +1,4 @@
-import { DashboardView } from "@/ui/waferwatch-wireframe";
+import { DashboardView } from "@/ui/waferwatch-wireframe/components/DashboardView";
 import {
   getEmptyWireframeDashboardModel,
   getWireframeDashboardModel

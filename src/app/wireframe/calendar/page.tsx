@@ -1,4 +1,4 @@
-import { CalendarView } from "@/ui/waferwatch-wireframe";
+import { CalendarView } from "@/ui/waferwatch-wireframe/components/CalendarView";
 import { getProcessCalendarSchedule, type ProcessCalendarLocation } from "@/features/calendar/queries";
 import {
   getFirstActiveProcessTemplateId,

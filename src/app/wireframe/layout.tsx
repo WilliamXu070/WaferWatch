@@ -6,7 +6,7 @@ import {
   updateProcessTemplateName
 } from "@/features/process-flows/actions";
 import { getWireframeShellModel } from "@/features/wireframe/queries";
-import { WaferWatchShell } from "@/ui/waferwatch-wireframe";
+import { WaferWatchShell } from "@/ui/waferwatch-wireframe/components/WaferWatchShell";
 import { RealtimeWorkflowBridge } from "@/features/collaboration/RealtimeWorkflowBridge";
 
 export default async function WireframeLayout({ children }: { children: ReactNode }) {

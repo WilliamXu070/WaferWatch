@@ -8,9 +8,10 @@
   no swap activity or memory pressure, so the reported slowdown was request and
   page-payload latency rather than a browser or Mac memory leak.
 - Calendar-only timeline styles no longer ship on Login, Dashboard, Process
-  Flow, or Wafer Status. The production build manifest now assigns Login only
-  the 147.7 KB shared stylesheet; the 37.3 KB timeline/calendar stylesheet is
-  loaded by Calendar alone.
+  Flow, or Wafer Status. Direct view imports prevent the UI barrel from pulling
+  Calendar into the authenticated layout: the production build manifest assigns
+  each non-calendar route only the 147.7 KB shared stylesheet, while Calendar
+  alone receives the 37.3 KB timeline/calendar stylesheet.
 - Calendar now starts permission, schedule, active-wafer, and preview-state
   reads together after resolving the process, and reuses that process in the
   preview query instead of fetching its template, steps, and transitions again.
