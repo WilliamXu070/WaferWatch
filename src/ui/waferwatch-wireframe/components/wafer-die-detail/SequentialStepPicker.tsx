@@ -20,6 +20,31 @@ function formatVisitTime(value: string | null) {
   }).format(date);
 }
 
+function getHistoryAction(
+  visit: StepVisitHistoryItem,
+  precedingVisits: readonly StepVisitHistoryItem[]
+) {
+  if (visit.historyAction) return visit.historyAction;
+  if (visit.state === "returned" && visit.redoDestinationStepName) {
+    return { kind: "redo" as const, targetStepName: visit.redoDestinationStepName };
+  }
+  if (
+    visit.state === "current" &&
+    precedingVisits.some((candidate) =>
+      candidate.state === "returned" &&
+      candidate.redoDestinationStepName === visit.stepName
+    )
+  ) {
+    return { kind: "continue" as const, targetStepName: visit.stepName };
+  }
+  return null;
+}
+
+function formatHistoryAction(action: NonNullable<StepVisitHistoryItem["historyAction"]>) {
+  const label = action.kind === "redo" ? "Redo" : action.kind === "undo" ? "Undo" : "Continue";
+  return `${label} → ${action.targetStepName}`;
+}
+
 export function SequentialStepPicker({
   visits,
   family,
@@ -43,21 +68,19 @@ export function SequentialStepPicker({
   return (
     <ol
       aria-label={visits.length > 1 ? "Step history timeline, swipe for more" : "Step history"}
-      className="wafer-step-picker relative before:absolute before:bottom-4 before:left-[16px] before:top-4 before:w-px before:bg-[#d9d9d3]"
+      className="wafer-step-picker relative"
       style={pickerStyle}
     >
-      {visits.map((visit) => {
+      {visits.map((visit, index) => {
         const isSelected = selectedVisitId === visit.id;
         const wasReturned = visit.state === "returned";
+        const historyAction = getHistoryAction(visit, visits.slice(0, index));
         const visitTimeLabel = visit.completedAt
           ? formatVisitTime(visit.completedAt)
           : visit.state === "current"
             ? "Current step"
             : formatVisitTime(visit.startedAt ?? visit.occurredAt);
         const markerColor = wasReturned ? "#a65d22" : palette.accent;
-        const redoLabel = visit.redoDestinationStepName
-          ? `Redo → ${visit.redoDestinationStepName}`
-          : "Redo required";
         const rowBackground = wasReturned
           ? isSelected ? "#f5dfca" : "#fff6eb"
           : isSelected ? palette.selected : undefined;
@@ -66,7 +89,7 @@ export function SequentialStepPicker({
           <li
             key={visit.id}
             data-visit-state={visit.state}
-            className="wafer-step-picker__item relative pb-1.5 last:pb-0"
+            className={`wafer-step-picker__item relative pb-1.5 last:pb-0 ${historyAction ? "wafer-step-picker__item--has-action" : ""}`}
           >
             <button
               type="button"
@@ -92,16 +115,23 @@ export function SequentialStepPicker({
                   {visit.stepName}
                 </strong>
                 <span className="mt-0.5 block min-w-0 text-[11px] font-medium leading-4 text-[#8a8a83]">
-                  <span className="block min-w-0 truncate">
+                  <span className="wafer-step-picker__time block min-w-0 truncate">
                     {visitTimeLabel}
                   </span>
-                  {wasReturned ? (
+                  {historyAction ? (
                     <span
-                      title={redoLabel}
-                      aria-label={redoLabel}
-                      className="mt-0.5 inline-flex max-w-full rounded-full bg-[#f3d4b3] px-1.5 py-0.5 text-[9px] font-bold text-[#7c3a0b]"
+                      title={formatHistoryAction(historyAction)}
+                      aria-label={formatHistoryAction(historyAction)}
+                      className={[
+                        "wafer-step-picker__action mt-0.5 inline-flex max-w-full rounded-full px-1.5 py-0.5 text-[9px] font-bold",
+                        historyAction.kind === "redo"
+                          ? "bg-[#f3d4b3] text-[#7c3a0b]"
+                          : historyAction.kind === "undo"
+                            ? "bg-[#e8edf7] text-[#3b557a]"
+                            : "bg-[#dff3ef] text-[#14665e]"
+                      ].join(" ")}
                     >
-                      {redoLabel}
+                      {formatHistoryAction(historyAction)}
                     </span>
                   ) : null}
                 </span>

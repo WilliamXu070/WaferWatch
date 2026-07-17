@@ -151,4 +151,60 @@ test("orders progression by completion time when repeated visits started in a di
   );
   assert.equal(visits[1]?.state, "returned");
   assert.equal(visits[1]?.redoDestinationStepName, "Cleaning");
+  assert.deepEqual(visits[1]?.historyAction, { kind: "redo", targetStepName: "Cleaning" });
+  assert.equal(visits[3]?.historyAction, null);
+});
+
+test("labels the current destination after a redo as a continuation", () => {
+  const base = tile();
+  const visits = buildStepVisitHistory(tile({
+    currentStepId: "clean",
+    processSteps: base.processSteps?.map((step) => step.id === "clean" ? {
+      ...step,
+      status: "queued",
+      completedAt: null,
+      startedAt: "2026-07-16T15:16:00Z"
+    } : step),
+    checkpointHistory: [{
+      kind: "attempt",
+      id: "attempt-clean-redo",
+      stepId: "dice",
+      stepName: "Dicing",
+      attemptNumber: 1,
+      state: "redo_required",
+      occurredAt: "2026-07-16T15:10:00Z",
+      startedAt: "2026-07-16T15:10:00Z",
+      submission: { id: "submission-clean-redo", occurredAt: "2026-07-16T15:14:00Z", actor: { id: "reviewer", name: "Reviewer" }, note: null },
+      withdrawals: [],
+      decisions: [],
+      effectiveDecision: {
+        id: "decision-clean-redo",
+        outcome: "redo",
+        occurredAt: "2026-07-16T15:15:00Z",
+        actor: { id: "reviewer", name: "Reviewer" },
+        note: null,
+        destinationStepId: "clean",
+        destinationStepName: "Cleaning",
+        supersedesDecisionId: null,
+        isEffective: true
+      }
+    }]
+  }));
+
+  assert.deepEqual(visits.at(-1)?.historyAction, { kind: "continue", targetStepName: "Cleaning" });
+});
+
+test("labels a recorded step revert as an undo without changing its chronological visit", () => {
+  const visits = buildStepVisitHistory(tile({
+    revertHistory: [{
+      id: "undo-cleaning",
+      fromStepId: "clean",
+      toStepId: "dice",
+      occurredAt: "2026-07-16T15:36:00Z",
+      reason: "Return to dicing"
+    }]
+  }));
+
+  const cleaning = visits.find((visit) => visit.stepId === "clean");
+  assert.deepEqual(cleaning?.historyAction, { kind: "undo", targetStepName: "Dicing" });
 });

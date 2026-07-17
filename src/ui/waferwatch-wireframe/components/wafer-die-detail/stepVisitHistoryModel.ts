@@ -20,6 +20,10 @@ export type StepVisitHistoryItem = {
   redoDestinationStepId: string | null;
   redoDestinationStepName: string | null;
   parameterRecords: readonly WaferStatusStepParameterRecord[];
+  historyAction?: {
+    kind: "redo" | "undo" | "continue";
+    targetStepName: string;
+  } | null;
   inheritedFromParent?: { waferId: string; waferCode: string };
   sequence: number;
   visitNumber: number;
@@ -159,10 +163,37 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
   visits.sort(compareVisitProgression);
   assignParameterRecords(visits);
 
+  const historyActionByVisitId = new Map<string, NonNullable<StepVisitHistoryItem["historyAction"]>>();
+  for (const revert of tile.revertHistory ?? []) {
+    const sourceVisit = [...visits]
+      .reverse()
+      .find((visit) =>
+        visit.stepId === revert.fromStepId &&
+        timeValue(visit.completedAt ?? visit.occurredAt) <= timeValue(revert.occurredAt)
+      );
+    const destinationStepName = stepsById.get(revert.toStepId)?.name;
+    if (sourceVisit && destinationStepName) {
+      historyActionByVisitId.set(sourceVisit.id, { kind: "undo", targetStepName: destinationStepName });
+    }
+  }
+
   const visitCountByStepId = new Map<string, number>();
   return visits.map((visit, index) => {
     const visitNumber = (visitCountByStepId.get(visit.stepId) ?? 0) + 1;
     visitCountByStepId.set(visit.stepId, visitNumber);
-    return { ...visit, sequence: index + 1, visitNumber };
+    const precedingRedo = [...visits.slice(0, index)]
+      .reverse()
+      .find((candidate) =>
+        candidate.state === "returned" &&
+        candidate.redoDestinationStepName === visit.stepName
+      );
+    const historyAction = historyActionByVisitId.get(visit.id) ?? (
+      visit.state === "returned" && visit.redoDestinationStepName
+        ? { kind: "redo" as const, targetStepName: visit.redoDestinationStepName }
+        : visit.state === "current" && precedingRedo
+          ? { kind: "continue" as const, targetStepName: visit.stepName }
+          : null
+    );
+    return { ...visit, historyAction, sequence: index + 1, visitNumber };
   });
 }

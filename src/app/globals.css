@@ -3871,6 +3871,16 @@ textarea {
   -webkit-overflow-scrolling: touch;
 }
 
+.wafer-step-picker::before {
+  position: absolute;
+  top: 1rem;
+  bottom: 1rem;
+  left: 16px;
+  width: 1px;
+  background: #d9d9d3;
+  content: "";
+}
+
 .wafer-die-detail-tabs__list {
   min-width: 0;
   max-width: 100%;
@@ -4574,7 +4584,7 @@ textarea {
   .wafer-step-picker::before {
     display: block;
     z-index: 0;
-    top: 16px;
+    top: 29px;
     right: 18px;
     bottom: auto;
     left: 18px;
@@ -4591,20 +4601,31 @@ textarea {
   }
 
   .wafer-step-picker__button {
-    min-height: 76px;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 28px minmax(0, 1fr);
-    align-items: start;
-    gap: 4px;
-    padding: 2px 4px 6px;
+    min-height: 54px;
+    grid-template-columns: 28px minmax(0, 1fr);
+    grid-template-rows: none;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 4px;
   }
 
   .wafer-step-picker__marker {
-    justify-self: start;
+    justify-self: auto;
   }
 
   .wafer-step-picker__button > span:last-child {
-    width: 100%;
+    width: auto;
+  }
+
+  .wafer-step-picker__item--has-action .wafer-step-picker__time {
+    display: none;
+  }
+
+  .wafer-step-picker__action {
+    display: flex;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .wafer-step-detail__parameters {

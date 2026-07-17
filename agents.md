@@ -1,5 +1,19 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 visible iPhone Notes timeline correction)
+
+- A headed Playwright replay at 390x844 proved the earlier phone timeline fix
+  was incomplete: the pseudo-element still computed to `width: 1px` because
+  Tailwind's old `before:w-px` utility won over the mobile line, and a redo
+  card clipped beneath the 104px history row.
+- The connector is now authored CSS, measuring 1392px through the live A1
+  marker sequence, while history cards return to a compact two-line layout.
+  Live A1 visibly renders `Redo → EBL` then `Continue → EBL` with no clipping.
+  Revert history is now represented as a distinct `Undo → step` action, with
+  a focused render regression for that state.
+- Verified headed 390x844 Playwright replay, seven focused history tests,
+  `npm run lint`, and `npm run build`. Tracking: GitHub issue #42.
+
 ## Recent development note (2026-07-17 selected-only Process Flow step layout)
 
 - Process-step layout movement now requires a prior desktop/trackpad selection:

@@ -51,6 +51,26 @@ test("keeps the selected redo visit recolored and names its rollback destination
   assert.match(markup, /Redo → Cleaning/);
   assert.match(markup, /box-shadow:0 0 0 2px #171714/);
   assert.match(markup, /Current step/);
+  assert.match(markup, /Redo → Cleaning/);
+  assert.match(markup, /Continue → Cleaning/);
   assert.match(markup, /aria-label="Step history timeline, swipe for more"/);
   assert.match(markup, /wafer-step-picker__marker/);
+});
+
+test("renders an undo destination as a distinct history action", () => {
+  const markup = renderToStaticMarkup(
+    <SequentialStepPicker
+      visits={[{
+        ...returnedVisit,
+        id: "undo-spin-coating",
+        state: "completed",
+        historyAction: { kind: "undo", targetStepName: "Post-Bake" }
+      }]}
+      family="ALPHA"
+      onSelectVisit={() => undefined}
+    />
+  );
+
+  assert.match(markup, /Undo → Post-Bake/);
+  assert.match(markup, /bg-\[\#e8edf7\] text-\[\#3b557a\]/);
 });
