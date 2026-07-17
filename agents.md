@@ -1,5 +1,15 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-16 automatic release loop)
+
+- Made push and deployment mandatory after every completed edit in the primary
+  checkout. Agents must verify the change, update this handoff file, commit only
+  intended files, push `main`, deploy the verified commit to Vercel production,
+  and confirm the production health endpoint before reporting completion.
+- Delegated worktrees must push their branch and hand production deployment to
+  the orchestrator after integration, preventing unmerged branches from replacing
+  production. Verified `npm run lint` and `npm run build`.
+
 ## Recent development note (2026-07-16 reliable added step parameters)
 
 - Fixed the post-movement parameter dialog rejecting a valid added parameter
@@ -603,11 +613,32 @@ Any user-editable text surface that represents wafer/process/inspection state mu
 
 Default to the shared `text_surfaces` table/actions for generic text keyed to an exact object/scope. Use a domain-specific table only when the text is already a first-class domain field, such as poling parameters.
 
-## Commit expectation
+## Required commit, push, and Vercel deployment after every edit
 
-After completing each feature, rework, or bug fix, commit the finished changes with a clear message once lint and build pass.
+After completing any user-requested code, UI, asset, configuration, or
+documentation edit, do not leave the result only in the local checkout. Complete
+the release loop before ending the task:
 
-After every development commit, add a short note in this file describing what changed and the route/state verified (if any), so the next developer handoff has immediate context.
+1. Run the required verification for the change, including `npm run lint` and
+   `npm run build` for coding changes and browser verification for UI changes.
+2. Add a short note near the top of this file describing what changed and the
+   route/state verified, if applicable.
+3. Stage only the intended files and commit them with a clear message.
+4. Push the completed commit to the current GitHub branch. In the primary
+   checkout, push `main` to `origin`.
+5. Deploy the linked Vercel project to production from the verified commit with
+   `npx vercel@latest --prod --yes`.
+6. Confirm the deployment reaches `READY` and verify
+   `https://wafer-watch.vercel.app/api/health` returns a successful response.
+
+Do not report an edit as complete while its commit is local-only or production is
+still running older code. If push or deployment is blocked by authentication,
+permissions, network access, or a failed build, report the exact blocker instead
+of silently stopping before release.
+
+For delegated worktrees, push the worktree branch and have the orchestrator merge
+and perform the production deployment from the integrated branch; do not deploy
+an unmerged worktree branch over production.
 
 ## Orchestrator verification checkpoints
 
