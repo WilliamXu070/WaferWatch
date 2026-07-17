@@ -13,7 +13,10 @@ import {
 } from "react";
 import { PendingNoteAttachments } from "@/components/notes/PendingNoteAttachments";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
-import { mergeNoteAttachmentFiles } from "@/features/measurements/noteAttachmentDraft";
+import {
+  mergeNoteAttachmentFiles,
+  prepareNoteAttachmentFiles
+} from "@/features/measurements/noteAttachmentDraft";
 import {
   normalizeStepParameterKey,
   readStepParameterDefinitions,
@@ -237,7 +240,8 @@ export function StepParameterEntryDialog({
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const appendAttachmentFiles = (files: readonly File[]) => {
+  const appendAttachmentFiles = async (files: readonly File[]) => {
+    await prepareNoteAttachmentFiles(files);
     setAttachmentFiles((current) => {
       const merged = mergeNoteAttachmentFiles(current, files);
       setAttachmentError(
@@ -255,7 +259,7 @@ export function StepParameterEntryDialog({
     const images = getClipboardImageFiles(event.clipboardData);
     if (!images.length) return;
     event.preventDefault();
-    appendAttachmentFiles(images);
+    void appendAttachmentFiles(images);
   };
 
   const submit = (event: FormEvent<HTMLFormElement>) => {

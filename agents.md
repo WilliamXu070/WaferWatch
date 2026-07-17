@@ -1,5 +1,21 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 content-deduplicated note attachments)
+
+- Fixed one image appearing twice when it was pasted under a browser-generated
+  clipboard name and then selected through the file picker under its disk name.
+  The shared pending-attachment queue now fingerprints accepted files by content,
+  so checkpoint/movement notes, post-movement parameter records, and Wafer / Die
+  Notes all use the same identity while preserving size and count limits.
+- Unavailable or stale step-parameter URLs now return to the selected Process Flow
+  instead of rendering the authenticated shell around Next.js's default 404.
+- Authenticated Playwright replayed the stale route, a valid saved-step editor,
+  checkpoint completion, Wafer / Die Notes, and the real post-movement parameter
+  dialog. Two pastes plus the same picker file retained one thumbnail and one
+  remove control in every note surface, with no console errors/warnings and no
+  live submission. Verified 22 focused tests, `npm run lint`, and `npm run build`.
+  Tracking: GitHub issue #32.
+
 ## Recent development note (2026-07-16 optimistic step parameter routing)
 
 - Fixed newly added Process Flow steps opening the parameter editor with their

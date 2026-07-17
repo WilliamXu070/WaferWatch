@@ -49,10 +49,10 @@ function PendingAttachmentPreview({ file }: { file: File }) {
     <Image
       alt=""
       className="h-full w-full object-cover"
-      height={44}
+      fill
+      sizes="44px"
       src={previewUrl}
       unoptimized
-      width={44}
     />
   );
 }
@@ -103,7 +103,7 @@ export function PendingNoteAttachments({
               className="grid h-12 max-w-[240px] grid-cols-[44px_minmax(0,1fr)_28px] items-center overflow-hidden rounded-lg border border-[#deded8] bg-[#fafaf7]"
               key={getNoteAttachmentFileKey(file)}
             >
-              <div className="grid h-11 w-11 place-items-center overflow-hidden bg-[#f0f0eb]">
+              <div className="relative grid h-11 w-11 place-items-center overflow-hidden bg-[#f0f0eb]">
                 <PendingAttachmentPreview file={file} />
               </div>
               <div className="min-w-0 px-2">

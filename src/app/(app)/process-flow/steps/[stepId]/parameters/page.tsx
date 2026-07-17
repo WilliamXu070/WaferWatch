@@ -1,6 +1,10 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { StepParametersEditor } from "@/components/process-flow/StepParametersEditor";
 import { updateProcessStepParameters } from "@/features/process-flows/actions";
+import {
+  getProcessFlowFallbackHref,
+  isPersistedProcessStepId
+} from "@/features/process-flows/stepParameterRoute";
 import { canEditProject, canManageProcessLibrary, requireAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -11,11 +15,21 @@ export const metadata = {
 };
 
 export default async function StepParametersPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ stepId: string }>;
+  searchParams: Promise<{ processId?: string | string[] }>;
 }) {
   const { stepId } = await params;
+  const { processId: rawProcessId } = await searchParams;
+  const processId = typeof rawProcessId === "string" ? rawProcessId : undefined;
+  const processFlowHref = getProcessFlowFallbackHref(processId);
+
+  if (!isPersistedProcessStepId(stepId)) {
+    redirect(processFlowHref);
+  }
+
   const account = await requireAccount();
   const supabase = await createServerSupabaseClient();
   const { data: step, error: stepError } = await supabase
@@ -24,8 +38,11 @@ export default async function StepParametersPage({
     .eq("id", stepId)
     .maybeSingle();
 
-  if (stepError || !step) {
-    notFound();
+  if (stepError) {
+    throw new Error(`Unable to load process step parameters: ${stepError.message}`);
+  }
+  if (!step) {
+    redirect(processFlowHref);
   }
 
   const { data: process, error: processError } = await supabase
@@ -34,8 +51,11 @@ export default async function StepParametersPage({
     .eq("id", step.template_id)
     .maybeSingle();
 
-  if (processError || !process) {
-    notFound();
+  if (processError) {
+    throw new Error(`Unable to load process template: ${processError.message}`);
+  }
+  if (!process) {
+    redirect(processFlowHref);
   }
 
   const canEdit = canManageProcessLibrary(account.profile.role) && (

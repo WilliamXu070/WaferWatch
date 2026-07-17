@@ -3,7 +3,8 @@ import test from "node:test";
 import {
   MAX_NOTE_ATTACHMENTS,
   mergeNoteAttachmentFiles,
-  NOTE_ATTACHMENT_MAX_BYTES
+  NOTE_ATTACHMENT_MAX_BYTES,
+  prepareNoteAttachmentFiles
 } from "./noteAttachmentDraft";
 
 function makeFile(name: string, size = 12, lastModified = 123) {
@@ -19,6 +20,18 @@ test("does not add the same pending attachment more than once", () => {
   const merged = mergeNoteAttachmentFiles([image], [repeatedPaste]);
 
   assert.equal(merged.files.length, 1);
+  assert.equal(merged.duplicateCount, 1);
+});
+
+test("deduplicates the same image content across paste and file picker names", async () => {
+  const pasted = new File(["same image"], "clipboard.png", { type: "image/png" });
+  const picked = new File(["same image"], "original-screenshot.png", { type: "image/png" });
+  const different = new File(["other image"], "another-screenshot.png", { type: "image/png" });
+
+  await prepareNoteAttachmentFiles([pasted, picked, different]);
+  const merged = mergeNoteAttachmentFiles([pasted], [picked, different]);
+
+  assert.deepEqual(merged.files, [pasted, different]);
   assert.equal(merged.duplicateCount, 1);
 });
 

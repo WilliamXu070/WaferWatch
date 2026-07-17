@@ -13,7 +13,8 @@ import { getClipboardImageFiles } from "@/features/measurements/clipboardImages"
 import {
   formatNoteAttachmentSize,
   MAX_NOTE_ATTACHMENTS,
-  mergeNoteAttachmentFiles
+  mergeNoteAttachmentFiles,
+  prepareNoteAttachmentFiles
 } from "@/features/measurements/noteAttachmentDraft";
 import {
   uploadWaferNoteAttachments,
@@ -515,7 +516,8 @@ export function WaferDieNotesDashboard({
     [onNotesChange, textSurfaceIdentityForStep]
   );
 
-  const appendDraftFiles = useCallback((stepId: string, files: readonly File[]) => {
+  const appendDraftFiles = useCallback(async (stepId: string, files: readonly File[]) => {
+    await prepareNoteAttachmentFiles(files);
     setDraftFilesByStepId((current) => {
       const existing = current[stepId] ?? [];
       const merged = mergeNoteAttachmentFiles(existing, files);
@@ -906,7 +908,7 @@ export function WaferDieNotesDashboard({
               files={selectedDraftFiles}
               disabled={isSaving}
               description="Paste an image or attach a file to this note."
-              onAddFiles={(files) => appendDraftFiles(selectedDraftKey, files)}
+              onAddFiles={(files) => void appendDraftFiles(selectedDraftKey, files)}
               onRemoveFile={(file) => setDraftFilesByStepId((current) => ({
                 ...current,
                 [selectedDraftKey]: (current[selectedDraftKey] ?? []).filter((candidate) => candidate !== file)
@@ -928,7 +930,7 @@ export function WaferDieNotesDashboard({
                 const pastedImages = getClipboardImageFiles(event.clipboardData);
                 if (pastedImages.length > 0) {
                   event.preventDefault();
-                  appendDraftFiles(selectedDraftKey, pastedImages);
+                  void appendDraftFiles(selectedDraftKey, pastedImages);
                 }
               }}
             />

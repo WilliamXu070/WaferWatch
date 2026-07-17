@@ -18,7 +18,10 @@ import {
 import { useRouter } from "next/navigation";
 import { PendingNoteAttachments } from "@/components/notes/PendingNoteAttachments";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
-import { mergeNoteAttachmentFiles } from "@/features/measurements/noteAttachmentDraft";
+import {
+  mergeNoteAttachmentFiles,
+  prepareNoteAttachmentFiles
+} from "@/features/measurements/noteAttachmentDraft";
 import { persistWaferStepNoteAttachments } from "@/features/measurements/noteAttachmentUpload";
 import {
   getNextGreekWaferCode,
@@ -2991,7 +2994,8 @@ export function ProcessFlowDiagram({
     }
   };
 
-  const appendPendingWaferMoveFiles = (files: readonly File[]) => {
+  const appendPendingWaferMoveFiles = async (files: readonly File[]) => {
+    await prepareNoteAttachmentFiles(files);
     setPendingWaferMoveFiles((current) => {
       const merged = mergeNoteAttachmentFiles(current, files);
       setPendingWaferMoveFileError(
@@ -3012,7 +3016,7 @@ export function ProcessFlowDiagram({
     }
 
     event.preventDefault();
-    appendPendingWaferMoveFiles(images);
+    void appendPendingWaferMoveFiles(images);
   };
 
   const cancelPendingWaferMove = () => {
