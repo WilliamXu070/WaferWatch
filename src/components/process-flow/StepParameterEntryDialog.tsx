@@ -155,7 +155,7 @@ export function updateDraftParameterFromInput(
 
 const inputClassName = "h-10 w-full min-w-0 border border-transparent bg-transparent px-3 text-[13px] text-[#171714] outline-none hover:bg-[#f8f8f4] focus:border-[#77776f] focus:bg-white focus:ring-1 focus:ring-inset focus:ring-[#77776f]";
 
-function makeLocalParameter(): DraftParameter {
+export function makeDraftParameter(scope: DraftParameter["scope"]): DraftParameter {
   return {
     id: crypto.randomUUID(),
     key: "",
@@ -165,7 +165,7 @@ function makeLocalParameter(): DraftParameter {
     value: "",
     valueText: "",
     notes: "",
-    scope: "local"
+    scope
   };
 }
 
@@ -489,16 +489,28 @@ export function StepParameterEntryDialog({
                 </tbody>
               </table>
             </div>
-            <button
-              type="button"
-              className="flex h-10 w-full items-center gap-2 border-t border-[#dcdcd5] bg-[#f8f8f4] px-3 text-left text-[12px] font-semibold text-[#55554f] hover:bg-[#f1f1eb] hover:text-[#1f1f1b]"
-              onClick={() => {
-                setLocalParameters((current) => [...current, makeLocalParameter()]);
-                setMessage(null);
-              }}
-            >
-              <Plus className="size-3.5" aria-hidden /> Add row
-            </button>
+            <div className="flex flex-wrap border-t border-[#dcdcd5] bg-[#f8f8f4]">
+              <button
+                type="button"
+                className="flex h-10 flex-1 items-center gap-2 px-3 text-left text-[12px] font-semibold text-[#55554f] hover:bg-[#f1f1eb] hover:text-[#1f1f1b]"
+                onClick={() => {
+                  setLocalParameters((current) => [...current, makeDraftParameter("global")]);
+                  setMessage(null);
+                }}
+              >
+                <Plus className="size-3.5" aria-hidden /> Add reusable row
+              </button>
+              <button
+                type="button"
+                className="h-10 border-l border-[#dcdcd5] px-3 text-[12px] font-semibold text-[#686861] hover:bg-[#f1f1eb] hover:text-[#1f1f1b]"
+                onClick={() => {
+                  setLocalParameters((current) => [...current, makeDraftParameter("local")]);
+                  setMessage(null);
+                }}
+              >
+                One-time row
+              </button>
+            </div>
           </section>
 
           <label className="grid gap-1.5 text-[12px] font-semibold text-[#5f5f58]">

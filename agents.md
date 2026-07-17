@@ -1,5 +1,19 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 reusable movement parameters)
+
+- Fixed the post-movement parameter dialog treating its only `Add row` action as
+  visit-local, leaving later arrivals at the same step with an empty template.
+  It now defaults to an explicit reusable row, retains a separate one-time row,
+  and refreshes the Process Flow schema after save.
+- Added migration `202607170004` to promote existing movement-entered fields
+  into their owning step template without replacing already-configured fields.
+  In particular, Post-Bake now recovers the existing `ramping` and `temp`
+  definitions for subsequent die visits.
+- Verified the migration against a focused PGlite fixture, the dialog tests,
+  `npm run checkpoint:verify`, `npm run lint`, and `npm run build`.
+  Tracking: GitHub issue #37.
+
 ## Recent development note (2026-07-17 selected-die process history Undo)
 
 - Replaced Process Flow's local graph/layout Undo with persisted process-history

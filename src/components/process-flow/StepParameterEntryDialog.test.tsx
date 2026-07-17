@@ -4,6 +4,7 @@ import type { SetStateAction } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   StepParameterEntryDialog,
+  makeDraftParameter as makeDialogDraftParameter,
   mergePendingStepParameterEntries,
   prepareLocalParametersForSave,
   saveStepParameterAttachmentsForEntries,
@@ -81,6 +82,11 @@ test("asks for the visible parameter name when a partial row has no label", () =
   });
 });
 
+test("makes movement-added fields reusable by default while preserving one-time rows", () => {
+  assert.equal(makeDialogDraftParameter("global").scope, "global");
+  assert.equal(makeDialogDraftParameter("local").scope, "local");
+});
+
 test("captures local row input before React clears the event target", () => {
   for (const [key, value] of [["valueText", "425"], ["notes", "Measured after settling"]] as const) {
     let queuedUpdate: SetStateAction<DraftParameter[]> | null = null;
@@ -138,7 +144,8 @@ test("renders the moved item, global template values, and local parameter contro
   assert.match(markup, /Additional notes/);
   assert.match(markup, /Attach files/);
   assert.match(markup, /Paste images or attach files for this step record/);
-  assert.match(markup, /Add row/);
+  assert.match(markup, /Add reusable row/);
+  assert.match(markup, /One-time row/);
   assert.doesNotMatch(markup, /Edit template/);
 });
 
@@ -163,7 +170,7 @@ test("renders the parameter form while movement persistence is still pending", (
 
   assert.match(markup, /Finishing the move… You can enter values now/);
   assert.match(markup, /<button[^>]*type="submit"[^>]*disabled=""[^>]*>Finishing move…<\/button>/);
-  assert.match(markup, /Add row/);
+  assert.match(markup, /Add reusable row/);
   assert.match(markup, /Additional notes/);
 });
 

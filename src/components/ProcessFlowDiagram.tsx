@@ -3784,6 +3784,7 @@ export function ProcessFlowDiagram({
               (entry) => !completedMutationIds.has(entry.movementMutationId)
             ));
             setMoveMessage(message);
+            scheduleBackgroundRefresh();
           }}
           onSkipAll={() => setPendingStepParameterEntries([])}
         />
