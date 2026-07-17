@@ -1,5 +1,18 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 defined phone Notes timeline)
+
+- Fixed Wafer / Die Status Notes history reading as disconnected cards on
+  phones. The existing desktop-only connector had been explicitly disabled on
+  mobile while each event expanded to 60vw with no scroll affordance.
+- Phone history is now a compact horizontal stepper: its numbered markers have
+  one continuous connector, two events fit in the initial view where possible,
+  each event snap-scrolls into place, and histories with more than one event
+  expose a `Swipe timeline` cue. Desktop's vertical rail, selected state, redo
+  state, and chronological data are unchanged.
+- Verified the focused `SequentialStepPicker` regression, `npm run lint`, and
+  `npm run build`. Tracking: GitHub issue #42.
+
 ## Recent development note (2026-07-17 iPhone wafer tap and drag regression)
 
 - Corrected the first stable-frame capture fix: changing capture from an SVG

@@ -42,7 +42,7 @@ export function SequentialStepPicker({
 
   return (
     <ol
-      aria-label="Step history"
+      aria-label={visits.length > 1 ? "Step history timeline, swipe for more" : "Step history"}
       className="wafer-step-picker relative before:absolute before:bottom-4 before:left-[16px] before:top-4 before:w-px before:bg-[#d9d9d3]"
       style={pickerStyle}
     >
@@ -76,7 +76,7 @@ export function SequentialStepPicker({
               className="wafer-step-picker__button grid min-h-[54px] w-full grid-cols-[32px_minmax(0,1fr)] items-center gap-2 rounded-md px-1 py-1.5 text-left outline-none transition-colors hover:bg-[#f7f7f3] focus-visible:ring-2 focus-visible:ring-[#171714] focus-visible:ring-offset-1 motion-reduce:transition-none"
             >
               <span
-                className="relative z-10 grid h-7 w-7 place-items-center rounded-full border text-[11px] font-semibold text-[#fffefb]"
+                className="wafer-step-picker__marker relative z-10 grid h-7 w-7 place-items-center rounded-full border text-[11px] font-semibold text-[#fffefb]"
                 style={{
                   backgroundColor: wasReturned ? markerColor : isSelected ? "#171714" : markerColor,
                   borderColor: wasReturned ? markerColor : isSelected ? "#171714" : markerColor,

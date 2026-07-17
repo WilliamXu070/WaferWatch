@@ -4554,27 +4554,57 @@ textarea {
     overflow-y: hidden;
     padding: 8px;
     scrollbar-gutter: auto;
+    scroll-padding-inline: 8px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .wafer-step-history__scroll::-webkit-scrollbar {
+    display: none;
   }
 
   .wafer-step-picker {
     display: flex;
     width: max-content;
     min-width: 100%;
-    gap: 8px;
+    gap: 12px;
+    padding: 2px 0;
   }
 
   .wafer-step-picker::before {
-    display: none;
+    display: block;
+    z-index: 0;
+    top: 16px;
+    right: 18px;
+    bottom: auto;
+    left: 18px;
+    width: auto;
+    height: 2px;
   }
 
   .wafer-step-picker__item {
-    width: min(60vw, 210px);
-    flex: 0 0 min(60vw, 210px);
+    width: min(44vw, 168px);
+    flex: 0 0 min(44vw, 168px);
     padding-bottom: 0;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
   }
 
   .wafer-step-picker__button {
-    min-height: 54px;
+    min-height: 76px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 28px minmax(0, 1fr);
+    align-items: start;
+    gap: 4px;
+    padding: 2px 4px 6px;
+  }
+
+  .wafer-step-picker__marker {
+    justify-self: start;
+  }
+
+  .wafer-step-picker__button > span:last-child {
+    width: 100%;
   }
 
   .wafer-step-detail__parameters {

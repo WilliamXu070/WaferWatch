@@ -684,8 +684,13 @@ export function WaferDieNotesDashboard({
   return (
     <div className="wafer-step-workspace grid min-h-0 gap-3 md:grid-cols-[210px_minmax(0,1fr)] lg:grid-cols-[224px_minmax(0,1fr)]">
       <section className="wafer-step-history grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
-        <div className="border-b border-[#eeeeea] px-3 py-2.5">
+        <div className="flex items-center justify-between gap-3 border-b border-[#eeeeea] px-3 py-2.5">
           <h3 className="text-[13px] font-semibold text-[#111111]">Step history</h3>
+          {visits.length > 1 ? (
+            <span className="text-[10px] font-semibold text-[#777770] md:hidden">
+              Swipe timeline <span aria-hidden>→</span>
+            </span>
+          ) : null}
         </div>
         <div className="wafer-step-history__scroll min-h-0 overflow-y-auto p-1.5">
           {visits.length ? (
