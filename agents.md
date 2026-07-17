@@ -12,8 +12,10 @@
   It receives the current week on the server, retains recently viewed weeks in
   a small client cache, and fetches only the newly selected week in the
   background. The heavy Flow, Calendar, and Status DOM trees are not kept mounted.
-- Verified `npm run lint` and `npm run build`; production desktop and 390x844
-  navigation replay is required after deployment. Tracking: GitHub issue #43.
+- Verified `npm run lint`, `npm run build`, production health, and signed-in
+  production navigation: Dashboard → Calendar was 1.30s at desktop and 0.99s
+  at 390x844; Calendar → Flow was 1.51s at desktop and 1.13s at 390x844, with
+  no console warnings or errors. Tracking: GitHub issue #43.
 
 ## Recent development note (2026-07-17 visible iPhone Notes timeline correction)
 
