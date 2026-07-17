@@ -55,7 +55,6 @@ test("renders Beginning and Complete selection through the same wafer chip compo
         onCommitLabel={() => undefined}
         onCancelLabelEdit={() => undefined}
         onBeginWaferDrag={() => undefined}
-        onSelectWafer={() => undefined}
         onOpenWaferDetails={() => undefined}
         onOpenStepParameters={() => undefined}
       />
@@ -96,7 +95,6 @@ test("renders an anytime procedure as a clearly separate disconnected step", () 
         onCommitLabel={() => undefined}
         onCancelLabelEdit={() => undefined}
         onBeginWaferDrag={() => undefined}
-        onSelectWafer={() => undefined}
         onOpenWaferDetails={() => undefined}
         onOpenStepParameters={() => undefined}
       />

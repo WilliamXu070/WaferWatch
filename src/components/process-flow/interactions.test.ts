@@ -7,6 +7,7 @@ import {
   getNearestWaferGridIndex,
   getWaferDragCaptureTarget,
   hasCrossedWaferDragThreshold,
+  shouldEndWaferDragFromFrameEvent,
   shouldCommitWaferDrop
 } from "./interactions";
 
@@ -66,6 +67,12 @@ test("routes an iPhone wafer drag through the stable canvas frame from touch-dow
   assert.equal(getWaferDragCaptureTarget("touch"), "frame");
   assert.equal(getWaferDragCaptureTarget("mouse"), "source");
   assert.equal(getWaferDragCaptureTarget("pen"), "source");
+});
+
+test("does not let the SVG-to-frame capture hand-off cancel an iPhone wafer gesture", () => {
+  assert.equal(shouldEndWaferDragFromFrameEvent("pointerleave"), false);
+  assert.equal(shouldEndWaferDragFromFrameEvent("pointerup"), true);
+  assert.equal(shouldEndWaferDragFromFrameEvent("pointercancel"), true);
 });
 
 test("maps either phone lane to the nearest existing wafer chip", () => {

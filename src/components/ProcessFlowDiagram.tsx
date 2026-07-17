@@ -79,6 +79,7 @@ import {
   getStepParametersNavigation,
   getWaferDragCaptureTarget,
   hasCrossedWaferDragThreshold,
+  shouldEndWaferDragFromFrameEvent,
   shouldCommitWaferDrop
 } from "./process-flow/interactions";
 import {
@@ -2114,7 +2115,9 @@ export function ProcessFlowDiagram({
 
   const endPan = (event: PointerEvent<HTMLDivElement>) => {
     if (waferDragRef.current) {
-      finishWaferDrag(event as unknown as PointerEvent<Element>);
+      if (shouldEndWaferDragFromFrameEvent(event.type)) {
+        finishWaferDrag(event as unknown as PointerEvent<Element>);
+      }
       return;
     }
 
@@ -3996,7 +3999,6 @@ export function ProcessFlowDiagram({
         onCommitLabel={commitNodeLabel}
         onCancelLabelEdit={cancelNodeLabelEdit}
         onBeginWaferDrag={beginWaferDrag}
-        onSelectWafer={selectWafer}
         onOpenWaferDetails={openWaferDetails}
         onOpenStepParameters={openStepParameters}
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}

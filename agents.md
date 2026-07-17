@@ -1,5 +1,20 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 iPhone wafer tap and drag regression)
+
+- Corrected the first stable-frame capture fix: changing capture from an SVG
+  wafer chip to the frame emits `pointerleave`, and the frame previously cleared
+  the live gesture there. Active wafer gestures now finish only on `pointerup`
+  or `pointercancel`, so that hand-off cannot cancel the tap or drag.
+- Made `finishWaferDrag` the sole owner of stationary-tap selection. This avoids
+  the previous chip `pointerup` selection plus fallback selection toggling the
+  same wafer back off. The same path now owns phone and desktop tap selection;
+  moved gestures still follow the existing Beginning/Complete drop logic.
+- A real 390x844 in-app-browser replay against an isolated local Process Flow
+  fixture clicked A2 and rendered `Selection actions for A2 selected`. Added
+  the capture-handoff regression; verified 11 focused tests, `npm run lint`,
+  and `npm run build`. Tracking: GitHub issue #41.
+
 ## Recent development note (2026-07-17 removed Calendar empty-state copy)
 
 - Removed the wireframe Calendar's empty-state card and its instructional copy.
