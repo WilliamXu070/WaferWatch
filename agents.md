@@ -1,5 +1,16 @@
 # Agent Workflow Notes
 
+## Recent development note (2026-07-17 all-section post-load route warming)
+
+- Once an authenticated page finishes loading, the persistent shell warms all
+  three remaining process sections: Dashboard, Calendar, Process Flow, and
+  Wafer / Die Status. The visible section is excluded because it is already
+  resident.
+- Warmups run one route per idle slice, rather than starting all RSC requests
+  simultaneously; this preserves the earlier cache-contention protection while
+  ensuring every next tab is ready. Verified focused route selection coverage,
+  `npm run lint`, and `npm run build`.
+
 ## Recent development note (2026-07-17 Status overview-first navigation)
 
 - The ordinary Wafer / Die Status navigation link now opens the Status home
