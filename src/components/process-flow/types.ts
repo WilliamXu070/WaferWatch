@@ -117,6 +117,26 @@ export type SaveStepParameterRecordAction = (input: {
   }>;
 }) => Promise<ActionResult<StepParameterRecord>>;
 
+export type SaveStepParameterRecordsBatchAction = (input: {
+  entries: Array<{
+    assignmentId: string;
+    stepId: string;
+    movementMutationId: string;
+  }>;
+  globalValues: Record<string, string | number | boolean | null>;
+  notes: string | null;
+  localParameters: Array<{
+    id: string;
+    key: string;
+    label: string;
+    type: "text" | "number" | "boolean" | "select";
+    unit: string;
+    value: string | number | boolean | null;
+    notes: string;
+    scope: "local" | "global";
+  }>;
+}) => Promise<ActionResult<StepParameterRecord[]>>;
+
 export type CheckpointReviewerOption = {
   id: string;
   name: string;
@@ -284,6 +304,37 @@ export type MoveApprovedCheckpointAction = (input: {
   correctCheckpointRoute?: boolean;
 }) => Promise<ActionResult<unknown>>;
 
+export type ProcessFlowMutationRequest =
+  | ({
+      kind: "submit";
+      assignmentId: string;
+    } & Parameters<SubmitStepCheckpointAction>[0])
+  | ({ kind: "move" } & Parameters<MoveApprovedCheckpointAction>[0])
+  | ({
+      kind: "route";
+      assignmentId: string;
+    } & Parameters<RouteCheckpointAction>[0]);
+
+export type ProcessFlowMutationOutcome = {
+  operationId: string;
+  assignmentId: string;
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+};
+
+export type PersistProcessFlowMutationsBatchAction = (input: {
+  mutations: ProcessFlowMutationRequest[];
+}) => Promise<ActionResult<ProcessFlowMutationOutcome[]>>;
+
+export type ProcessFlowSyncState =
+  | "saving_move"
+  | "awaiting_parameters"
+  | "saving_parameters"
+  | "uploading_files"
+  | "synced"
+  | "failed";
+
 export type UndoDieProcessHistoryAction = (input: {
   mutationId: string;
   assignmentId: string;
@@ -367,8 +418,10 @@ export type ProcessFlowActions = {
   submitCheckpoint?: SubmitStepCheckpointAction;
   routeCheckpoint?: RouteCheckpointAction;
   moveApprovedWafer?: MoveApprovedCheckpointAction;
+  persistMutationsBatch?: PersistProcessFlowMutationsBatchAction;
   undoHistory?: UndoDieProcessHistoryAction;
   saveParameters?: SaveStepParameterRecordAction;
+  saveParameterRecordsBatch?: SaveStepParameterRecordsBatchAction;
   updateReviewer?: UpdateStepCheckpointReviewerAction;
 };
 

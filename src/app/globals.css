@@ -419,6 +419,145 @@ textarea {
   gap: 10px;
 }
 
+.process-flow-sync-stack {
+  position: fixed;
+  z-index: 92;
+  top: 76px;
+  right: 18px;
+  display: grid;
+  width: min(360px, calc(100vw - 36px));
+  gap: 8px;
+  pointer-events: none;
+}
+
+.process-flow-sync-message,
+.process-flow-live-message {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #d9d9d1;
+  border-radius: 10px;
+  background: rgb(255 255 252 / 96%);
+  padding: 9px 11px;
+  color: #34342f;
+  box-shadow: 0 10px 28px rgb(21 21 18 / 12%);
+  font-size: 12px;
+  font-weight: 650;
+  pointer-events: auto;
+}
+
+.process-flow-sync-message__icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.process-flow-sync-message--saving_move .process-flow-sync-message__icon,
+.process-flow-sync-message--saving_parameters .process-flow-sync-message__icon {
+  animation: process-flow-spin 900ms linear infinite;
+}
+
+.process-flow-sync-message--synced {
+  border-color: #9cc3a5;
+  color: #315b39;
+}
+
+.process-flow-sync-message--failed {
+  border-color: #d5aaa5;
+  color: #8e332c;
+}
+
+.process-flow-sync-message button,
+.process-flow-live-message button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.process-flow-sync-message button + button {
+  margin-left: 3px;
+  opacity: 0.72;
+}
+
+.process-flow-live-message {
+  position: fixed;
+  z-index: 91;
+  right: 18px;
+  bottom: 18px;
+  max-width: min(440px, calc(100vw - 36px));
+}
+
+.process-flow-parameter-panel-host {
+  position: fixed;
+  z-index: 80;
+  top: 72px;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  width: min(540px, calc(100vw - 32px));
+  align-items: start;
+  pointer-events: none;
+}
+
+.process-flow-parameter-panel-host .process-flow-parameter-dialog,
+.process-flow-parameter-pending-bar {
+  pointer-events: auto;
+}
+
+.process-flow-parameter-panel-host .process-flow-parameter-dialog {
+  width: 100%;
+  max-height: 100%;
+  box-shadow: 0 18px 60px rgb(21 21 18 / 18%);
+}
+
+.process-flow-parameter-collapse {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #6f6f68;
+}
+
+.process-flow-parameter-collapse:hover {
+  background: #f1f1eb;
+  color: #171714;
+}
+
+.process-flow-parameter-collapse svg,
+.process-flow-parameter-pending-bar svg {
+  width: 16px;
+  height: 16px;
+}
+
+.process-flow-parameter-pending-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #d9d9d1;
+  border-radius: 11px;
+  background: #fff;
+  padding: 11px 13px;
+  color: #34342f;
+  box-shadow: 0 12px 34px rgb(21 21 18 / 14%);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+}
+
+@keyframes process-flow-spin {
+  to { transform: rotate(360deg); }
+}
+
 .flow-archive-dock {
   position: absolute;
   z-index: 18;
@@ -1523,6 +1662,44 @@ textarea {
 .flow-wafer-chip.flow-wafer-chip--selected:nth-child(3n) text,
 .flow-wafer-chip.flow-wafer-chip--selected:nth-child(4n) text {
   fill: #f8fafc;
+}
+
+.flow-wafer-chip--sync-saving-move rect,
+.flow-wafer-chip--sync-saving-parameters rect,
+.flow-wafer-chip--sync-uploading-files rect {
+  stroke: #315982;
+  stroke-width: 2.2;
+  stroke-dasharray: 5 3;
+  animation: process-flow-chip-saving 850ms linear infinite;
+}
+
+.flow-wafer-chip--sync-awaiting-parameters rect {
+  stroke: #c18425;
+  stroke-width: 2.2;
+  stroke-dasharray: 3 2;
+}
+
+.flow-wafer-chip--sync-synced rect {
+  stroke: #3f8b51;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 3px rgb(63 139 81 / 30%));
+}
+
+.flow-wafer-chip--sync-failed rect {
+  stroke: #b84d44;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 3px rgb(184 77 68 / 24%));
+}
+
+@keyframes process-flow-chip-saving {
+  to { stroke-dashoffset: -16; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .process-flow-sync-message__icon,
+  .flow-wafer-chip rect {
+    animation: none !important;
+  }
 }
 
 .flow-edge {
@@ -3413,6 +3590,35 @@ textarea {
 }
 
 @media (max-width: 767px) {
+  .process-flow-sync-stack {
+    z-index: 190;
+    top: 10px;
+    right: 10px;
+    width: calc(100vw - 20px);
+  }
+
+  .process-flow-parameter-panel-host {
+    z-index: 180;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    align-items: end;
+  }
+
+  .process-flow-parameter-panel-host .process-flow-parameter-dialog {
+    max-height: min(92svh, 820px);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .process-flow-parameter-pending-bar {
+    margin: 0 10px max(10px, env(safe-area-inset-bottom));
+  }
+
   .waferwatch-wireframe {
     display: block;
     height: auto;

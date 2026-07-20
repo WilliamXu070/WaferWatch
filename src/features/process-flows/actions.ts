@@ -23,6 +23,7 @@ import {
   processStepNameUpdateSchema,
   processStepParametersUpdateSchema,
   stepParameterRecordSaveSchema,
+  stepParameterRecordsBatchSaveSchema,
   waferStatusStepParameterRecordSaveSchema
 } from "@/features/process-flows/schemas";
 import {
@@ -1171,6 +1172,41 @@ export async function saveStepParameterRecord(input: unknown) {
     revalidateProcessFlow(step.template_id);
     revalidatePath("/wafer-status");
     return ok(record);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+export async function saveStepParameterRecordsBatch(input: unknown) {
+  const startedAt = performance.now();
+  try {
+    const parsed = stepParameterRecordsBatchSaveSchema.parse(input);
+    const authStartedAt = performance.now();
+    await requireAccount();
+    const authMs = performance.now() - authStartedAt;
+    const supabase = await createServerSupabaseClient();
+    const rpcStartedAt = performance.now();
+    const { data, error } = await supabase.rpc("save_step_parameter_records_batch", {
+      entries: parsed.entries.map((entry) => ({
+        assignment_id: entry.assignmentId,
+        step_id: entry.stepId,
+        movement_mutation_id: entry.movementMutationId
+      })) as Json,
+      global_values: parsed.globalValues as Json,
+      local_parameters: parsed.localParameters as Json,
+      notes: parsed.notes
+    });
+
+    if (error) return fail(error.message);
+
+    console.info("[ProcessFlowPerf]", JSON.stringify({
+      action: "parameter_batch",
+      recordCount: parsed.entries.length,
+      authMs: Math.round(authMs),
+      rpcMs: Math.round(performance.now() - rpcStartedAt),
+      totalMs: Math.round(performance.now() - startedAt)
+    }));
+    return ok((data ?? []) as unknown as import("@/types/database").StepParameterRecord[]);
   } catch (error) {
     return fail(toErrorMessage(error));
   }

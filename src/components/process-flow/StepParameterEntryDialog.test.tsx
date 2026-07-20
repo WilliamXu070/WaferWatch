@@ -4,6 +4,7 @@ import type { SetStateAction } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   StepParameterEntryDialog,
+  groupPendingStepParameterEntries,
   makeDraftParameter as makeDialogDraftParameter,
   mergePendingStepParameterEntries,
   prepareLocalParametersForSave,
@@ -205,6 +206,17 @@ test("deduplicates hot-loaded entries and settles successful and failed batch it
   assert.equal(settled[0].persistenceStatus, "ready");
 });
 
+test("keeps parameter drafts isolated by movement draft id", () => {
+  const drafts = groupPendingStepParameterEntries([
+    { assignmentId: "a1", draftId: "draft-one", movementMutationId: "m1", waferLabel: "A1", stepId: "s1", stepName: "Clean", parametersSchema: {} },
+    { assignmentId: "a2", draftId: "draft-two", movementMutationId: "m2", waferLabel: "A2", stepId: "s2", stepName: "Bake", parametersSchema: {} },
+    { assignmentId: "a3", draftId: "draft-one", movementMutationId: "m3", waferLabel: "A3", stepId: "s1", stepName: "Clean", parametersSchema: {} }
+  ]);
+  assert.equal(drafts.length, 2);
+  assert.deepEqual(drafts[0].entries.map((entry) => entry.waferLabel), ["A1", "A3"]);
+  assert.deepEqual(drafts[1].entries.map((entry) => entry.waferLabel), ["A2"]);
+});
+
 test("one shared submission saves the same parameters for every moved die", async () => {
   const entries: PendingStepParameterEntry[] = Array.from({ length: 8 }, (_, index) => ({
     assignmentId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
@@ -245,6 +257,35 @@ test("one shared submission saves the same parameters for every moved die", asyn
     assert.equal(input.notes, "Shared batch note");
     assert.equal(input.localParameters[0].value, 425);
   }
+});
+
+test("eight moved dies use one batch parameter server action", async () => {
+  const entries: PendingStepParameterEntry[] = Array.from({ length: 8 }, (_, index) => ({
+    assignmentId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    movementMutationId: `10000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    waferLabel: `A${index + 1}`,
+    stepId: "20000000-0000-4000-8000-000000000001",
+    stepName: "Chromium Deposition",
+    parametersSchema: {}
+  }));
+  let singleCalls = 0;
+  const batchInputs: unknown[] = [];
+  const result = await saveStepParametersForEntries(
+    entries,
+    { globalValues: { pressure: 12 }, localParameters: [], notes: null },
+    async () => {
+      singleCalls += 1;
+      return { ok: true, data: {} as never };
+    },
+    async (input) => {
+      batchInputs.push(input);
+      return { ok: true, data: [] };
+    }
+  );
+  assert.equal(result.ok, true);
+  assert.equal(singleCalls, 0);
+  assert.equal(batchInputs.length, 1);
+  assert.equal((batchInputs[0] as { entries: unknown[] }).entries.length, 8);
 });
 
 test("renders one form that explicitly applies to every moved item", () => {

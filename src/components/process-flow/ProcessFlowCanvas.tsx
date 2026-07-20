@@ -11,6 +11,7 @@ import type {
   RoleMenu,
   SelectionRect,
   SnapGuide,
+  ProcessFlowSyncState,
   WaferDrag,
   WaferPin
 } from "./types";
@@ -34,6 +35,7 @@ type ProcessFlowCanvasProps = {
   selectedNodeIds: Set<string>;
   selectedEdgeId: string | null;
   selectedWaferAssignmentIds: ReadonlySet<string>;
+  syncStateByAssignmentId: ReadonlyMap<string, ProcessFlowSyncState>;
   connectionNodeId: string | null;
   roleMenu: RoleMenu | null;
   roleMenuNode: FlowNode | null;
@@ -95,6 +97,7 @@ export function ProcessFlowCanvas({
   selectedNodeIds,
   selectedEdgeId,
   selectedWaferAssignmentIds,
+  syncStateByAssignmentId,
   connectionNodeId,
   roleMenu,
   roleMenuNode,
@@ -271,6 +274,7 @@ export function ProcessFlowCanvas({
               : waferDropTarget?.nodeId === node.id ? waferDropTarget.kind : null}
             isSelected={selectedNodeIds.has(node.id)}
             selectedWaferAssignmentIds={selectedWaferAssignmentIds}
+            syncStateByAssignmentId={syncStateByAssignmentId}
             isEditing={editingNodeId === node.id}
             editingNodeLabel={editingNodeLabel}
             editingInputRef={editingInputRef}

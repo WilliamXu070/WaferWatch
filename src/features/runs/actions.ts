@@ -7,10 +7,12 @@ import { toErrorMessage } from "@/lib/errors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   moveApprovedCheckpointSchema,
+  processFlowMutationBatchSchema,
   routeCheckpointSubmissionSchema,
   submitStepCheckpointSchema,
   undoDieProcessHistorySchema
 } from "@/features/runs/schemas";
+import type { ProcessFlowMutationOutcome } from "@/components/process-flow/types";
 import type { Json, ProcessStep } from "@/types/database";
 
 const DIE_COUNT = 8;
@@ -141,6 +143,105 @@ async function getDicingChildSpecsForCheckpoint({
   }));
 }
 
+async function mapWithConcurrency<T, R>(
+  values: readonly T[],
+  limit: number,
+  mapper: (value: T, index: number) => Promise<R>
+) {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, values.length) }, async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(values[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+export async function persistProcessFlowMutationsBatch(input: unknown) {
+  const startedAt = performance.now();
+  try {
+    const parsed = processFlowMutationBatchSchema.parse(input);
+    const authStartedAt = performance.now();
+    await requireAccount();
+    const authMs = performance.now() - authStartedAt;
+    const supabase = await createServerSupabaseClient();
+    const rpcStartedAt = performance.now();
+
+    const outcomes = await mapWithConcurrency(parsed.mutations, 4, async (mutation): Promise<ProcessFlowMutationOutcome> => {
+      const operationId = mutation.kind === "route" ? mutation.movementMutationId : mutation.mutationId;
+      try {
+        if (mutation.kind === "submit") {
+          const { data, error } = await supabase.rpc("submit_step_checkpoint", {
+            target_step_execution_id: mutation.stepExecutionId,
+            mutation_id: mutation.mutationId,
+            notes: mutation.notes ?? null,
+            evidence: withDashboardBatchEvidence(mutation.evidence, mutation.batchId)
+          });
+          if (error) throw error;
+          return { operationId, assignmentId: mutation.assignmentId, ok: true, data };
+        }
+
+        if (mutation.kind === "move") {
+          const { data, error } = await supabase.rpc(
+            mutation.correctCheckpointRoute
+              ? "correct_checkpoint_route_assignment"
+              : "move_approved_checkpoint_assignment",
+            {
+              target_assignment_id: mutation.assignmentId,
+              target_step_id: mutation.targetStepId,
+              mutation_id: mutation.mutationId,
+              notes: mutation.note
+            }
+          );
+          if (error) throw error;
+          return { operationId, assignmentId: mutation.assignmentId, ok: true, data };
+        }
+
+        const dicingChildSpecs = await getDicingChildSpecsForCheckpoint({
+          attemptId: mutation.attemptId,
+          supabase
+        });
+        const childSpecs = (dicingChildSpecs ?? []).map((spec) => ({
+          ...spec,
+          movement_mutation_id: crypto.randomUUID()
+        }));
+        const { data, error } = await supabase.rpc("route_checkpoint_submission", {
+          target_attempt_id: mutation.attemptId,
+          target_step_id: mutation.targetStepId,
+          decision_mutation_id: mutation.decisionMutationId,
+          movement_mutation_id: mutation.movementMutationId,
+          notes: mutation.note,
+          child_specs: childSpecs as Json
+        });
+        if (error) throw error;
+        return { operationId, assignmentId: mutation.assignmentId, ok: true, data };
+      } catch (error) {
+        return {
+          operationId,
+          assignmentId: mutation.assignmentId,
+          ok: false,
+          error: toErrorMessage(error)
+        };
+      }
+    });
+
+    console.info("[ProcessFlowPerf]", JSON.stringify({
+      action: "workflow_batch",
+      mutationCount: parsed.mutations.length,
+      authMs: Math.round(authMs),
+      rpcMs: Math.round(performance.now() - rpcStartedAt),
+      totalMs: Math.round(performance.now() - startedAt)
+    }));
+    return ok(outcomes);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
 export async function submitStepCheckpoint(input: unknown) {
   try {
     await requireAccount();
@@ -157,7 +258,6 @@ export async function submitStepCheckpoint(input: unknown) {
       return fail(error.message);
     }
 
-    revalidateCheckpointWorkflow();
     return ok(data);
   } catch (error) {
     return fail(toErrorMessage(error));
@@ -185,7 +285,6 @@ export async function moveApprovedCheckpointWafer(input: unknown) {
       return fail(error.message);
     }
 
-    revalidateCheckpointWorkflow();
     return ok(data);
   } catch (error) {
     return fail(toErrorMessage(error));
@@ -241,7 +340,6 @@ export async function routeCheckpointSubmission(input: unknown) {
       return fail(error.message);
     }
 
-    revalidateCheckpointWorkflow();
     return ok(data);
   } catch (error) {
     return fail(toErrorMessage(error));

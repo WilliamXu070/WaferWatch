@@ -15,7 +15,7 @@ import {
   truncateLabel
 } from "./labels";
 import { getNearestWaferGridIndex, getStepDoubleClickAction } from "./interactions";
-import type { FlowNode, WaferDrag, WaferPin } from "./types";
+import type { FlowNode, ProcessFlowSyncState, WaferDrag, WaferPin } from "./types";
 
 const MOBILE_WAFER_TOUCH_RADIUS_PX = 28;
 
@@ -26,6 +26,7 @@ type FlowNodeCardProps = {
   dropTargetKind: "submit" | "move" | "restore" | null;
   isSelected: boolean;
   selectedWaferAssignmentIds: ReadonlySet<string>;
+  syncStateByAssignmentId?: ReadonlyMap<string, ProcessFlowSyncState>;
   isEditing: boolean;
   editingNodeLabel: string;
   editingInputRef: RefObject<HTMLInputElement | null>;
@@ -51,6 +52,7 @@ export function FlowNodeCard({
   dropTargetKind,
   isSelected,
   selectedWaferAssignmentIds,
+  syncStateByAssignmentId = new Map(),
   isEditing,
   editingNodeLabel,
   editingInputRef,
@@ -127,6 +129,7 @@ export function FlowNodeCard({
       x={(index % NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_X}
       y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
       isSelected={selectedWaferAssignmentIds.has(wafer.assignmentId)}
+      syncState={syncStateByAssignmentId.get(wafer.assignmentId)}
       status={wafer.currentStepStatus}
       title={`${getWaferChipLabel(wafer)} · ${getCheckpointStateLabel(wafer.currentStepStatus)}${
         wafer.anytimeReturnStepName ? ` · Return to ${wafer.anytimeReturnStepName}` : ""
@@ -323,6 +326,7 @@ function WaferChip({
   opacity,
   isSelected = false,
   status,
+  syncState,
   title,
   onPointerDown,
   onPointerEnter,
@@ -336,6 +340,7 @@ function WaferChip({
   opacity?: string;
   isSelected?: boolean;
   status?: string | null;
+  syncState?: ProcessFlowSyncState;
   title?: string;
   onPointerDown?: (event: PointerEvent<SVGGElement>) => void;
   onPointerEnter?: (event: PointerEvent<SVGGElement>) => void;
@@ -362,7 +367,17 @@ function WaferChip({
   return (
     <g
       ref={chipRef}
-      className={`flow-wafer-chip ${status ? `flow-wafer-chip--${status.replaceAll("_", "-")}` : ""} ${isSelected ? "flow-wafer-chip--selected" : ""} ${className}`.trim()}
+      className={[
+        "flow-wafer-chip",
+        status ? `flow-wafer-chip--${status.replaceAll("_", "-")}` : "",
+        syncState ? `flow-wafer-chip--sync-${syncState.replaceAll("_", "-")}` : "",
+        isSelected ? "flow-wafer-chip--selected" : "",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-sync-state={syncState}
+      data-testid={syncState ? `process-flow-chip-${label}` : undefined}
       pointerEvents={pointerEvents}
       transform={`translate(${x} ${y})`}
       opacity={opacity}

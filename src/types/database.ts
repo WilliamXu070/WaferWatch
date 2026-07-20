@@ -769,6 +769,15 @@ export interface Database {
         };
         Returns: Json;
       };
+      save_step_parameter_records_batch: {
+        Args: {
+          entries: Json;
+          global_values: Json;
+          local_parameters: Json;
+          notes?: string | null;
+        };
+        Returns: StepParameterRecord[];
+      };
       soft_delete_process_flow_wafer_family: {
         Args: {
           target_project_id: string;

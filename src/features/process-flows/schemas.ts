@@ -114,6 +114,33 @@ export const stepParameterRecordSaveSchema = z.object({
   localParameters: z.array(recordedLocalStepParameterSchema).max(100)
 });
 
+export const stepParameterRecordsBatchSaveSchema = z.object({
+  entries: z.array(z.object({
+    assignmentId: uuidSchema,
+    stepId: uuidSchema,
+    movementMutationId: uuidSchema
+  })).min(1).max(256),
+  globalValues: z.record(z.string(), stepParameterValueSchema),
+  notes: z.string().trim().max(4000).nullable(),
+  localParameters: z.array(recordedLocalStepParameterSchema).max(100)
+}).superRefine((value, context) => {
+  const mutationIds = value.entries.map((entry) => entry.movementMutationId);
+  if (new Set(mutationIds).size !== mutationIds.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Each movement can only appear once in a parameter batch.",
+      path: ["entries"]
+    });
+  }
+  if (new Set(value.entries.map((entry) => entry.stepId)).size !== 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "A parameter batch must target one process step.",
+      path: ["entries"]
+    });
+  }
+});
+
 export const waferStatusStepParameterRecordSaveSchema = z.object({
   projectId: uuidSchema,
   waferId: uuidSchema,

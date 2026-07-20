@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import {
   ClipboardEvent,
   FormEvent,
@@ -25,7 +25,7 @@ import {
   type StepParameterValue
 } from "@/features/process-flows/stepParameters";
 import type { Json, StepParameterRecord } from "@/types/database";
-import type { SaveStepParameterRecordAction } from "./types";
+import type { SaveStepParameterRecordAction, SaveStepParameterRecordsBatchAction } from "./types";
 
 export type PendingStepParameterEntry = {
   assignmentId: string;
@@ -65,6 +65,15 @@ export function settlePendingStepParameterEntries(
   });
 }
 
+export function groupPendingStepParameterEntries(entries: readonly PendingStepParameterEntry[]) {
+  const drafts = new Map<string, PendingStepParameterEntry[]>();
+  entries.forEach((entry) => {
+    const draftId = entry.draftId ?? `movement:${entry.movementMutationId}`;
+    drafts.set(draftId, [...(drafts.get(draftId) ?? []), entry]);
+  });
+  return Array.from(drafts, ([draftId, draftEntries]) => ({ draftId, entries: draftEntries }));
+}
+
 export type DraftParameter = RecordedLocalStepParameter & { valueText: string };
 
 export type PersistStepParameterAttachment = (input: {
@@ -80,6 +89,9 @@ export type PersistStepParameterAttachment = (input: {
   body: string;
   files: readonly File[];
 }) => Promise<unknown>;
+export type PersistStepParameterAttachmentBatch = (
+  inputs: readonly Parameters<PersistStepParameterAttachment>[0][]
+) => Promise<unknown>;
 
 type SharedStepParameterValues = Omit<
   Parameters<SaveStepParameterRecordAction>[0],
@@ -89,8 +101,20 @@ type SharedStepParameterValues = Omit<
 export async function saveStepParametersForEntries(
   entries: PendingStepParameterEntry[],
   values: SharedStepParameterValues,
-  onSave: SaveStepParameterRecordAction
+  onSave: SaveStepParameterRecordAction,
+  onSaveBatch?: SaveStepParameterRecordsBatchAction
 ) {
+  if (onSaveBatch) {
+    return onSaveBatch({
+      entries: entries.map((entry) => ({
+        assignmentId: entry.assignmentId,
+        stepId: entry.stepId,
+        movementMutationId: entry.movementMutationId
+      })),
+      ...values
+    });
+  }
+
   const results = await Promise.all(entries.map((entry) => onSave({
     assignmentId: entry.assignmentId,
     stepId: entry.stepId,
@@ -120,25 +144,38 @@ export async function saveStepParameterAttachmentsForEntries(
   files: readonly File[],
   noteBody: string,
   currentUserName: string | undefined,
-  persist: PersistStepParameterAttachment
+  persist: PersistStepParameterAttachment,
+  persistBatch?: PersistStepParameterAttachmentBatch
 ) {
-  if (entries.length !== records.length) {
+  const entriesByMutationId = new Map(entries.map((entry) => [entry.movementMutationId, entry]));
+  if (entriesByMutationId.size !== records.length) {
     throw new Error("The saved parameter records do not match the moved items.");
   }
 
-  await Promise.all(records.map((record, index) => persist({
-    projectId: record.project_id,
-    waferId: record.wafer_id,
-    dieLabel: entries[index].waferLabel,
-    stepId: record.process_step_id,
-    stepName: entries[index].stepName,
-    stepExecutionId: record.step_execution_id,
-    noteId: `step-parameters:${record.id}`,
-    authorId: record.recorded_by,
-    author: currentUserName?.trim() || "Unknown user",
-    body: noteBody.trim() || "Step parameter attachment",
-    files
-  })));
+  const attachmentInputs = records.map((record) => {
+    const entry = entriesByMutationId.get(record.movement_mutation_id);
+    if (!entry) {
+      throw new Error("A saved parameter record did not match its movement mutation.");
+    }
+    return {
+      projectId: record.project_id,
+      waferId: record.wafer_id,
+      dieLabel: entry.waferLabel,
+      stepId: record.process_step_id,
+      stepName: entry.stepName,
+      stepExecutionId: record.step_execution_id,
+      noteId: `step-parameters:${record.id}`,
+      authorId: record.recorded_by,
+      author: currentUserName?.trim() || "Unknown user",
+      body: noteBody.trim() || "Step parameter attachment",
+      files
+    };
+  });
+  if (persistBatch) {
+    await persistBatch(attachmentInputs);
+    return;
+  }
+  await Promise.all(attachmentInputs.map((input) => persist(input)));
 }
 
 export function updateDraftParameterFromInput(
@@ -244,17 +281,36 @@ function ParameterValueInput({
 export function StepParameterEntryDialog({
   entries,
   onSave,
+  onSaveBatch,
   onComplete,
   onSkipAll,
+  draftPosition = 1,
+  draftCount = 1,
   currentUserName,
-  onPersistAttachment
+  onPersistAttachment,
+  onPersistAttachmentBatch,
+  onSaveStarted,
+  onSaveFailed,
+  onAttachmentState
 }: {
   entries: PendingStepParameterEntry[];
   onSave: SaveStepParameterRecordAction;
-  onComplete: (message: string) => void;
+  onSaveBatch?: SaveStepParameterRecordsBatchAction;
+  onComplete: (message: string, hasBackgroundAttachments: boolean) => void;
   onSkipAll: () => void;
+  draftPosition?: number;
+  draftCount?: number;
   currentUserName?: string;
   onPersistAttachment?: PersistStepParameterAttachment;
+  onPersistAttachmentBatch?: PersistStepParameterAttachmentBatch;
+  onSaveStarted?: (entries: readonly PendingStepParameterEntry[]) => void;
+  onSaveFailed?: (entries: readonly PendingStepParameterEntry[], error: string) => void;
+  onAttachmentState?: (
+    entries: readonly PendingStepParameterEntry[],
+    state: "uploading_files" | "synced" | "failed",
+    detail?: string,
+    retry?: () => void
+  ) => void;
 }) {
   const entry = entries[0];
   const total = entries.length;
@@ -268,6 +324,7 @@ export function StepParameterEntryDialog({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const isMovementPersisting = entries.some((candidate) => candidate.persistenceStatus === "persisting");
 
   const appendAttachmentFiles = async (files: readonly File[]) => {
@@ -310,6 +367,7 @@ export function StepParameterEntryDialog({
       return;
     }
 
+    onSaveStarted?.(entries);
     startTransition(async () => {
       const result = await saveStepParametersForEntries(entries, {
         notes: additionalNotes.trim() || null,
@@ -320,46 +378,67 @@ export function StepParameterEntryDialog({
           ...parameter,
           value: parseValue(parameter.type, valueText)
         }))
-      }, onSave);
+      }, onSave, onSaveBatch);
 
       if (!result.ok) {
         setMessage(result.error);
+        onSaveFailed?.(entries, result.error);
         return;
       }
 
+      let hasBackgroundAttachments = false;
       if (attachmentFiles.length > 0) {
         if (!onPersistAttachment) {
           setMessage("Attachments are unavailable for this process view.");
           return;
         }
-        try {
-          await saveStepParameterAttachmentsForEntries(
+        hasBackgroundAttachments = true;
+        const uploadAttachments = () => {
+          onAttachmentState?.(entries, "uploading_files", `Parameters saved · uploading ${attachmentFiles.length} file${attachmentFiles.length === 1 ? "" : "s"}`);
+          void saveStepParameterAttachmentsForEntries(
             entries,
             result.data,
             attachmentFiles,
             additionalNotes,
             currentUserName,
-            onPersistAttachment
-          );
-        } catch (error) {
-          setMessage(error instanceof Error ? error.message : "The attachments could not be saved.");
-          return;
-        }
+            onPersistAttachment,
+            onPersistAttachmentBatch
+          ).then(() => onAttachmentState?.(entries, "synced"))
+            .catch((error) => onAttachmentState?.(
+              entries,
+              "failed",
+              error instanceof Error ? error.message : "The attachments could not be saved.",
+              uploadAttachments
+            ));
+        };
+        uploadAttachments();
       }
 
       onComplete(total > 1
         ? `Parameters saved for all ${total} moved items.`
-        : `Parameters saved for ${entry.waferLabel}.`);
+        : `Parameters saved for ${entry.waferLabel}.`, hasBackgroundAttachments);
     });
   };
 
   return (
-    <div className="flow-wafer-move-dialog-backdrop" role="presentation">
-      <form className="flow-wafer-move-dialog process-flow-parameter-dialog" role="dialog" aria-modal="true" aria-labelledby="step-parameter-entry-title" onPaste={pasteAttachmentImages} onSubmit={submit}>
+    <div className={`process-flow-parameter-panel-host ${isCollapsed ? "process-flow-parameter-panel-host--collapsed" : ""}`} data-testid="process-flow-parameter-panel" role="presentation">
+      {isCollapsed ? (
+        <button className="process-flow-parameter-pending-bar" data-testid="process-flow-parameter-pending-bar" onClick={() => setIsCollapsed(false)} type="button">
+          <span>Parameters pending</span>
+          <span>{draftPosition} of {draftCount}</span>
+          <ChevronUp aria-hidden />
+        </button>
+      ) : (
+      <form className="flow-wafer-move-dialog process-flow-parameter-dialog" role="dialog" aria-modal="false" aria-labelledby="step-parameter-entry-title" onPaste={pasteAttachmentImages} onSubmit={submit}>
         <header className="border-b border-[#e8e8e1] px-5 py-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#85857d]">
-            {total > 1 ? `Applies to all ${total} moved items` : "Step parameters"}
-          </p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#85857d]">
+              {draftCount > 1 ? `${draftPosition} of ${draftCount} drafts` : total > 1 ? `Applies to all ${total} moved items` : "Step parameters"}
+            </p>
+            <button className="process-flow-parameter-collapse" aria-label="Collapse parameter panel" onClick={() => setIsCollapsed(true)} type="button">
+              <ChevronDown aria-hidden />
+            </button>
+          </div>
           <h2 id="step-parameter-entry-title" className="mt-1 text-[20px] font-semibold tracking-[-0.02em] text-[#171714]">
             {entry.stepName}
           </h2>
@@ -559,6 +638,7 @@ export function StepParameterEntryDialog({
           </button>
         </footer>
       </form>
+      )}
     </div>
   );
 }

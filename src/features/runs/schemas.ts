@@ -43,3 +43,38 @@ export const routeCheckpointSubmissionSchema = z.object({
   movementMutationId: uuidSchema,
   note: z.string().trim().min(1).max(4000)
 });
+
+const processFlowSubmitMutationSchema = submitStepCheckpointSchema.extend({
+  kind: z.literal("submit"),
+  assignmentId: uuidSchema
+});
+
+const processFlowMoveMutationSchema = moveApprovedCheckpointSchema.extend({
+  kind: z.literal("move")
+});
+
+const processFlowRouteMutationSchema = routeCheckpointSubmissionSchema.extend({
+  kind: z.literal("route"),
+  assignmentId: uuidSchema
+});
+
+export const processFlowMutationSchema = z.discriminatedUnion("kind", [
+  processFlowSubmitMutationSchema,
+  processFlowMoveMutationSchema,
+  processFlowRouteMutationSchema
+]);
+
+export const processFlowMutationBatchSchema = z.object({
+  mutations: z.array(processFlowMutationSchema).min(1).max(256)
+}).superRefine((value, context) => {
+  const operationIds = value.mutations.map((mutation) =>
+    mutation.kind === "route" ? mutation.movementMutationId : mutation.mutationId
+  );
+  if (new Set(operationIds).size !== operationIds.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Each Process Flow mutation must have a unique operation id.",
+      path: ["mutations"]
+    });
+  }
+});

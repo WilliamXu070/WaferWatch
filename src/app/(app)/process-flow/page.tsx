@@ -1,5 +1,6 @@
 import {
   moveApprovedCheckpointWafer,
+  persistProcessFlowMutationsBatch,
   routeCheckpointSubmission,
   submitStepCheckpoint,
   undoDieProcessHistoryState,
@@ -17,7 +18,8 @@ import {
   updateProcessStepExecutionMode,
   updateProcessStepPositions,
   updateProcessStepCheckpointReviewer,
-  saveStepParameterRecord
+  saveStepParameterRecord,
+  saveStepParameterRecordsBatch
 } from "@/features/process-flows/actions";
 import {
   getProcessArchiveItems,
@@ -296,8 +298,10 @@ export default async function ProcessFlowWireframePage({
         submitCheckpoint: submitStepCheckpoint,
         routeCheckpoint: routeCheckpointSubmission,
         moveApprovedWafer: moveApprovedCheckpointWafer,
+        persistMutationsBatch: persistProcessFlowMutationsBatch,
         undoHistory: undoDieProcessHistoryState,
         saveParameters: saveStepParameterRecord,
+        saveParameterRecordsBatch: saveStepParameterRecordsBatch,
         updateReviewer: updateProcessStepCheckpointReviewer
       } : undefined}
     />

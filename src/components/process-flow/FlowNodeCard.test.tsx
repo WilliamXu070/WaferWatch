@@ -42,6 +42,7 @@ test("renders Beginning and Complete selection through the same wafer chip compo
         dropTargetKind={null}
         isSelected={false}
         selectedWaferAssignmentIds={new Set(["beginning", "complete"])}
+        syncStateByAssignmentId={new Map([["complete", "saving_move"]])}
         isEditing={false}
         editingNodeLabel=""
         editingInputRef={{ current: null }}
@@ -64,7 +65,9 @@ test("renders Beginning and Complete selection through the same wafer chip compo
 
   assert.equal((markup.match(/flow-wafer-chip--selected/g) ?? []).length, 2);
   assert.match(markup, /flow-wafer-chip--queued flow-wafer-chip--selected/);
-  assert.match(markup, /flow-wafer-chip--ready-to-move flow-wafer-chip--selected/);
+  assert.match(markup, /flow-wafer-chip--ready-to-move[^\"]*flow-wafer-chip--selected/);
+  assert.match(markup, /data-sync-state="saving_move"/);
+  assert.match(markup, /flow-wafer-chip--sync-saving-move/);
   assert.equal((markup.match(/flow-node-wafer-touch-layer/g) ?? []).length, 2);
   assert.match(markup, /data-checkpoint-phase="beginning"/);
   assert.match(markup, /data-checkpoint-phase="complete"/);

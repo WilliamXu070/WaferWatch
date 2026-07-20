@@ -1,12 +1,12 @@
 "use client";
 
-import { registerAttachment } from "@/features/measurements/actions";
+import { finalizeWaferStepNotesBatch, registerAttachmentsBatch } from "@/features/measurements/actions";
 import {
   MAX_NOTE_ATTACHMENTS,
   NOTE_ATTACHMENT_MAX_BYTES
 } from "@/features/measurements/noteAttachmentDraft";
-import { mutateTextSurfaceJsonArray } from "@/features/text-surfaces/actions";
 import { createClient } from "@/lib/supabase/client";
+import { getStableAttachmentObjectPath, mapWithConcurrency } from "./backgroundAttachmentQueue";
 import {
   getWaferDieStepNotesScopeKey,
   waferDieNotesSurface
@@ -29,102 +29,7 @@ export type UploadedNoteAttachment = {
   sizeBytes: number | null;
 };
 
-export async function uploadWaferNoteAttachments({
-  projectId,
-  waferId,
-  dieLabel,
-  category = "notes",
-  stepExecutionId,
-  noteId,
-  files
-}: {
-  projectId: string;
-  waferId: string;
-  dieLabel: string;
-  category?: string;
-  stepExecutionId?: string | null;
-  noteId: string;
-  files: readonly File[];
-}): Promise<UploadedNoteAttachment[]> {
-  const uploaded: UploadedNoteAttachment[] = [];
-
-  for (const file of files.slice(0, MAX_NOTE_ATTACHMENTS)) {
-    if (file.size > NOTE_ATTACHMENT_MAX_BYTES) {
-      throw new Error(`${file.name} is larger than 50 MB.`);
-    }
-
-    const safeFileName = sanitizeFileName(file.name);
-    const safeDieLabel = sanitizeFileName(dieLabel);
-    const safeCategory = sanitizeFileName(category);
-    const objectPath = `${projectId}/wafers/${waferId}/dies/${safeDieLabel}/${safeCategory}/${noteId}/${crypto.randomUUID()}-${safeFileName}`;
-    const signedResponse = await fetch("/api/storage/signed-upload", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        projectId,
-        bucketName: NOTE_ATTACHMENT_BUCKET,
-        objectPath
-      })
-    });
-
-    if (!signedResponse.ok) {
-      const payload = await signedResponse.json().catch(() => null) as { error?: string } | null;
-      throw new Error(payload?.error ?? "Unable to create note attachment upload.");
-    }
-
-    const signedUpload = await signedResponse.json() as { path: string; token: string };
-    const supabase = createClient();
-    const { error: uploadError } = await supabase.storage
-      .from(NOTE_ATTACHMENT_BUCKET)
-      .uploadToSignedUrl(signedUpload.path, signedUpload.token, file, {
-        contentType: file.type || "application/octet-stream"
-      });
-
-    if (uploadError) {
-      throw new Error(uploadError.message);
-    }
-
-    const registered = await registerAttachment({
-      projectId,
-      waferId,
-      stepExecutionId: stepExecutionId ?? null,
-      bucketName: NOTE_ATTACHMENT_BUCKET,
-      objectPath,
-      fileName: file.name || safeFileName,
-      mimeType: file.type || null,
-      sizeBytes: file.size
-    });
-
-    if (!registered.ok) {
-      throw new Error(registered.error);
-    }
-
-    uploaded.push({
-      id: registered.data.id,
-      bucketName: registered.data.bucket_name,
-      objectPath: registered.data.object_path,
-      fileName: registered.data.file_name,
-      mimeType: registered.data.mime_type,
-      sizeBytes: registered.data.size_bytes
-    });
-  }
-
-  return uploaded;
-}
-
-export async function persistWaferStepNoteAttachments({
-  projectId,
-  waferId,
-  dieLabel,
-  stepId,
-  stepName,
-  stepExecutionId,
-  noteId,
-  authorId,
-  author,
-  body,
-  files
-}: {
+export type WaferStepNoteAttachmentInput = {
   projectId: string;
   waferId: string;
   dieLabel: string;
@@ -136,39 +41,219 @@ export async function persistWaferStepNoteAttachments({
   author: string;
   body: string;
   files: readonly File[];
-}) {
-  const attachments = await uploadWaferNoteAttachments({
-    projectId,
-    waferId,
-    dieLabel,
-    stepExecutionId,
-    noteId,
-    files
+};
+
+export type BackgroundAttachmentJob = {
+  id: string;
+  noteId: string;
+  objectPath: string;
+  file: File;
+  status: "queued" | "uploading" | "uploaded";
+};
+
+function createAttachmentJobs(input: WaferStepNoteAttachmentInput, noteIndex: number) {
+  return input.files.slice(0, MAX_NOTE_ATTACHMENTS).map((file, fileIndex): BackgroundAttachmentJob & { noteIndex: number } => {
+    if (file.size > NOTE_ATTACHMENT_MAX_BYTES) {
+      throw new Error(`${file.name} is larger than 50 MB.`);
+    }
+    const safeFileName = sanitizeFileName(file.name);
+    const objectPath = getStableAttachmentObjectPath({
+      projectId: input.projectId,
+      waferId: input.waferId,
+      dieLabel: sanitizeFileName(input.dieLabel),
+      category: "notes",
+      noteId: input.noteId,
+      fileIndex,
+      fileName: safeFileName
+    });
+    return {
+      id: `${input.noteId}:${fileIndex}`,
+      noteId: input.noteId,
+      noteIndex,
+      objectPath,
+      file,
+      status: "queued"
+    };
   });
+}
+
+export async function persistWaferStepNoteAttachmentsBatch(
+  inputs: readonly WaferStepNoteAttachmentInput[]
+): Promise<Map<string, UploadedNoteAttachment[]>> {
+  if (!inputs.length) return new Map();
+  const projectIds = new Set(inputs.map((input) => input.projectId));
+  if (projectIds.size !== 1) throw new Error("Attachment batches must belong to one project.");
+
+  const totalStartedAt = performance.now();
+  const jobs = inputs.flatMap(createAttachmentJobs);
+  const signingStartedAt = performance.now();
+  const signedResponse = await fetch("/api/storage/signed-upload", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      uploads: jobs.map((job) => ({
+        projectId: inputs[job.noteIndex].projectId,
+        bucketName: NOTE_ATTACHMENT_BUCKET,
+        objectPath: job.objectPath
+      }))
+    })
+  });
+  if (!signedResponse.ok) {
+    const payload = await signedResponse.json().catch(() => null) as { error?: string } | null;
+    throw new Error(payload?.error ?? "Unable to create note attachment uploads.");
+  }
+  const signed = await signedResponse.json() as {
+    uploads: Array<{ objectPath: string; path: string; token: string }>;
+  };
+  const signedByObjectPath = new Map(signed.uploads.map((upload) => [upload.objectPath, upload]));
+
+  const uploadStartedAt = performance.now();
+  const supabase = createClient();
+  await mapWithConcurrency(jobs, 3, async (job) => {
+    const signedUpload = signedByObjectPath.get(job.objectPath);
+    if (!signedUpload) throw new Error("A signed upload was not returned for an attachment.");
+    job.status = "uploading";
+    const { error } = await supabase.storage
+      .from(NOTE_ATTACHMENT_BUCKET)
+      .uploadToSignedUrl(signedUpload.path, signedUpload.token, job.file, {
+        contentType: job.file.type || "application/octet-stream"
+      });
+    if (error) throw new Error(error.message);
+    job.status = "uploaded";
+  });
+
   const timestamp = new Date().toISOString();
-  const noteMutation = await mutateTextSurfaceJsonArray({
-    projectId,
+  const notes = inputs.map((input, noteIndex) => ({
+    noteId: input.noteId,
+    waferId: input.waferId,
+    stepExecutionId: input.stepExecutionId ?? null,
     scopeType: waferDieNotesSurface.scopeType,
-    scopeKey: getWaferDieStepNotesScopeKey(waferId, dieLabel, stepId),
+    scopeKey: getWaferDieStepNotesScopeKey(input.waferId, input.dieLabel, input.stepId),
     fieldKey: waferDieNotesSurface.fieldKey,
-    operation: "add",
-    itemId: noteId,
     item: {
-      id: noteId,
-      authorId: authorId ?? null,
-      author,
-      body,
-      attachments,
-      processStepId: stepId,
-      processStepName: stepName,
+      id: input.noteId,
+      authorId: input.authorId ?? null,
+      author: input.author,
+      body: input.body,
+      attachments: [],
+      processStepId: input.stepId,
+      processStepName: input.stepName,
       createdAt: timestamp,
       updatedAt: timestamp
-    }
-  });
-
-  if (!noteMutation.ok) {
-    throw new Error(noteMutation.error);
+    },
+    attachments: jobs.filter((job) => job.noteIndex === noteIndex).map((job) => ({
+      objectPath: job.objectPath,
+      fileName: job.file.name || sanitizeFileName(job.file.name),
+      mimeType: job.file.type || null,
+      sizeBytes: job.file.size
+    }))
+  }));
+  const finalizationStartedAt = performance.now();
+  const finalized = await finalizeWaferStepNotesBatch({ projectId: inputs[0].projectId, notes });
+  if (!finalized.ok) throw new Error(finalized.error);
+  const failed = finalized.data.filter((outcome) => !outcome.ok);
+  if (failed.length) {
+    const failedIds = new Set(failed.map((outcome) => outcome.noteId));
+    const retried = await finalizeWaferStepNotesBatch({
+      projectId: inputs[0].projectId,
+      notes: notes.filter((note) => failedIds.has(note.noteId))
+    });
+    if (!retried.ok) throw new Error(retried.error);
+    const retryFailure = retried.data.find((outcome) => !outcome.ok);
+    if (retryFailure && !retryFailure.ok) throw new Error(retryFailure.error);
+    finalized.data.splice(0, finalized.data.length,
+      ...finalized.data.filter((outcome) => !failedIds.has(outcome.noteId)),
+      ...retried.data
+    );
   }
 
-  return attachments;
+  console.info("[ProcessFlowPerf]", JSON.stringify({
+    action: "background_attachments",
+    notes: inputs.length,
+    attachments: jobs.length,
+    signing_ms: Math.round(uploadStartedAt - signingStartedAt),
+    upload_ms: Math.round(finalizationStartedAt - uploadStartedAt),
+    finalization_ms: Math.round(performance.now() - finalizationStartedAt),
+    total_ms: Math.round(performance.now() - totalStartedAt)
+  }));
+  return new Map(finalized.data.flatMap((outcome) => outcome.ok
+    ? [[outcome.noteId, outcome.attachments] as const]
+    : []));
+}
+
+export async function uploadWaferNoteAttachments(input: {
+  projectId: string;
+  waferId: string;
+  dieLabel: string;
+  category?: string;
+  stepExecutionId?: string | null;
+  noteId: string;
+  files: readonly File[];
+}): Promise<UploadedNoteAttachment[]> {
+  const files = input.files.slice(0, MAX_NOTE_ATTACHMENTS);
+  files.forEach((file) => {
+    if (file.size > NOTE_ATTACHMENT_MAX_BYTES) throw new Error(`${file.name} is larger than 50 MB.`);
+  });
+  const objectPaths = files.map((file, index) => getStableAttachmentObjectPath({
+    projectId: input.projectId,
+    waferId: input.waferId,
+    dieLabel: sanitizeFileName(input.dieLabel),
+    category: sanitizeFileName(input.category ?? "notes"),
+    noteId: input.noteId,
+    fileIndex: index,
+    fileName: sanitizeFileName(file.name)
+  }));
+  const signedResponse = await fetch("/api/storage/signed-upload", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ uploads: objectPaths.map((objectPath) => ({
+      projectId: input.projectId,
+      bucketName: NOTE_ATTACHMENT_BUCKET,
+      objectPath
+    })) })
+  });
+  if (!signedResponse.ok) {
+    const payload = await signedResponse.json().catch(() => null) as { error?: string } | null;
+    throw new Error(payload?.error ?? "Unable to create note attachment uploads.");
+  }
+  const signed = await signedResponse.json() as { uploads: Array<{ objectPath: string; path: string; token: string }> };
+  const signedByPath = new Map(signed.uploads.map((upload) => [upload.objectPath, upload]));
+  const supabase = createClient();
+  await mapWithConcurrency(files, 3, async (file, index) => {
+    const signedUpload = signedByPath.get(objectPaths[index]);
+    if (!signedUpload) throw new Error("A signed upload was not returned for an attachment.");
+    const { error } = await supabase.storage.from(NOTE_ATTACHMENT_BUCKET).uploadToSignedUrl(
+      signedUpload.path,
+      signedUpload.token,
+      file,
+      { contentType: file.type || "application/octet-stream" }
+    );
+    if (error) throw new Error(error.message);
+  });
+  const registered = await registerAttachmentsBatch({
+    projectId: input.projectId,
+    attachments: files.map((file, index) => ({
+      waferId: input.waferId,
+      stepExecutionId: input.stepExecutionId ?? null,
+      bucketName: NOTE_ATTACHMENT_BUCKET,
+      objectPath: objectPaths[index],
+      fileName: file.name || sanitizeFileName(file.name),
+      mimeType: file.type || null,
+      sizeBytes: file.size
+    }))
+  });
+  if (!registered.ok) throw new Error(registered.error);
+  return registered.data.map((attachment) => ({
+    id: attachment.id,
+    bucketName: attachment.bucket_name,
+    objectPath: attachment.object_path,
+    fileName: attachment.file_name,
+    mimeType: attachment.mime_type,
+    sizeBytes: attachment.size_bytes
+  }));
+}
+
+export async function persistWaferStepNoteAttachments(input: WaferStepNoteAttachmentInput) {
+  const result = await persistWaferStepNoteAttachmentsBatch([input]);
+  return result.get(input.noteId) ?? [];
 }

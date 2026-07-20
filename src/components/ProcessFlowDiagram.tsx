@@ -22,7 +22,10 @@ import {
   mergeNoteAttachmentFiles,
   prepareNoteAttachmentFiles
 } from "@/features/measurements/noteAttachmentDraft";
-import { persistWaferStepNoteAttachments } from "@/features/measurements/noteAttachmentUpload";
+import {
+  persistWaferStepNoteAttachments,
+  persistWaferStepNoteAttachmentsBatch
+} from "@/features/measurements/noteAttachmentUpload";
 import {
   getNextGreekWaferCode,
   getWaferCodeValidationError,
@@ -31,15 +34,18 @@ import {
 import type { ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
 import { readDeletedWaferIds } from "@/features/process-flows/waferDeletion";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
+import { ProcessFlowMutationStatus } from "./process-flow/ProcessFlowMutationStatus";
 import { ProcessArchiveDock } from "./process-flow/ProcessArchiveDock";
 import { ProcessFlowToolbar } from "./process-flow/ProcessFlowToolbar";
 import {
+  groupPendingStepParameterEntries,
   mergePendingStepParameterEntries,
   settlePendingStepParameterEntries,
   StepParameterEntryDialog,
   type PendingStepParameterEntry
 } from "./process-flow/StepParameterEntryDialog";
 import { WaferCreateDialog, type WaferCreateDraft } from "./process-flow/WaferCreateDialog";
+import { useProcessFlowMutationQueue } from "./process-flow/useProcessFlowMutationQueue";
 import {
   areWafersArchivable,
   getBeginningLaneRestoreTarget,
@@ -117,6 +123,7 @@ import type {
   PendingWaferMove,
   ProcessArchiveItem,
   ProcessFlowActions,
+  ProcessFlowMutationRequest,
   PersistedStepPayload,
   RoleMenu,
   ScenePoint,
@@ -351,6 +358,8 @@ export function ProcessFlowDiagram({
     moveApprovedWafer: onMoveApprovedWafer,
     undoHistory: onUndoDieProcessHistory,
     saveParameters: onSaveStepParameters,
+    saveParameterRecordsBatch: onSaveStepParametersBatch,
+    persistMutationsBatch: onPersistMutationsBatch,
     updateReviewer: onUpdateStepReviewer
   } = actions ?? {};
 
@@ -395,11 +404,12 @@ export function ProcessFlowDiagram({
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [selectedWafers, setSelectedWafers] = useState<SelectedFlowWafer[]>([]);
   const [openingWaferDetailsLabel, setOpeningWaferDetailsLabel] = useState<string | null>(null);
-  const setMoveMessage = (msg: string | null) => { if (msg) console.warn("[ProcessFlow]", msg); };
+  const [moveMessage, setMoveMessage] = useState<string | null>(null);
+  const mutationQueue = useProcessFlowMutationQueue();
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editingNodeLabel, setEditingNodeLabel] = useState("");
   const editingInputRef = useRef<HTMLInputElement | null>(null);
-  const [isMovePending, startMoveTransition] = useTransition();
+  const [, startMoveTransition] = useTransition();
   const [isGraphPending, startGraphTransition] = useTransition();
   const [isWaferMutationPending, startWaferMutationTransition] = useTransition();
   const scaleRef = useRef(1);
@@ -617,7 +627,7 @@ export function ProcessFlowDiagram({
   const scheduleBackgroundRefresh = useCallback(() => {
     window.setTimeout(() => {
       router.refresh();
-    }, 250);
+    }, 2000);
   }, [router]);
 
   const setEditingNode = (nodeId: string | null) => {
@@ -2621,7 +2631,7 @@ export function ProcessFlowDiagram({
     if (event.pointerType === "touch" && pointerPinchRef.current.active) {
       return;
     }
-    if (!canEdit || (!onSubmitCheckpoint && !onMoveApprovedWafer && !onRouteCheckpoint && !onArchiveWafers) || event.button !== 0 || isMovePending) {
+    if (!canEdit || (!onSubmitCheckpoint && !onMoveApprovedWafer && !onRouteCheckpoint && !onArchiveWafers) || event.button !== 0 || mutationQueue.lockedAssignmentIds.has(wafer.assignmentId)) {
       return;
     }
 
@@ -3037,7 +3047,7 @@ export function ProcessFlowDiagram({
   };
 
   const cancelPendingWaferMove = () => {
-    if (isMovePending) {
+    if (pendingWaferMove?.wafers.some((wafer) => mutationQueue.lockedAssignmentIds.has(wafer.assignmentId))) {
       return;
     }
 
@@ -3047,9 +3057,13 @@ export function ProcessFlowDiagram({
     setPendingWaferMoveFileError(null);
   };
 
-  function submitPendingWaferMove(moveOverride?: PendingWaferMove, noteOverride?: string) {
+  function submitPendingWaferMove(
+    moveOverride?: PendingWaferMove,
+    noteOverride?: string,
+    filesOverride?: readonly File[]
+  ) {
     const activeMove = moveOverride ?? pendingWaferMove;
-    if (!activeMove || isMovePending || (
+    if (!activeMove || activeMove.wafers.some((wafer) => mutationQueue.lockedAssignmentIds.has(wafer.assignmentId)) || (
       activeMove.kind === "submit"
         ? !onSubmitCheckpoint
         : !onMoveApprovedWafer && !onRouteCheckpoint
@@ -3065,7 +3079,7 @@ export function ProcessFlowDiagram({
 
     const move = activeMove;
     const actionNote = getProcessMoveActionNote(move.kind, note, move.targetLabel);
-    const files = moveOverride ? [] : pendingWaferMoveFiles;
+    const files = filesOverride ?? (moveOverride ? [] : pendingWaferMoveFiles);
     const previousNodes = nodesRef.current;
     const moveAssignmentIds = new Set(move.wafers.map((wafer) => wafer.assignmentId));
     const movingWafers = previousNodes
@@ -3124,100 +3138,110 @@ export function ProcessFlowDiagram({
     setPendingWaferMoveFiles([]);
     setPendingWaferMoveFileError(null);
     setMoveMessage(`Moving ${move.waferLabel} to ${move.targetLabel} in background...`);
+    mutationQueue.upsert(move.wafers.map((wafer) => ({
+      assignmentId: wafer.assignmentId,
+      label: wafer.waferLabel,
+      mutationId: wafer.mutationId,
+      state: "saving_move" as const
+    })));
 
     startMoveTransition(() => {
       void (async () => {
-        const outcomes = await Promise.all(move.wafers.map(async (waferMove) => {
+        const mutationRequests = move.wafers.map((waferMove): ProcessFlowMutationRequest => {
           const movingWafer = movingWafersByAssignmentId.get(waferMove.assignmentId) ?? null;
+          const shouldRoute = Boolean(movingWafer && canReviewerRouteCheckpoint({
+            attemptId: movingWafer.latestStepAttemptId,
+            canReview: movingWafer.canReview,
+            currentUserId,
+            requiredReviewerId: movingWafer.requiredReviewerId,
+            status: movingWafer.currentStepStatus
+          }));
 
-          try {
-            const result = move.kind === "submit"
-              ? await onSubmitCheckpoint!({
-                  stepExecutionId: movingWafer?.currentStepExecutionId ?? "",
-                  mutationId: waferMove.mutationId,
-                  batchId: move.batchId!,
-                  notes: actionNote,
-                  evidence: {}
-                })
-              : movingWafer && canReviewerRouteCheckpoint({
-                  attemptId: movingWafer.latestStepAttemptId,
-                  canReview: movingWafer.canReview,
-                  currentUserId,
-                  requiredReviewerId: movingWafer.requiredReviewerId,
-                  status: movingWafer.currentStepStatus
-                })
-                ? await onRouteCheckpoint!({
-                    attemptId: movingWafer.latestStepAttemptId!,
-                    targetStepId: move.targetStepId,
-                    decisionMutationId: waferMove.checkpointMutationId,
-                    movementMutationId: waferMove.mutationId,
-                    note: actionNote
-                  })
-                : await onMoveApprovedWafer!({
-                    mutationId: waferMove.mutationId,
-                    assignmentId: waferMove.assignmentId,
-                    sourceStepId: move.sourceStepId,
-                    targetStepId: move.targetStepId,
-                    note: actionNote,
-                    correctCheckpointRoute: movingWafer?.canCorrectCheckpointRoute === true &&
-                      sourceNode?.executionMode === "main" &&
-                      targetNode?.executionMode === "main"
-                  });
-            let attachmentError: string | null = null;
-
-            if (result.ok && files.length && movingWafer?.projectId && movingWafer.waferId) {
-              try {
-                const payload = result.data as {
-                  id?: string;
-                  step_execution_id?: string;
-                  metadata?: Record<string, unknown> | null;
-                };
-                const stepId = move.kind === "submit" ? move.sourceStepId : move.targetStepId;
-                const stepExecutionId = move.kind === "submit"
-                  ? movingWafer.currentStepExecutionId ?? null
-                  : payload.id ?? payload.step_execution_id ?? null;
-                const noteId = `execution-note:${stepExecutionId ?? waferMove.mutationId}`;
-                const authorId = typeof payload.metadata?.note_author_id === "string"
-                  ? payload.metadata.note_author_id
-                  : currentUserId ?? null;
-                const author = typeof payload.metadata?.note_author_name === "string"
-                  ? payload.metadata.note_author_name
-                  : currentUserName?.trim() || "Unknown user";
-                await persistWaferStepNoteAttachments({
-                  projectId: movingWafer.projectId,
-                  waferId: movingWafer.waferId,
-                  dieLabel: movingWafer.dieLabel || movingWafer.waferCode,
-                  stepId,
-                  stepName: move.kind === "submit" ? move.sourceLabel : move.targetLabel,
-                  stepExecutionId,
-                  noteId,
-                  authorId,
-                  author,
-                  body: actionNote,
-                  files
-                });
-              } catch (error) {
-                attachmentError = error instanceof Error
-                  ? error.message
-                  : "The pasted image could not be saved.";
-              }
-            }
-
-            return { waferMove, result, attachmentError };
-          } catch (error) {
+          if (move.kind === "submit") {
             return {
-              waferMove,
-              result: {
-                ok: false as const,
-                error: error instanceof Error ? error.message : "The wafer move failed."
-              },
-              attachmentError: null
+              kind: "submit",
+              assignmentId: waferMove.assignmentId,
+              stepExecutionId: movingWafer?.currentStepExecutionId ?? "",
+              mutationId: waferMove.mutationId,
+              batchId: move.batchId!,
+              notes: actionNote,
+              evidence: {}
             };
           }
-        }));
+          if (shouldRoute) {
+            return {
+              kind: "route",
+              assignmentId: waferMove.assignmentId,
+              attemptId: movingWafer!.latestStepAttemptId!,
+              targetStepId: move.targetStepId,
+              decisionMutationId: waferMove.checkpointMutationId,
+              movementMutationId: waferMove.mutationId,
+              note: actionNote
+            };
+          }
+          return {
+            kind: "move",
+            mutationId: waferMove.mutationId,
+            assignmentId: waferMove.assignmentId,
+            sourceStepId: move.sourceStepId,
+            targetStepId: move.targetStepId,
+            note: actionNote,
+            correctCheckpointRoute: movingWafer?.canCorrectCheckpointRoute === true &&
+              sourceNode?.executionMode === "main" &&
+              targetNode?.executionMode === "main"
+          };
+        });
+
+        const coreResults = onPersistMutationsBatch
+          ? await (async () => {
+              const batchResult = await onPersistMutationsBatch({ mutations: mutationRequests });
+              if (!batchResult.ok) {
+                return move.wafers.map((waferMove) => ({
+                  waferMove,
+                  result: { ok: false as const, error: batchResult.error }
+                }));
+              }
+              const outcomesById = new Map(batchResult.data.map((outcome) => [outcome.operationId, outcome]));
+              return move.wafers.map((waferMove) => {
+                const outcome = outcomesById.get(waferMove.mutationId);
+                return {
+                  waferMove,
+                  result: outcome?.ok
+                    ? { ok: true as const, data: outcome.data }
+                    : { ok: false as const, error: outcome?.error ?? "The wafer move failed." }
+                };
+              });
+            })()
+          : await Promise.all(move.wafers.map(async (waferMove, index) => {
+              const request = mutationRequests[index];
+              try {
+                const result = request.kind === "submit"
+                  ? await onSubmitCheckpoint!(request)
+                  : request.kind === "route"
+                    ? await onRouteCheckpoint!(request)
+                    : await onMoveApprovedWafer!(request);
+                return { waferMove, result };
+              } catch (error) {
+                return {
+                  waferMove,
+                  result: {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "The wafer move failed."
+                  }
+                };
+              }
+            }));
+
+        const outcomes = coreResults;
 
         const failedOutcomes = outcomes.filter((outcome) => !outcome.result.ok);
         const successfulOutcomes = outcomes.filter((outcome) => outcome.result.ok);
+        const successfulAssignmentIdsList = successfulOutcomes.map((outcome) => outcome.waferMove.assignmentId);
+        const requiresParameters = move.kind === "move" && Boolean(onSaveStepParameters && targetNode);
+        mutationQueue.setState(
+          successfulAssignmentIdsList,
+          requiresParameters ? "awaiting_parameters" : files.length ? "uploading_files" : "synced"
+        );
 
         if (move.kind === "move" && onSaveStepParameters && targetNode) {
           setPendingStepParameterEntries((current) => settlePendingStepParameterEntries(
@@ -3225,6 +3249,63 @@ export function ProcessFlowDiagram({
             new Set(successfulOutcomes.map((outcome) => outcome.waferMove.mutationId)),
             new Set(failedOutcomes.map((outcome) => outcome.waferMove.mutationId))
           ));
+        }
+
+        const attachmentOutcomes = files.length ? successfulOutcomes.flatMap(({ waferMove, result }) => {
+          const movingWafer = movingWafersByAssignmentId.get(waferMove.assignmentId) ?? null;
+          if (!movingWafer?.projectId || !movingWafer.waferId) return [];
+          const payload = result.ok ? result.data as {
+            id?: string;
+            step_execution_id?: string;
+            metadata?: Record<string, unknown> | null;
+          } : null;
+          const stepExecutionId = move.kind === "submit"
+            ? movingWafer.currentStepExecutionId ?? null
+            : payload?.id ?? payload?.step_execution_id ?? null;
+          return [{
+            waferMove,
+            input: {
+              projectId: movingWafer.projectId,
+              waferId: movingWafer.waferId,
+              dieLabel: movingWafer.dieLabel || movingWafer.waferCode,
+              stepId: move.kind === "submit" ? move.sourceStepId : move.targetStepId,
+              stepName: move.kind === "submit" ? move.sourceLabel : move.targetLabel,
+              stepExecutionId,
+              noteId: `execution-note:${stepExecutionId ?? waferMove.mutationId}`,
+              authorId: typeof payload?.metadata?.note_author_id === "string"
+                ? payload.metadata.note_author_id
+                : currentUserId ?? null,
+              author: typeof payload?.metadata?.note_author_name === "string"
+                ? payload.metadata.note_author_name
+                : currentUserName?.trim() || "Unknown user",
+              body: actionNote,
+              files
+            }
+          }];
+        }) : [];
+        if (attachmentOutcomes.length) {
+          const attachmentAssignmentIds = attachmentOutcomes.map(({ waferMove }) => waferMove.assignmentId);
+          const uploadAttachments = () => {
+            mutationQueue.setState(attachmentAssignmentIds, "uploading_files");
+            void persistWaferStepNoteAttachmentsBatch(
+              attachmentOutcomes.map(({ input }) => input)
+            ).then(() => {
+              mutationQueue.setState(
+                attachmentAssignmentIds,
+                requiresParameters ? "awaiting_parameters" : "synced"
+              );
+            }).catch((error) => {
+              attachmentOutcomes.forEach(({ waferMove }) => mutationQueue.upsert([{
+                assignmentId: waferMove.assignmentId,
+                label: waferMove.waferLabel,
+                mutationId: waferMove.mutationId,
+                state: "failed",
+                detail: error instanceof Error ? error.message : "The attachments could not be uploaded.",
+                retry: uploadAttachments
+              }]));
+            });
+          };
+          uploadAttachments();
         }
 
         if (failedOutcomes.length > 0) {
@@ -3262,12 +3343,24 @@ export function ProcessFlowDiagram({
               waferLabel: getWaferSelectionLabel(failedSelections)
             });
             setPendingWaferMoveNote(actionNote);
-            setPendingWaferMoveFiles(files);
+            setPendingWaferMoveFiles([...files]);
           }
           const firstFailure = failedOutcomes[0];
           const failureMessage = firstFailure && !firstFailure.result.ok
             ? firstFailure.result.error
             : "The selected dies could not be moved.";
+          failedOutcomes.forEach((outcome) => mutationQueue.upsert([{
+            assignmentId: outcome.waferMove.assignmentId,
+            label: outcome.waferMove.waferLabel,
+            mutationId: outcome.waferMove.mutationId,
+            state: "failed",
+            detail: failureMessage,
+            retry: () => submitPendingWaferMove({
+              ...move,
+              wafers: [outcome.waferMove],
+              waferLabel: outcome.waferMove.waferLabel
+            }, actionNote, files)
+          }]));
           setMoveMessage(
             successfulOutcomes.length > 0
               ? `${successfulOutcomes.length} of ${outcomes.length} moved. ${failedOutcomes.length} remain selected: ${failureMessage}`
@@ -3279,15 +3372,12 @@ export function ProcessFlowDiagram({
           return;
         }
 
-        const attachmentFailureCount = outcomes.filter((outcome) => outcome.attachmentError).length;
         const successMessage = move.kind === "submit"
           ? `Submitted ${move.waferLabel} for checkpoint review.`
           : `Moved ${move.waferLabel} to ${move.targetLabel}.`;
-        setMoveMessage(
-          attachmentFailureCount > 0
-            ? `${successMessage} ${attachmentFailureCount} attachment set${attachmentFailureCount === 1 ? "" : "s"} could not be saved.`
-            : successMessage
-        );
+        setMoveMessage(successMessage);
+        scheduleBackgroundRefresh();
+
       })();
     });
   }
@@ -3800,8 +3890,21 @@ export function ProcessFlowDiagram({
     };
   }, [applyScaleAtAnchor, getPanePoint, queuePinchScale]);
 
+  const pendingParameterDrafts = groupPendingStepParameterEntries(pendingStepParameterEntries);
+  const activeParameterDraft = pendingParameterDrafts[0] ?? null;
+  const isPendingWaferMoveLocked = pendingWaferMove?.wafers.some(
+    (wafer) => mutationQueue.lockedAssignmentIds.has(wafer.assignmentId)
+  ) ?? false;
+
   return (
     <section className="flow-map-shell">
+      <ProcessFlowMutationStatus items={mutationQueue.items} onDismiss={mutationQueue.dismiss} />
+      {moveMessage ? (
+        <div className="process-flow-live-message" aria-live="polite" data-testid="process-flow-live-message" role="status">
+          <span>{moveMessage}</span>
+          <button type="button" aria-label="Dismiss status" onClick={() => setMoveMessage(null)}>Dismiss</button>
+        </div>
+      ) : null}
       {openingWaferDetailsLabel ? (
         <div className="flow-wafer-move-dialog-backdrop" data-testid="wafer-details-loading">
           <section className="flow-wafer-move-dialog" aria-live="polite" role="status">
@@ -3816,24 +3919,66 @@ export function ProcessFlowDiagram({
           </section>
         </div>
       ) : null}
-      {!pendingWaferMove && pendingStepParameterEntries[0] && onSaveStepParameters ? (
+      {!pendingWaferMove && activeParameterDraft && onSaveStepParameters ? (
         <StepParameterEntryDialog
-          key={pendingStepParameterEntries[0].draftId ?? pendingStepParameterEntries.map((entry) => entry.movementMutationId).join(":")}
-          entries={pendingStepParameterEntries}
+          key={activeParameterDraft.draftId}
+          entries={activeParameterDraft.entries}
           onSave={onSaveStepParameters}
+          onSaveBatch={onSaveStepParametersBatch}
+          draftPosition={1}
+          draftCount={pendingParameterDrafts.length}
           currentUserName={currentUserName}
           onPersistAttachment={persistWaferStepNoteAttachments}
-          onComplete={(message) => {
+          onPersistAttachmentBatch={persistWaferStepNoteAttachmentsBatch}
+          onSaveStarted={(entries) => mutationQueue.setState(
+            entries.map((entry) => entry.assignmentId),
+            "saving_parameters"
+          )}
+          onSaveFailed={(entries, error) => mutationQueue.setState(
+            entries.map((entry) => entry.assignmentId),
+            "failed",
+            error
+          )}
+          onAttachmentState={(entries, state, detail, retry) => {
+            if (state === "failed" && retry) {
+              mutationQueue.upsert(entries.map((entry) => ({
+                assignmentId: entry.assignmentId,
+                label: entry.waferLabel,
+                mutationId: entry.movementMutationId,
+                state,
+                detail,
+                retry
+              })));
+              return;
+            }
+            mutationQueue.setState(entries.map((entry) => entry.assignmentId), state, detail);
+          }}
+          onComplete={(message, hasBackgroundAttachments) => {
             const completedMutationIds = new Set(
-              pendingStepParameterEntries.map((entry) => entry.movementMutationId)
+              activeParameterDraft.entries.map((entry) => entry.movementMutationId)
             );
             setPendingStepParameterEntries((current) => current.filter(
               (entry) => !completedMutationIds.has(entry.movementMutationId)
             ));
+            if (!hasBackgroundAttachments) {
+              mutationQueue.setState(
+                activeParameterDraft.entries.map((entry) => entry.assignmentId),
+                "synced"
+              );
+            }
             setMoveMessage(message);
             scheduleBackgroundRefresh();
           }}
-          onSkipAll={() => setPendingStepParameterEntries([])}
+          onSkipAll={() => {
+            const skippedMutationIds = new Set(activeParameterDraft.entries.map((entry) => entry.movementMutationId));
+            setPendingStepParameterEntries((current) => current.filter(
+              (entry) => !skippedMutationIds.has(entry.movementMutationId)
+            ));
+            mutationQueue.setState(
+              activeParameterDraft.entries.map((entry) => entry.assignmentId),
+              "synced"
+            );
+          }}
         />
       ) : null}
       {waferCreateDraft ? (
@@ -3886,7 +4031,7 @@ export function ProcessFlowDiagram({
               </span>
               <textarea
                 autoFocus
-                disabled={isMovePending}
+                disabled={isPendingWaferMoveLocked}
                 id="process-wafer-move-note"
                 maxLength={4000}
                 name="processWaferMoveNote"
@@ -3902,7 +4047,7 @@ export function ProcessFlowDiagram({
             </label>
             <PendingNoteAttachments
               files={pendingWaferMoveFiles}
-              disabled={isMovePending}
+              disabled={isPendingWaferMoveLocked}
               error={pendingWaferMoveFileError}
               description={pendingWaferMove.wafers.length > 1
                 ? "Paste images or attach files for all selected dies."
@@ -3916,7 +4061,7 @@ export function ProcessFlowDiagram({
             <div className="flow-wafer-move-dialog__actions">
               <button
                 className="button ghost-button"
-                disabled={isMovePending}
+                disabled={isPendingWaferMoveLocked}
                 onClick={cancelPendingWaferMove}
                 type="button"
               >
@@ -3924,11 +4069,11 @@ export function ProcessFlowDiagram({
               </button>
               <button
                 className="button primary-button"
-                disabled={isMovePending || (pendingWaferMove.kind === "submit" && !pendingWaferMoveNote.trim())}
+                disabled={isPendingWaferMoveLocked || (pendingWaferMove.kind === "submit" && !pendingWaferMoveNote.trim())}
                 onClick={() => submitPendingWaferMove()}
                 type="button"
               >
-                {isMovePending
+                {isPendingWaferMoveLocked
                   ? "Saving…"
                   : pendingWaferMove.kind === "submit" ? "Submit for review" : "Confirm move"}
               </button>
@@ -3966,7 +4111,7 @@ export function ProcessFlowDiagram({
           canSubmitCheckpoint={canSubmitSelectedWafersForCheckpoint}
           canDelete={Boolean(canEdit && onDeleteWafer)}
           deleteLabel={`Delete ${selectedWafer.isDie ? "die" : "wafer"}`}
-          isPending={isMovePending}
+          isPending={activeSelectedWafers.some((wafer) => mutationQueue.lockedAssignmentIds.has(wafer.assignmentId))}
           onClear={() => setSelectedWafers([])}
           onDelete={deleteSelectedWafer}
           onMove={(targetId) => openWaferMoveDialog(
@@ -4023,6 +4168,7 @@ export function ProcessFlowDiagram({
         selectedNodeIds={selectedNodeIds}
         selectedEdgeId={selectedEdgeId}
         selectedWaferAssignmentIds={selectedWaferAssignmentIds}
+        syncStateByAssignmentId={mutationQueue.syncStateByAssignmentId}
         nodeDrag={nodeDrag}
         selectionRect={getSelectionRect()}
         editingNodeId={editingNodeId}
