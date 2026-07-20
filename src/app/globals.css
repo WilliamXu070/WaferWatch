@@ -904,6 +904,21 @@ textarea {
   border-bottom: 0;
 }
 
+.process-flow-selection-inspector__parameters .wafer-step-parameter-sheet {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.process-flow-selection-inspector__parameters .wafer-step-parameter-sheet__content {
+  width: 100%;
+  min-width: 0;
+}
+
+.process-flow-selection-inspector__parameters .wafer-step-parameter-sheet__row {
+  grid-template-columns: 30px minmax(0, 1fr) minmax(0, 0.82fr) minmax(0, 0.92fr) 30px;
+}
+
 .process-flow-selection-inspector__parameter-loading {
   display: grid;
   gap: 8px;

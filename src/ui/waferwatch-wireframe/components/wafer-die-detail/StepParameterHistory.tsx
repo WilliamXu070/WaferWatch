@@ -239,8 +239,8 @@ export function StepParameterHistory({
       </div>
 
       <div className="wafer-step-parameter-sheet overflow-x-auto">
-        <div className="min-w-[560px]">
-          <div className="grid grid-cols-[36px_minmax(150px,0.9fr)_minmax(130px,0.75fr)_minmax(180px,1.1fr)_36px] border-b border-[#deded8] bg-[#f3f3ef] text-[10px] font-semibold uppercase tracking-[0.07em] text-[#696963]">
+        <div className="wafer-step-parameter-sheet__content min-w-[560px]">
+          <div className="wafer-step-parameter-sheet__row grid grid-cols-[36px_minmax(150px,0.9fr)_minmax(130px,0.75fr)_minmax(180px,1.1fr)_36px] border-b border-[#deded8] bg-[#f3f3ef] text-[10px] font-semibold uppercase tracking-[0.07em] text-[#696963]">
             <span className="grid h-8 place-items-center border-r border-[#deded8]">#</span>
             <span className="flex h-8 items-center border-r border-[#deded8] px-2.5">Parameter</span>
             <span className="flex h-8 items-center border-r border-[#deded8] px-2.5">Value</span>
@@ -251,7 +251,7 @@ export function StepParameterHistory({
           {parameters.length ? parameters.map((parameter, index) => (
             <div
               key={parameter.id}
-              className="grid grid-cols-[36px_minmax(150px,0.9fr)_minmax(130px,0.75fr)_minmax(180px,1.1fr)_36px] border-b border-[#e6e6e0] bg-white last:border-b-0"
+              className="wafer-step-parameter-sheet__row grid grid-cols-[36px_minmax(150px,0.9fr)_minmax(130px,0.75fr)_minmax(180px,1.1fr)_36px] border-b border-[#e6e6e0] bg-white last:border-b-0"
             >
               <span className="grid min-h-10 place-items-center border-r border-[#e6e6e0] bg-[#fafaf7] text-[11px] font-medium text-[#8b8b83]">
                 {index + 1}

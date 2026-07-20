@@ -55,6 +55,8 @@ test("shows the latest selected-step parameter snapshot", () => {
   assert.match(markup, /Operator observation/);
   assert.match(markup, /No visible chipping/);
   assert.match(markup, /Add parameter/);
+  assert.match(markup, /wafer-step-parameter-sheet__content/);
+  assert.match(markup, /wafer-step-parameter-sheet__row/);
   assert.doesNotMatch(markup, /Set note/);
   assert.doesNotMatch(markup, /Optional context for this parameter set/);
 });
