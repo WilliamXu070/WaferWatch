@@ -466,6 +466,7 @@ export function ProcessFlowDiagram({
   const pendingTransitionCreateTimerRef = useRef<TimerHandle>(null);
   const pendingPositionTimerRef = useRef<TimerHandle>(null);
   const pendingNameTimerRef = useRef<TimerHandle>(null);
+  const fallbackRefreshTimerRef = useRef<TimerHandle>(null);
   const viewportPersistTimerRef = useRef<TimerHandle>(null);
   const pendingViewportRestoreRef = useRef<ProcessFlowViewportSnapshot | null>(null);
   const viewportReadyProcessIdRef = useRef<string | null>(null);
@@ -703,10 +704,18 @@ export function ProcessFlowDiagram({
     if (pendingNameTimerRef.current) {
       window.clearTimeout(pendingNameTimerRef.current);
     }
+    if (fallbackRefreshTimerRef.current) {
+      window.clearTimeout(fallbackRefreshTimerRef.current);
+      fallbackRefreshTimerRef.current = null;
+    }
   }, []);
 
   const scheduleBackgroundRefresh = useCallback(() => {
-    window.setTimeout(() => {
+    if (fallbackRefreshTimerRef.current) {
+      window.clearTimeout(fallbackRefreshTimerRef.current);
+    }
+    fallbackRefreshTimerRef.current = window.setTimeout(() => {
+      fallbackRefreshTimerRef.current = null;
       router.refresh();
     }, 2000);
   }, [router]);
