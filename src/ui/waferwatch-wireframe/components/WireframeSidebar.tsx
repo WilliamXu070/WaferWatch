@@ -23,6 +23,7 @@ import {
   type SidebarNavItem
 } from "../nav";
 import { toggleExpandedProcessId } from "./processAccordion";
+import { shouldFullyPrefetchProcessRoute } from "./processRoutePrefetch";
 
 const iconByKey = {
   grid: GridIcon,
@@ -356,6 +357,7 @@ export function WireframeSidebar({
                             <Link
                               key={item.key}
                               href={hrefWithProcess(item.href, process.id)}
+                              prefetch={shouldFullyPrefetchProcessRoute(item.key) ? true : undefined}
                               aria-current={active ? "page" : undefined}
                               className={[
                                 "flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-[14px] transition-colors",

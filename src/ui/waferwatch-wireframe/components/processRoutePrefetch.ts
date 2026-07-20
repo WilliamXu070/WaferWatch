@@ -1,5 +1,9 @@
 const processRoutePaths = ["/dashboard", "/calendar", "/process-flow", "/wafer-status"] as const;
 
+export function shouldFullyPrefetchProcessRoute(key: string) {
+  return key === "process-flow" || key === "wafer-status";
+}
+
 export function getProcessRouteHrefs(processId: string) {
   const query = `?processId=${encodeURIComponent(processId)}`;
 

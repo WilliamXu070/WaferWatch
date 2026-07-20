@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   canMoveSelectedProcessStep,
@@ -31,6 +32,13 @@ test("uses the same canonical query URL for die navigation and prefetch", () => 
     waferId: "wafer-456",
     dieLabel: "BETA_2"
   }), "/wafer-status?processId=process-123&waferId=wafer-456&dieLabel=BETA_2");
+});
+
+test("mounts a full-route prefetch link for the exact hovered die destination", async () => {
+  const source = await readFile(new URL("../ProcessFlowDiagram.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /href=\{waferDetailsFullPrefetchHref\}/);
+  assert.match(source, /prefetch=\{true\}/);
 });
 
 test("defers parameter navigation until a newly added step has a persisted id", () => {

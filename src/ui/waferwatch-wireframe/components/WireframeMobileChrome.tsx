@@ -23,6 +23,7 @@ import {
   type SidebarNavItem,
   wireframeBrand
 } from "../nav";
+import { shouldFullyPrefetchProcessRoute } from "./processRoutePrefetch";
 
 const iconByKey = {
   grid: GridIcon,
@@ -186,7 +187,7 @@ export function WireframeMobileChrome({
             <Link
               key={item.key}
               href={item.href}
-              prefetch={false}
+              prefetch={shouldFullyPrefetchProcessRoute(item.key) ? true : false}
               aria-current={active ? "page" : undefined}
               onPointerEnter={() => router.prefetch(item.href)}
               onTouchStart={() => router.prefetch(item.href)}

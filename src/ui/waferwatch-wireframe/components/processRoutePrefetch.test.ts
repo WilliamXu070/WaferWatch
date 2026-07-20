@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getProcessRoutesToPrefetch } from "./processRoutePrefetch";
+import {
+  getProcessRoutesToPrefetch,
+  shouldFullyPrefetchProcessRoute
+} from "./processRoutePrefetch";
 
 const processId = "process-1";
 
@@ -24,4 +27,11 @@ test("warms Status first from Process Flow so die detail navigation reuses it", 
       "/calendar?processId=process-1"
     ]
   );
+});
+
+test("fully prefetches the two data-heavy routes used for rapid status switching", () => {
+  assert.equal(shouldFullyPrefetchProcessRoute("process-flow"), true);
+  assert.equal(shouldFullyPrefetchProcessRoute("wafer-status"), true);
+  assert.equal(shouldFullyPrefetchProcessRoute("dashboard"), false);
+  assert.equal(shouldFullyPrefetchProcessRoute("calendar"), false);
 });

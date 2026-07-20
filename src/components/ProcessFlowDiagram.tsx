@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { ClipboardEvent, MouseEvent, PointerEvent } from "react";
 import {
@@ -413,6 +414,7 @@ export function ProcessFlowDiagram({
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [selectedWafers, setSelectedWafers] = useState<SelectedFlowWafer[]>([]);
   const [openingWaferDetailsLabel, setOpeningWaferDetailsLabel] = useState<string | null>(null);
+  const [waferDetailsFullPrefetchHref, setWaferDetailsFullPrefetchHref] = useState<string | null>(null);
   const [moveMessage, setMoveMessage] = useState<string | null>(null);
   const mutationQueue = useProcessFlowMutationQueue();
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
@@ -1781,6 +1783,7 @@ export function ProcessFlowDiagram({
     }
 
     prefetchedWaferDetailsRef.current.add(href);
+    setWaferDetailsFullPrefetchHref(href);
     router.prefetch(href);
   }, [processTemplateId, router]);
 
@@ -4034,6 +4037,16 @@ export function ProcessFlowDiagram({
 
   return (
     <section className="flow-map-shell">
+      {waferDetailsFullPrefetchHref ? (
+        <Link
+          key={waferDetailsFullPrefetchHref}
+          aria-hidden="true"
+          className="pointer-events-none fixed left-0 top-0 h-px w-px opacity-0"
+          href={waferDetailsFullPrefetchHref}
+          prefetch={true}
+          tabIndex={-1}
+        />
+      ) : null}
       <ProcessFlowMutationStatus items={mutationQueue.items} onDismiss={mutationQueue.dismiss} />
       {moveMessage ? (
         <div className="process-flow-live-message" aria-live="polite" data-testid="process-flow-live-message" role="status">
