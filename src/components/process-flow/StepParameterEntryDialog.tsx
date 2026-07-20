@@ -378,7 +378,7 @@ export function StepParameterEntryDialog({
         <div className="grid max-h-[min(68vh,650px)] gap-4 overflow-y-auto px-5 py-4">
           <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-[#dcdcd5] bg-white" aria-label="Wafer step parameters">
             <div className="max-w-full overflow-x-auto">
-              <table className="w-full min-w-[680px] table-fixed border-collapse text-left">
+              <table className="step-parameter-table w-full min-w-[680px] table-fixed border-collapse text-left">
                 <colgroup>
                   <col className="w-10" />
                   <col className="w-[28%]" />
@@ -399,17 +399,17 @@ export function StepParameterEntryDialog({
                   {definitions.map((definition, index) => (
                     <tr key={definition.id} className="border-b border-[#e5e5df] last:border-b-0">
                       <th scope="row" className="h-11 border-r border-[#e5e5df] bg-[#f7f7f3] text-center text-[11px] font-medium text-[#8b8b83]">{index + 1}</th>
-                      <td className="border-r border-[#e5e5df] px-3 text-[13px] font-semibold text-[#2d2d29]">
+                      <td className="border-r border-[#e5e5df] px-3 text-[13px] font-semibold text-[#2d2d29]" data-mobile-label="Parameter">
                         {definition.label}{definition.required ? <span className="text-[#9f493f]"> *</span> : null}
                       </td>
-                      <td className="border-r border-[#e5e5df] p-0">
+                      <td className="border-r border-[#e5e5df] p-0" data-mobile-label="Value">
                         <ParameterValueInput
                           definition={definition}
                           value={globalValues[definition.key] ?? ""}
                           onChange={(value) => setGlobalValues((current) => ({ ...current, [definition.key]: value }))}
                         />
                       </td>
-                      <td className="border-r border-[#e5e5df] px-3 text-[12px] text-[#777770]">{definition.description || "—"}</td>
+                      <td className="border-r border-[#e5e5df] px-3 text-[12px] text-[#777770]" data-mobile-label="Notes">{definition.description || "—"}</td>
                       <td />
                     </tr>
                   ))}
@@ -418,7 +418,7 @@ export function StepParameterEntryDialog({
                     return (
                       <tr key={parameter.id} className="border-b border-[#e5e5df] last:border-b-0">
                         <th scope="row" className="h-11 border-r border-[#e5e5df] bg-[#f7f7f3] text-center text-[11px] font-medium text-[#8b8b83]">{rowNumber}</th>
-                        <td className="border-r border-[#e5e5df] p-0">
+                        <td className="border-r border-[#e5e5df] p-0" data-mobile-label="Parameter">
                           <input
                             className={inputClassName}
                             aria-label={`Additional parameter ${index + 1} label`}
@@ -433,7 +433,7 @@ export function StepParameterEntryDialog({
                             }}
                           />
                         </td>
-                        <td className="border-r border-[#e5e5df] p-0">
+                        <td className="border-r border-[#e5e5df] p-0" data-mobile-label="Value">
                           <input
                             className={inputClassName}
                             aria-label={`${parameter.label || `Parameter ${index + 1}`} value`}
@@ -450,7 +450,7 @@ export function StepParameterEntryDialog({
                             }}
                           />
                         </td>
-                        <td className="border-r border-[#e5e5df] p-0">
+                        <td className="border-r border-[#e5e5df] p-0" data-mobile-label="Notes">
                           <input
                             className={inputClassName}
                             aria-label={`${parameter.label || `Parameter ${index + 1}`} notes`}
@@ -484,7 +484,7 @@ export function StepParameterEntryDialog({
                     );
                   })}
                   {!definitions.length && !localParameters.length ? (
-                    <tr><td colSpan={5} className="h-20 px-4 text-center text-[13px] text-[#777770]">No template parameters are configured for this step.</td></tr>
+                    <tr><td colSpan={5} className="step-parameter-table__empty h-20 px-4 text-center text-[13px] text-[#777770]">No template parameters are configured for this step.</td></tr>
                   ) : null}
                 </tbody>
               </table>
@@ -534,6 +534,9 @@ export function StepParameterEntryDialog({
             description={total > 1
               ? `Paste images or attach files for all ${total} moved items.`
               : "Paste images or attach files for this step record."}
+            mobileDescription={total > 1
+              ? `Photos and files apply to all ${total} moved items.`
+              : "Photos and files save with this parameter record."}
             onAddFiles={appendAttachmentFiles}
             onRemoveFile={(file) => setAttachmentFiles((current) => current.filter((candidate) => candidate !== file))}
           />

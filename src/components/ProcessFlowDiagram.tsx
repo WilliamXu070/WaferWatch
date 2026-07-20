@@ -85,6 +85,7 @@ import {
   shouldCommitWaferDrop
 } from "./process-flow/interactions";
 import {
+  getAvailableWaferMoveTargets,
   getSelectedLinkedStepEdge
 } from "./process-flow/mobileActions";
 import { MobileWaferSelectionBar } from "./process-flow/MobileWaferSelectionBar";
@@ -481,6 +482,39 @@ export function ProcessFlowDiagram({
   const selectedWaferPin = selectedWafer
     ? nodeById.get(selectedWafer.nodeId)?.wafers.find((wafer) => wafer.assignmentId === selectedWafer.assignmentId) ?? null
     : null;
+  const selectedWaferSourceNode = selectedWafer ? nodeById.get(selectedWafer.nodeId) ?? null : null;
+  const mobileWaferMoveTargets = useMemo(() => {
+    if (!canEdit || !selectedWafer || !selectedWaferPin || !selectedWaferSourceNode ||
+      activeSelectedWafers.some((selection) => selection.nodeId !== selectedWafer.nodeId)) {
+      return [];
+    }
+    return getAvailableWaferMoveTargets(
+      displayNodes,
+      edges,
+      selectedWafer.nodeId,
+      selectedWaferPin.anytimeReturnStepId
+    ).map((node) => ({ id: node.id, label: node.label }));
+  }, [
+    activeSelectedWafers,
+    canEdit,
+    displayNodes,
+    edges,
+    selectedWafer,
+    selectedWaferPin,
+    selectedWaferSourceNode
+  ]);
+  const canSubmitSelectedWafersForCheckpoint = Boolean(
+    canEdit &&
+    onSubmitCheckpoint &&
+    selectedWafer &&
+    selectedWaferSourceNode?.requiredReviewerId &&
+    activeSelectedWafers.length > 0 &&
+    activeSelectedWafers.every((selection) => {
+      if (selection.nodeId !== selectedWafer.nodeId) return false;
+      const pin = selectedWaferSourceNode.wafers.find((wafer) => wafer.assignmentId === selection.assignmentId);
+      return Boolean(pin?.currentStepExecutionId && canSubmitCheckpoint(pin.currentStepStatus));
+    })
+  );
   const selectedWaferAssignmentIds = useMemo(
     () => new Set(activeSelectedWafers.map((wafer) => wafer.assignmentId)),
     [activeSelectedWafers]
@@ -2794,7 +2828,8 @@ export function ProcessFlowDiagram({
   const openWaferMoveDialog = (
     wafers: readonly SelectedFlowWafer[],
     sourceStepId: string,
-    targetStepId: string
+    targetStepId: string,
+    collectDetails = false
   ) => {
     const sourceNode = nodeById.get(sourceStepId);
     const target = nodeById.get(targetStepId);
@@ -2857,6 +2892,10 @@ export function ProcessFlowDiagram({
     setPendingWaferMoveNote("");
     setPendingWaferMoveFiles([]);
     setPendingWaferMoveFileError(null);
+    if (collectDetails) {
+      setPendingWaferMove(move);
+      return;
+    }
     submitPendingWaferMove(move, "");
   };
 
@@ -3809,7 +3848,10 @@ export function ProcessFlowDiagram({
               </div>
             </dl>
             <label className="flow-wafer-move-dialog__field">
-              <span>Required note</span>
+              <span>
+                {pendingWaferMove.kind === "submit" ? "Required note" : "Movement note"}
+                {pendingWaferMove.kind === "move" ? <small> Optional</small> : null}
+              </span>
               <textarea
                 autoFocus
                 disabled={isMovePending}
@@ -3833,6 +3875,9 @@ export function ProcessFlowDiagram({
               description={pendingWaferMove.wafers.length > 1
                 ? "Paste images or attach files for all selected dies."
                 : "Paste images or attach files for this step note."}
+              mobileDescription={pendingWaferMove.wafers.length > 1
+                ? "Photos and files apply to all selected dies."
+                : "Photos and files save with this movement note."}
               onAddFiles={appendPendingWaferMoveFiles}
               onRemoveFile={(file) => setPendingWaferMoveFiles((current) => current.filter((candidate) => candidate !== file))}
             />
@@ -3847,7 +3892,7 @@ export function ProcessFlowDiagram({
               </button>
               <button
                 className="button primary-button"
-                disabled={isMovePending || !pendingWaferMoveNote.trim()}
+                disabled={isMovePending || (pendingWaferMove.kind === "submit" && !pendingWaferMoveNote.trim())}
                 onClick={() => submitPendingWaferMove()}
                 type="button"
               >
@@ -3885,11 +3930,20 @@ export function ProcessFlowDiagram({
       {selectedWafer && selectedWaferPin ? (
         <MobileWaferSelectionBar
           label={`${getWaferSelectionLabel(activeSelectedWafers)} selected`}
+          moveTargets={mobileWaferMoveTargets}
+          canSubmitCheckpoint={canSubmitSelectedWafersForCheckpoint}
           canDelete={Boolean(canEdit && onDeleteWafer)}
           deleteLabel={`Delete ${selectedWafer.isDie ? "die" : "wafer"}`}
           isPending={isMovePending}
           onClear={() => setSelectedWafers([])}
           onDelete={deleteSelectedWafer}
+          onMove={(targetId) => openWaferMoveDialog(
+            activeSelectedWafers,
+            selectedWafer.nodeId,
+            targetId,
+            true
+          )}
+          onSubmitCheckpoint={() => openCheckpointSubmitDialog(activeSelectedWafers, selectedWafer.nodeId)}
         />
       ) : null}
       {selectedNodeIds.size > 0 ? (

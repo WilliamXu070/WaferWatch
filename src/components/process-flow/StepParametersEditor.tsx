@@ -175,7 +175,7 @@ export function StepParametersEditor({
 
         <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-[#dcdcd5] bg-[#fefefd]" aria-label="Step parameter definitions">
           <div className="max-w-full overflow-x-auto">
-            <table className="w-full min-w-[720px] table-fixed border-collapse text-left">
+            <table className="step-parameter-table w-full min-w-[720px] table-fixed border-collapse text-left">
               <colgroup>
                 <col className="w-10" />
                 <col className="w-[28%]" />
@@ -195,7 +195,7 @@ export function StepParametersEditor({
               <tbody>
                 {fields.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="h-28 px-5 text-center">
+                    <td colSpan={5} className="step-parameter-table__empty h-28 px-5 text-center">
                       <p className="text-[13px] font-semibold text-[#4a4a44]">No parameter rows yet</p>
                       <p className="mt-1 text-[12px] text-[#85857d]">Add a row for each value operators should record.</p>
                     </td>
@@ -205,7 +205,7 @@ export function StepParametersEditor({
                     <th scope="row" className="h-11 border-r border-[#e5e5df] bg-[#f7f7f3] text-center text-[11px] font-medium tabular-nums text-[#8b8b83]">
                       {index + 1}
                     </th>
-                    <td className="border-r border-[#e5e5df] p-0">
+                    <td className="border-r border-[#e5e5df] p-0" data-mobile-label="Parameter">
                       <input
                         className={cellInputClassName}
                         aria-label={`Parameter ${index + 1} label`}
@@ -215,7 +215,7 @@ export function StepParametersEditor({
                         onChange={(event) => updateField(field.id, "label", event.currentTarget.value)}
                       />
                     </td>
-                    <td className="border-r border-[#e5e5df] p-0">
+                    <td className="border-r border-[#e5e5df] p-0" data-mobile-label="Value">
                       <input
                         className={cellInputClassName}
                         aria-label={`${field.label || `Parameter ${index + 1}`} value`}
@@ -225,7 +225,7 @@ export function StepParametersEditor({
                         onChange={(event) => updateField(field.id, "defaultValue", event.currentTarget.value)}
                       />
                     </td>
-                    <td className="border-r border-[#e5e5df] p-0">
+                    <td className="border-r border-[#e5e5df] p-0" data-mobile-label="Notes">
                       <input
                         className={cellInputClassName}
                         aria-label={`${field.label || `Parameter ${index + 1}`} notes`}

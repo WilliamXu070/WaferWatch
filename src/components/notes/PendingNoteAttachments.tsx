@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { FileText, Paperclip, X } from "lucide-react";
+import { Camera, FileText, Images, Paperclip, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   formatNoteAttachmentSize,
   getNoteAttachmentFileKey,
   MAX_NOTE_ATTACHMENTS,
-  NOTE_ATTACHMENT_ACCEPT
+  NOTE_ATTACHMENT_ACCEPT,
+  NOTE_ATTACHMENT_IMAGE_ACCEPT
 } from "@/features/measurements/noteAttachmentDraft";
 
 const previewUrlCache = new WeakMap<File, { url: string; consumers: number }>();
@@ -61,6 +62,7 @@ export function PendingNoteAttachments({
   files,
   disabled = false,
   description,
+  mobileDescription,
   error,
   onAddFiles,
   onRemoveFile
@@ -68,6 +70,7 @@ export function PendingNoteAttachments({
   files: readonly File[];
   disabled?: boolean;
   description?: string;
+  mobileDescription?: string;
   error?: string | null;
   onAddFiles: (files: File[]) => void;
   onRemoveFile: (file: File) => void;
@@ -75,9 +78,42 @@ export function PendingNoteAttachments({
   return (
     <div className="grid min-w-0 gap-2" aria-label="Note attachments">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-[#dcdcd5] bg-white px-3 text-[12px] font-semibold text-[#55554f] hover:bg-[#f8f8f4] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50">
+        <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-[#dcdcd5] bg-white px-3 text-[12px] font-semibold text-[#55554f] hover:bg-[#f8f8f4] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 md:hidden">
+          <Camera className="size-4" aria-hidden />
+          Take photo
+          <input
+            accept={NOTE_ATTACHMENT_IMAGE_ACCEPT}
+            capture="environment"
+            className="sr-only"
+            disabled={disabled || files.length >= MAX_NOTE_ATTACHMENTS}
+            onChange={(event) => {
+              const selectedFiles = Array.from(event.currentTarget.files ?? []);
+              event.currentTarget.value = "";
+              if (selectedFiles.length) onAddFiles(selectedFiles);
+            }}
+            type="file"
+          />
+        </label>
+        <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-[#dcdcd5] bg-white px-3 text-[12px] font-semibold text-[#55554f] hover:bg-[#f8f8f4] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 md:hidden">
+          <Images className="size-4" aria-hidden />
+          Photo library
+          <input
+            accept={NOTE_ATTACHMENT_IMAGE_ACCEPT}
+            className="sr-only"
+            disabled={disabled || files.length >= MAX_NOTE_ATTACHMENTS}
+            multiple
+            onChange={(event) => {
+              const selectedFiles = Array.from(event.currentTarget.files ?? []);
+              event.currentTarget.value = "";
+              if (selectedFiles.length) onAddFiles(selectedFiles);
+            }}
+            type="file"
+          />
+        </label>
+        <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-[#dcdcd5] bg-white px-3 text-[12px] font-semibold text-[#55554f] hover:bg-[#f8f8f4] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 md:h-9 md:min-h-0">
           <Paperclip className="size-3.5" aria-hidden />
-          Attach files
+          <span className="md:hidden">Files</span>
+          <span className="hidden md:inline">Attach files</span>
           <input
             accept={NOTE_ATTACHMENT_ACCEPT}
             className="sr-only"
@@ -91,8 +127,11 @@ export function PendingNoteAttachments({
             type="file"
           />
         </label>
-        <p className="m-0 text-[11px] leading-4 text-[#85857d]">
+        <p className="m-0 hidden text-[11px] leading-4 text-[#85857d] md:block">
           {description ?? `Paste images with ⌘V or attach up to ${MAX_NOTE_ATTACHMENTS} files.`}
+        </p>
+        <p className="m-0 basis-full text-[11px] leading-4 text-[#85857d] md:hidden">
+          {mobileDescription ?? `Add up to ${MAX_NOTE_ATTACHMENTS} photos or files.`}
         </p>
       </div>
 

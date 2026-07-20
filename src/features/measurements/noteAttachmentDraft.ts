@@ -22,6 +22,8 @@ export const NOTE_ATTACHMENT_ACCEPT = [
   ".json"
 ].join(",");
 
+export const NOTE_ATTACHMENT_IMAGE_ACCEPT = "image/*,.heic,.heif,.tif,.tiff";
+
 const contentKeyByFile = new WeakMap<File, string>();
 const contentKeyPromiseByFile = new WeakMap<File, Promise<void>>();
 
