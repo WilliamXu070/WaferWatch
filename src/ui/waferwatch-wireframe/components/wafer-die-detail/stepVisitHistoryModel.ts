@@ -20,6 +20,8 @@ export type StepVisitHistoryItem = {
   redoDestinationStepId: string | null;
   redoDestinationStepName: string | null;
   parameterRecords: readonly WaferStatusStepParameterRecord[];
+  isHistoricalCorrection?: boolean;
+  correctionReason?: string | null;
   historyAction?: {
     kind: "redo" | "undo" | "continue";
     targetStepName: string;
@@ -61,6 +63,13 @@ function assignParameterRecords(visits: StepVisitHistoryItem[]) {
     for (const visit of stepVisits) visit.parameterRecords = [];
 
     for (const record of records) {
+      const exactVisit = record.historyVisitId
+        ? stepVisits.find((visit) => visit.id === record.historyVisitId) ?? null
+        : null;
+      if (exactVisit) {
+        exactVisit.parameterRecords = [...exactVisit.parameterRecords, record];
+        continue;
+      }
       const recordTime = timeValue(record.recordedAt);
       const matchingVisit = [...stepVisits]
         .reverse()
@@ -70,6 +79,60 @@ function assignParameterRecords(visits: StepVisitHistoryItem[]) {
       }
     }
   }
+}
+
+function mergeHistoryCorrections(tile: WaferStatusTileModel, visits: StepVisitHistoryItem[]) {
+  const corrections = tile.historyCorrections ?? [];
+  const removedVisitIds = new Set(
+    corrections
+      .filter((correction) => correction.kind === "remove" && correction.targetVisitId)
+      .map((correction) => correction.targetVisitId!)
+  );
+  const visibleVisits = visits.filter((visit) => !removedVisitIds.has(visit.id));
+  const inserted = corrections
+    .filter((correction) => correction.kind === "insert" && correction.stepId && !removedVisitIds.has(correction.visitId))
+    .map((correction): StepVisitHistoryItem => {
+      const step = tile.processSteps?.find((candidate) => candidate.id === correction.stepId) ?? null;
+      return {
+        id: correction.visitId,
+        stepId: correction.stepId!,
+        stepName: correction.stepName ?? step?.name ?? "Historical step",
+        processArea: correction.processArea ?? step?.processArea ?? "Process step",
+        executionId: null,
+        state: "completed",
+        occurredAt: correction.completedAt ?? correction.occurredAt,
+        startedAt: correction.completedAt ?? correction.occurredAt,
+        completedAt: correction.completedAt ?? correction.occurredAt,
+        completionNote: correction.reason,
+        completionActor: correction.actor,
+        redoDestinationStepId: null,
+        redoDestinationStepName: null,
+        parameterRecords: (step?.parameterRecords ?? []).filter((record) => record.historyVisitId === correction.visitId),
+        isHistoricalCorrection: true,
+        correctionReason: correction.reason,
+        sequence: 0,
+        visitNumber: 1
+      };
+    })
+    .sort(compareVisitProgression);
+  const beforeByAnchor = new Map<string, StepVisitHistoryItem[]>();
+  const afterByAnchor = new Map<string, StepVisitHistoryItem[]>();
+  const unanchored: StepVisitHistoryItem[] = [];
+  for (const visit of inserted) {
+    const correction = corrections.find((entry) => entry.visitId === visit.id);
+    const target = correction?.placement === "before" ? beforeByAnchor : afterByAnchor;
+    const anchor = correction?.anchorVisitId;
+    if (!anchor || !visibleVisits.some((candidate) => candidate.id === anchor)) {
+      unanchored.push(visit);
+    } else {
+      target.set(anchor, [...(target.get(anchor) ?? []), visit]);
+    }
+  }
+  const merged: StepVisitHistoryItem[] = [];
+  for (const visit of visibleVisits.sort(compareVisitProgression)) {
+    merged.push(...(beforeByAnchor.get(visit.id) ?? []), visit, ...(afterByAnchor.get(visit.id) ?? []));
+  }
+  return [...merged, ...unanchored];
 }
 
 export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHistoryItem[] {
@@ -160,12 +223,12 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
     }
   }
 
-  visits.sort(compareVisitProgression);
-  assignParameterRecords(visits);
+  const effectiveVisits = mergeHistoryCorrections(tile, visits);
+  assignParameterRecords(effectiveVisits);
 
   const historyActionByVisitId = new Map<string, NonNullable<StepVisitHistoryItem["historyAction"]>>();
   for (const revert of tile.revertHistory ?? []) {
-    const sourceVisit = [...visits]
+    const sourceVisit = [...effectiveVisits]
       .reverse()
       .find((visit) =>
         visit.stepId === revert.fromStepId &&
@@ -178,10 +241,10 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
   }
 
   const visitCountByStepId = new Map<string, number>();
-  return visits.map((visit, index) => {
+  return effectiveVisits.map((visit, index) => {
     const visitNumber = (visitCountByStepId.get(visit.stepId) ?? 0) + 1;
     visitCountByStepId.set(visit.stepId, visitNumber);
-    const precedingRedo = [...visits.slice(0, index)]
+    const precedingRedo = [...effectiveVisits.slice(0, index)]
       .reverse()
       .find((candidate) =>
         candidate.state === "returned" &&

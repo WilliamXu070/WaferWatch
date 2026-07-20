@@ -12,6 +12,10 @@ const STATUS_PRESENTATION: Record<
     label: "Awaiting review",
     className: "border-[#deddd0] bg-[#f4f4ea] text-[#626055]"
   },
+  planned: {
+    label: "Planned",
+    className: "border-[#d9d7c8] bg-[#f6f5ed] text-[#666357]"
+  },
   approved: {
     label: "Approved",
     className: "border-[#cdd8c7] bg-[#eef3ea] text-[#486044]"
@@ -44,7 +48,13 @@ function formatHistoryTime(value: string) {
   }).format(date);
 }
 
-export function BatchProcessHistoryCard({ item }: { item: BatchProcessHistoryItem }) {
+export function BatchProcessHistoryCard({
+  item,
+  column
+}: {
+  item: BatchProcessHistoryItem;
+  column: "planned" | "review" | "history";
+}) {
   const status = STATUS_PRESENTATION[item.status];
 
   return (
@@ -52,7 +62,7 @@ export function BatchProcessHistoryCard({ item }: { item: BatchProcessHistoryIte
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[#99978a]">
-            Batch process
+            {column === "planned" ? "Planned batch" : column === "review" ? "Checkpoint review" : "Batch process"}
           </p>
           <h3 className="mt-1.5 text-[18px] font-semibold leading-tight tracking-tight text-[#151512]">
             {item.processName}
@@ -84,6 +94,13 @@ export function BatchProcessHistoryCard({ item }: { item: BatchProcessHistoryIte
           ))}
         </div>
       </div>
+
+      {item.location || item.scheduledStartAt ? (
+        <p className="mt-3 border-t border-[#ecebe2] pt-3 text-[12px] leading-5 text-[#77756b]">
+          {item.scheduledStartAt ? `Scheduled ${formatHistoryTime(item.scheduledStartAt)}` : "Unscheduled"}
+          {item.location ? ` · ${item.location}` : ""}
+        </p>
+      ) : null}
 
       {item.note ? (
         <p className="mt-4 whitespace-pre-wrap border-t border-[#ecebe2] pt-3 text-[13px] leading-5 text-[#66645b]">

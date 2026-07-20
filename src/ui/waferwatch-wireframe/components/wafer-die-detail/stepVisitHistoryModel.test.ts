@@ -208,3 +208,71 @@ test("labels a recorded step revert as an undo without changing its chronologica
   const cleaning = visits.find((visit) => visit.stepId === "clean");
   assert.deepEqual(cleaning?.historyAction, { kind: "undo", targetStepName: "Dicing" });
 });
+
+test("inserts a parameterized correction at its chosen history anchor and hides removed visits", () => {
+  const base = tile();
+  const insertedStep = {
+    id: "metrology",
+    name: "Metrology",
+    processArea: "Characterization",
+    executionMode: "main" as const,
+    stepOrder: 3,
+    status: "pending" as const,
+    executionId: null,
+    noteAuthorId: null,
+    noteAuthorName: null,
+    runNote: null,
+    startedAt: null,
+    completedAt: null,
+    createdAt: null,
+    parameterRecords: [{
+      id: "record-correction",
+      processEventId: "event-correction",
+      historyVisitId: "correction:event-correction",
+      revision: 1,
+      movementMutationId: "move-correction",
+      recordedAt: "2026-07-16T16:00:00Z",
+      recordedById: "user-1",
+      recordedByName: "William",
+      notes: "Recorded from instrument log",
+      values: []
+    }]
+  };
+  const visits = buildStepVisitHistory(tile({
+    processSteps: [...(base.processSteps ?? []), insertedStep],
+    historyCorrections: [{
+      id: "event-correction",
+      kind: "insert",
+      visitId: "correction:event-correction",
+      targetVisitId: null,
+      anchorVisitId: "attempt:attempt-clean",
+      placement: "after",
+      stepId: "metrology",
+      stepName: "Metrology",
+      processArea: "Characterization",
+      completedAt: "2026-07-16T16:00:00Z",
+      occurredAt: "2026-07-20T10:00:00Z",
+      reason: "Missing instrument log visit",
+      actor: { id: "user-1", name: "William" }
+    }, {
+      id: "event-remove",
+      kind: "remove",
+      visitId: "correction:event-remove",
+      targetVisitId: "attempt:attempt-piranha",
+      anchorVisitId: null,
+      placement: null,
+      stepId: null,
+      stepName: null,
+      processArea: null,
+      completedAt: null,
+      occurredAt: "2026-07-20T10:01:00Z",
+      reason: "Duplicate entry",
+      actor: { id: "user-1", name: "William" }
+    }]
+  }));
+
+  assert.deepEqual(visits.map((visit) => visit.stepName), ["Dicing", "Cleaning", "Metrology", "Pad Formation"]);
+  assert.equal(visits[2]?.isHistoricalCorrection, true);
+  assert.deepEqual(visits[2]?.parameterRecords.map((record) => record.id), ["record-correction"]);
+  assert.equal(visits.at(-1)?.state, "current");
+});

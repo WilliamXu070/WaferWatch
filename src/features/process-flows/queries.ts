@@ -79,6 +79,7 @@ export type ProcessDashboardWaferState = {
   requiredReviewerId: string | null;
   requiredReviewerName: string | null;
   canUndoHistory: boolean;
+  historyCorrectionCount: number;
   canCorrectCheckpointRoute: boolean;
   checkpointRouteSourceStepId: string | null;
   anytimeReturnStepId: string | null;
@@ -509,7 +510,7 @@ export async function getProcessDashboardData(
           .from("process_events")
           .select("id, event_type, event_at, metadata")
           .in("wafer_id", waferIds)
-          .in("event_type", ["wafer_step_moved", "wafer_step_reverted", "checkpoint_step_entered", "wafer_history_undone"])
+          .in("event_type", ["wafer_step_moved", "wafer_step_reverted", "checkpoint_step_entered", "wafer_history_undone", "wafer_history_correction"])
           .order("event_at", { ascending: true })
       : Promise.resolve({ data: [], error: null } as const),
     assignedWafersQuery
@@ -593,6 +594,17 @@ export async function getProcessDashboardData(
     event.event_type !== "wafer_history_undone" &&
     !historyUndoState.undoneProcessEventIds.has(event.id)
   );
+  const historyCorrectionCountByAssignment = new Map<string, number>();
+  for (const event of visibleWorkflowEvents) {
+    if (event.event_type !== "wafer_history_correction") continue;
+    const metadata = event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+      ? event.metadata as Record<string, unknown>
+      : {};
+    const assignmentId = typeof metadata.assignment_id === "string" ? metadata.assignment_id : null;
+    if (assignmentId) {
+      historyCorrectionCountByAssignment.set(assignmentId, (historyCorrectionCountByAssignment.get(assignmentId) ?? 0) + 1);
+    }
+  }
   const checkpointRouteState = getCheckpointRouteCorrectionState(
     visibleWorkflowEvents
       .map((event) => ({
@@ -748,6 +760,7 @@ export async function getProcessDashboardData(
       requiredReviewerId,
       requiredReviewerName: requiredReviewerId ? handlerNameById.get(requiredReviewerId) ?? null : null,
       canUndoHistory,
+      historyCorrectionCount: historyCorrectionCountByAssignment.get(assignment.id) ?? 0,
       canCorrectCheckpointRoute: currentCheckpointRoute !== null,
       checkpointRouteSourceStepId: currentCheckpointRoute?.fromStepId ?? null,
       anytimeReturnStepId: assignment.anytime_return_step_id,

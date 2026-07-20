@@ -137,6 +137,11 @@ export function SequentialStepPicker({
                   {visit.stepName}
                 </strong>
                 <span className="mt-0.5 block min-w-0 text-[11px] font-medium leading-4 text-[#8a8a83]">
+                  {visit.isHistoricalCorrection ? (
+                    <span className="mb-0.5 inline-flex rounded-full bg-[#eee7fb] px-1.5 py-0.5 text-[9px] font-bold text-[#60428a]">
+                      Historical correction
+                    </span>
+                  ) : null}
                   <span className="wafer-step-picker__time block min-w-0 truncate">
                     {visitTimeLabel}
                   </span>

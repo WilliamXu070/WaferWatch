@@ -7,6 +7,7 @@ import {
   useState
 } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { PendingNoteAttachments } from "@/components/notes/PendingNoteAttachments";
 import { getAttachmentDownloadUrl } from "@/features/measurements/actions";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
@@ -21,6 +22,7 @@ import {
   type UploadedNoteAttachment
 } from "@/features/measurements/noteAttachmentUpload";
 import { saveWaferStatusStepParameterRecord } from "@/features/process-flows/actions";
+import { correctWaferProcessHistory } from "@/features/runs/actions";
 import { isGeneratedDicedPieceNote } from "@/features/runs/dicingNoteTransfer";
 import { mutateTextSurfaceJsonArray } from "@/features/text-surfaces/actions";
 import type { WaferStatusTileModel } from "../../types";
@@ -33,6 +35,7 @@ import { buildStepVisitHistory } from "./stepVisitHistoryModel";
 import { createTiffPngPreview, isTiffImage } from "./tiffPreview";
 import { ParametersTableCard } from "./ParametersTableCard";
 import { ResultsReviewBoard } from "./ResultsReviewBoard";
+import { HistoryCorrectionDialog } from "./HistoryCorrectionDialog";
 import {
   getHistoryWorkspaceCapability,
   getWaferDieNotesScopeKey,
@@ -435,6 +438,7 @@ export function WaferDieNotesDashboard({
   onSelectedVisitChange?: (visitId: string) => void;
 }) {
   const visits = useMemo(() => buildStepVisitHistory(tile), [tile]);
+  const router = useRouter();
   const [uncontrolledSelectedVisitId, setUncontrolledSelectedVisitId] = useState(() =>
     [...visits].reverse().find((visit) => visit.state === "current")?.id ?? visits.at(-1)?.id ?? "die"
   );
@@ -451,6 +455,7 @@ export function WaferDieNotesDashboard({
   const [openingAttachmentId, setOpeningAttachmentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [historyCorrectionMode, setHistoryCorrectionMode] = useState<"insert" | "remove" | null>(null);
 
   const textSurfaceIdentityForStep = useCallback(
     (stepId: string) => ({
@@ -683,6 +688,13 @@ export function WaferDieNotesDashboard({
   const selectedStepExecutionId = selectedVisit?.executionId ?? null;
   const selectedStepParameterRecords = selectedVisit?.parameterRecords ?? [];
   const selectedStep = tile.processSteps?.find((step) => step.id === selectedStepId) ?? null;
+  const selectedVisitIsLiveCurrent = Boolean(
+    selectedVisit
+    && selectedStep
+    && selectedVisit.stepId === tile.currentStepId
+    && selectedVisit.executionId === selectedStep.executionId
+    && !["completed", "skipped"].includes(selectedStep.status)
+  );
   const workspaceCapability = selectedStep
     ? getHistoryWorkspaceCapability({
       stepName: selectedStep.name,
@@ -691,17 +703,28 @@ export function WaferDieNotesDashboard({
     })
     : "generic";
   const selectedVisitDate = selectedVisit?.completedAt ?? selectedVisit?.startedAt ?? selectedVisit?.occurredAt ?? null;
+  const submitHistoryCorrection = useCallback(async (input: Parameters<typeof correctWaferProcessHistory>[0]) => {
+    const result = await correctWaferProcessHistory(input);
+    if (result.ok) router.refresh();
+    return result;
+  }, [router]);
 
   return (
     <div className="wafer-step-workspace grid min-h-0 gap-3 md:grid-cols-[210px_minmax(0,1fr)] lg:grid-cols-[224px_minmax(0,1fr)]">
       <section className="wafer-step-history grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
         <div className="flex items-center justify-between gap-3 border-b border-[#eeeeea] px-3 py-2.5">
           <h3 className="text-[13px] font-semibold text-[#111111]">Step history</h3>
-          {visits.length > 1 ? (
-            <span className="text-[10px] font-semibold text-[#777770] md:hidden">
-              Swipe timeline <span aria-hidden>→</span>
-            </span>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {canEdit && selectedVisit ? (
+              <>
+                <button type="button" onClick={() => setHistoryCorrectionMode("insert")} className="rounded-md border border-[#dcdcd5] bg-white px-2 py-1 text-[10px] font-bold text-[#44443f] hover:bg-[#f6f6f2]">Correct</button>
+                <button type="button" onClick={() => setHistoryCorrectionMode("remove")} disabled={selectedVisitIsLiveCurrent} title={selectedVisitIsLiveCurrent ? "Undo the live current state from Process Flow." : undefined} className="rounded-md px-1.5 py-1 text-[10px] font-bold text-[#994034] hover:bg-[#fff2ef] disabled:cursor-not-allowed disabled:text-[#bdbdb5]">Remove</button>
+              </>
+            ) : null}
+            {visits.length > 1 ? (
+              <span className="text-[10px] font-semibold text-[#777770] md:hidden">Swipe timeline <span aria-hidden>→</span></span>
+            ) : null}
+          </div>
         </div>
         <div className="wafer-step-history__scroll min-h-0 overflow-y-auto p-1.5">
           {visits.length ? (
@@ -989,6 +1012,15 @@ export function WaferDieNotesDashboard({
         </div>
         ) : null}
       </section>
+      {historyCorrectionMode && selectedVisit ? (
+        <HistoryCorrectionDialog
+          mode={historyCorrectionMode}
+          tile={tile}
+          anchorVisit={selectedVisit}
+          onClose={() => setHistoryCorrectionMode(null)}
+          onSubmit={submitHistoryCorrection}
+        />
+      ) : null}
     </div>
   );
 }

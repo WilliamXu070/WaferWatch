@@ -6,10 +6,12 @@ import {
   DASHBOARD_BATCH_HISTORY_LIMIT,
   mapProcessBatchHistoryRows
 } from "@/features/dashboard/batchHistory";
-import type { DashboardModel } from "@/ui/waferwatch-wireframe/types";
+import type { BatchProcessHistoryItem, DashboardModel } from "@/ui/waferwatch-wireframe/types";
 import type {
   FabricationStatus,
   ProcessBatchHistoryView,
+  ProcessBatch,
+  ProcessBatchMember,
   ProcessCalendarEvent,
   StepExecution,
   Wafer,
@@ -37,7 +39,10 @@ type WireframeExecution = Pick<
   | "updated_at"
 >;
 
-type WireframeWafer = Pick<Wafer, "id" | "metadata">;
+type WireframeWafer = Pick<Wafer, "id" | "metadata" | "wafer_code" | "die_label">;
+type WireframeStep = { id: string; name: string };
+type WireframeBatch = Pick<ProcessBatch, "id" | "process_step_id" | "created_at" | "note">;
+type WireframeBatchMember = Pick<ProcessBatchMember, "batch_id" | "assignment_id" | "wafer_id" | "step_execution_id" | "created_at">;
 
 type WireframeCalendarEvent = Pick<
   ProcessCalendarEvent,
@@ -49,6 +54,8 @@ type WireframeCalendarEvent = Pick<
   | "process_step_name_snapshot"
   | "manual_action"
   | "description"
+  | "location"
+  | "batch_id"
 >;
 
 type WireframeDashboardQueryClient = Pick<
@@ -97,6 +104,8 @@ const EMPTY_DASHBOARD_MODEL: DashboardModel = {
         href: "/process-flow"
     }
   ],
+  plannedBatches: [],
+  reviewQueue: [],
   batchHistory: []
 };
 
@@ -118,6 +127,91 @@ function parseDate(value: string | null | undefined) {
 
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function labelForWafer(wafer: WireframeWafer) {
+  return wafer.die_label?.trim() || wafer.wafer_code.trim() || "Unnamed sample";
+}
+
+function buildPlannedBatches({ assignments, wafers, executions, steps, batches, members, calendarEvents }: {
+  assignments: readonly WireframeAssignment[];
+  wafers: readonly WireframeWafer[];
+  executions: readonly WireframeExecution[];
+  steps: readonly WireframeStep[];
+  batches: readonly WireframeBatch[];
+  members: readonly WireframeBatchMember[];
+  calendarEvents: readonly WireframeCalendarEvent[];
+}): BatchProcessHistoryItem[] {
+  const waferById = new Map(wafers.map((wafer) => [wafer.id, wafer]));
+  const stepNameById = new Map(steps.map((step) => [step.id, step.name]));
+  const assignmentById = new Map(assignments.map((assignment) => [assignment.id, assignment]));
+  const executionById = new Map(executions.map((execution) => [execution.id, execution]));
+  const membersByBatch = new Map<string, WireframeBatchMember[]>();
+  for (const member of members) {
+    const grouped = membersByBatch.get(member.batch_id) ?? [];
+    grouped.push(member);
+    membersByBatch.set(member.batch_id, grouped);
+  }
+  const calendarByBatch = new Map(calendarEvents.filter((event) => event.batch_id).map((event) => [event.batch_id!, event]));
+  const newestByAssignmentStep = new Map<string, WireframeExecution>();
+  for (const execution of executions) {
+    const key = `${execution.assignment_id}:${execution.process_step_id}`;
+    if (!newestByAssignmentStep.has(key)) newestByAssignmentStep.set(key, execution);
+  }
+
+  const persistent = batches.flatMap((batch) => {
+    const activeMembers = (membersByBatch.get(batch.id) ?? []).filter((member) => {
+      const assignment = assignmentById.get(member.assignment_id);
+      const execution = executionById.get(member.step_execution_id);
+      return assignment?.current_step_id === batch.process_step_id && execution?.status &&
+        ["queued", "running", "blocked", "redo_required"].includes(execution.status);
+    });
+    if (!activeMembers.length) return [];
+    const event = calendarByBatch.get(batch.id);
+    return [{
+      id: batch.id,
+      batchId: batch.id,
+      processStepId: batch.process_step_id,
+      processName: stepNameById.get(batch.process_step_id) ?? "Unnamed process",
+      submittedAt: batch.created_at,
+      operatorName: "Unassigned",
+      note: batch.note,
+      status: "planned" as const,
+      samples: activeMembers.flatMap((member) => {
+        const wafer = waferById.get(member.wafer_id);
+        return wafer ? [{ attemptId: member.step_execution_id, label: labelForWafer(wafer), status: "awaiting_review" as const }] : [];
+      }),
+      scheduledStartAt: event?.starts_at ?? null,
+      location: event?.location ?? null
+    }];
+  });
+  const persistentExecutionIds = new Set(members.map((member) => member.step_execution_id));
+  const legacy = assignments.flatMap((assignment) => {
+    if (!assignment.current_step_id || !ACTIVE_ASSIGNMENT_STATUSES.includes(assignment.status)) return [];
+    const execution = newestByAssignmentStep.get(`${assignment.id}:${assignment.current_step_id}`);
+    if (!execution || persistentExecutionIds.has(execution.id) || !["queued", "running", "blocked", "redo_required"].includes(execution.status)) return [];
+    const wafer = waferById.get(assignment.wafer_id);
+    if (!wafer) return [];
+    const scheduledStartAt = execution.planned_start_at;
+    return [{
+      id: `legacy-active:${assignment.id}:${execution.id}`,
+      batchId: null,
+      processStepId: assignment.current_step_id,
+      processName: stepNameById.get(assignment.current_step_id) ?? "Unnamed process",
+      submittedAt: scheduledStartAt ?? execution.started_at ?? execution.created_at,
+      operatorName: "Unassigned",
+      note: null,
+      status: "planned" as const,
+      samples: [{ attemptId: execution.id, label: labelForWafer(wafer), status: "awaiting_review" as const }],
+      scheduledStartAt,
+      location: null
+    }];
+  });
+  return [...persistent, ...legacy].sort((left, right) => {
+    const leftTime = left.scheduledStartAt ? Date.parse(left.scheduledStartAt) : Number.POSITIVE_INFINITY;
+    const rightTime = right.scheduledStartAt ? Date.parse(right.scheduledStartAt) : Number.POSITIVE_INFINITY;
+    return leftTime - rightTime || Date.parse(left.submittedAt) - Date.parse(right.submittedAt);
+  });
 }
 
 
@@ -203,6 +297,8 @@ function makeEmptyDashboardModel(): DashboardModel {
       bars: buildActivity([], []).bars
     },
     stats: EMPTY_DASHBOARD_MODEL.stats.map((stat) => ({ ...stat })),
+    plannedBatches: [],
+    reviewQueue: [],
     batchHistory: []
   };
 }
@@ -259,7 +355,7 @@ export async function getWireframeDashboardModel(
     .order("assigned_at", { ascending: false });
   const calendarEventsQuery = supabase
     .from("process_calendar_events")
-    .select("id, process_template_id, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description")
+    .select("id, process_template_id, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description, location, batch_id")
     .eq("process_template_id", resolvedProcessTemplateId)
     .order("starts_at", { ascending: true });
   const batchHistoryQuery = supabase
@@ -271,21 +367,34 @@ export async function getWireframeDashboardModel(
     .order("submitted_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(DASHBOARD_BATCH_HISTORY_LIMIT);
+  const stepsQuery = supabase
+    .from("process_steps")
+    .select("id, name")
+    .eq("template_id", resolvedProcessTemplateId);
+  const batchesQuery = supabase
+    .from("process_batches")
+    .select("id, process_step_id, created_at, note")
+    .eq("template_id", resolvedProcessTemplateId)
+    .order("created_at", { ascending: false })
+    .limit(DASHBOARD_BATCH_HISTORY_LIMIT);
 
-  const [assignmentsResult, calendarEventsResult, batchHistoryResult] = await Promise.all([
+  const [assignmentsResult, calendarEventsResult, batchHistoryResult, stepsResult, batchesResult] = await Promise.all([
     assignmentsQuery,
     calendarEventsQuery,
-    batchHistoryQuery
+    batchHistoryQuery,
+    stepsQuery,
+    batchesQuery
   ]);
 
   const candidateAssignments = (assignmentsResult.data ?? []) as WireframeAssignment[];
   const assignmentIds = candidateAssignments.map((assignment) => assignment.id);
   const candidateWaferIds = candidateAssignments.map((assignment) => assignment.wafer_id);
-  const [wafersResult, executionsResult] = await Promise.all([
+  const batchIds = (batchesResult.data ?? []).map((batch) => batch.id);
+  const [wafersResult, executionsResult, membersResult] = await Promise.all([
     candidateWaferIds.length
       ? supabase
           .from("wafers")
-          .select("id, metadata")
+          .select("id, metadata, wafer_code, die_label")
           .in("id", candidateWaferIds)
           .is("deleted_at", null)
           .is("archived_at", null)
@@ -299,13 +408,22 @@ export async function getWireframeDashboardModel(
           )
           .in("assignment_id", assignmentIds)
           .order("updated_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    batchIds.length
+      ? supabase
+          .from("process_batch_members")
+          .select("batch_id, assignment_id, wafer_id, step_execution_id, created_at")
+          .in("batch_id", batchIds)
       : Promise.resolve({ data: [], error: null })
   ]);
 
   const queryErrors = [
     assignmentsResult.error,
     wafersResult.error,
-    executionsResult.error
+    executionsResult.error,
+    stepsResult.error,
+    batchesResult.error,
+    membersResult.error
   ].filter((error): error is NonNullable<typeof assignmentsResult.error> => Boolean(error));
 
   if (queryErrors[0]) {
@@ -322,7 +440,7 @@ export async function getWireframeDashboardModel(
   const allWafers = (wafersResult.data ?? []) as WireframeWafer[];
   const allExecutions = (executionsResult.data ?? []) as WireframeExecution[];
   const allCalendarEvents = (calendarEventsResult.data ?? []) as WireframeCalendarEvent[];
-  const batchHistory = mapProcessBatchHistoryRows(
+  const submittedBatches = mapProcessBatchHistoryRows(
     (batchHistoryResult.data ?? []) as ProcessBatchHistoryView[]
   );
   const candidateWaferIdSet = new Set(candidateWaferIds);
@@ -335,7 +453,22 @@ export async function getWireframeDashboardModel(
   const executions = allExecutions.filter((execution) => visibleAssignmentIds.has(execution.assignment_id));
   const calendarEvents = allCalendarEvents;
 
-  if (assignments.length === 0 && wafers.length === 0 && executions.length === 0 && batchHistory.length === 0) {
+  const plannedBatches = buildPlannedBatches({
+    assignments,
+    wafers,
+    executions,
+    steps: (stepsResult.data ?? []) as WireframeStep[],
+    batches: (batchesResult.data ?? []) as WireframeBatch[],
+    members: (membersResult.data ?? []) as WireframeBatchMember[],
+    calendarEvents
+  });
+  const reviewQueue = submittedBatches
+    .filter((batch) => batch.samples.some((sample) => sample.status === "awaiting_review"))
+    .sort((left, right) => Date.parse(left.submittedAt) - Date.parse(right.submittedAt));
+  const reviewBatchIds = new Set(reviewQueue.map((batch) => batch.id));
+  const batchHistory = submittedBatches.filter((batch) => !reviewBatchIds.has(batch.id));
+
+  if (assignments.length === 0 && wafers.length === 0 && executions.length === 0 && submittedBatches.length === 0) {
     return makeEmptyDashboardModel();
   }
   const activeAssignments = assignments.filter((assignment) =>
@@ -366,6 +499,8 @@ export async function getWireframeDashboardModel(
         href: `/process-flow${processQuery}`
       }
     ],
+    plannedBatches,
+    reviewQueue,
     batchHistory
   };
 }

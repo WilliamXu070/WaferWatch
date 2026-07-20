@@ -6,6 +6,7 @@ import { requireAccount } from "@/lib/auth/session";
 import { toErrorMessage } from "@/lib/errors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
+  correctWaferProcessHistorySchema,
   moveApprovedCheckpointSchema,
   processFlowMutationBatchSchema,
   routeCheckpointSubmissionSchema,
@@ -26,6 +27,53 @@ function withDashboardBatchEvidence(
     ...evidence,
     [DASHBOARD_BATCH_EVIDENCE_KEY]: batchId
   } as Json;
+}
+
+function stepExecutionIdFromMutationData(data: unknown) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const value = (data as Record<string, unknown>).step_execution_id;
+  return typeof value === "string" ? value : null;
+}
+
+async function recordPlannedBatchMember({
+  supabase,
+  batchId,
+  stepExecutionId,
+  note,
+  parentBatchId
+}: {
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
+  batchId: string;
+  stepExecutionId: string | null;
+  note: string | null | undefined;
+  parentBatchId?: string | null;
+}) {
+  if (!stepExecutionId) return;
+  const { error } = await supabase.rpc("record_planned_batch_member", {
+    target_batch_id: batchId,
+    target_step_execution_id: stepExecutionId,
+    batch_note: note ?? null,
+    parent_batch_id: parentBatchId ?? null
+  });
+  if (error) {
+    // The movement already succeeded in its authoritative RPC. Do not report a
+    // false movement failure while a migration is rolling out; surface it to logs.
+    console.error("[ProcessFlow] failed to persist planned batch member", error);
+  }
+}
+
+async function batchIdForStepExecution(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  stepExecutionId: string
+) {
+  const { data } = await supabase
+    .from("process_batch_members")
+    .select("batch_id")
+    .eq("step_execution_id", stepExecutionId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.batch_id ?? null;
 }
 
 function toJsonRecord(value: unknown): Record<string, Json | undefined> {
@@ -175,17 +223,30 @@ export async function persistProcessFlowMutationsBatch(input: unknown) {
       const operationId = mutation.kind === "route" ? mutation.movementMutationId : mutation.mutationId;
       try {
         if (mutation.kind === "submit") {
+          const existingBatchId = await batchIdForStepExecution(supabase, mutation.stepExecutionId);
+          const batchId = existingBatchId ?? mutation.batchId;
           const { data, error } = await supabase.rpc("submit_step_checkpoint", {
             target_step_execution_id: mutation.stepExecutionId,
             mutation_id: mutation.mutationId,
             notes: mutation.notes ?? null,
-            evidence: withDashboardBatchEvidence(mutation.evidence, mutation.batchId)
+            evidence: withDashboardBatchEvidence(mutation.evidence, batchId)
           });
           if (error) throw error;
           return { operationId, assignmentId: mutation.assignmentId, ok: true, data };
         }
 
         if (mutation.kind === "move") {
+          const { data: sourceExecution } = await supabase
+            .from("step_executions")
+            .select("id")
+            .eq("assignment_id", mutation.assignmentId)
+            .eq("process_step_id", mutation.sourceStepId)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const parentBatchId = sourceExecution?.id
+            ? await batchIdForStepExecution(supabase, sourceExecution.id)
+            : null;
           const { data, error } = await supabase.rpc(
             mutation.correctCheckpointRoute
               ? "correct_checkpoint_route_assignment"
@@ -198,9 +259,21 @@ export async function persistProcessFlowMutationsBatch(input: unknown) {
             }
           );
           if (error) throw error;
+          await recordPlannedBatchMember({
+            supabase,
+            batchId: mutation.batchId,
+            stepExecutionId: stepExecutionIdFromMutationData(data),
+            note: mutation.note,
+            parentBatchId
+          });
           return { operationId, assignmentId: mutation.assignmentId, ok: true, data };
         }
 
+        const { data: attempt } = await supabase
+          .from("process_step_attempts")
+          .select("batch_id")
+          .eq("id", mutation.attemptId)
+          .maybeSingle();
         const dicingChildSpecs = await getDicingChildSpecsForCheckpoint({
           attemptId: mutation.attemptId,
           supabase
@@ -218,6 +291,13 @@ export async function persistProcessFlowMutationsBatch(input: unknown) {
           child_specs: childSpecs as Json
         });
         if (error) throw error;
+        await recordPlannedBatchMember({
+          supabase,
+          batchId: mutation.batchId,
+          stepExecutionId: stepExecutionIdFromMutationData(data),
+          note: mutation.note,
+          parentBatchId: attempt?.batch_id ?? null
+        });
         return { operationId, assignmentId: mutation.assignmentId, ok: true, data };
       } catch (error) {
         return {
@@ -285,6 +365,13 @@ export async function moveApprovedCheckpointWafer(input: unknown) {
       return fail(error.message);
     }
 
+    await recordPlannedBatchMember({
+      supabase,
+      batchId: parsed.batchId,
+      stepExecutionId: stepExecutionIdFromMutationData(data),
+      note: parsed.note
+    });
+
     return ok(data);
   } catch (error) {
     return fail(toErrorMessage(error));
@@ -314,11 +401,49 @@ export async function undoDieProcessHistoryState(input: unknown) {
   }
 }
 
+/**
+ * Creates an append-only history overlay. The RPC owns the template snapshot,
+ * required-field validation, revision check, and linked parameter record so a
+ * Status edit and Process Flow always project the same data.
+ */
+export async function correctWaferProcessHistory(input: unknown) {
+  try {
+    await requireAccount();
+    const parsed = correctWaferProcessHistorySchema.parse(input);
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.rpc("correct_wafer_process_history", {
+      target_assignment_id: parsed.assignmentId,
+      correction_kind: parsed.kind,
+      target_visit_id: parsed.kind === "insert" ? parsed.anchorVisitId : parsed.visitId,
+      anchor_visit_id: parsed.kind === "insert" ? parsed.anchorVisitId : null,
+      placement: parsed.kind === "insert" ? parsed.placement : null,
+      target_step_id: parsed.kind === "insert" ? parsed.stepId : null,
+      completed_at: parsed.kind === "insert" ? parsed.completedAt : null,
+      reason: parsed.reason,
+      expected_history_revision: parsed.expectedHistoryRevision,
+      mutation_id: parsed.mutationId,
+      parameter_values: parsed.kind === "insert" ? parsed.parameterValues as Json : {},
+      parameter_notes: parsed.kind === "insert" ? parsed.parameterNotes as Json : {}
+    });
+    if (error) return fail(error.message);
+
+    revalidateCheckpointWorkflow();
+    return ok(data);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
 export async function routeCheckpointSubmission(input: unknown) {
   try {
     await requireAccount();
     const parsed = routeCheckpointSubmissionSchema.parse(input);
     const supabase = await createServerSupabaseClient();
+    const { data: attempt } = await supabase
+      .from("process_step_attempts")
+      .select("batch_id")
+      .eq("id", parsed.attemptId)
+      .maybeSingle();
     const dicingChildSpecs = await getDicingChildSpecsForCheckpoint({
       attemptId: parsed.attemptId,
       supabase
@@ -340,6 +465,15 @@ export async function routeCheckpointSubmission(input: unknown) {
       return fail(error.message);
     }
 
+    await recordPlannedBatchMember({
+      supabase,
+      batchId: parsed.batchId,
+      stepExecutionId: stepExecutionIdFromMutationData(data),
+      note: parsed.note,
+      parentBatchId: attempt?.batch_id ?? null
+    });
+
+    revalidateCheckpointWorkflow();
     return ok(data);
   } catch (error) {
     return fail(toErrorMessage(error));

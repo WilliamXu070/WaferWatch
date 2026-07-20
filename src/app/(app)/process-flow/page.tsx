@@ -66,6 +66,7 @@ type DiagramStep = {
     canReview: boolean;
     canWithdraw: boolean;
     canUndoHistory: boolean;
+    historyCorrectionCount: number;
     canCorrectCheckpointRoute: boolean;
     checkpointRouteSourceStepId: string | null;
     isArchivable: boolean;
@@ -127,6 +128,7 @@ function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null)
           canReview: Boolean(currentUserId && currentUserId === state.requiredReviewerId),
           canWithdraw: Boolean(currentUserId && currentUserId === state.latestStepAttemptSubmittedById),
           canUndoHistory: state.canUndoHistory,
+          historyCorrectionCount: state.historyCorrectionCount,
           canCorrectCheckpointRoute: state.canCorrectCheckpointRoute,
           checkpointRouteSourceStepId: state.checkpointRouteSourceStepId,
           isArchivable: state.assignmentStatus === "completed",

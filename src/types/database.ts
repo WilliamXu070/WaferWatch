@@ -368,6 +368,7 @@ export type ProcessCalendarEvent = {
   starts_at: string;
   ends_at: string;
   process_step_id: string | null;
+  batch_id: string | null;
   process_step_name_snapshot: string | null;
   manual_action: string | null;
   description: string | null;
@@ -375,6 +376,34 @@ export type ProcessCalendarEvent = {
   revision: number;
   created_at: string;
   updated_at: string;
+};
+
+export type ProcessBatch = {
+  id: string;
+  template_id: string;
+  process_step_id: string;
+  created_by: string | null;
+  created_at: string;
+  note: string | null;
+  origin: "arrival" | "legacy_active" | "split" | "merge" | "restore";
+};
+
+export type ProcessBatchMember = {
+  id: string;
+  batch_id: string;
+  assignment_id: string;
+  wafer_id: string;
+  process_step_id: string;
+  step_execution_id: string;
+  created_at: string;
+};
+
+export type ProcessBatchLink = {
+  id: string;
+  parent_batch_id: string;
+  child_batch_id: string;
+  link_kind: "successor" | "split" | "merge" | "restore";
+  created_at: string;
 };
 
 export type ProcessCalendarEventPerson = {
@@ -563,6 +592,9 @@ export interface Database {
       tool_reservations: Row<ToolReservation>;
       process_people: Row<ProcessPerson>;
       process_calendar_events: Row<ProcessCalendarEvent>;
+      process_batches: Row<ProcessBatch>;
+      process_batch_members: Row<ProcessBatchMember>;
+      process_batch_links: Row<ProcessBatchLink>;
       process_calendar_event_people: Row<ProcessCalendarEventPerson>;
       measurements: Row<Measurement>;
       attachments: Row<Attachment>;
@@ -596,6 +628,18 @@ export interface Database {
       can_access_step_execution: {
         Args: { target_step_execution_id: string | null };
         Returns: boolean;
+      };
+      record_planned_batch_member: {
+        Args: {
+          target_batch_id: string;
+          target_step_execution_id: string;
+          batch_note?: string | null;
+          parent_batch_id?: string | null;
+          planned_start_at?: string | null;
+          planned_end_at?: string | null;
+          planned_location?: string | null;
+        };
+        Returns: string;
       };
       claim_wafer_assignment_move: {
         Args: {
@@ -746,6 +790,23 @@ export interface Database {
           target_step_id: string;
           mutation_id: string;
           notes: string;
+        };
+        Returns: Json;
+      };
+      correct_wafer_process_history: {
+        Args: {
+          target_assignment_id: string;
+          correction_kind: string;
+          target_visit_id: string;
+          anchor_visit_id: string | null;
+          placement: string | null;
+          target_step_id: string | null;
+          completed_at: string | null;
+          reason: string;
+          expected_history_revision: number;
+          mutation_id: string;
+          parameter_values?: Json;
+          parameter_notes?: Json;
         };
         Returns: Json;
       };
