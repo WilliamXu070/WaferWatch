@@ -1776,7 +1776,8 @@ export function ProcessFlowDiagram({
     const href = getWaferDetailsPrefetchHref({
       processTemplateId,
       waferId: wafer.waferId,
-      dieLabel: wafer.dieLabel
+      dieLabel: wafer.dieLabel,
+      detailTab: "history"
     });
     if (!href || prefetchedWaferDetailsRef.current.has(href)) {
       return;
@@ -1790,7 +1791,8 @@ export function ProcessFlowDiagram({
     const href = getWaferDetailsHref({
       processTemplateId,
       waferId: wafer.waferId,
-      dieLabel: wafer.dieLabel
+      dieLabel: wafer.dieLabel,
+      detailTab: "history"
     });
     if (!href) {
       return;

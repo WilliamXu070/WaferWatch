@@ -171,6 +171,7 @@ export function WaferStatusView({
   processId,
   initialWaferId,
   initialDieLabel,
+  initialDetailTab = "overview",
   emptyTitle = "No wafers available",
   emptyDescription = "Authenticated Supabase data loaded, but this project state has no wafers visible to the current session."
 }: {
@@ -180,6 +181,7 @@ export function WaferStatusView({
   processId: string;
   initialWaferId?: string;
   initialDieLabel?: string;
+  initialDetailTab?: DieDetailTab;
   emptyTitle?: string;
   emptyDescription?: string;
 }) {
@@ -198,7 +200,7 @@ export function WaferStatusView({
   );
   const [selectedTile, setSelectedTile] = useState<WaferStatusTileModel | null>(initialSelected);
   const [detailTile, setDetailTile] = useState<WaferStatusTileModel | null>(initialDetail);
-  const [activeDetailTab, setActiveDetailTab] = useState<DieDetailTab>("overview");
+  const [activeDetailTab, setActiveDetailTab] = useState<DieDetailTab>(initialDetailTab);
   const [resumeResolved, setResumeResolved] = useState(Boolean(initialWaferId));
   const latestTiles = useMemo(() => model.families.flatMap((family) => family.tiles), [model.families]);
   const activeSelectedTile = selectedTile

@@ -56,11 +56,13 @@ export function getStepParametersNavigation({
 export function getWaferDetailsHref({
   processTemplateId,
   waferId,
-  dieLabel
+  dieLabel,
+  detailTab
 }: {
   processTemplateId?: string;
   waferId?: string;
   dieLabel?: string | null;
+  detailTab?: "history";
 }) {
   if (!processTemplateId || !waferId) {
     return null;
@@ -72,6 +74,9 @@ export function getWaferDetailsHref({
   });
   if (dieLabel?.trim()) {
     routeSearch.set("dieLabel", dieLabel.trim());
+  }
+  if (detailTab) {
+    routeSearch.set("tab", detailTab);
   }
 
   return `/wafer-status?${routeSearch.toString()}`;

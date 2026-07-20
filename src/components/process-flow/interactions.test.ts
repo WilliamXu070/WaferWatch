@@ -26,12 +26,19 @@ test("uses the same canonical query URL for die navigation and prefetch", () => 
     processTemplateId: "process-123",
     waferId: "wafer-456"
   }), "/wafer-status?processId=process-123&waferId=wafer-456");
+  assert.equal(getWaferDetailsHref({
+    processTemplateId: "process-123",
+    waferId: "wafer-456",
+    dieLabel: "BETA_2",
+    detailTab: "history"
+  }), "/wafer-status?processId=process-123&waferId=wafer-456&dieLabel=BETA_2&tab=history");
   assert.equal(getWaferDetailsHref({ waferId: "wafer-456" }), null);
   assert.equal(getWaferDetailsPrefetchHref({
     processTemplateId: "process-123",
     waferId: "wafer-456",
-    dieLabel: "BETA_2"
-  }), "/wafer-status?processId=process-123&waferId=wafer-456&dieLabel=BETA_2");
+    dieLabel: "BETA_2",
+    detailTab: "history"
+  }), "/wafer-status?processId=process-123&waferId=wafer-456&dieLabel=BETA_2&tab=history");
 });
 
 test("mounts a full-route prefetch link for the exact hovered die destination", async () => {

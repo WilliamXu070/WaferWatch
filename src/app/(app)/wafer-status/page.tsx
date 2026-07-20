@@ -4,6 +4,7 @@ import {
 } from "@/features/wafers/queries";
 import { canEditProject, getCurrentAccount } from "@/lib/auth/session";
 import { WaferStatusView } from "@/ui/waferwatch-wireframe/components/WaferStatusView";
+import type { DieDetailTab } from "@/ui/waferwatch-wireframe/components/wafer-die-detail/waferDieDetailData";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +16,15 @@ type WaferStatusSearchParams = {
   processId?: string | string[];
   waferId?: string | string[];
   dieLabel?: string | string[];
+  tab?: string | string[];
 };
 
 function firstSearchValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function getInitialDetailTab(value: string | undefined): DieDetailTab {
+  return value === "history" ? "history" : "overview";
 }
 
 export default async function WireframeWaferStatusPage({
@@ -30,6 +36,7 @@ export default async function WireframeWaferStatusPage({
   const requestedProcessId = firstSearchValue(resolvedSearchParams.processId);
   const requestedWaferId = firstSearchValue(resolvedSearchParams.waferId);
   const requestedDieLabel = firstSearchValue(resolvedSearchParams.dieLabel);
+  const requestedTab = getInitialDetailTab(firstSearchValue(resolvedSearchParams.tab));
   if (!requestedProcessId) {
     return (
       <WaferStatusView
@@ -71,7 +78,7 @@ export default async function WireframeWaferStatusPage({
 
   return (
     <WaferStatusView
-      key={[requestedProcessId, requestedWaferId ?? "overview", requestedDieLabel ?? ""].join(":")}
+      key={[requestedProcessId, requestedWaferId ?? "overview", requestedDieLabel ?? "", requestedTab].join(":")}
       model={model}
       canEdit={canEdit}
       currentUser={account ? {
@@ -81,6 +88,7 @@ export default async function WireframeWaferStatusPage({
       processId={requestedProcessId}
       initialWaferId={requestedWaferId}
       initialDieLabel={requestedDieLabel}
+      initialDetailTab={requestedTab}
     />
   );
 }
