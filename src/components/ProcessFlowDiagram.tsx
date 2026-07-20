@@ -1784,8 +1784,7 @@ export function ProcessFlowDiagram({
 
     prefetchedWaferDetailsRef.current.add(href);
     setWaferDetailsFullPrefetchHref(href);
-    router.prefetch(href);
-  }, [processTemplateId, router]);
+  }, [processTemplateId]);
 
   const openWaferDetails = useCallback((wafer: WaferPin) => {
     const href = getWaferDetailsHref({
