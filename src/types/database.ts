@@ -252,6 +252,7 @@ export type ProcessStepAttempt = {
   started_at_snapshot: string | null;
   submission_notes: string | null;
   evidence_snapshot: Json;
+  batch_id: string | null;
   wafer_code_snapshot: string;
   template_name_snapshot: string;
   template_version_snapshot: string;
@@ -263,6 +264,20 @@ export type ProcessStepAttempt = {
   prior_step_status: StepStatus;
   client_mutation_id: string;
   created_at: string;
+};
+
+export type ProcessBatchHistoryView = {
+  id: string;
+  batch_id: string | null;
+  template_id: string;
+  process_step_id: string;
+  process_name: string;
+  submitted_at: string;
+  operator_name: string;
+  note: string | null;
+  status: string;
+  sample_count: number;
+  samples: Json;
 };
 
 export type CheckpointDecision = {
@@ -559,6 +574,7 @@ export interface Database {
       team_messages: Row<TeamMessage>;
     };
     Views: {
+      vw_process_batch_history: { Row: ProcessBatchHistoryView; Relationships: [] };
       vw_wafer_cycle_time: { Row: WaferCycleTimeMetric; Relationships: [] };
       vw_step_cycle_metrics: { Row: StepCycleMetric; Relationships: [] };
       vw_wip_by_stage: { Row: WipByStageMetric; Relationships: [] };

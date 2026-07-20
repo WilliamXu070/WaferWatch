@@ -1,40 +1,20 @@
 import "server-only";
 
-import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { isDicedParentWafer } from "@/features/process-flows/waferVisibility";
-import type {
-  DashboardModel,
-  WaferCardModel,
-  WorkflowColumnModel,
-  WorkflowStageId
-} from "@/ui/waferwatch-wireframe/types";
+import {
+  DASHBOARD_BATCH_HISTORY_LIMIT,
+  mapProcessBatchHistoryRows
+} from "@/features/dashboard/batchHistory";
+import type { DashboardModel } from "@/ui/waferwatch-wireframe/types";
 import type {
   FabricationStatus,
-  Json,
+  ProcessBatchHistoryView,
   ProcessCalendarEvent,
-  ProcessStep,
-  ProcessTemplate,
   StepExecution,
-  StepStatus,
   Wafer,
   WaferProcessAssignment
 } from "@/types/database";
-
-type WireframeTemplate = Pick<ProcessTemplate, "id" | "name" | "version" | "is_active">;
-
-type WireframeStep = Pick<
-  ProcessStep,
-  "id" | "template_id" | "name" | "step_order" | "process_area" | "node_type"
->;
-
-type WireframeTransition = {
-  template_id: string;
-  from_step_id: string;
-  to_step_id: string;
-  edge_type: string;
-  priority: number;
-  created_at: string;
-};
 
 type WireframeAssignment = Pick<
   WaferProcessAssignment,
@@ -57,7 +37,7 @@ type WireframeExecution = Pick<
   | "updated_at"
 >;
 
-type WireframeWafer = Pick<Wafer, "id" | "wafer_code" | "project_id" | "die_label" | "metadata">;
+type WireframeWafer = Pick<Wafer, "id" | "metadata">;
 
 type WireframeCalendarEvent = Pick<
   ProcessCalendarEvent,
@@ -71,32 +51,16 @@ type WireframeCalendarEvent = Pick<
   | "description"
 >;
 
-type WireframeProfile = {
-  id: string;
-  display_name: string | null;
-  email: string;
-};
-
-type WireframeDashboardQueryClient = Pick<ReturnType<typeof createSupabaseAdminClient>, "from">;const WORKFLOW_COLUMNS: readonly { id: WorkflowStageId; title: string }[] = [
-  { id: "queued", title: "Queued" },
-  { id: "poling", title: "Poling" },
-  { id: "inspection", title: "Inspection" },
-  { id: "complete", title: "Complete" }
-];
+type WireframeDashboardQueryClient = Pick<
+  Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  "from"
+>;
 
 const ACTIVE_ASSIGNMENT_STATUSES: readonly FabricationStatus[] = [
   "planned",
   "queued",
   "in_progress",
   "on_hold"
-];
-
-const ACTIVE_STEP_STATUSES: readonly StepStatus[] = [
-  "running",
-  "blocked",
-  "failed",
-  "queued",
-  "pending"
 ];
 
 const EMPTY_DASHBOARD_MODEL: DashboardModel = {
@@ -133,11 +97,7 @@ const EMPTY_DASHBOARD_MODEL: DashboardModel = {
         href: "/process-flow"
     }
   ],
-  columns: WORKFLOW_COLUMNS.map((column) => ({
-    ...column,
-    count: 0,
-    cards: []
-  }))
+  batchHistory: []
 };
 
 function isMissingCalendarTableError(error: unknown) {
@@ -147,123 +107,6 @@ function isMissingCalendarTableError(error: unknown) {
     "code" in error &&
     error.code === "PGRST205"
   );
-}
-
-function extractDieLabel(metadata: Json): string {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return "Unassigned";
-  }
-
-  const candidate =
-    "current_die" in metadata && typeof metadata.current_die === "string"
-      ? metadata.current_die
-      : "die" in metadata && typeof metadata.die === "string"
-        ? metadata.die
-        : "chip" in metadata && typeof metadata.chip === "string"
-          ? metadata.chip
-          : "chip_id" in metadata && typeof metadata.chip_id === "string"
-            ? metadata.chip_id
-            : "die_id" in metadata && typeof metadata.die_id === "string"
-              ? metadata.die_id
-              : null;
-
-  return candidate?.trim() || "Unassigned";
-}
-
-function stepStatusRank(status: StepStatus) {
-  if (status === "running") return 0;
-  if (status === "blocked") return 1;
-  if (status === "failed") return 2;
-  if (status === "queued") return 3;
-  if (status === "pending") return 4;
-  if (status === "completed") return 5;
-  if (status === "skipped") return 6;
-  return 9;
-}
-
-function pickCurrentExecution(
-  executions: readonly WireframeExecution[],
-  stepOrderById: ReadonlyMap<string, number>
-) {
-  const activeExecution = executions
-    .filter((execution) => ACTIVE_STEP_STATUSES.includes(execution.status))
-    .sort((a, b) => {
-      const statusDiff = stepStatusRank(a.status) - stepStatusRank(b.status);
-      if (statusDiff !== 0) return statusDiff;
-
-      const orderA = stepOrderById.get(a.process_step_id) ?? Number.MAX_SAFE_INTEGER;
-      const orderB = stepOrderById.get(b.process_step_id) ?? Number.MAX_SAFE_INTEGER;
-      if (orderA !== orderB) return orderA - orderB;
-
-      return Date.parse(b.updated_at) - Date.parse(a.updated_at);
-    })[0];
-
-  if (activeExecution) {
-    return activeExecution;
-  }
-
-  return executions
-    .filter((execution) => execution.status === "completed" || execution.status === "skipped")
-    .sort((a, b) => {
-      const orderA = stepOrderById.get(a.process_step_id) ?? Number.MIN_SAFE_INTEGER;
-      const orderB = stepOrderById.get(b.process_step_id) ?? Number.MIN_SAFE_INTEGER;
-      if (orderA !== orderB) return orderB - orderA;
-
-      return Date.parse(b.updated_at) - Date.parse(a.updated_at);
-    })[0];
-}
-
-function getNextStep(
-  templateSteps: readonly WireframeStep[],
-  currentStep: WireframeStep | undefined,
-  nextStepIdByStepId: ReadonlyMap<string, string>
-) {
-  if (!currentStep) {
-    return (
-      templateSteps.find((step) => step.node_type === "start") ??
-      templateSteps.slice().sort((a, b) => a.step_order - b.step_order)[0]
-    );
-  }
-
-  const nextStepId = nextStepIdByStepId.get(currentStep.id);
-  return nextStepId ? templateSteps.find((step) => step.id === nextStepId) : undefined;
-}
-
-function workflowStageFor(
-  assignment: WireframeAssignment,
-  currentExecution: WireframeExecution | undefined,
-  currentStep: WireframeStep | undefined,
-  nextStep: WireframeStep | undefined
-): WorkflowStageId {
-  if (
-    assignment.status === "completed" ||
-    assignment.status === "scrapped" ||
-    ((currentExecution?.status === "completed" || currentExecution?.status === "skipped") && !nextStep)
-  ) {
-    return "complete";
-  }
-
-  const stepText = `${currentStep?.process_area ?? ""} ${currentStep?.name ?? ""}`.toLowerCase();
-
-  if (
-    currentExecution?.status === "blocked" ||
-    currentExecution?.status === "failed" ||
-    stepText.includes("inspect") ||
-    stepText.includes("metrology") ||
-    stepText.includes("character")
-  ) {
-    return "inspection";
-  }
-
-  if (
-    assignment.status === "in_progress" ||
-    assignment.status === "on_hold" ||
-    currentExecution?.status === "running"
-  ) {
-    return "poling";
-  }
-
-  return "queued";
 }
 
 function dateKey(date: Date) {
@@ -277,27 +120,6 @@ function parseDate(value: string | null | undefined) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function formatDueLabel(date: Date | null) {
-  if (!date) {
-    return "No date";
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const due = new Date(date);
-  due.setHours(0, 0, 0, 0);
-
-  const dayDiff = Math.round((due.getTime() - today.getTime()) / 86_400_000);
-
-  if (dayDiff === 0) return "Today";
-  if (dayDiff === 1) return "Tomorrow";
-
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "2-digit"
-  });
-}
 
 function activityDateForExecution(execution: WireframeExecution) {
   return (
@@ -373,176 +195,6 @@ function buildProgress(executions: readonly WireframeExecution[]): DashboardMode
   };
 }
 
-function groupByAssignment(executions: readonly WireframeExecution[]) {
-  const grouped = new Map<string, WireframeExecution[]>();
-
-  for (const execution of executions) {
-    const existing = grouped.get(execution.assignment_id);
-    if (existing) {
-      existing.push(execution);
-    } else {
-      grouped.set(execution.assignment_id, [execution]);
-    }
-  }
-
-  return grouped;
-}
-
-function groupStepsByTemplate(steps: readonly WireframeStep[]) {
-  const grouped = new Map<string, WireframeStep[]>();
-
-  for (const step of steps) {
-    const existing = grouped.get(step.template_id);
-    if (existing) {
-      existing.push(step);
-    } else {
-      grouped.set(step.template_id, [step]);
-    }
-  }
-
-  for (const templateSteps of grouped.values()) {
-    templateSteps.sort((a, b) => a.step_order - b.step_order);
-  }
-
-  return grouped;
-}
-
-function getCardDueDate(
-  assignment: WireframeAssignment,
-  execution: WireframeExecution | undefined,
-  futureCalendarEvents: readonly WireframeCalendarEvent[]
-) {
-  const plannedDate = parseDate(execution?.planned_start_at) ?? parseDate(execution?.planned_end_at);
-
-  if (plannedDate) {
-    return plannedDate;
-  }
-
-  const matchingStepEvent = futureCalendarEvents.find(
-    (event) =>
-      event.process_template_id === assignment.template_id &&
-      event.process_step_id &&
-      event.process_step_id === execution?.process_step_id
-  );
-
-  if (matchingStepEvent) {
-    return parseDate(matchingStepEvent.starts_at);
-  }
-
-  const matchingTemplateEvent = futureCalendarEvents.find(
-    (event) => event.process_template_id === assignment.template_id
-  );
-
-  return parseDate(matchingTemplateEvent?.starts_at);
-}
-
-function buildColumns({
-  assignments,
-  wafersById,
-  templatesById,
-  stepsById,
-  stepsByTemplate,
-  transitions,
-  executionsByAssignment,
-  profileNameById,
-  calendarEvents
-}: {
-  assignments: readonly WireframeAssignment[];
-  wafersById: ReadonlyMap<string, WireframeWafer>;
-  templatesById: ReadonlyMap<string, WireframeTemplate>;
-  stepsById: ReadonlyMap<string, WireframeStep>;
-  stepsByTemplate: ReadonlyMap<string, readonly WireframeStep[]>;
-  transitions: readonly WireframeTransition[];
-  executionsByAssignment: ReadonlyMap<string, readonly WireframeExecution[]>;
-  profileNameById: ReadonlyMap<string, string>;
-  calendarEvents: readonly WireframeCalendarEvent[];
-}): readonly WorkflowColumnModel[] {
-  const columns = new Map<WorkflowStageId, WaferCardModel[]>(
-    WORKFLOW_COLUMNS.map((column) => [column.id, []])
-  );
-  const futureCalendarEvents = calendarEvents
-    .filter((event) => {
-      const startsAt = parseDate(event.starts_at);
-      return startsAt ? startsAt.getTime() >= Date.now() : false;
-    })
-    .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
-
-  const stepOrderById = new Map(
-    Array.from(stepsById.values()).map((step) => [step.id, step.step_order])
-  );
-  const nextStepIdByStepId = new Map<string, string>();
-  for (const transition of transitions
-    .filter((candidate) => candidate.edge_type === "flow")
-    .slice()
-    .sort((a, b) => a.priority - b.priority || Date.parse(a.created_at) - Date.parse(b.created_at))) {
-    if (!nextStepIdByStepId.has(transition.from_step_id)) {
-      nextStepIdByStepId.set(transition.from_step_id, transition.to_step_id);
-    }
-  }
-
-  const sortedAssignments = assignments
-    .slice()
-    .sort((a, b) => Date.parse(b.assigned_at) - Date.parse(a.assigned_at));
-
-  for (const assignment of sortedAssignments) {
-    const wafer = wafersById.get(assignment.wafer_id);
-    if (!wafer) {
-      continue;
-    }
-
-    const assignmentExecutions = executionsByAssignment.get(assignment.id) ?? [];
-    const inferredExecution = pickCurrentExecution(assignmentExecutions, stepOrderById);
-    const currentStepId = assignment.current_step_id ?? inferredExecution?.process_step_id;
-    const currentExecution = currentStepId
-      ? assignmentExecutions
-          .filter((execution) => execution.process_step_id === currentStepId)
-          .slice()
-          .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))[0] ?? inferredExecution
-      : inferredExecution;
-    const currentStep = currentStepId ? stepsById.get(currentStepId) : undefined;
-    const templateSteps = stepsByTemplate.get(assignment.template_id) ?? [];
-    const nextStep = getNextStep(templateSteps, currentStep, nextStepIdByStepId);
-    const stage = workflowStageFor(assignment, currentExecution, currentStep, nextStep);
-    const template = templatesById.get(assignment.template_id);
-    const handlerId =
-      currentExecution?.operator_id ??
-      currentExecution?.completed_by ??
-      assignment.assigned_by;
-    const currentStepLabel = currentStep?.name ?? "No step execution";
-    const nextStepLabel = nextStep ? `Next step: ${nextStep.name}.` : "No next step.";
-    const templateLabel = template ? `${template.name} ${template.version}` : "Unassigned process";
-    const executionCount = assignmentExecutions.length;
-
-    columns.get(stage)?.push({
-      id: assignment.id,
-      waferCode: wafer.wafer_code,
-      dieLabel: wafer.die_label ?? extractDieLabel(wafer.metadata as Json),
-      description: `${currentStepLabel}. ${nextStepLabel} ${templateLabel}.`,
-      status: currentExecution?.status ?? "pending",
-      dueLabel: formatDueLabel(getCardDueDate(assignment, currentExecution, futureCalendarEvents)),
-      activityLabel: `${executionCount} step${executionCount === 1 ? "" : "s"}`,
-      handler: handlerId ? profileNameById.get(handlerId) : undefined
-    });
-  }
-
-  const firstRunningCard = Array.from(columns.values())
-    .flat()
-    .find((card) => card.status === "running" || card.status === "blocked");
-
-  if (firstRunningCard) {
-    firstRunningCard.isSelected = true;
-  }
-
-  return WORKFLOW_COLUMNS.map((column) => {
-    const cards = columns.get(column.id) ?? [];
-    return {
-      ...column,
-      count: cards.length,
-      cards
-    };
-  });
-}
-
 function makeEmptyDashboardModel(): DashboardModel {
   return {
     ...EMPTY_DASHBOARD_MODEL,
@@ -551,7 +203,7 @@ function makeEmptyDashboardModel(): DashboardModel {
       bars: buildActivity([], []).bars
     },
     stats: EMPTY_DASHBOARD_MODEL.stats.map((stat) => ({ ...stat })),
-    columns: EMPTY_DASHBOARD_MODEL.columns.map((column) => ({ ...column, cards: [] }))
+    batchHistory: []
   };
 }
 
@@ -583,7 +235,7 @@ async function resolveDashboardProcessTemplateId(
 }
 
 export async function getWireframeDashboardModel(
-  supabase: WireframeDashboardQueryClient = createSupabaseAdminClient(),
+  supabase: WireframeDashboardQueryClient,
   processTemplateId?: string
 ): Promise<DashboardModel> {
   // The dashboard is entered directly after sign-in. Restrict its initial
@@ -598,22 +250,6 @@ export async function getWireframeDashboardModel(
     return makeEmptyDashboardModel();
   }
 
-  const templatesQuery = supabase
-    .from("process_templates")
-    .select("id, name, version, is_active")
-    .eq("id", resolvedProcessTemplateId)
-    .order("name", { ascending: true });
-  const stepsQuery = supabase
-    .from("process_steps")
-    .select("id, template_id, name, step_order, process_area, node_type")
-    .eq("template_id", resolvedProcessTemplateId)
-    .order("step_order", { ascending: true });
-  const transitionsQuery = supabase
-    .from("process_step_transitions")
-    .select("template_id, from_step_id, to_step_id, edge_type, priority, created_at")
-    .eq("template_id", resolvedProcessTemplateId)
-    .order("priority", { ascending: true })
-    .order("created_at", { ascending: true });
   const assignmentsQuery = supabase
     .from("wafer_process_assignments")
     .select("id, wafer_id, template_id, assigned_by, status, assigned_at, started_at, completed_at, current_step_id")
@@ -626,19 +262,20 @@ export async function getWireframeDashboardModel(
     .select("id, process_template_id, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description")
     .eq("process_template_id", resolvedProcessTemplateId)
     .order("starts_at", { ascending: true });
+  const batchHistoryQuery = supabase
+    .from("vw_process_batch_history")
+    .select(
+      "id, batch_id, template_id, process_step_id, process_name, submitted_at, operator_name, note, status, sample_count, samples"
+    )
+    .eq("template_id", resolvedProcessTemplateId)
+    .order("submitted_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(DASHBOARD_BATCH_HISTORY_LIMIT);
 
-  const [
-    templatesResult,
-    stepsResult,
-    transitionsResult,
-    assignmentsResult,
-    calendarEventsResult
-  ] = await Promise.all([
-    templatesQuery,
-    stepsQuery,
-    transitionsQuery,
+  const [assignmentsResult, calendarEventsResult, batchHistoryResult] = await Promise.all([
     assignmentsQuery,
-    calendarEventsQuery
+    calendarEventsQuery,
+    batchHistoryQuery
   ]);
 
   const candidateAssignments = (assignmentsResult.data ?? []) as WireframeAssignment[];
@@ -648,7 +285,7 @@ export async function getWireframeDashboardModel(
     candidateWaferIds.length
       ? supabase
           .from("wafers")
-          .select("id, wafer_code, project_id, die_label, metadata")
+          .select("id, metadata")
           .in("id", candidateWaferIds)
           .is("deleted_at", null)
           .is("archived_at", null)
@@ -666,13 +303,10 @@ export async function getWireframeDashboardModel(
   ]);
 
   const queryErrors = [
-    templatesResult.error,
-    stepsResult.error,
-    transitionsResult.error,
     assignmentsResult.error,
     wafersResult.error,
     executionsResult.error
-  ].filter((error): error is NonNullable<typeof templatesResult.error> => Boolean(error));
+  ].filter((error): error is NonNullable<typeof assignmentsResult.error> => Boolean(error));
 
   if (queryErrors[0]) {
     throw queryErrors[0];
@@ -681,16 +315,16 @@ export async function getWireframeDashboardModel(
   if (calendarEventsResult.error && !isMissingCalendarTableError(calendarEventsResult.error)) {
     throw calendarEventsResult.error;
   }
+  if (batchHistoryResult.error && !isMissingCalendarTableError(batchHistoryResult.error)) {
+    throw batchHistoryResult.error;
+  }
 
-  const allTemplates = (templatesResult.data ?? []) as WireframeTemplate[];
-  const allSteps = (stepsResult.data ?? []) as WireframeStep[];
-  const allTransitions = (transitionsResult.data ?? []) as WireframeTransition[];
   const allWafers = (wafersResult.data ?? []) as WireframeWafer[];
   const allExecutions = (executionsResult.data ?? []) as WireframeExecution[];
   const allCalendarEvents = (calendarEventsResult.data ?? []) as WireframeCalendarEvent[];
-  const templates = allTemplates;
-  const steps = allSteps;
-  const transitions = allTransitions;
+  const batchHistory = mapProcessBatchHistoryRows(
+    (batchHistoryResult.data ?? []) as ProcessBatchHistoryView[]
+  );
   const candidateWaferIdSet = new Set(candidateWaferIds);
   const wafers = allWafers.filter(
     (wafer) => candidateWaferIdSet.has(wafer.id) && !isDicedParentWafer(wafer.metadata)
@@ -701,43 +335,9 @@ export async function getWireframeDashboardModel(
   const executions = allExecutions.filter((execution) => visibleAssignmentIds.has(execution.assignment_id));
   const calendarEvents = allCalendarEvents;
 
-  if (templates.length === 0 && assignments.length === 0 && wafers.length === 0 && executions.length === 0) {
+  if (assignments.length === 0 && wafers.length === 0 && executions.length === 0 && batchHistory.length === 0) {
     return makeEmptyDashboardModel();
   }
-
-  const profileIds = new Set<string>();
-  for (const assignment of assignments) {
-    if (assignment.assigned_by) profileIds.add(assignment.assigned_by);
-  }
-
-  for (const execution of executions) {
-    if (execution.operator_id) profileIds.add(execution.operator_id);
-    if (execution.completed_by) profileIds.add(execution.completed_by);
-  }
-
-  const profilesResult = profileIds.size
-    ? await supabase
-        .from("profiles")
-        .select("id, display_name, email")
-        .in("id", Array.from(profileIds))
-    : { data: [], error: null };
-
-  if (profilesResult.error) {
-    throw profilesResult.error;
-  }
-
-  const profileNameById = new Map(
-    ((profilesResult.data ?? []) as WireframeProfile[]).map((profile) => [
-      profile.id,
-      profile.display_name?.trim() || profile.email
-    ])
-  );
-
-  const templatesById = new Map(templates.map((template) => [template.id, template]));
-  const stepsById = new Map(steps.map((step) => [step.id, step]));
-  const stepsByTemplate = groupStepsByTemplate(steps);
-  const wafersById = new Map(wafers.map((wafer) => [wafer.id, wafer]));
-  const executionsByAssignment = groupByAssignment(executions);
   const activeAssignments = assignments.filter((assignment) =>
     ACTIVE_ASSIGNMENT_STATUSES.includes(assignment.status)
   );
@@ -766,16 +366,6 @@ export async function getWireframeDashboardModel(
         href: `/process-flow${processQuery}`
       }
     ],
-    columns: buildColumns({
-      assignments,
-      wafersById,
-      templatesById,
-      stepsById,
-      stepsByTemplate,
-      transitions,
-      executionsByAssignment,
-      profileNameById,
-      calendarEvents
-    })
+    batchHistory
   };
 }

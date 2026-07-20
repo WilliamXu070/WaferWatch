@@ -195,6 +195,7 @@ export type WaferDrag = {
 
 export type PendingWaferMove = {
   kind: "submit" | "move";
+  batchId: string | null;
   wafers: Array<{
     mutationId: string;
     checkpointMutationId: string;
@@ -261,6 +262,7 @@ export type MoveWaferToProcessStepAction = (input: {
 export type SubmitStepCheckpointAction = (input: {
   stepExecutionId: string;
   mutationId: string;
+  batchId: string;
   notes?: string | null;
   evidence?: Record<string, unknown>;
 }) => Promise<ActionResult<unknown>>;

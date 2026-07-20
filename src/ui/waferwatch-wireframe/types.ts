@@ -23,35 +23,6 @@ export type {
  * calendar 2D surfaces are the real `ProcessFlowDiagram` / `ProcessCalendarBoard`.
  */
 
-export type WorkflowStageId = "queued" | "poling" | "inspection" | "complete";
-
-/** Mirrors the meaningful fields of `ProcessDashboardWaferState`. */
-export type WaferCardModel = {
-  id: string;
-  /** e.g. "ALPHA-04" (waferCode) */
-  waferCode: string;
-  /** e.g. "A7" (dieLabel) */
-  dieLabel: string;
-  /** Free-text status/handoff note (maps to a text_surface / step note). */
-  description: string;
-  /** Current step status from the real StepStatus enum. */
-  status: StepStatus;
-  /** Due / schedule chip label, e.g. "Today", "10 Mar", "No date". */
-  dueLabel: string;
-  /** Count chip, e.g. "2 notes" or "4 logs". */
-  activityLabel: string;
-  /** Optional handler display name (currentHandlerName). */
-  handler?: string;
-  isSelected?: boolean;
-};
-
-export type WorkflowColumnModel = {
-  id: WorkflowStageId;
-  title: string;
-  count: number;
-  cards: readonly WaferCardModel[];
-};
-
 export type ActivityBar = {
   label: string;
   value: number;
@@ -67,6 +38,31 @@ export type DashboardStat = {
   href: string;
 };
 
+export type BatchProcessHistoryStatus =
+  | "awaiting_review"
+  | "approved"
+  | "redo"
+  | "withdrawn"
+  | "mixed";
+
+export type BatchProcessHistorySample = {
+  attemptId: string;
+  label: string;
+  status: Exclude<BatchProcessHistoryStatus, "mixed">;
+};
+
+export type BatchProcessHistoryItem = {
+  id: string;
+  batchId: string | null;
+  processStepId: string;
+  processName: string;
+  submittedAt: string;
+  operatorName: string;
+  note: string | null;
+  status: BatchProcessHistoryStatus;
+  samples: readonly BatchProcessHistorySample[];
+};
+
 export type DashboardModel = {
   activity: {
     title: string;
@@ -80,7 +76,7 @@ export type DashboardModel = {
     footer: string;
   };
   stats: readonly DashboardStat[];
-  columns: readonly WorkflowColumnModel[];
+  batchHistory: readonly BatchProcessHistoryItem[];
 };
 
 /** Mirrors the `process_steps` rows that feed `ProcessFlowDiagram`. */
@@ -332,6 +328,11 @@ export type WaferStatusTileModel = {
   stepLabel: string;
   status: WaferTileStatus;
   waferStateName: string;
+  appearance?: {
+    attachmentId: string;
+    imageUrl: string | null;
+    version: number;
+  } | null;
   legacyNote?: string | null;
   notesSurfaceValue?: string | null;
   notesSurfaceValuesByStepId?: Record<string, string | null>;

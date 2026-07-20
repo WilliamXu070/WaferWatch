@@ -4,6 +4,7 @@ import { uuidSchema } from "@/lib/validation";
 export const submitStepCheckpointSchema = z.object({
   stepExecutionId: uuidSchema,
   mutationId: uuidSchema,
+  batchId: uuidSchema,
   notes: z.string().trim().max(4000).nullable().optional(),
   evidence: z.record(z.string(), z.unknown()).default({})
 });

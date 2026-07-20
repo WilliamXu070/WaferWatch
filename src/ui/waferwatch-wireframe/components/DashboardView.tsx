@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ActivityIcon, ArrowRightIcon, WarningIcon } from "../icons";
 import type { DashboardModel, DashboardStat } from "../types";
-import { KanbanCard } from "./KanbanCard";
+import { BatchProcessHistoryCard } from "./BatchProcessHistory";
+import { DashboardScrollRow } from "./DashboardScrollRow";
 import { ProcessActivityChart } from "./ProcessActivityChart";
 import { StepProgressGauge } from "./StepProgressGauge";
 
@@ -65,43 +66,60 @@ export function DashboardView({
   emptyTitle?: string;
   emptyDescription?: string;
 }) {
-  const { columns } = dashboard;
-  const hasCards = columns.some((column) => column.cards.length > 0);
+  const hasDashboardData =
+    dashboard.batchHistory.length > 0 ||
+    dashboard.stats.some((stat) => stat.value !== "0");
 
   return (
     <div className="dashboard-view flex flex-col">
       <section className="dashboard-overview-band bg-[#f2f2e8] px-4 pb-5 pt-4 md:px-8 md:pb-8">
-        <div className="dashboard-overview-grid">
-          <ProcessActivityChart activity={dashboard.activity} />
-          <StepProgressGauge progress={dashboard.progress} />
-          {dashboard.stats.map((stat) => (
-            <StatTile key={stat.id} stat={stat} />
-          ))}
-        </div>
-      </section>
-
-      <section
-        aria-label="Workflow board"
-        className="grid grid-cols-1 gap-6 bg-white px-4 py-5 md:grid-cols-2 md:px-8 md:py-7 xl:grid-cols-4 xl:gap-0 xl:divide-x xl:divide-[#ececdf]"
-      >
-        {columns.map((column) => (
-          <div key={column.id} className="flex flex-col gap-4 xl:px-6 xl:first:pl-0 xl:last:pr-0">
-            <header className="flex items-center gap-2.5">
-              <h2 className="text-[19px] font-semibold leading-none tracking-tight text-[#151512]">{column.title}</h2>
-              <span className="min-w-[26px] rounded-lg bg-[#efefe3] px-1.5 py-0.5 text-center text-[12px] font-semibold text-[#55534a]">
-                {column.count}
-              </span>
-            </header>
-            <div className="flex flex-col gap-4">
-              {column.cards.map((card) => (
-                <KanbanCard key={card.id} card={card} />
-              ))}
-            </div>
+        <DashboardScrollRow label="Dashboard overview" className="dashboard-overview-row">
+          <div className="dashboard-overview-item dashboard-overview-item--activity">
+            <ProcessActivityChart activity={dashboard.activity} />
           </div>
-        ))}
+          <div className="dashboard-overview-item dashboard-overview-item--progress">
+            <StepProgressGauge progress={dashboard.progress} />
+          </div>
+          {dashboard.stats.map((stat) => (
+            <div key={stat.id} className="dashboard-overview-item dashboard-overview-item--stat">
+              <StatTile stat={stat} />
+            </div>
+          ))}
+        </DashboardScrollRow>
       </section>
 
-      {!hasCards ? (
+      <section className="min-w-0 bg-white px-4 py-5 md:px-8 md:py-7" aria-labelledby="batch-process-history-title">
+        <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[#99978a]">
+              Newest first
+            </p>
+            <h2 id="batch-process-history-title" className="mt-1 text-[21px] font-semibold tracking-tight text-[#151512]">
+              Batch Process History
+            </h2>
+          </div>
+          <p className="text-[12px] font-medium text-[#8a887b]">
+            {dashboard.batchHistory.length} recent {dashboard.batchHistory.length === 1 ? "batch" : "batches"}
+          </p>
+        </header>
+
+        {dashboard.batchHistory.length ? (
+          <DashboardScrollRow label="Batch process history" className="dashboard-history-row">
+            {dashboard.batchHistory.map((item) => (
+              <BatchProcessHistoryCard key={item.id} item={item} />
+            ))}
+          </DashboardScrollRow>
+        ) : hasDashboardData ? (
+          <div className="border-y border-dashed border-[#d8d6ca] bg-[#fbfbf7] px-4 py-8 text-left">
+            <h3 className="text-[16px] font-semibold text-[#151512]">No completed batch processes yet</h3>
+            <p className="mt-1 max-w-[560px] text-[13px] leading-5 text-[#77756b]">
+              Complete one or more selected samples in Process Flow to create the first history entry.
+            </p>
+          </div>
+        ) : null}
+      </section>
+
+      {!hasDashboardData ? (
         <DashboardEmptyState
           title={emptyTitle}
           description={emptyDescription}

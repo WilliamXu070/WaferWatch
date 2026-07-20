@@ -14,6 +14,17 @@ import {
 import type { Json, ProcessStep } from "@/types/database";
 
 const DIE_COUNT = 8;
+const DASHBOARD_BATCH_EVIDENCE_KEY = "_waferwatch_batch_id";
+
+function withDashboardBatchEvidence(
+  evidence: Record<string, unknown>,
+  batchId: string
+): Json {
+  return {
+    ...evidence,
+    [DASHBOARD_BATCH_EVIDENCE_KEY]: batchId
+  } as Json;
+}
 
 function toJsonRecord(value: unknown): Record<string, Json | undefined> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -139,7 +150,7 @@ export async function submitStepCheckpoint(input: unknown) {
       target_step_execution_id: parsed.stepExecutionId,
       mutation_id: parsed.mutationId,
       notes: parsed.notes ?? null,
-      evidence: parsed.evidence as Json
+      evidence: withDashboardBatchEvidence(parsed.evidence, parsed.batchId)
     });
 
     if (error) {

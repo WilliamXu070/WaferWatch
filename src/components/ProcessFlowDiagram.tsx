@@ -2889,6 +2889,7 @@ export function ProcessFlowDiagram({
 
     const move: PendingWaferMove = {
       kind: "move",
+      batchId: null,
       wafers: uniqueWafers.map((wafer) => ({
         mutationId: crypto.randomUUID(),
         checkpointMutationId: crypto.randomUUID(),
@@ -2934,6 +2935,7 @@ export function ProcessFlowDiagram({
     }
     setPendingWaferMove({
       kind: "submit",
+      batchId: crypto.randomUUID(),
       wafers: uniqueWafers.map((wafer) => ({
         mutationId: crypto.randomUUID(),
         checkpointMutationId: crypto.randomUUID(),
@@ -3133,6 +3135,7 @@ export function ProcessFlowDiagram({
               ? await onSubmitCheckpoint!({
                   stepExecutionId: movingWafer?.currentStepExecutionId ?? "",
                   mutationId: waferMove.mutationId,
+                  batchId: move.batchId!,
                   notes: actionNote,
                   evidence: {}
                 })
