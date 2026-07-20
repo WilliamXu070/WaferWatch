@@ -8,6 +8,7 @@ import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/sup
 import {
   processFlowArchiveRestoreSchema,
   processFlowArchiveSchema,
+  processFlowSelectionParameterDetailSchema,
   processFlowStepCreateSchema,
   processFlowWaferDeleteSchema,
   processFlowWaferCreateSchema,
@@ -38,7 +39,11 @@ import {
   isLegacyDeletedWaferFamily,
   keepExistingWaferFamilyDeleteIds
 } from "@/features/process-flows/waferDeletion";
-import type { Json, ProcessStep } from "@/types/database";
+import type { Json, ProcessStep, StepParameterRecord } from "@/types/database";
+import type {
+  WaferStatusStepParameterRecord,
+  WaferStatusStepParameterValue
+} from "@/ui/waferwatch-wireframe/types";
 
 type ProcessTemplateWriteContext = {
   id: string;
@@ -75,6 +80,58 @@ const DEFAULT_PROCESS_FLOW_STEPS = [
     canvas_y: 600
   }
 ] as const;
+
+type ParameterJsonRow = Record<string, unknown>;
+
+function asParameterRow(value: unknown): ParameterJsonRow | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as ParameterJsonRow
+    : null;
+}
+
+function readParameterString(row: ParameterJsonRow, key: string) {
+  const value = row[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function mapParameterRecordValues(record: StepParameterRecord): WaferStatusStepParameterValue[] {
+  const schemaRoot = asParameterRow(record.schema_snapshot) ?? {};
+  const recordNotes = asParameterRow(schemaRoot.recordNotes) ?? {};
+  const globalValues = asParameterRow(record.global_values) ?? {};
+  const templateValues: WaferStatusStepParameterValue[] = readStepParameterDefinitions(record.schema_snapshot).map((definition) => ({
+    id: definition.id,
+    key: definition.key,
+    label: definition.label,
+    type: definition.type,
+    value: (globalValues[definition.key] ?? null) as string | number | boolean | null,
+    unit: definition.unit,
+    notes: typeof recordNotes[definition.key] === "string" ? recordNotes[definition.key] as string : "",
+    scope: "global"
+  }));
+  const localValues: WaferStatusStepParameterValue[] = Array.isArray(record.local_parameters)
+    ? record.local_parameters.flatMap((rawValue) => {
+        const value = asParameterRow(rawValue);
+        const key = value ? readParameterString(value, "key") : null;
+        const label = value ? readParameterString(value, "label") : null;
+        if (!value || !key || !label) return [];
+        const rawType = readParameterString(value, "type");
+        const rawParameterValue = value.value;
+        return [{
+          id: readParameterString(value, "id") ?? key,
+          key,
+          label,
+          type: rawType === "number" || rawType === "boolean" || rawType === "select" ? rawType : "text",
+          value: typeof rawParameterValue === "string" || typeof rawParameterValue === "number" || typeof rawParameterValue === "boolean"
+            ? rawParameterValue
+            : null,
+          unit: readParameterString(value, "unit") ?? "",
+          notes: readParameterString(value, "notes") ?? "",
+          scope: "local" as const
+        }];
+      })
+    : [];
+  return [...templateValues, ...localValues];
+}
 
 function slugifyStepName(name: string) {
   const slug = name
@@ -1211,6 +1268,94 @@ export async function saveStepParameterRecordsBatch(input: unknown) {
   }
 }
 
+export async function getProcessFlowSelectionParameterDetail(input: unknown) {
+  try {
+    const parsed = processFlowSelectionParameterDetailSchema.parse(input);
+    await requireAccount();
+    await assertProjectAccess(parsed.projectId, "read");
+    const supabase = await createServerSupabaseClient();
+    const [waferResult, stepResult, assignmentResult, executionResult] = await Promise.all([
+      supabase
+        .from("wafers")
+        .select("id, project_id")
+        .eq("id", parsed.waferId)
+        .eq("project_id", parsed.projectId)
+        .is("deleted_at", null)
+        .maybeSingle(),
+      supabase
+        .from("process_steps")
+        .select("id, template_id, parameters_schema")
+        .eq("id", parsed.stepId)
+        .eq("template_id", parsed.processTemplateId)
+        .maybeSingle(),
+      supabase
+        .from("wafer_process_assignments")
+        .select("id, wafer_id, template_id, current_step_id")
+        .eq("id", parsed.assignmentId)
+        .eq("wafer_id", parsed.waferId)
+        .eq("template_id", parsed.processTemplateId)
+        .eq("current_step_id", parsed.stepId)
+        .is("deleted_at", null)
+        .maybeSingle(),
+      supabase
+        .from("step_executions")
+        .select("id, assignment_id, wafer_id, process_step_id")
+        .eq("id", parsed.stepExecutionId)
+        .eq("assignment_id", parsed.assignmentId)
+        .eq("wafer_id", parsed.waferId)
+        .eq("process_step_id", parsed.stepId)
+        .maybeSingle()
+    ]);
+
+    const firstError = waferResult.error ?? stepResult.error ?? assignmentResult.error ?? executionResult.error;
+    if (firstError) return fail(firstError.message);
+    if (!waferResult.data || !stepResult.data || !assignmentResult.data || !executionResult.data) {
+      return fail("This die moved or its current step visit changed. Refresh before editing parameters.");
+    }
+
+    const { data: records, error: recordsError } = await supabase
+      .from("step_parameter_records")
+      .select("*")
+      .eq("project_id", parsed.projectId)
+      .eq("wafer_id", parsed.waferId)
+      .eq("assignment_id", parsed.assignmentId)
+      .eq("process_step_id", parsed.stepId)
+      .eq("step_execution_id", parsed.stepExecutionId)
+      .order("updated_at", { ascending: false });
+    if (recordsError) return fail(recordsError.message);
+
+    const typedRecords = (records ?? []) as StepParameterRecord[];
+    const actorIds = Array.from(new Set(
+      typedRecords.map((record) => record.recorded_by).filter((value): value is string => Boolean(value))
+    ));
+    const profilesResult = actorIds.length
+      ? await supabase.from("profiles").select("id, display_name, email").in("id", actorIds)
+      : { data: [], error: null };
+    if (profilesResult.error) return fail(profilesResult.error.message);
+    const actorNames = new Map((profilesResult.data ?? []).map((profile) => [
+      profile.id,
+      profile.display_name?.trim() || profile.email
+    ]));
+    const mappedRecords: WaferStatusStepParameterRecord[] = typedRecords.map((record) => ({
+      id: record.id,
+      revision: record.revision,
+      movementMutationId: record.movement_mutation_id,
+      recordedAt: record.updated_at || record.created_at,
+      recordedById: record.recorded_by,
+      recordedByName: record.recorded_by ? actorNames.get(record.recorded_by) ?? null : null,
+      notes: record.notes,
+      values: mapParameterRecordValues(record)
+    }));
+
+    return ok({
+      parametersSchema: stepResult.data.parameters_schema,
+      records: mappedRecords
+    });
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
 export async function saveWaferStatusStepParameterRecord(input: unknown) {
   try {
     const parsed = waferStatusStepParameterRecordSaveSchema.parse(input);
@@ -1241,19 +1386,26 @@ export async function saveWaferStatusStepParameterRecord(input: unknown) {
       return fail("This process step is no longer available.");
     }
 
-    const { data: assignment, error: assignmentError } = await supabase
+    let assignmentQuery = supabase
       .from("wafer_process_assignments")
-      .select("id, template_id")
+      .select("id, template_id, current_step_id")
       .eq("wafer_id", parsed.waferId)
       .eq("template_id", step.template_id)
-      .is("deleted_at", null)
-      .order("assigned_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .is("deleted_at", null);
+    assignmentQuery = parsed.assignmentId
+      ? assignmentQuery.eq("id", parsed.assignmentId)
+      : assignmentQuery.order("assigned_at", { ascending: false }).limit(1);
+    const { data: assignment, error: assignmentError } = await assignmentQuery.maybeSingle();
 
     if (assignmentError) return fail(assignmentError.message);
     if (!assignment) {
       return fail("The process assignment for this step could not be found.");
+    }
+    if (parsed.processTemplateId && assignment.template_id !== parsed.processTemplateId) {
+      return fail("This process assignment changed. Refresh before saving parameters.");
+    }
+    if (parsed.assignmentId && assignment.current_step_id !== parsed.stepId) {
+      return fail("This die moved to another process step. Refresh before saving parameters.");
     }
 
     let stepExecutionId = parsed.stepExecutionId;
@@ -1291,15 +1443,18 @@ export async function saveWaferStatusStepParameterRecord(input: unknown) {
     } | null = null;
 
     if (parsed.recordId) {
-      const { data, error } = await supabase
+      let existingRecordQuery = supabase
         .from("step_parameter_records")
         .select("id, revision, schema_snapshot, process_event_id, movement_mutation_id")
         .eq("id", parsed.recordId)
         .eq("project_id", parsed.projectId)
         .eq("wafer_id", parsed.waferId)
         .eq("assignment_id", assignment.id)
-        .eq("process_step_id", parsed.stepId)
-        .maybeSingle();
+        .eq("process_step_id", parsed.stepId);
+      if (stepExecutionId) {
+        existingRecordQuery = existingRecordQuery.eq("step_execution_id", stepExecutionId);
+      }
+      const { data, error } = await existingRecordQuery.maybeSingle();
       if (error) return fail(error.message);
       if (!data) return fail("This parameter entry was removed by another collaborator.");
       existingRecord = data;

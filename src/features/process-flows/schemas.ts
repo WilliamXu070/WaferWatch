@@ -185,6 +185,8 @@ export const stepParameterRecordsBatchSaveSchema = z.object({
 });
 
 export const waferStatusStepParameterRecordSaveSchema = z.object({
+  processTemplateId: uuidSchema.optional(),
+  assignmentId: uuidSchema.optional(),
   projectId: uuidSchema,
   waferId: uuidSchema,
   stepId: uuidSchema,
@@ -194,6 +196,20 @@ export const waferStatusStepParameterRecordSaveSchema = z.object({
   notes: z.string().trim().max(4000).nullable(),
   parameters: z.array(waferStatusEditableStepParameterSchema).max(100)
 }).superRefine((value, context) => {
+  if (Boolean(value.processTemplateId) !== Boolean(value.assignmentId)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "An exact Process Flow edit requires both its process and assignment.",
+      path: [value.processTemplateId ? "assignmentId" : "processTemplateId"]
+    });
+  }
+  if (value.assignmentId && !value.stepExecutionId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "An exact Process Flow edit requires its current step visit.",
+      path: ["stepExecutionId"]
+    });
+  }
   if (value.recordId && value.expectedRevision === null) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -210,6 +226,15 @@ export const waferStatusStepParameterRecordSaveSchema = z.object({
       path: ["parameters"]
     });
   }
+});
+
+export const processFlowSelectionParameterDetailSchema = z.object({
+  processTemplateId: uuidSchema,
+  projectId: uuidSchema,
+  assignmentId: uuidSchema,
+  waferId: uuidSchema,
+  stepId: uuidSchema,
+  stepExecutionId: uuidSchema
 });
 
 const processStepPositionUpdateSchema = z.object({

@@ -109,7 +109,10 @@ import {
   getAvailableWaferMoveTargets,
   getSelectedLinkedStepEdge
 } from "./process-flow/mobileActions";
-import { MobileWaferSelectionBar } from "./process-flow/MobileWaferSelectionBar";
+import {
+  ProcessFlowSelectionInspector,
+  type ProcessFlowInspectorItem
+} from "./process-flow/ProcessFlowSelectionInspector";
 import {
   clampScale,
   getWaferChipLabel,
@@ -472,6 +475,7 @@ export function ProcessFlowDiagram({
   const pendingNameUpdateRef = useRef<Map<string, { name: string; expectedName: string }>>(new Map());
   const pendingWaferDeleteIdsRef = useRef<Set<string>>(new Set());
   const prefetchedWaferDetailsRef = useRef<Set<string>>(new Set());
+  const selectionParameterDirtyRef = useRef(false);
   const archiveDockRef = useRef<HTMLButtonElement | null>(null);
   const waferDragRef = useRef<WaferDrag | null>(null);
   const waferDropTargetRef = useRef<{ nodeId: string; kind: "submit" | "move" } | null>(null);
@@ -621,22 +625,47 @@ export function ProcessFlowDiagram({
     selectedWaferPin,
     selectedWaferSourceNode
   ]);
-  const canSubmitSelectedWafersForCheckpoint = Boolean(
-    canEdit &&
-    onSubmitCheckpoint &&
-    selectedWafer &&
-    selectedWaferSourceNode?.requiredReviewerId &&
-    activeSelectedWafers.length > 0 &&
-    activeSelectedWafers.every((selection) => {
-      if (selection.nodeId !== selectedWafer.nodeId) return false;
-      const pin = selectedWaferSourceNode.wafers.find((wafer) => wafer.assignmentId === selection.assignmentId);
-      return Boolean(pin?.currentStepExecutionId && canSubmitCheckpoint(pin.currentStepStatus));
-    })
-  );
   const selectedWaferAssignmentIds = useMemo(
     () => new Set(activeSelectedWafers.map((wafer) => wafer.assignmentId)),
     [activeSelectedWafers]
   );
+  const selectionInspectorItems = useMemo(() => activeSelectedWafers.flatMap((selection) => {
+    const node = nodeById.get(selection.nodeId);
+    const pin = node?.wafers.find((wafer) => wafer.assignmentId === selection.assignmentId);
+    if (!node || !pin) return [];
+    return [{
+      assignmentId: selection.assignmentId,
+      waferId: pin.waferId,
+      projectId: pin.projectId,
+      processTemplateId,
+      stepId: node.id,
+      stepName: node.label,
+      stepExecutionId: pin.currentStepExecutionId,
+      parametersSchema: node.parametersSchema,
+      waferCode: pin.waferCode,
+      dieLabel: pin.dieLabel,
+      label: selection.label,
+      isDie: selection.isDie,
+      status: pin.currentStepStatus,
+      handlerName: pin.currentHandlerName,
+      latestNote: pin.latestStepAttemptNotes,
+      syncState: mutationQueue.syncStateByAssignmentId.get(selection.assignmentId),
+      canSubmitCheckpoint: Boolean(
+        canEdit &&
+        onSubmitCheckpoint &&
+        node.requiredReviewerId &&
+        pin.currentStepExecutionId &&
+        canSubmitCheckpoint(pin.currentStepStatus)
+      )
+    } satisfies ProcessFlowInspectorItem];
+  }), [
+    activeSelectedWafers,
+    canEdit,
+    mutationQueue.syncStateByAssignmentId,
+    nodeById,
+    onSubmitCheckpoint,
+    processTemplateId
+  ]);
   const selectedLinkedStepEdge = useMemo(
     () => getSelectedLinkedStepEdge(edges, selectedNodeIds),
     [edges, selectedNodeIds]
@@ -1781,8 +1810,18 @@ export function ProcessFlowDiagram({
     waferCreateDraft
   ]);
 
+  const confirmDiscardSelectionParameters = useCallback((message: string) => {
+    if (!selectionParameterDirtyRef.current) return true;
+    if (!window.confirm(message)) return false;
+    selectionParameterDirtyRef.current = false;
+    return true;
+  }, []);
+
   const selectWafer = useCallback((nodeId: string, wafer: WaferPin) => {
     if (waferDragRef.current?.hasMoved) {
+      return;
+    }
+    if (!confirmDiscardSelectionParameters("Discard the unsaved parameter changes before changing this selection?")) {
       return;
     }
 
@@ -1806,6 +1845,33 @@ export function ProcessFlowDiagram({
 
       return [...current, nextSelection];
     });
+  }, [confirmDiscardSelectionParameters]);
+
+  const clearWaferSelectionFromInspector = useCallback(() => {
+    if (!confirmDiscardSelectionParameters("Discard the unsaved parameter changes and clear this selection?")) {
+      return;
+    }
+    setSelectedWafers([]);
+  }, [confirmDiscardSelectionParameters]);
+
+  const removeWaferFromInspector = useCallback((assignmentId: string) => {
+    if (!confirmDiscardSelectionParameters("Discard the unsaved parameter changes before changing this selection?")) {
+      return;
+    }
+    setSelectedWafers((current) => current.filter((selection) => selection.assignmentId !== assignmentId));
+  }, [confirmDiscardSelectionParameters]);
+
+  const activateWaferInInspector = useCallback((assignmentId: string) => {
+    setSelectedWafers((current) => {
+      const active = current.find((selection) => selection.assignmentId === assignmentId);
+      return active
+        ? [...current.filter((selection) => selection.assignmentId !== assignmentId), active]
+        : current;
+    });
+  }, []);
+
+  const handleSelectionParameterDirtyChange = useCallback((isDirty: boolean) => {
+    selectionParameterDirtyRef.current = isDirty;
   }, []);
 
   const prefetchWaferDetails = useCallback((wafer: WaferPin) => {
@@ -3142,7 +3208,7 @@ export function ProcessFlowDiagram({
 
     const move: PendingWaferMove = {
       kind: "move",
-      batchId: null,
+      batchId: crypto.randomUUID(),
       wafers: uniqueWafers.map((wafer) => ({
         mutationId: crypto.randomUUID(),
         checkpointMutationId: crypto.randomUUID(),
@@ -3414,6 +3480,7 @@ export function ProcessFlowDiagram({
           if (shouldRoute) {
             return {
               kind: "route",
+              batchId: move.batchId!,
               assignmentId: waferMove.assignmentId,
               attemptId: movingWafer!.latestStepAttemptId!,
               targetStepId: move.targetStepId,
@@ -3424,6 +3491,7 @@ export function ProcessFlowDiagram({
           }
           return {
             kind: "move",
+            batchId: move.batchId!,
             mutationId: waferMove.mutationId,
             assignmentId: waferMove.assignmentId,
             sourceStepId: move.sourceStepId,
@@ -3905,6 +3973,9 @@ export function ProcessFlowDiagram({
     ) {
       return;
     }
+    if (!confirmDiscardSelectionParameters("Discard the unsaved parameter changes before undoing this movement?")) {
+      return;
+    }
 
     const expectedStepStatus = selectedWaferPin.currentStepStatus as Exclude<
       typeof selectedWaferPin.currentStepStatus,
@@ -3930,6 +4001,7 @@ export function ProcessFlowDiagram({
     });
   }, [
     canUndoSelectedDieHistory,
+    confirmDiscardSelectionParameters,
     isWaferMutationPending,
     onUndoDieProcessHistory,
     router,
@@ -3959,9 +4031,12 @@ export function ProcessFlowDiagram({
           return;
         }
 
-        if (selectedWafer) {
+        if (selectedWafer && activeSelectedWafers.length === 1) {
           event.preventDefault();
           deleteSelectedWafer();
+        } else if (selectedWafer) {
+          event.preventDefault();
+          setMoveMessage("Delete is available only when one wafer or die is selected.");
         } else if (selectedEdgeId) {
           event.preventDefault();
           deleteEdge(selectedEdgeId);
@@ -3979,6 +4054,7 @@ export function ProcessFlowDiagram({
     };
   }, [
     canEdit,
+    activeSelectedWafers.length,
     canUndoSelectedDieHistory,
     deleteEdge,
     deleteSelectedNodes,
@@ -4345,7 +4421,7 @@ export function ProcessFlowDiagram({
               >
                 {isPendingWaferMoveLocked
                   ? "Saving…"
-                  : pendingWaferMove.kind === "submit" ? "Submit for review" : "Confirm move"}
+                  : pendingWaferMove.kind === "submit" ? "Submit for review" : "Create planned batch"}
               </button>
             </div>
           </section>
@@ -4374,23 +4450,27 @@ export function ProcessFlowDiagram({
         canAddWafer={Boolean(canEdit && processTemplateId && onCreateWaferAtProcessStart)}
         canEdit={canEdit}
       />
-      {selectedWafer && selectedWaferPin ? (
-        <MobileWaferSelectionBar
-          label={`${getWaferSelectionLabel(activeSelectedWafers)} selected`}
+      {selectedWafer && selectedWaferPin && selectionInspectorItems.length > 0 ? (
+        <ProcessFlowSelectionInspector
+          items={selectionInspectorItems}
           moveTargets={mobileWaferMoveTargets}
-          canSubmitCheckpoint={canSubmitSelectedWafersForCheckpoint}
-          canDelete={Boolean(canEdit && onDeleteWafer)}
-          deleteLabel={`Delete ${selectedWafer.isDie ? "die" : "wafer"}`}
+          canEdit={canEdit}
+          canUndoMovement={canUndoSelectedDieHistory}
           isPending={activeSelectedWafers.some((wafer) => mutationQueue.lockedAssignmentIds.has(wafer.assignmentId))}
-          onClear={() => setSelectedWafers([])}
-          onDelete={deleteSelectedWafer}
-          onMove={(targetId) => openWaferMoveDialog(
-            activeSelectedWafers,
-            selectedWafer.nodeId,
-            targetId,
-            true
-          )}
-          onSubmitCheckpoint={() => openCheckpointSubmitDialog(activeSelectedWafers, selectedWafer.nodeId)}
+          onActivate={activateWaferInInspector}
+          onClear={clearWaferSelectionFromInspector}
+          onRemove={removeWaferFromInspector}
+          onMove={(targetId) => {
+            if (!confirmDiscardSelectionParameters("Discard the unsaved parameter changes before moving this selection?")) return;
+            openWaferMoveDialog(activeSelectedWafers, selectedWafer.nodeId, targetId, true);
+          }}
+          onOpenFullRecord={() => openWaferDetails(selectedWaferPin)}
+          onParameterDirtyChange={handleSelectionParameterDirtyChange}
+          onSubmitCheckpoint={() => {
+            if (!confirmDiscardSelectionParameters("Discard the unsaved parameter changes before submitting this selection?")) return;
+            openCheckpointSubmitDialog(activeSelectedWafers, selectedWafer.nodeId);
+          }}
+          onUndoMovement={undoSelectedDieHistory}
         />
       ) : null}
       {selectedNodeIds.size > 0 ? (

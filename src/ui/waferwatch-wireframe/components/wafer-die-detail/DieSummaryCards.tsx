@@ -20,12 +20,17 @@ function formatStepTimestamp(value: string | null | undefined) {
   }).format(date);
 }
 
-function formatStepStatus(status: string | undefined, fallbackStatus: WaferStatusTileModel["status"]) {
-  if (status === "completed") return "Complete";
-  if (status === "running" || status === "in_progress") return "In progress";
-  if (status === "blocked") return "Blocked";
-  if (status === "failed") return "Failed";
-  return fallbackStatus === "queued" ? "Pending" : "In progress";
+function stepStatusPresentation(status: string | undefined, fallbackStatus: WaferStatusTileModel["status"]) {
+  if (status === "queued" || status === "pending") return { label: "Not started", className: "border-[#deded8] bg-[#f4f4f1] text-[#64645e]" };
+  if (status === "running" || status === "in_progress") return { label: "In progress", className: "border-[#bfd8f0] bg-[#edf6fd] text-[#245b87]" };
+  if (status === "awaiting_checkpoint") return { label: "Waiting for verification", className: "border-[#f0d29c] bg-[#fff7e8] text-[#8a5d12]" };
+  if (status === "ready_to_move") return { label: "Verified — ready to move", className: "border-[#bfdfc3] bg-[#eff8ed] text-[#2d6d36]" };
+  if (status === "redo_required") return { label: "Rework required", className: "border-[#f1c797] bg-[#fff1e5] text-[#9a4b17]" };
+  if (status === "blocked" || status === "failed") return { label: status === "blocked" ? "Blocked" : "Failed", className: "border-[#efc3be] bg-[#fff0ee] text-[#a33a2b]" };
+  if (status === "completed") return { label: "Complete", className: "border-[#bfdfc3] bg-[#eff8ed] text-[#2d6d36]" };
+  return fallbackStatus === "queued"
+    ? { label: "Not started", className: "border-[#deded8] bg-[#f4f4f1] text-[#64645e]" }
+    : { label: "In progress", className: "border-[#bfd8f0] bg-[#edf6fd] text-[#245b87]" };
 }
 
 export function CurrentStepCard({ tile }: { tile: WaferStatusTileModel }) {
@@ -44,13 +49,14 @@ export function CurrentStepCard({ tile }: { tile: WaferStatusTileModel }) {
     ["Completed", formatStepTimestamp(currentStep?.completedAt)],
     ["Operator", currentStep?.noteAuthorName ?? "Unassigned"]
   ];
+  const statusPresentation = stepStatusPresentation(currentStep?.status, tile.status);
 
   return (
     <DetailCard title="Current step">
       <div className="flex items-center gap-3">
         <h2 className="text-[24px] font-semibold leading-none text-[#111111]">{tile.stepLabel}</h2>
-        <span className="rounded-md border border-[#e4e4df] bg-white px-2 py-1 text-[12px] font-semibold text-[#44443f]">
-          {formatStepStatus(currentStep?.status, tile.status)}
+        <span className={`rounded-md border px-2 py-1 text-[12px] font-semibold ${statusPresentation.className}`}>
+          {statusPresentation.label}
         </span>
       </div>
       <div className="mt-7">

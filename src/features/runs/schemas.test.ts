@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { processFlowMutationBatchSchema, submitStepCheckpointSchema } from "./schemas";
+import { correctWaferProcessHistorySchema, processFlowMutationBatchSchema, submitStepCheckpointSchema } from "./schemas";
 
 const id = {
   batch: "10000000-0000-4000-8000-000000000001",
@@ -71,4 +71,29 @@ test("rejects duplicate mutation ids before a workflow batch reaches the server"
       evidence: {}
     }))
   }), /unique operation id/);
+});
+
+test("requires a complete, typed history-correction payload", () => {
+  const insertion = correctWaferProcessHistorySchema.parse({
+    kind: "insert",
+    mutationId: id.mutationOne,
+    assignmentId: id.assignmentOne,
+    anchorVisitId: "attempt:one",
+    placement: "after",
+    stepId: id.executionOne,
+    completedAt: "2026-07-20T12:30:00.000Z",
+    reason: "Recovered instrument log",
+    expectedHistoryRevision: 2,
+    parameterValues: { temperature: 250, inspected: true },
+    parameterNotes: { temperature: "tool export" }
+  });
+  assert.equal(insertion.kind, "insert");
+  assert.throws(() => correctWaferProcessHistorySchema.parse({
+    kind: "remove",
+    mutationId: id.mutationTwo,
+    assignmentId: id.assignmentTwo,
+    visitId: "attempt:two",
+    reason: "",
+    expectedHistoryRevision: 0
+  }));
 });

@@ -10,6 +10,7 @@ export const submitStepCheckpointSchema = z.object({
 });
 
 export const moveApprovedCheckpointSchema = z.object({
+  batchId: uuidSchema,
   mutationId: uuidSchema,
   assignmentId: uuidSchema,
   sourceStepId: uuidSchema,
@@ -36,7 +37,39 @@ export const undoDieProcessHistorySchema = z.object({
   ])
 });
 
+const historicalParameterValueSchema = z.union([
+  z.string().max(4000),
+  z.number().finite(),
+  z.boolean(),
+  z.null()
+]);
+
+export const correctWaferProcessHistorySchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("insert"),
+    mutationId: uuidSchema,
+    assignmentId: uuidSchema,
+    anchorVisitId: z.string().trim().min(1).max(240),
+    placement: z.enum(["before", "after"]),
+    stepId: uuidSchema,
+    completedAt: z.string().datetime({ offset: true }),
+    reason: z.string().trim().min(1).max(4000),
+    expectedHistoryRevision: z.number().int().nonnegative(),
+    parameterValues: z.record(z.string().min(1).max(100), historicalParameterValueSchema),
+    parameterNotes: z.record(z.string().min(1).max(100), z.string().trim().max(4000)).default({})
+  }),
+  z.object({
+    kind: z.literal("remove"),
+    mutationId: uuidSchema,
+    assignmentId: uuidSchema,
+    visitId: z.string().trim().min(1).max(240),
+    reason: z.string().trim().min(1).max(4000),
+    expectedHistoryRevision: z.number().int().nonnegative()
+  })
+]);
+
 export const routeCheckpointSubmissionSchema = z.object({
+  batchId: uuidSchema,
   attemptId: uuidSchema,
   targetStepId: uuidSchema,
   decisionMutationId: uuidSchema,

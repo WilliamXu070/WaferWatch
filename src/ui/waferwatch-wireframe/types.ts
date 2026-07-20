@@ -39,6 +39,7 @@ export type DashboardStat = {
 };
 
 export type BatchProcessHistoryStatus =
+  | "planned"
   | "awaiting_review"
   | "approved"
   | "redo"
@@ -61,6 +62,8 @@ export type BatchProcessHistoryItem = {
   note: string | null;
   status: BatchProcessHistoryStatus;
   samples: readonly BatchProcessHistorySample[];
+  scheduledStartAt?: string | null;
+  location?: string | null;
 };
 
 export type DashboardModel = {
@@ -76,6 +79,8 @@ export type DashboardModel = {
     footer: string;
   };
   stats: readonly DashboardStat[];
+  plannedBatches: readonly BatchProcessHistoryItem[];
+  reviewQueue: readonly BatchProcessHistoryItem[];
   batchHistory: readonly BatchProcessHistoryItem[];
 };
 
@@ -210,6 +215,8 @@ export type WaferStatusStepParameterValue = {
 
 export type WaferStatusStepParameterRecord = {
   id: string;
+  processEventId?: string | null;
+  historyVisitId?: string | null;
   revision: number;
   movementMutationId: string;
   recordedAt: string;
@@ -217,6 +224,22 @@ export type WaferStatusStepParameterRecord = {
   recordedByName: string | null;
   notes: string | null;
   values: WaferStatusStepParameterValue[];
+};
+
+export type WaferStatusHistoryCorrection = {
+  id: string;
+  kind: "insert" | "remove";
+  visitId: string;
+  targetVisitId: string | null;
+  anchorVisitId: string | null;
+  placement: "before" | "after" | null;
+  stepId: string | null;
+  stepName: string | null;
+  processArea: string | null;
+  completedAt: string | null;
+  occurredAt: string;
+  reason: string | null;
+  actor: WaferStatusTimelineActor;
 };
 
 export type WaferStatusProcessStepModel = {
@@ -322,6 +345,8 @@ export type WaferStatusTileModel = {
   id: string;
   projectId: string;
   waferId: string;
+  assignmentId?: string | null;
+  historyRevision?: number;
   code: string;
   family: string;
   dieLabel: string;
@@ -341,6 +366,7 @@ export type WaferStatusTileModel = {
   processSteps?: readonly WaferStatusProcessStepModel[];
   revertHistory?: readonly WaferStatusRevertEvent[];
   checkpointHistory?: readonly WaferStatusCheckpointHistoryEntry[];
+  historyCorrections?: readonly WaferStatusHistoryCorrection[];
   mode?: WaferDisplayMode;
   isUndiced?: boolean;
   isSelected?: boolean;

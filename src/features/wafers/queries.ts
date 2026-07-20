@@ -21,10 +21,12 @@ import type {
   WaferFamilyModel,
   WaferFamilyStatus,
   WaferStatusCheckpointHistoryEntry,
+  WaferStatusHistoryCorrection,
   WaferStatusMetric,
   WaferStatusModel,
   WaferStatusRevertEvent,
   WaferStatusStepParameterRecord,
+  WaferStatusStepParameterValue,
   WaferStatusTileModel,
   WaferTileStatus
 } from "@/ui/waferwatch-wireframe/types";
@@ -187,16 +189,19 @@ function readStepParameterRecordValues(row: UnknownRow) {
   const schemaRoot = asUnknownRow(schema) ?? {};
   const recordNotes = asUnknownRow(schemaRoot.recordNotes) ?? {};
   const globalValues = asUnknownRow(row.global_values) ?? {};
-  const templateValues = readStepParameterDefinitions(schema).map((definition) => ({
-    id: definition.id,
-    key: definition.key,
-    label: definition.label,
-    type: definition.type,
-    value: (globalValues[definition.key] ?? null) as string | number | boolean | null,
-    unit: definition.unit,
-    notes: typeof recordNotes[definition.key] === "string" ? recordNotes[definition.key] : "",
-    scope: "global" as const
-  }));
+  const templateValues = readStepParameterDefinitions(schema).map((definition) => {
+    const note = recordNotes[definition.key];
+    return {
+      id: definition.id,
+      key: definition.key,
+      label: definition.label,
+      type: definition.type,
+      value: (globalValues[definition.key] ?? null) as string | number | boolean | null,
+      unit: definition.unit,
+      notes: typeof note === "string" ? note : "",
+      scope: "global" as const
+    };
+  });
   const localRows = Array.isArray(row.local_parameters) ? row.local_parameters : [];
   const localValues = localRows.flatMap((value) => {
     const parameter = asUnknownRow(value);
@@ -205,11 +210,14 @@ function readStepParameterRecordValues(row: UnknownRow) {
     if (!parameter || !key || !label) return [];
     const rawValue = parameter.value;
     const rawType = getUnknownString(parameter, "type");
+    const parameterType: WaferStatusStepParameterValue["type"] = rawType === "number" || rawType === "boolean" || rawType === "select"
+      ? rawType
+      : "text";
     return [{
       id: getUnknownString(parameter, "id") ?? key,
       key,
       label,
-      type: rawType === "number" || rawType === "boolean" || rawType === "select" ? rawType : "text",
+      type: parameterType,
       value: typeof rawValue === "string" || typeof rawValue === "number" || typeof rawValue === "boolean"
         ? rawValue
         : null,
@@ -577,7 +585,8 @@ function mapWafersToStatusModel({
   appearancesBySurfaceKey,
   revertHistoryByWaferId,
   checkpointHistoryByAssignmentId,
-  stepParameterRecordsByAssignmentStep
+  stepParameterRecordsByAssignmentStep,
+  historyCorrectionsByAssignmentId
 }: {
   wafers: WaferStatusWaferRow[];
   assignmentsByWaferId: Map<string, WaferStatusAssignmentRow>;
@@ -590,6 +599,7 @@ function mapWafersToStatusModel({
   revertHistoryByWaferId: Map<string, WaferStatusRevertEvent[]>;
   checkpointHistoryByAssignmentId: Map<string, WaferStatusCheckpointHistoryEntry[]>;
   stepParameterRecordsByAssignmentStep: Map<string, WaferStatusStepParameterRecord[]>;
+  historyCorrectionsByAssignmentId: Map<string, WaferStatusHistoryCorrection[]>;
 }): WaferStatusModel {
   const familyBuckets = new Map<string, { wafers: WaferStatusWaferRow[]; tiles: WaferStatusTileModel[] }>();
   const tiles: WaferStatusTileModel[] = [];
@@ -663,6 +673,8 @@ function mapWafersToStatusModel({
       id: generatedDieLabels.length > 0 ? `${wafer.id}:${displayDieLabel}` : wafer.id,
       projectId: wafer.project_id,
       waferId: wafer.id,
+      assignmentId: assignment?.id ?? null,
+      historyRevision: assignment ? (historyCorrectionsByAssignmentId.get(assignment.id) ?? []).length : 0,
       code: mode === "undiced" ? wafer.wafer_code : displayDieLabel,
       family,
       dieLabel: displayDieLabel,
@@ -712,6 +724,9 @@ function mapWafersToStatusModel({
       revertHistory: revertHistoryByWaferId.get(wafer.id) ?? [],
       checkpointHistory: assignment
         ? checkpointHistoryByAssignmentId.get(assignment.id) ?? []
+        : [],
+      historyCorrections: assignment
+        ? historyCorrectionsByAssignmentId.get(assignment.id) ?? []
         : [],
       mode,
       isUndiced: mode === "undiced",
@@ -957,7 +972,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
           .from("process_events")
           .select("id, wafer_id, actor_id, event_type, event_at, notes, metadata")
           .in("wafer_id", historyWaferIds)
-          .in("event_type", ["wafer_step_moved", "wafer_step_reverted", "checkpoint_step_entered", "wafer_history_undone"])
+          .in("event_type", ["wafer_step_moved", "wafer_step_reverted", "checkpoint_step_entered", "wafer_history_undone", "wafer_history_correction"])
           .order("event_at", { ascending: true })
       : Promise.resolve({ data: [], error: null } as const),
     processTemplateId
@@ -1210,17 +1225,44 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
       profile.display_name?.trim() || profile.email
     ])
   );
+  const historyCorrectionsByAssignmentId = new Map<string, WaferStatusHistoryCorrection[]>();
+  for (const event of processEvents) {
+    if (event.event_type !== "wafer_history_correction") continue;
+    const metadata = toJsonRecord(event.metadata);
+    const assignmentId = getString(metadata, "assignment_id");
+    const kind = getString(metadata, "kind");
+    if (!assignmentId || (kind !== "insert" && kind !== "remove")) continue;
+    const placement = getString(metadata, "placement");
+    appendGrouped(historyCorrectionsByAssignmentId, assignmentId, {
+      id: event.id,
+      kind,
+      visitId: `correction:${event.id}`,
+      targetVisitId: getString(metadata, "target_visit_id"),
+      anchorVisitId: getString(metadata, "anchor_visit_id"),
+      placement: placement === "before" || placement === "after" ? placement : null,
+      stepId: getString(metadata, "target_step_id"),
+      stepName: getString(metadata, "target_step_name_snapshot"),
+      processArea: getString(metadata, "target_step_process_area_snapshot"),
+      completedAt: getString(metadata, "completed_at") ?? (kind === "insert" ? event.event_at : null),
+      occurredAt: event.event_at,
+      reason: event.notes,
+      actor: getTimelineActor({ actorId: event.actor_id, snapshotName: null, profileNameById })
+    });
+  }
   const stepParameterRecordsByAssignmentStep = new Map<string, WaferStatusStepParameterRecord[]>();
   for (const row of activeStepParameterRecordRows) {
     const id = getUnknownString(row, "id");
     const assignmentId = getUnknownString(row, "assignment_id");
     const stepId = getUnknownString(row, "process_step_id");
+    const processEventId = getUnknownString(row, "process_event_id");
     const movementMutationId = getUnknownString(row, "movement_mutation_id");
     const recordedAt = getUnknownString(row, "updated_at") ?? getUnknownString(row, "created_at");
     if (!id || !assignmentId || !stepId || !movementMutationId || !recordedAt) continue;
     const recordedById = getUnknownString(row, "recorded_by");
     appendGrouped(stepParameterRecordsByAssignmentStep, getStepParameterRecordMapKey(assignmentId, stepId), {
       id,
+      processEventId,
+      historyVisitId: processEventId ? `correction:${processEventId}` : null,
       revision: Math.max(1, getUnknownNumber(row, "revision") ?? 1),
       movementMutationId,
       recordedAt,
@@ -1363,7 +1405,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   }
 
   for (const event of processEvents) {
-    if (!event.wafer_id) continue;
+    if (!event.wafer_id || event.event_type === "wafer_history_correction") continue;
 
     const metadata = toJsonRecord(event.metadata);
     const assignmentId = getString(metadata, "assignment_id");
@@ -1423,7 +1465,8 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     appearancesBySurfaceKey,
     revertHistoryByWaferId,
     checkpointHistoryByAssignmentId,
-    stepParameterRecordsByAssignmentStep
+    stepParameterRecordsByAssignmentStep,
+    historyCorrectionsByAssignmentId
   });
 }
 

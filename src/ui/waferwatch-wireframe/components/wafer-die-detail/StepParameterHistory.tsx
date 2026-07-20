@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   normalizeStepParameterKey,
   readStepParameterDefinitions,
@@ -97,6 +97,9 @@ export function StepParameterHistory({
   stepExecutionId,
   canEdit,
   onSave,
+  onDirtyChange,
+  onSaved,
+  initiallyDirty,
   className = ""
 }: {
   records: readonly WaferStatusStepParameterRecord[];
@@ -107,6 +110,9 @@ export function StepParameterHistory({
   stepExecutionId: string | null;
   canEdit: boolean;
   onSave: SaveStepParametersAction;
+  onDirtyChange?: (isDirty: boolean) => void;
+  onSaved?: () => void;
+  initiallyDirty?: boolean;
   className?: string;
 }) {
   const orderedRecords = useMemo(
@@ -119,8 +125,13 @@ export function StepParameterHistory({
   );
   const [additionalNotes] = useState(latestRecord?.notes ?? "");
   const [message, setMessage] = useState<string | null>(null);
-  const [isDirty, setIsDirty] = useState(!latestRecord && parameters.length > 0);
+  const [isDirty, setIsDirty] = useState(initiallyDirty ?? (!latestRecord && parameters.length > 0));
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+    return () => onDirtyChange?.(false);
+  }, [isDirty, onDirtyChange]);
 
   const updateParameter = (id: string, update: Partial<DraftParameter>) => {
     setParameters((current) => current.map((parameter) => {
@@ -190,6 +201,7 @@ export function StepParameterHistory({
 
       setIsDirty(false);
       setMessage("Parameters saved.");
+      onSaved?.();
     });
   };
 

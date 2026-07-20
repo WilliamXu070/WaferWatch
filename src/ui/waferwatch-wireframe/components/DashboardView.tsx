@@ -2,7 +2,6 @@ import Link from "next/link";
 import { ActivityIcon, ArrowRightIcon, WarningIcon } from "../icons";
 import type { DashboardModel, DashboardStat } from "../types";
 import { BatchProcessHistoryCard } from "./BatchProcessHistory";
-import { DashboardScrollRow } from "./DashboardScrollRow";
 import { ProcessActivityChart } from "./ProcessActivityChart";
 import { StepProgressGauge } from "./StepProgressGauge";
 
@@ -67,13 +66,15 @@ export function DashboardView({
   emptyDescription?: string;
 }) {
   const hasDashboardData =
+    dashboard.plannedBatches.length > 0 ||
+    dashboard.reviewQueue.length > 0 ||
     dashboard.batchHistory.length > 0 ||
     dashboard.stats.some((stat) => stat.value !== "0");
 
   return (
     <div className="dashboard-view flex flex-col">
       <section className="dashboard-overview-band bg-[#f2f2e8] px-4 pb-5 pt-4 md:px-8 md:pb-8">
-        <DashboardScrollRow label="Dashboard overview" className="dashboard-overview-row">
+        <div className="dashboard-overview-row">
           <div className="dashboard-overview-item dashboard-overview-item--activity">
             <ProcessActivityChart activity={dashboard.activity} />
           </div>
@@ -85,38 +86,13 @@ export function DashboardView({
               <StatTile stat={stat} />
             </div>
           ))}
-        </DashboardScrollRow>
+        </div>
       </section>
 
-      <section className="min-w-0 bg-white px-4 py-5 md:px-8 md:py-7" aria-labelledby="batch-process-history-title">
-        <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-[#99978a]">
-              Newest first
-            </p>
-            <h2 id="batch-process-history-title" className="mt-1 text-[21px] font-semibold tracking-tight text-[#151512]">
-              Batch Process History
-            </h2>
-          </div>
-          <p className="text-[12px] font-medium text-[#8a887b]">
-            {dashboard.batchHistory.length} recent {dashboard.batchHistory.length === 1 ? "batch" : "batches"}
-          </p>
-        </header>
-
-        {dashboard.batchHistory.length ? (
-          <DashboardScrollRow label="Batch process history" className="dashboard-history-row">
-            {dashboard.batchHistory.map((item) => (
-              <BatchProcessHistoryCard key={item.id} item={item} />
-            ))}
-          </DashboardScrollRow>
-        ) : hasDashboardData ? (
-          <div className="border-y border-dashed border-[#d8d6ca] bg-[#fbfbf7] px-4 py-8 text-left">
-            <h3 className="text-[16px] font-semibold text-[#151512]">No completed batch processes yet</h3>
-            <p className="mt-1 max-w-[560px] text-[13px] leading-5 text-[#77756b]">
-              Complete one or more selected samples in Process Flow to create the first history entry.
-            </p>
-          </div>
-        ) : null}
+      <section className="dashboard-batch-board bg-white px-4 py-5 md:px-8 md:py-7" aria-label="Batch lifecycle">
+        <BatchColumn title="Planned Batches" detail="Scheduled work first" items={dashboard.plannedBatches} column="planned" empty="Move selected samples into a step to create a planned batch." />
+        <BatchColumn title="Review Queue" detail="Oldest submissions first" items={dashboard.reviewQueue} column="review" empty="Checkpoint submissions needing review appear here." />
+        <BatchColumn title="History" detail="Newest resolved work first" items={dashboard.batchHistory} column="history" empty="Approved, redo, and withdrawn work is retained here." />
       </section>
 
       {!hasDashboardData ? (
@@ -126,5 +102,36 @@ export function DashboardView({
         />
       ) : null}
     </div>
+  );
+}
+
+function BatchColumn({
+  title,
+  detail,
+  items,
+  column,
+  empty
+}: {
+  title: string;
+  detail: string;
+  items: readonly DashboardModel["batchHistory"][number][];
+  column: "planned" | "review" | "history";
+  empty: string;
+}) {
+  return (
+    <section className="dashboard-batch-column" aria-label={title}>
+      <header className="dashboard-batch-column-header">
+        <div>
+          <h2 className="text-[17px] font-semibold tracking-tight text-[#151512]">{title}</h2>
+          <p className="mt-1 text-[11px] font-medium text-[#939185]">{detail}</p>
+        </div>
+        <span className="rounded-full border border-[#e2e0d4] bg-[#fbfbf7] px-2 py-0.5 text-[11px] font-semibold text-[#77756b]">{items.length}</span>
+      </header>
+      <div className="dashboard-batch-list" tabIndex={0} aria-label={`${title} cards`}>
+        {items.length ? items.map((item) => (
+          <BatchProcessHistoryCard key={item.id} item={item} column={column} />
+        )) : <p className="dashboard-batch-empty">{empty}</p>}
+      </div>
+    </section>
   );
 }

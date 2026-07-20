@@ -130,6 +130,7 @@ export function FlowNodeCard({
       y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
       isSelected={selectedWaferAssignmentIds.has(wafer.assignmentId)}
       syncState={syncStateByAssignmentId.get(wafer.assignmentId)}
+      hasHistoryCorrection={(wafer.historyCorrectionCount ?? 0) > 0}
       status={wafer.currentStepStatus}
       title={`${getWaferChipLabel(wafer)} · ${getCheckpointStateLabel(wafer.currentStepStatus)}${
         wafer.anytimeReturnStepName ? ` · Return to ${wafer.anytimeReturnStepName}` : ""
@@ -331,6 +332,7 @@ function WaferChip({
   isSelected = false,
   status,
   syncState,
+  hasHistoryCorrection = false,
   title,
   onPointerDown,
   onPointerEnter,
@@ -345,6 +347,7 @@ function WaferChip({
   isSelected?: boolean;
   status?: string | null;
   syncState?: ProcessFlowSyncState;
+  hasHistoryCorrection?: boolean;
   title?: string;
   onPointerDown?: (event: PointerEvent<SVGGElement>) => void;
   onPointerEnter?: (event: PointerEvent<SVGGElement>) => void;
@@ -399,6 +402,7 @@ function WaferChip({
     >
       {title ? <title>{title}</title> : null}
       <rect x="0" y="0" width={WAFER_CHIP_WIDTH} height={WAFER_CHIP_HEIGHT} rx="7" style={{ touchAction: "none" }} />
+      {hasHistoryCorrection ? <circle cx={WAFER_CHIP_WIDTH - 5} cy="5" r="3" fill="#7652a5"><title>History corrected</title></circle> : null}
       <text
         x={WAFER_CHIP_WIDTH / 2}
         y={WAFER_CHIP_HEIGHT / 2}
