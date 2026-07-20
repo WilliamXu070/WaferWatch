@@ -3,7 +3,7 @@
 import {
   ArrowUpRight,
   CheckCircle2,
-  ChevronRight,
+  ChevronDown,
   Clock3,
   Layers3,
   MoveRight,
@@ -236,6 +236,7 @@ export function ProcessFlowSelectionInspector({
 }: SelectionInspectorProps) {
   const activeItem = items.at(-1);
   const isSingle = isSingleSelection(items.length);
+  const [isMobileExpanded, setIsMobileExpanded] = useState(false);
   const statusCounts = useMemo(() => {
     const counts = new Map<string, number>();
     items.forEach((item) => {
@@ -256,19 +257,31 @@ export function ProcessFlowSelectionInspector({
 
   return (
     <aside className="process-flow-selection-inspector-host" aria-label="Process Flow selection inspector">
-      <section className="process-flow-selection-inspector">
+      <section className={`process-flow-selection-inspector ${isMobileExpanded ? "is-mobile-expanded" : ""}`}>
         <header className="process-flow-selection-inspector__header">
           <div>
             <p>{getSelectionKindLabel(items)}</p>
             <h2>{isSingle ? activeItem.label : activeItem.stepName}</h2>
             <span>{isSingle ? activeItem.stepName : `${activeItem.label} active`}</span>
           </div>
-          <button aria-label="Clear selected wafers or dies" className="process-flow-selection-inspector__icon-button" onClick={onClear} type="button">
-            <X aria-hidden size={17} />
-          </button>
+          <div className="process-flow-selection-inspector__header-actions">
+            <button
+              aria-controls="process-flow-selection-inspector-body"
+              aria-expanded={isMobileExpanded}
+              className="process-flow-selection-inspector__mobile-toggle"
+              onClick={() => setIsMobileExpanded((current) => !current)}
+              type="button"
+            >
+              {isMobileExpanded ? "Less" : "Details"}
+              <ChevronDown aria-hidden size={15} />
+            </button>
+            <button aria-label="Clear selected wafers or dies" className="process-flow-selection-inspector__icon-button" onClick={onClear} type="button">
+              <X aria-hidden size={17} />
+            </button>
+          </div>
         </header>
 
-        <div className="process-flow-selection-inspector__body">
+        <div className="process-flow-selection-inspector__body" id="process-flow-selection-inspector-body">
           <SelectionStackVisual items={items} onActivate={onActivate} />
 
           {isSingle ? (
@@ -368,7 +381,6 @@ export function ProcessFlowSelectionInspector({
               <Layers3 aria-hidden size={14} /> Clear selection
             </button>
           )}
-          <ChevronRight className="process-flow-selection-inspector__footer-mark" aria-hidden size={13} />
         </footer>
       </section>
     </aside>
