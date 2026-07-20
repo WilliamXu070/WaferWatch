@@ -9,8 +9,38 @@ const PINCH_ZOOM_EXPONENT = 0.72;
 const WHEEL_ZOOM_SENSITIVITY = 0.011;
 const MAX_WHEEL_DELTA = 48;
 
-export function shouldStartNodePointerInteraction(pointerType: string) {
-  return pointerType !== "touch";
+export type TouchGestureTarget = "canvas" | "step" | "wafer";
+
+/**
+ * Phone gestures have one ownership rule: only a selected object owns a
+ * one-finger gesture. Everything else navigates the viewport.
+ */
+export function getTouchGestureOwner(
+  target: TouchGestureTarget,
+  isSelected = false
+): "item" | "viewport" {
+  return target !== "canvas" && isSelected ? "item" : "viewport";
+}
+
+export function getPanScrollPosition({
+  startScrollLeft,
+  startScrollTop,
+  startClientX,
+  startClientY,
+  clientX,
+  clientY
+}: {
+  startScrollLeft: number;
+  startScrollTop: number;
+  startClientX: number;
+  startClientY: number;
+  clientX: number;
+  clientY: number;
+}) {
+  return {
+    scrollLeft: startScrollLeft - (clientX - startClientX),
+    scrollTop: startScrollTop - (clientY - startClientY)
+  };
 }
 
 export function getPinchTargetScale(
@@ -38,10 +68,6 @@ export function getWheelZoomTargetScale(
   const boundedDelta = Math.min(MAX_WHEEL_DELTA, Math.max(-MAX_WHEEL_DELTA, deltaY));
   const targetScale = currentScale * Math.exp(-boundedDelta * WHEEL_ZOOM_SENSITIVITY);
   return Math.min(maxScale, Math.max(minScale, targetScale));
-}
-
-export function supportsWebKitGestureEvents(target: object) {
-  return "ongesturestart" in target || "GestureEvent" in target;
 }
 
 export function getZoomScrollPosition(anchor: ZoomAnchor, scale: number) {

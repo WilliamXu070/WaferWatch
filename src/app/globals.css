@@ -2485,7 +2485,6 @@ textarea {
 .flow-node-wafer-touch-target {
   fill: transparent;
   pointer-events: none;
-  touch-action: none;
 }
 
 @media (max-width: 767px) {
@@ -4939,11 +4938,7 @@ textarea {
     border-radius: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    touch-action: pan-x pan-y;
-  }
-
-  .waferwatch-wireframe .wireframe-flow-surface .flow-map-canvas {
-    touch-action: pan-x pan-y;
+    touch-action: none;
   }
 
   .flow-selected-wafer-actions {

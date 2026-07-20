@@ -2,24 +2,37 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getBoundedPinchAccumulatorScale,
+  getPanScrollPosition,
   getPinchTargetScale,
   getStableZoomAnchor,
+  getTouchGestureOwner,
   getTouchCentroid,
   getTouchDistance,
   getWheelZoomTargetScale,
   getZoomScrollPosition,
-  isTouchTapWithinThreshold,
-  shouldStartNodePointerInteraction,
-  supportsWebKitGestureEvents
+  isTouchTapWithinThreshold
 } from "./gesture";
 
-test("keeps touch gestures from selecting or dragging process-flow steps", () => {
-  assert.equal(shouldStartNodePointerInteraction("touch"), false);
+test("gives one-finger touch ownership only to a selected step or wafer", () => {
+  assert.equal(getTouchGestureOwner("canvas"), "viewport");
+  assert.equal(getTouchGestureOwner("step", false), "viewport");
+  assert.equal(getTouchGestureOwner("wafer", false), "viewport");
+  assert.equal(getTouchGestureOwner("step", true), "item");
+  assert.equal(getTouchGestureOwner("wafer", true), "item");
 });
 
-test("preserves mouse and pen step editing", () => {
-  assert.equal(shouldStartNodePointerInteraction("mouse"), true);
-  assert.equal(shouldStartNodePointerInteraction("pen"), true);
+test("pans the viewport from the physical pointer delta regardless of touch target", () => {
+  assert.deepEqual(getPanScrollPosition({
+    startScrollLeft: 480,
+    startScrollTop: 320,
+    startClientX: 180,
+    startClientY: 240,
+    clientX: 220,
+    clientY: 190
+  }), {
+    scrollLeft: 440,
+    scrollTop: 370
+  });
 });
 
 test("dampens pinch zoom while keeping outward and inward motion reciprocal", () => {
@@ -42,12 +55,6 @@ test("uses bounded proportional wheel zoom instead of fixed scale jumps", () => 
   assert.ok(largeZoom < 0.6);
 });
 
-test("detects Safari gesture events so iPhone pinch has one input owner", () => {
-  assert.equal(supportsWebKitGestureEvents({ ongesturestart: null }), true);
-  assert.equal(supportsWebKitGestureEvents({ GestureEvent: class GestureEvent {} }), true);
-  assert.equal(supportsWebKitGestureEvents({ PointerEvent: class PointerEvent {} }), false);
-});
-
 test("keeps the same scene point anchored across queued zoom frames", () => {
   const panePoint = { paneX: 200, paneY: 160 };
   const firstAnchor = getStableZoomAnchor(1, 500, 300, panePoint);
@@ -61,6 +68,17 @@ test("keeps the same scene point anchored across queued zoom frames", () => {
   assert.equal(queuedAnchor.sceneY, firstAnchor.sceneY);
   assert.ok(Math.abs(queuedTargetScroll.scrollLeft - 640) < 0.000001);
   assert.ok(Math.abs(queuedTargetScroll.scrollTop - 392) < 0.000001);
+});
+
+test("uses a moving two-finger centroid to pan even when pinch scale is unchanged", () => {
+  const sceneAnchor = getStableZoomAnchor(1, 500, 300, { paneX: 200, paneY: 160 });
+  const translatedScroll = getZoomScrollPosition({
+    ...sceneAnchor,
+    paneX: 240,
+    paneY: 190
+  }, 1);
+
+  assert.deepEqual(translatedScroll, { scrollLeft: 460, scrollTop: 270 });
 });
 
 test("derives pinch scale from two touch pointers and rebases at a zoom boundary", () => {

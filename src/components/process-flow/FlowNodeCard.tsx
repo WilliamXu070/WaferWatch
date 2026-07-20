@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import type { ChangeEvent, KeyboardEvent, MouseEvent, PointerEvent, RefObject } from "react";
 import {
   NODE_CHIP_COLUMNS,
@@ -110,18 +110,6 @@ export function FlowNodeCard({
     return wafers[waferIndex] ?? null;
   };
 
-  useEffect(() => {
-    const el = nodeCardRef.current;
-    if (!el) return;
-    const inputFo = el.querySelector("foreignObject");
-    const preventScroll = (e: TouchEvent) => {
-      if (inputFo && inputFo.contains(e.target as Node)) return;
-      e.preventDefault();
-    };
-    el.addEventListener("touchstart", preventScroll, { passive: false });
-    return () => el.removeEventListener("touchstart", preventScroll);
-  }, []);
-
   const renderWaferChip = (wafer: WaferPin, index: number) => (
     <WaferChip
       key={wafer.assignmentId}
@@ -152,7 +140,6 @@ export function FlowNodeCard({
     <g
       className="flow-node-wafer-touch-layer"
       data-checkpoint-phase={phase}
-      style={{ touchAction: "none" }}
       transform={`translate(${x} 90)`}
       onPointerDown={(event) => {
         const wafer = getLaneWafer(event, wafers);
@@ -180,7 +167,6 @@ export function FlowNodeCard({
         y={-16}
         width={node.width / 2}
         height={node.height - 74}
-        style={{ touchAction: "none" }}
       />
     </g>
   ) : null;
@@ -230,19 +216,19 @@ export function FlowNodeCard({
           <rect x="1" y="1" width={node.width - 2} height={node.height - 2} rx="9" />
         </clipPath>
       </defs>
-      <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" style={{ touchAction: "none" }} />
+      <rect x="0" y="0" width={node.width} height={node.height} rx="10" className="flow-node-card" />
       <g clipPath={`url(#${phaseClipId})`}>
         <rect x="1" y="54" width={(node.width - 2) / 2} height={node.height - 55} className="flow-node-phase flow-node-phase--beginning" />
         <rect x={node.width / 2} y="54" width={(node.width - 2) / 2} height={node.height - 55} className="flow-node-phase flow-node-phase--complete" />
         <line x1={node.width / 2} y1="54" x2={node.width / 2} y2={node.height - 1} className="flow-node-phase-divider" />
       </g>
-      <path className="flow-node-icon" d={getNodeIconPath(node.role)} style={{ touchAction: "none" }} />
-      <text x="31" y="35" className="flow-node-order" style={{ touchAction: "none" }}>
+      <path className="flow-node-icon" d={getNodeIconPath(node.role)} />
+      <text x="31" y="35" className="flow-node-order">
         {node.executionMode === "anytime" ? "" : node.order}
       </text>
       <g className="flow-node-port-hit">
-        <circle cx={node.width - 24} cy="24" r="14" className="flow-node-port-target" style={{ touchAction: "none" }} />
-        <circle cx={node.width - 24} cy="24" r="8" className="flow-node-port" style={{ touchAction: "none" }} />
+        <circle cx={node.width - 24} cy="24" r="14" className="flow-node-port-target" />
+        <circle cx={node.width - 24} cy="24" r="8" className="flow-node-port" />
       </g>
       {isEditing ? (
         <foreignObject
@@ -277,7 +263,7 @@ export function FlowNodeCard({
           </div>
         </foreignObject>
       ) : (
-        <text x="64" y="34" className="flow-node-title" style={{ touchAction: "none" }}>
+        <text x="64" y="34" className="flow-node-title">
           {truncateLabel(node.label, 28)}
         </text>
       )}
@@ -288,8 +274,8 @@ export function FlowNodeCard({
         </g>
       ) : active ? (
         <g className="flow-node-active-pill" transform={`translate(${node.width - 78} 22)`}>
-          <rect x="0" y="0" width="56" height="22" rx="11" style={{ touchAction: "none" }} />
-          <text x="28" y="15" style={{ touchAction: "none" }}>Active</text>
+          <rect x="0" y="0" width="56" height="22" rx="11" />
+          <text x="28" y="15">Active</text>
         </g>
       ) : null}
       <text x="18" y="76" className="flow-node-phase-label">Beginning</text>
@@ -353,16 +339,6 @@ function WaferChip({
   onPointerEnter?: (event: PointerEvent<SVGGElement>) => void;
   onDoubleClick?: (event: MouseEvent<SVGGElement>) => void;
 }) {
-  const chipRef = useRef<SVGGElement>(null);
-
-  useEffect(() => {
-    const el = chipRef.current;
-    if (!el || pointerEvents === "none") return;
-    const preventScroll = (e: TouchEvent) => e.preventDefault();
-    el.addEventListener("touchstart", preventScroll, { passive: false });
-    return () => el.removeEventListener("touchstart", preventScroll);
-  }, [pointerEvents]);
-
   const textScaleWidth = Math.max(24, WAFER_CHIP_WIDTH - 8);
   const fontSize =
     label.length <= 3 ? 12 :
@@ -373,7 +349,6 @@ function WaferChip({
 
   return (
     <g
-      ref={chipRef}
       className={[
         "flow-wafer-chip",
         status ? `flow-wafer-chip--${status.replaceAll("_", "-")}` : "",
@@ -388,7 +363,6 @@ function WaferChip({
       pointerEvents={pointerEvents}
       transform={`translate(${x} ${y})`}
       opacity={opacity}
-      style={{ touchAction: "none" }}
       onPointerDown={onPointerDown}
       onPointerEnter={onPointerEnter}
       onClick={(event) => {
@@ -401,14 +375,14 @@ function WaferChip({
       }}
     >
       {title ? <title>{title}</title> : null}
-      <rect x="0" y="0" width={WAFER_CHIP_WIDTH} height={WAFER_CHIP_HEIGHT} rx="7" style={{ touchAction: "none" }} />
+      <rect x="0" y="0" width={WAFER_CHIP_WIDTH} height={WAFER_CHIP_HEIGHT} rx="7" />
       {hasHistoryCorrection ? <circle cx={WAFER_CHIP_WIDTH - 5} cy="5" r="3" fill="#7652a5"><title>History corrected</title></circle> : null}
       <text
         x={WAFER_CHIP_WIDTH / 2}
         y={WAFER_CHIP_HEIGHT / 2}
         textLength={shouldCondense ? textScaleWidth : undefined}
         lengthAdjust="spacingAndGlyphs"
-        style={{ touchAction: "none", fontSize: `${fontSize}px` }}
+        style={{ fontSize: `${fontSize}px` }}
       >
         {label}
       </text>
