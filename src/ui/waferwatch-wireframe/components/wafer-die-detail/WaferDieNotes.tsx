@@ -26,6 +26,7 @@ import { mutateTextSurfaceJsonArray } from "@/features/text-surfaces/actions";
 import type { WaferStatusTileModel } from "../../types";
 import { StepFileIcon } from "../../icons";
 import { DetailCard } from "./DetailCard";
+import { LinkedNoteText } from "./LinkedNoteText";
 import { SequentialStepPicker } from "./SequentialStepPicker";
 import { StepParameterHistory } from "./StepParameterHistory";
 import { buildStepVisitHistory } from "./stepVisitHistoryModel";
@@ -384,7 +385,9 @@ export function NotesCard({
                   ) : null}
                   <span className="text-[12px] font-medium text-[#8a8a83]">{formatNoteTime(note.updatedAt)}</span>
                 </div>
-                <p className="line-clamp-3 text-[13px] leading-5 text-[#44443f]">{note.body}</p>
+                <p className="line-clamp-3 text-[13px] leading-5 text-[#44443f]">
+                  <LinkedNoteText>{note.body}</LinkedNoteText>
+                </p>
               </article>
             );
           })
@@ -754,7 +757,7 @@ export function WaferDieNotesDashboard({
             </div>
             {selectedVisit.completionNote ? (
               <p className="mt-1 max-w-[75ch] whitespace-pre-wrap text-[12px] leading-5 text-[#3f3f3a]">
-                {selectedVisit.completionNote}
+                <LinkedNoteText>{selectedVisit.completionNote}</LinkedNoteText>
               </p>
             ) : (
               <p className="mt-1 text-[11px] font-medium text-[#8a8a83]">
@@ -888,7 +891,9 @@ export function WaferDieNotesDashboard({
                     </div>
                   </div>
                 ) : (
-                  <p className="max-w-[75ch] whitespace-pre-wrap text-[14px] leading-6 text-[#44443f]">{note.body}</p>
+                  <p className="max-w-[75ch] whitespace-pre-wrap text-[14px] leading-6 text-[#44443f]">
+                    <LinkedNoteText>{note.body}</LinkedNoteText>
+                  </p>
                 )}
 
                 {note.attachments?.some(isImageAttachment) ? (
