@@ -2,10 +2,11 @@ import "server-only";
 
 import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import { readStepParameterDefinitions } from "@/features/process-flows/stepParameters";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 import { getCheckpointRouteCorrectionState } from "@/features/process-flows/checkpointRouteCorrection";
 import { getHistoryUndoState } from "@/features/process-flows/historyUndo";
 import type {
+  Attachment,
   Json,
   FabricationStatus,
   ProcessStep,
@@ -38,8 +39,18 @@ import {
 import {
   getWaferDieNotesScopeKey,
   getWaferDieStepNotesScopeKey,
+  waferDieAppearanceSurface,
   waferDieNotesSurface
 } from "@/ui/waferwatch-wireframe/components/wafer-die-detail/waferDieDetailData";
+import {
+  buildAppearanceSnapshotsBySurfaceKey,
+  getAppearanceAttachmentIds,
+  getWaferStatusSurfaceMapKey,
+  groupAuthorizedAppearanceAttachments,
+  type WaferStatusAppearanceAttachmentSource,
+  type WaferStatusAppearanceSurfaceSource,
+  type WaferStatusAppearanceSnapshot
+} from "@/features/wafers/waferStatusAppearance";
 
 type JsonRecord = { [key: string]: Json | undefined };
 type DiePolingParameters = Record<string, DiePolingRows>;
@@ -64,6 +75,7 @@ type WaferStatusTextSurfaceRow = {
   scope_key: string;
   field_key: string;
   value: string;
+  version: number;
 };
 
 type WaferStatusAssignmentRow = Pick<
@@ -537,19 +549,21 @@ function buildMetrics(wafers: WaferStatusWaferRow[]): WaferStatusMetric[] {
   ];
 }
 
-function getNotesSurfaceMapKey({
+function getTextSurfaceMapKey({
   projectId,
-  scopeKey
+  scopeKey,
+  fieldKey
 }: {
   projectId: string;
   scopeKey: string;
+  fieldKey: string;
 }) {
-  return [
+  return getWaferStatusSurfaceMapKey({
     projectId,
-    waferDieNotesSurface.scopeType,
+    scopeType: waferDieNotesSurface.scopeType,
     scopeKey,
-    waferDieNotesSurface.fieldKey
-  ].join(":");
+    fieldKey
+  });
 }
 
 function mapWafersToStatusModel({
@@ -560,6 +574,7 @@ function mapWafersToStatusModel({
   processSteps,
   stepOccurrenceById,
   textSurfacesByKey,
+  appearancesBySurfaceKey,
   revertHistoryByWaferId,
   checkpointHistoryByAssignmentId,
   stepParameterRecordsByAssignmentStep
@@ -571,6 +586,7 @@ function mapWafersToStatusModel({
   processSteps: WaferStatusStepRow[];
   stepOccurrenceById: Map<string, number>;
   textSurfacesByKey: Map<string, WaferStatusTextSurfaceRow>;
+  appearancesBySurfaceKey: Map<string, WaferStatusAppearanceSnapshot>;
   revertHistoryByWaferId: Map<string, WaferStatusRevertEvent[]>;
   checkpointHistoryByAssignmentId: Map<string, WaferStatusCheckpointHistoryEntry[]>;
   stepParameterRecordsByAssignmentStep: Map<string, WaferStatusStepParameterRecord[]>;
@@ -611,17 +627,26 @@ function mapWafersToStatusModel({
     for (const displayDieLabel of dieLabels) {
     const notesScopeKey = getWaferDieNotesScopeKey(wafer.id, displayDieLabel);
     const notesSurface = textSurfacesByKey.get(
-      getNotesSurfaceMapKey({
+      getTextSurfaceMapKey({
         projectId: wafer.project_id,
-        scopeKey: notesScopeKey
+        scopeKey: notesScopeKey,
+        fieldKey: waferDieNotesSurface.fieldKey
       })
     );
+    const appearance = appearancesBySurfaceKey.get(
+      getTextSurfaceMapKey({
+        projectId: wafer.project_id,
+        scopeKey: notesScopeKey,
+        fieldKey: waferDieAppearanceSurface.fieldKey
+      })
+    ) ?? null;
     const notesSurfaceValuesByStepId = Object.fromEntries(
       processSteps.map((step) => {
         const stepNotesSurface = textSurfacesByKey.get(
-          getNotesSurfaceMapKey({
+          getTextSurfaceMapKey({
             projectId: wafer.project_id,
-            scopeKey: getWaferDieStepNotesScopeKey(wafer.id, displayDieLabel, step.id)
+            scopeKey: getWaferDieStepNotesScopeKey(wafer.id, displayDieLabel, step.id),
+            fieldKey: waferDieNotesSurface.fieldKey
           })
         );
 
@@ -647,6 +672,7 @@ function mapWafersToStatusModel({
       legacyNote: wafer.notes,
       notesSurfaceValue: notesSurface?.value ?? null,
       notesSurfaceValuesByStepId,
+      appearance,
       currentStepId: currentStep?.id ?? null,
       currentStepExecutionId: currentExecution?.id ?? null,
       processSteps: processSteps.map((step, index) => {
@@ -800,10 +826,10 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   const textSurfacesPromise = projectIds.length
     ? supabase
         .from("text_surfaces")
-        .select("project_id, scope_type, scope_key, field_key, value")
+        .select("project_id, scope_type, scope_key, field_key, value, version")
         .in("project_id", projectIds)
         .eq("scope_type", waferDieNotesSurface.scopeType)
-        .eq("field_key", waferDieNotesSurface.fieldKey)
+        .in("field_key", [waferDieNotesSurface.fieldKey, waferDieAppearanceSurface.fieldKey])
     : Promise.resolve({ data: [], error: null } as const);
 
   const assignmentsResult = processTemplateId
@@ -971,15 +997,80 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     throw scopedTransitionsResult.error;
   }
 
+  const textSurfaces = (textSurfacesResult.data ?? []) as WaferStatusTextSurfaceRow[];
   const textSurfacesByKey = new Map(
-    ((textSurfacesResult.data ?? []) as WaferStatusTextSurfaceRow[]).map((surface) => [
-      getNotesSurfaceMapKey({
+    textSurfaces.map((surface) => [
+      getTextSurfaceMapKey({
         projectId: surface.project_id,
-        scopeKey: surface.scope_key
+        scopeKey: surface.scope_key,
+        fieldKey: surface.field_key
       }),
       surface
     ])
   );
+  const appearanceSurfaces: WaferStatusAppearanceSurfaceSource[] = textSurfaces.flatMap((surface) => {
+    const attachmentId = surface.value.trim();
+    return surface.field_key === waferDieAppearanceSurface.fieldKey && attachmentId
+      ? [{
+          projectId: surface.project_id,
+          scopeKey: surface.scope_key,
+          attachmentId,
+          version: surface.version
+        }]
+      : [];
+  });
+  const appearanceAttachmentIds = getAppearanceAttachmentIds(appearanceSurfaces);
+  const appearanceAttachmentsResult = appearanceAttachmentIds.length
+    ? await supabase
+        .from("attachments")
+        .select("id, project_id, bucket_name, object_path")
+        .in("id", appearanceAttachmentIds)
+        .in("project_id", projectIds)
+    : { data: [], error: null };
+
+  if (appearanceAttachmentsResult.error) {
+    throw appearanceAttachmentsResult.error;
+  }
+
+  const appearanceAttachments: WaferStatusAppearanceAttachmentSource[] = (
+    (appearanceAttachmentsResult.data ?? []) as Pick<Attachment, "id" | "project_id" | "bucket_name" | "object_path">[]
+  ).map((attachment) => ({
+    id: attachment.id,
+    projectId: attachment.project_id,
+    bucketName: attachment.bucket_name,
+    objectPath: attachment.object_path
+  }));
+  const authorizedAttachmentsByBucket = groupAuthorizedAppearanceAttachments({
+    surfaces: appearanceSurfaces,
+    attachments: appearanceAttachments
+  });
+  const signedUrlByAttachmentId = new Map<string, string>();
+
+  if (authorizedAttachmentsByBucket.size > 0) {
+    const admin = createSupabaseAdminClient();
+    await Promise.all(Array.from(authorizedAttachmentsByBucket.entries()).map(async ([bucketName, attachments]) => {
+      const signed = await admin.storage
+        .from(bucketName)
+        .createSignedUrls(attachments.map((attachment) => attachment.objectPath), 60 * 60);
+      if (signed.error || !signed.data) return;
+
+      const attachmentByPath = new Map(attachments.map((attachment) => [attachment.objectPath, attachment]));
+      for (const result of signed.data) {
+        const attachment = result.path ? attachmentByPath.get(result.path) : null;
+        if (attachment && result.signedUrl) {
+          signedUrlByAttachmentId.set(attachment.id, result.signedUrl);
+        }
+      }
+    }));
+  }
+
+  const appearancesBySurfaceKey = buildAppearanceSnapshotsBySurfaceKey({
+    surfaces: appearanceSurfaces,
+    attachments: appearanceAttachments,
+    signedUrlByAttachmentId,
+    scopeType: waferDieAppearanceSurface.scopeType,
+    fieldKey: waferDieAppearanceSurface.fieldKey
+  });
 
   const executions = (executionsResult.data ?? []) as WaferStatusExecutionRow[];
   const allProcessEvents = (processEventsResult.data ?? []) as WaferStatusProcessEventRow[];
@@ -1329,6 +1420,7 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     processSteps,
     stepOccurrenceById,
     textSurfacesByKey,
+    appearancesBySurfaceKey,
     revertHistoryByWaferId,
     checkpointHistoryByAssignmentId,
     stepParameterRecordsByAssignmentStep

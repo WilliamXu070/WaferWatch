@@ -66,20 +66,19 @@ export function getWaferDetailsHref({
     return null;
   }
 
-  const routeSearch = new URLSearchParams({ processId: processTemplateId });
-  const selectionHash = new URLSearchParams({
+  const routeSearch = new URLSearchParams({
+    processId: processTemplateId,
     waferId
   });
   if (dieLabel?.trim()) {
-    selectionHash.set("dieLabel", dieLabel.trim());
+    routeSearch.set("dieLabel", dieLabel.trim());
   }
 
-  return `/wafer-status?${routeSearch.toString()}#${selectionHash.toString()}`;
+  return `/wafer-status?${routeSearch.toString()}`;
 }
 
-export function getWaferDetailsPrefetchHref(processTemplateId?: string) {
-  if (!processTemplateId) return null;
-  return `/wafer-status?${new URLSearchParams({ processId: processTemplateId }).toString()}`;
+export function getWaferDetailsPrefetchHref(target: Parameters<typeof getWaferDetailsHref>[0]) {
+  return getWaferDetailsHref(target);
 }
 
 export function getStepDoubleClickAction({

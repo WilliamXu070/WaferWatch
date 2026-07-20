@@ -12,6 +12,11 @@ export const waferDieNotesSurface = {
   fieldKey: "notes"
 } as const;
 
+export const waferDieAppearanceSurface = {
+  scopeType: waferDieNotesSurface.scopeType,
+  fieldKey: "appearance_attachment_id"
+} as const;
+
 export function getWaferDieNotesScopeKey(waferId: string, dieLabel: string) {
   return `${waferId}:${dieLabel}`;
 }

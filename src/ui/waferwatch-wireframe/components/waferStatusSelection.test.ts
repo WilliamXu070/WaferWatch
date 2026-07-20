@@ -1,23 +1,11 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import type { WaferStatusTileModel } from "../types";
 import {
   findDeepLinkedWaferStatusTile,
-  findInitialWaferStatusTile,
-  parseWaferStatusSelectionHash
+  findInitialWaferStatusTile
 } from "./waferStatusSelection";
-
-test("reads a die selection from a fragment without changing the server route key", () => {
-  assert.deepEqual(
-    parseWaferStatusSelectionHash("#waferId=wafer-b&dieLabel=B2"),
-    { waferId: "wafer-b", dieLabel: "B2" }
-  );
-  assert.deepEqual(
-    parseWaferStatusSelectionHash("waferId=wafer-a"),
-    { waferId: "wafer-a", dieLabel: undefined }
-  );
-  assert.equal(parseWaferStatusSelectionHash("#dieLabel=B2"), null);
-});
 
 const tiles: WaferStatusTileModel[] = [
   {
@@ -60,4 +48,15 @@ test("explicit wafer and die identifiers select only that die for detail navigat
   assert.equal(deepLinkedTile?.id, "die-b2");
   assert.equal(findInitialWaferStatusTile(tiles, deepLinkedTile)?.id, "die-b2");
   assert.equal(findDeepLinkedWaferStatusTile(tiles, "missing-wafer"), null);
+});
+
+test("explicit query targets remount the Status view without a fragment transition", async () => {
+  const [pageSource, viewSource] = await Promise.all([
+    readFile(new URL("../../../app/(app)/wafer-status/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("./WaferStatusView.tsx", import.meta.url), "utf8")
+  ]);
+
+  assert.match(pageSource, /requestedWaferId \?\? "overview"/);
+  assert.match(pageSource, /initialWaferId=\{requestedWaferId\}/);
+  assert.doesNotMatch(viewSource, /window\.location\.hash|parseWaferStatusSelectionHash/);
 });

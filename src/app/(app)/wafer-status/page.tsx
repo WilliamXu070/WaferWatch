@@ -69,6 +69,7 @@ export default async function WireframeWaferStatusPage({
 
   return (
     <WaferStatusView
+      key={[requestedProcessId, requestedWaferId ?? "overview", requestedDieLabel ?? ""].join(":")}
       model={model}
       canEdit={canEdit}
       currentUser={account ? {

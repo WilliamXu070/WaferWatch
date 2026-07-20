@@ -74,6 +74,14 @@ import { getGraphBounds, getSnappedNodePosition, nodeContainsPoint } from "./pro
 import { findEdgeSplitCandidate, splitEdgeWithNode } from "./process-flow/graphEdit";
 import { createLatestFrameQueue, type LatestFrameQueue } from "./process-flow/latestFrameQueue";
 import {
+  captureProcessFlowViewport,
+  getProcessFlowViewportScrollPosition,
+  readProcessFlowViewport,
+  rememberProcessFlowViewport,
+  writeProcessFlowViewport,
+  type ProcessFlowViewportSnapshot
+} from "./process-flow/processFlowViewport";
+import {
   getExpectedCanvasPosition,
   getStableLayoutCenter,
   hasCanvasPositionChanged,
@@ -365,6 +373,7 @@ export function ProcessFlowDiagram({
 
   const router = useRouter();
   const [scale, setScale] = useState(1);
+  const [viewportRestoreToken, setViewportRestoreToken] = useState(0);
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
@@ -457,6 +466,13 @@ export function ProcessFlowDiagram({
   const pendingTransitionCreateTimerRef = useRef<TimerHandle>(null);
   const pendingPositionTimerRef = useRef<TimerHandle>(null);
   const pendingNameTimerRef = useRef<TimerHandle>(null);
+  const viewportPersistTimerRef = useRef<TimerHandle>(null);
+  const pendingViewportRestoreRef = useRef<ProcessFlowViewportSnapshot | null>(null);
+  const viewportReadyProcessIdRef = useRef<string | null>(null);
+  const lastViewportSnapshotRef = useRef<{
+    processId: string;
+    snapshot: ProcessFlowViewportSnapshot;
+  } | null>(null);
   const flushPendingTransitionCreatesRef = useRef<(() => Promise<void>) | null>(null);
   const flushPendingPositionUpdatesRef = useRef<(() => Promise<void>) | null>(null);
   const panStateRef = useRef<{
@@ -485,6 +501,71 @@ export function ProcessFlowDiagram({
   const s = clampScale(scale);
   const scaledWidth = Math.round(sceneBounds.width * s);
   const scaledHeight = Math.round(sceneBounds.height * s);
+  const flushProcessFlowViewport = useCallback((targetFrame?: HTMLDivElement | null) => {
+    if (viewportPersistTimerRef.current) {
+      window.clearTimeout(viewportPersistTimerRef.current);
+      viewportPersistTimerRef.current = null;
+    }
+
+    const frame = targetFrame ?? frameRef.current;
+    if (!processTemplateId || !frame) return;
+    const latestSnapshot = lastViewportSnapshotRef.current?.processId === processTemplateId
+      ? lastViewportSnapshotRef.current.snapshot
+      : captureProcessFlowViewport({
+          scale: scaleRef.current,
+          scrollLeft: frame.scrollLeft,
+          scrollTop: frame.scrollTop,
+          clientWidth: frame.clientWidth,
+          clientHeight: frame.clientHeight
+        });
+    writeProcessFlowViewport(
+      window.localStorage,
+      processTemplateId,
+      latestSnapshot
+    );
+  }, [processTemplateId]);
+  const scheduleProcessFlowViewportPersist = useCallback(() => {
+    const frame = frameRef.current;
+    if (!processTemplateId || !frame || viewportReadyProcessIdRef.current !== processTemplateId) return;
+    lastViewportSnapshotRef.current = {
+      processId: processTemplateId,
+      snapshot: captureProcessFlowViewport({
+        scale: scaleRef.current,
+        scrollLeft: frame.scrollLeft,
+        scrollTop: frame.scrollTop,
+        clientWidth: frame.clientWidth,
+        clientHeight: frame.clientHeight
+      })
+    };
+    rememberProcessFlowViewport(
+      processTemplateId,
+      lastViewportSnapshotRef.current.snapshot
+    );
+    if (viewportPersistTimerRef.current) {
+      window.clearTimeout(viewportPersistTimerRef.current);
+    }
+    viewportPersistTimerRef.current = window.setTimeout(() => {
+      viewportPersistTimerRef.current = null;
+      flushProcessFlowViewport();
+    }, 160);
+  }, [flushProcessFlowViewport, processTemplateId]);
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame || !processTemplateId) return;
+
+    const handleScroll = () => scheduleProcessFlowViewportPersist();
+    const handlePageHide = () => flushProcessFlowViewport();
+    frame.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      frame.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("pagehide", handlePageHide);
+      flushProcessFlowViewport(frame);
+    };
+  }, [flushProcessFlowViewport, processTemplateId, scheduleProcessFlowViewportPersist]);
+
   const nodeById = useMemo(() => new Map(displayNodes.map((node) => [node.id, node])), [displayNodes]);
   const activeSelectedWafers = useMemo(
     () => selectedWafers.filter((selection) =>
@@ -1453,7 +1534,8 @@ export function ProcessFlowDiagram({
 
     frame.scrollLeft = Math.max(0, Math.round(fit.centerX * fit.scale - frame.clientWidth / 2));
     frame.scrollTop = Math.max(0, Math.round(fit.centerY * fit.scale - frame.clientHeight / 2));
-  }, []);
+    scheduleProcessFlowViewportPersist();
+  }, [scheduleProcessFlowViewportPersist]);
 
   const getCanvasSceneCenter = useCallback(() => ({
     x: sceneBounds.width / 2,
@@ -1680,7 +1762,11 @@ export function ProcessFlowDiagram({
 
   const prefetchWaferDetails = useCallback((wafer: WaferPin) => {
     if (!wafer.waferId) return;
-    const href = getWaferDetailsPrefetchHref(processTemplateId);
+    const href = getWaferDetailsPrefetchHref({
+      processTemplateId,
+      waferId: wafer.waferId,
+      dieLabel: wafer.dieLabel
+    });
     if (!href || prefetchedWaferDetailsRef.current.has(href)) {
       return;
     }
@@ -1916,12 +2002,53 @@ export function ProcessFlowDiagram({
     clearQueuedStepMaps();
     clearTimers();
     seededGraphKeyRef.current = graphSeedKey;
-    centerView(serverGraph.nodes);
-  }, [centerView, clearQueuedStepMaps, clearTimers, graphSeedKey, mergeServerGraphIntoLocal, serverGraph]);
+    const savedViewport = processTemplateId
+      ? readProcessFlowViewport(window.localStorage, processTemplateId)
+      : null;
+    pendingViewportRestoreRef.current = savedViewport;
+    viewportReadyProcessIdRef.current = processTemplateId ?? null;
+    if (savedViewport) {
+      lastViewportSnapshotRef.current = {
+        processId: processTemplateId!,
+        snapshot: savedViewport
+      };
+      scaleRef.current = savedViewport.scale;
+      window.queueMicrotask(() => {
+        setScale(savedViewport.scale);
+        setViewportRestoreToken((current) => current + 1);
+      });
+    } else {
+      centerView(serverGraph.nodes);
+    }
+  }, [centerView, clearQueuedStepMaps, clearTimers, graphSeedKey, mergeServerGraphIntoLocal, processTemplateId, serverGraph]);
 
   useEffect(() => {
     scaleRef.current = scale;
   }, [scale]);
+
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    const savedViewport = pendingViewportRestoreRef.current;
+    if (!frame || !savedViewport || scale !== savedViewport.scale) return;
+
+    const scrollPosition = getProcessFlowViewportScrollPosition({
+      snapshot: savedViewport,
+      clientWidth: frame.clientWidth,
+      clientHeight: frame.clientHeight,
+      sceneWidth: sceneBounds.width,
+      sceneHeight: sceneBounds.height
+    });
+    frame.scrollLeft = scrollPosition.scrollLeft;
+    frame.scrollTop = scrollPosition.scrollTop;
+    pendingViewportRestoreRef.current = null;
+    scheduleProcessFlowViewportPersist();
+  }, [scale, scaledHeight, scaledWidth, sceneBounds.height, sceneBounds.width, scheduleProcessFlowViewportPersist, viewportRestoreToken]);
+
+  useEffect(() => {
+    if (!pendingViewportRestoreRef.current) {
+      scheduleProcessFlowViewportPersist();
+    }
+  }, [scale, scheduleProcessFlowViewportPersist]);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
