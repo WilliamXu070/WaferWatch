@@ -14,7 +14,12 @@ export function getProcessRoutesToPrefetch(
   processId: string,
   pathname: string
 ) {
-  return getProcessRouteHrefs(processId).filter(
-    (href) => !href.startsWith(`${pathname}?`)
-  );
+  const hrefs = getProcessRouteHrefs(processId);
+  const currentIndex = hrefs.findIndex((href) => href.startsWith(`${pathname}?`));
+  if (currentIndex < 0) return hrefs;
+
+  return [
+    ...hrefs.slice(currentIndex + 1),
+    ...hrefs.slice(0, currentIndex)
+  ];
 }

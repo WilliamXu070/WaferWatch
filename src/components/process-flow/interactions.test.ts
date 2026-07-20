@@ -6,12 +6,28 @@ import {
   getProcessMoveActionNote,
   getStepParametersNavigation,
   getStepDoubleClickAction,
+  getWaferDetailsHref,
+  getWaferDetailsPrefetchHref,
   getNearestWaferGridIndex,
   getWaferDragCaptureTarget,
   hasCrossedWaferDragThreshold,
   shouldEndWaferDragFromFrameEvent,
   shouldCommitWaferDrop
 } from "./interactions";
+
+test("keeps double-click selection in the fragment and prefetch on the process route", () => {
+  assert.equal(getWaferDetailsHref({
+    processTemplateId: "process-123",
+    waferId: "wafer-456",
+    dieLabel: " BETA_2 "
+  }), "/wafer-status?processId=process-123#waferId=wafer-456&dieLabel=BETA_2");
+  assert.equal(getWaferDetailsHref({
+    processTemplateId: "process-123",
+    waferId: "wafer-456"
+  }), "/wafer-status?processId=process-123#waferId=wafer-456");
+  assert.equal(getWaferDetailsHref({ waferId: "wafer-456" }), null);
+  assert.equal(getWaferDetailsPrefetchHref("process-123"), "/wafer-status?processId=process-123");
+});
 
 test("defers parameter navigation until a newly added step has a persisted id", () => {
   assert.deepEqual(getStepParametersNavigation({

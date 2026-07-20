@@ -53,6 +53,35 @@ export function getStepParametersNavigation({
   };
 }
 
+export function getWaferDetailsHref({
+  processTemplateId,
+  waferId,
+  dieLabel
+}: {
+  processTemplateId?: string;
+  waferId?: string;
+  dieLabel?: string | null;
+}) {
+  if (!processTemplateId || !waferId) {
+    return null;
+  }
+
+  const routeSearch = new URLSearchParams({ processId: processTemplateId });
+  const selectionHash = new URLSearchParams({
+    waferId
+  });
+  if (dieLabel?.trim()) {
+    selectionHash.set("dieLabel", dieLabel.trim());
+  }
+
+  return `/wafer-status?${routeSearch.toString()}#${selectionHash.toString()}`;
+}
+
+export function getWaferDetailsPrefetchHref(processTemplateId?: string) {
+  if (!processTemplateId) return null;
+  return `/wafer-status?${new URLSearchParams({ processId: processTemplateId }).toString()}`;
+}
+
 export function getStepDoubleClickAction({
   x,
   y,

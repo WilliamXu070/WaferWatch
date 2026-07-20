@@ -79,6 +79,8 @@ import {
   canMoveSelectedWafer,
   getProcessMoveActionNote,
   getStepParametersNavigation,
+  getWaferDetailsHref,
+  getWaferDetailsPrefetchHref,
   getWaferDragCaptureTarget,
   hasCrossedWaferDragThreshold,
   shouldEndWaferDragFromFrameEvent,
@@ -392,6 +394,7 @@ export function ProcessFlowDiagram({
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [selectedWafers, setSelectedWafers] = useState<SelectedFlowWafer[]>([]);
+  const [openingWaferDetailsLabel, setOpeningWaferDetailsLabel] = useState<string | null>(null);
   const setMoveMessage = (msg: string | null) => { if (msg) console.warn("[ProcessFlow]", msg); };
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editingNodeLabel, setEditingNodeLabel] = useState("");
@@ -427,6 +430,7 @@ export function ProcessFlowDiagram({
   const positionFlushInFlightRef = useRef(false);
   const pendingNameUpdateRef = useRef<Map<string, { name: string; expectedName: string }>>(new Map());
   const pendingWaferDeleteIdsRef = useRef<Set<string>>(new Set());
+  const prefetchedWaferDetailsRef = useRef<Set<string>>(new Set());
   const archiveDockRef = useRef<HTMLButtonElement | null>(null);
   const waferDragRef = useRef<WaferDrag | null>(null);
   const waferDropTargetRef = useRef<{ nodeId: string; kind: "submit" | "move" } | null>(null);
@@ -1664,19 +1668,29 @@ export function ProcessFlowDiagram({
     });
   }, []);
 
-  const openWaferDetails = useCallback((wafer: WaferPin) => {
-    if (!processTemplateId || !wafer.waferId) {
+  const prefetchWaferDetails = useCallback((wafer: WaferPin) => {
+    if (!wafer.waferId) return;
+    const href = getWaferDetailsPrefetchHref(processTemplateId);
+    if (!href || prefetchedWaferDetailsRef.current.has(href)) {
       return;
     }
 
-    const search = new URLSearchParams({
-      processId: processTemplateId,
-      waferId: wafer.waferId
+    prefetchedWaferDetailsRef.current.add(href);
+    router.prefetch(href);
+  }, [processTemplateId, router]);
+
+  const openWaferDetails = useCallback((wafer: WaferPin) => {
+    const href = getWaferDetailsHref({
+      processTemplateId,
+      waferId: wafer.waferId,
+      dieLabel: wafer.dieLabel
     });
-    if (wafer.dieLabel?.trim()) {
-      search.set("dieLabel", wafer.dieLabel.trim());
+    if (!href) {
+      return;
     }
-    router.push(`/wafer-status?${search.toString()}`);
+
+    setOpeningWaferDetailsLabel(getWaferChipLabel(wafer));
+    router.push(href);
   }, [processTemplateId, router]);
 
   const openStepParameters = useCallback((stepId: string) => {
@@ -2603,6 +2617,7 @@ export function ProcessFlowDiagram({
   };
 
   const beginWaferDrag = (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => {
+    prefetchWaferDetails(wafer);
     if (event.pointerType === "touch" && pointerPinchRef.current.active) {
       return;
     }
@@ -3784,6 +3799,20 @@ export function ProcessFlowDiagram({
 
   return (
     <section className="flow-map-shell">
+      {openingWaferDetailsLabel ? (
+        <div className="flow-wafer-move-dialog-backdrop" data-testid="wafer-details-loading">
+          <section className="flow-wafer-move-dialog" aria-live="polite" role="status">
+            <div className="flow-wafer-move-dialog__header">
+              <h2>Opening {openingWaferDetailsLabel}</h2>
+              <p>Loading wafer and die status…</p>
+            </div>
+            <div className="grid gap-3" aria-hidden>
+              <div className="h-4 w-2/3 animate-pulse rounded bg-[#e8e9e5]" />
+              <div className="h-24 animate-pulse rounded-lg bg-[#f2f2ee]" />
+            </div>
+          </section>
+        </div>
+      ) : null}
       {!pendingWaferMove && pendingStepParameterEntries[0] && onSaveStepParameters ? (
         <StepParameterEntryDialog
           key={pendingStepParameterEntries[0].draftId ?? pendingStepParameterEntries.map((entry) => entry.movementMutationId).join(":")}
@@ -4036,6 +4065,7 @@ export function ProcessFlowDiagram({
         onCommitLabel={commitNodeLabel}
         onCancelLabelEdit={cancelNodeLabelEdit}
         onBeginWaferDrag={beginWaferDrag}
+        onPrefetchWaferDetails={prefetchWaferDetails}
         onOpenWaferDetails={openWaferDetails}
         onOpenStepParameters={openStepParameters}
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}

@@ -5,9 +5,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getProcessRoutesToPrefetch } from "./processRoutePrefetch";
 
 /**
- * Warms every authenticated process view after the page load completes. Requests
- * are intentionally serialized across idle slices so Calendar's heavier RSC
- * payload cannot contend with the rest of the application shell.
+ * Warms every authenticated process view after the page load completes. Process
+ * Flow starts Status immediately because die double-clicks depend on that payload;
+ * the remaining routes stay serialized across idle slices.
  */
 export function ProcessRoutePrefetcher({
   defaultProcessId
@@ -27,6 +27,7 @@ export function ProcessRoutePrefetcher({
     let timeoutId: number | null = null;
     let idleId: number | null = null;
     let nextIndex = 0;
+    const shouldWarmStatusImmediately = pathname === "/process-flow";
 
     const scheduleNext = () => {
       if (cancelled || nextIndex >= pendingHrefs.length) return;
@@ -41,6 +42,11 @@ export function ProcessRoutePrefetcher({
         // before beginning the next route's payload.
         timeoutId = window.setTimeout(scheduleNext, 120);
       };
+
+      if (shouldWarmStatusImmediately && nextIndex === 0) {
+        prefetchNext();
+        return;
+      }
 
       if (typeof window.requestIdleCallback === "function") {
         idleId = window.requestIdleCallback(prefetchNext, { timeout: 1200 });

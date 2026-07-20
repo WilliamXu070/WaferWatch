@@ -39,6 +39,7 @@ type FlowNodeCardProps = {
   onCommitLabel: (nodeId: string, value: string) => void;
   onCancelLabelEdit: (nodeId: string) => void;
   onBeginWaferDrag: (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => void;
+  onPrefetchWaferDetails: (wafer: WaferPin) => void;
   onOpenWaferDetails: (wafer: WaferPin) => void;
   onOpenStepParameters: (nodeId: string) => void;
 };
@@ -63,6 +64,7 @@ export function FlowNodeCard({
   onCommitLabel,
   onCancelLabelEdit,
   onBeginWaferDrag,
+  onPrefetchWaferDetails,
   onOpenWaferDetails,
   onOpenStepParameters
 }: FlowNodeCardProps) {
@@ -133,6 +135,7 @@ export function FlowNodeCard({
         event.stopPropagation();
         onBeginWaferDrag(event, node, wafer);
       }}
+      onPointerEnter={() => onPrefetchWaferDetails(wafer)}
       onDoubleClick={() => onOpenWaferDetails(wafer)}
     />
   );
@@ -322,6 +325,7 @@ function WaferChip({
   status,
   title,
   onPointerDown,
+  onPointerEnter,
   onDoubleClick
 }: {
   label: string;
@@ -334,6 +338,7 @@ function WaferChip({
   status?: string | null;
   title?: string;
   onPointerDown?: (event: PointerEvent<SVGGElement>) => void;
+  onPointerEnter?: (event: PointerEvent<SVGGElement>) => void;
   onDoubleClick?: (event: MouseEvent<SVGGElement>) => void;
 }) {
   const chipRef = useRef<SVGGElement>(null);
@@ -363,6 +368,7 @@ function WaferChip({
       opacity={opacity}
       style={{ touchAction: "none" }}
       onPointerDown={onPointerDown}
+      onPointerEnter={onPointerEnter}
       onClick={(event) => {
         event.stopPropagation();
       }}

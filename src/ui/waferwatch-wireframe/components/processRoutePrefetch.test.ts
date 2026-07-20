@@ -14,3 +14,14 @@ test("warms every other authenticated process section after the current page", (
     ]
   );
 });
+
+test("warms Status first from Process Flow so die detail navigation reuses it", () => {
+  assert.deepEqual(
+    getProcessRoutesToPrefetch(processId, "/process-flow"),
+    [
+      "/wafer-status?processId=process-1",
+      "/dashboard?processId=process-1",
+      "/calendar?processId=process-1"
+    ]
+  );
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIcon,
   StackIcon,
@@ -17,7 +17,8 @@ import { WaferGeometryPreview } from "./WaferGeometryPreview";
 import { WaferStatusTile } from "./WaferStatusTile";
 import {
   findDeepLinkedWaferStatusTile,
-  findInitialWaferStatusTile
+  findInitialWaferStatusTile,
+  parseWaferStatusSelectionHash
 } from "./waferStatusSelection";
 import { DieAppearancePreview } from "./wafer-die-detail/DieAppearancePreview";
 import {
@@ -206,6 +207,27 @@ export function WaferStatusView({
   const activeDetailIndex = activeDetailTile
     ? detailTiles.findIndex((tile) => tile.id === activeDetailTile.id)
     : -1;
+
+  useEffect(() => {
+    const target = parseWaferStatusSelectionHash(window.location.hash);
+    if (!target) return;
+
+    const tile = findDeepLinkedWaferStatusTile(
+      model.families.flatMap((family) => family.tiles),
+      target.waferId,
+      target.dieLabel
+    );
+    if (!tile) return;
+
+    const selectionTimer = window.setTimeout(() => {
+      setSelectedTile(tile);
+      if (canOpenDieDetail(tile)) {
+        setDetailTile(tile);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(selectionTimer);
+  }, [model]);
 
   const handleSelectTile = (tile: WaferStatusTileModel) => {
     setSelectedTile(tile);

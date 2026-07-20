@@ -3,8 +3,21 @@ import test from "node:test";
 import type { WaferStatusTileModel } from "../types";
 import {
   findDeepLinkedWaferStatusTile,
-  findInitialWaferStatusTile
+  findInitialWaferStatusTile,
+  parseWaferStatusSelectionHash
 } from "./waferStatusSelection";
+
+test("reads a die selection from a fragment without changing the server route key", () => {
+  assert.deepEqual(
+    parseWaferStatusSelectionHash("#waferId=wafer-b&dieLabel=B2"),
+    { waferId: "wafer-b", dieLabel: "B2" }
+  );
+  assert.deepEqual(
+    parseWaferStatusSelectionHash("waferId=wafer-a"),
+    { waferId: "wafer-a", dieLabel: undefined }
+  );
+  assert.equal(parseWaferStatusSelectionHash("#dieLabel=B2"), null);
+});
 
 const tiles: WaferStatusTileModel[] = [
   {

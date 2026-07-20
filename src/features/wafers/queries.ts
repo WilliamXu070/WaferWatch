@@ -797,28 +797,14 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
       .filter((waferId): waferId is string => Boolean(waferId))
   ));
   const projectIds = Array.from(new Set(wafers.map((wafer) => wafer.project_id)));
-  const textSurfacesResult = projectIds.length
-    ? await supabase
+  const textSurfacesPromise = projectIds.length
+    ? supabase
         .from("text_surfaces")
         .select("project_id, scope_type, scope_key, field_key, value")
         .in("project_id", projectIds)
         .eq("scope_type", waferDieNotesSurface.scopeType)
         .eq("field_key", waferDieNotesSurface.fieldKey)
-    : ({ data: [], error: null } as const);
-
-  if (textSurfacesResult.error) {
-    throw textSurfacesResult.error;
-  }
-
-  const textSurfacesByKey = new Map(
-    ((textSurfacesResult.data ?? []) as WaferStatusTextSurfaceRow[]).map((surface) => [
-      getNotesSurfaceMapKey({
-        projectId: surface.project_id,
-        scopeKey: surface.scope_key
-      }),
-      surface
-    ])
-  );
+    : Promise.resolve({ data: [], error: null } as const);
 
   const assignmentsResult = processTemplateId
     ? null
@@ -901,12 +887,17 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
     ...Array.from(parentLineageByAssignmentId.values()).map(({ wafer }) => wafer.id)
   ]));
   const [
+    textSurfacesResult,
     executionsResult,
     checkpointAttemptRows,
     checkpointDecisionRows,
     checkpointWithdrawalRows,
-    stepParameterRecordRows
+    stepParameterRecordRows,
+    processEventsResult,
+    scopedStepsResult,
+    scopedTransitionsResult
   ] = await Promise.all([
+    textSurfacesPromise,
     assignmentIds.length
       ? supabase
         .from("step_executions")
@@ -934,17 +925,35 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
       client: supabase,
       table: "step_parameter_records",
       assignmentIds
-    })
+    }),
+    historyWaferIds.length
+      ? supabase
+          .from("process_events")
+          .select("id, wafer_id, actor_id, event_type, event_at, notes, metadata")
+          .in("wafer_id", historyWaferIds)
+          .in("event_type", ["wafer_step_moved", "wafer_step_reverted", "checkpoint_step_entered", "wafer_history_undone"])
+          .order("event_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null } as const),
+    processTemplateId
+      ? supabase
+          .from("process_steps")
+          .select("id, template_id, name, process_area, step_order, node_type, execution_mode, parameters_schema")
+          .eq("template_id", processTemplateId)
+          .order("step_order", { ascending: true })
+      : Promise.resolve(null),
+    processTemplateId
+      ? supabase
+          .from("process_step_transitions")
+          .select("from_step_id, to_step_id, edge_type, priority, created_at")
+          .eq("template_id", processTemplateId)
+          .order("priority", { ascending: true })
+          .order("created_at", { ascending: true })
+      : Promise.resolve(null)
   ]);
 
-  const processEventsResult = historyWaferIds.length
-    ? await supabase
-        .from("process_events")
-        .select("id, wafer_id, actor_id, event_type, event_at, notes, metadata")
-        .in("wafer_id", historyWaferIds)
-        .in("event_type", ["wafer_step_moved", "wafer_step_reverted", "checkpoint_step_entered", "wafer_history_undone"])
-        .order("event_at", { ascending: true })
-    : ({ data: [], error: null } as const);
+  if (textSurfacesResult.error) {
+    throw textSurfacesResult.error;
+  }
 
   if (executionsResult.error) {
     throw executionsResult.error;
@@ -953,6 +962,24 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   if (processEventsResult.error) {
     throw processEventsResult.error;
   }
+
+  if (scopedStepsResult?.error) {
+    throw scopedStepsResult.error;
+  }
+
+  if (scopedTransitionsResult?.error) {
+    throw scopedTransitionsResult.error;
+  }
+
+  const textSurfacesByKey = new Map(
+    ((textSurfacesResult.data ?? []) as WaferStatusTextSurfaceRow[]).map((surface) => [
+      getNotesSurfaceMapKey({
+        projectId: surface.project_id,
+        scopeKey: surface.scope_key
+      }),
+      surface
+    ])
+  );
 
   const executions = (executionsResult.data ?? []) as WaferStatusExecutionRow[];
   const allProcessEvents = (processEventsResult.data ?? []) as WaferStatusProcessEventRow[];
@@ -1018,19 +1045,13 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   }
 
   const executionStepIds = Array.from(new Set(executions.map((execution) => execution.process_step_id)));
-  const stepsResult = processTemplateId
-    ? await supabase
-        .from("process_steps")
-        .select("id, template_id, name, process_area, step_order, node_type, execution_mode, parameters_schema")
-        .eq("template_id", processTemplateId)
-        .order("step_order", { ascending: true })
-    : executionStepIds.length
+  const stepsResult = scopedStepsResult ?? (executionStepIds.length
       ? await supabase
           .from("process_steps")
           .select("id, template_id, name, process_area, step_order, node_type, execution_mode, parameters_schema")
           .in("id", executionStepIds)
           .order("step_order", { ascending: true })
-      : ({ data: [], error: null } as const);
+      : ({ data: [], error: null } as const));
 
   if (stepsResult.error) {
     throw stepsResult.error;
@@ -1038,21 +1059,14 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
 
   const stepRows = (stepsResult.data ?? []) as WaferStatusStepRow[];
   const templateIds = Array.from(new Set(stepRows.map((step) => step.template_id)));
-  const transitionsResult = processTemplateId
-    ? await supabase
-        .from("process_step_transitions")
-        .select("from_step_id, to_step_id, edge_type, priority, created_at")
-        .eq("template_id", processTemplateId)
-        .order("priority", { ascending: true })
-        .order("created_at", { ascending: true })
-    : templateIds.length
+  const transitionsResult = scopedTransitionsResult ?? (templateIds.length
       ? await supabase
           .from("process_step_transitions")
           .select("from_step_id, to_step_id, edge_type, priority, created_at")
           .in("template_id", templateIds)
           .order("priority", { ascending: true })
           .order("created_at", { ascending: true })
-      : ({ data: [], error: null } as const);
+      : ({ data: [], error: null } as const));
 
   if (transitionsResult.error) {
     throw transitionsResult.error;

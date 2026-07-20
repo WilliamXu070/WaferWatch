@@ -66,6 +66,7 @@ type ProcessFlowCanvasProps = {
   onCommitLabel: (nodeId: string, value: string) => void;
   onCancelLabelEdit: (nodeId: string) => void;
   onBeginWaferDrag: (event: PointerEvent<SVGGElement>, node: FlowNode, wafer: WaferPin) => void;
+  onPrefetchWaferDetails: (wafer: WaferPin) => void;
   onOpenWaferDetails: (wafer: WaferPin) => void;
   onOpenStepParameters: (nodeId: string) => void;
   onDeleteNodes: (nodeIds: string[]) => void;
@@ -126,6 +127,7 @@ export function ProcessFlowCanvas({
   onCommitLabel,
   onCancelLabelEdit,
   onBeginWaferDrag,
+  onPrefetchWaferDetails,
   onOpenWaferDetails,
   onOpenStepParameters,
   onDeleteNodes,
@@ -282,6 +284,7 @@ export function ProcessFlowCanvas({
             onCommitLabel={onCommitLabel}
             onCancelLabelEdit={onCancelLabelEdit}
             onBeginWaferDrag={onBeginWaferDrag}
+            onPrefetchWaferDetails={onPrefetchWaferDetails}
             onOpenWaferDetails={onOpenWaferDetails}
             onOpenStepParameters={onOpenStepParameters}
           />
