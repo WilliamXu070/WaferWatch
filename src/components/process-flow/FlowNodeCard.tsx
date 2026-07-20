@@ -168,6 +168,7 @@ export function FlowNodeCard({
         if (wafer) {
           onOpenWaferDetails(wafer);
         } else {
+          nodeCardRef.current?.focus();
           onOpenStepParameters(node.id);
         }
       }}
@@ -187,6 +188,7 @@ export function FlowNodeCard({
     <g
       ref={nodeCardRef}
       data-node-id={node.id}
+      tabIndex={-1}
       className={`flow-node flow-node--${node.role} ${active ? "flow-node--active" : ""} ${isConnecting ? "flow-node--connecting" : ""} ${
         isDragging ? "flow-node--dragging" : ""
       } ${dropTargetKind ? "flow-node--drop-target" : ""} ${
@@ -204,6 +206,7 @@ export function FlowNodeCard({
         const svg = event.currentTarget.ownerSVGElement;
         const matrix = event.currentTarget.getScreenCTM();
         if (!svg || !matrix) {
+          event.currentTarget.focus();
           onOpenStepParameters(node.id);
           return;
         }
@@ -215,6 +218,7 @@ export function FlowNodeCard({
         if (getStepDoubleClickAction({ x: localPoint.x, y: localPoint.y, nodeWidth: node.width }) === "rename") {
           onBeginLabelEdit(node.id);
         } else {
+          event.currentTarget.focus();
           onOpenStepParameters(node.id);
         }
       }}

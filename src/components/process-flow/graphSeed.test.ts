@@ -13,6 +13,7 @@ test("keeps anytime steps disconnected even if stale transitions still reference
       execution_mode: "main",
       canvas_x: 100,
       canvas_y: 100,
+      revision: 1,
       wafers: []
     },
     {
@@ -24,6 +25,7 @@ test("keeps anytime steps disconnected even if stale transitions still reference
       execution_mode: "anytime",
       canvas_x: 700,
       canvas_y: 100,
+      revision: 1,
       wafers: []
     },
     {
@@ -35,6 +37,7 @@ test("keeps anytime steps disconnected even if stale transitions still reference
       execution_mode: "main",
       canvas_x: 100,
       canvas_y: 400,
+      revision: 1,
       wafers: []
     }
   ], [

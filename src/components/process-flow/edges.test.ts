@@ -37,7 +37,8 @@ function makeNode(id: string, x: number, y: number, order: number, label: string
     width: 276,
     height: 134,
     wafers: [],
-    parametersSchema: {}
+    parametersSchema: {},
+    revision: 1
   };
 }
 

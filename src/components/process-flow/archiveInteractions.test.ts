@@ -19,7 +19,8 @@ const node: FlowNode = {
   role: "normal",
   executionMode: "main",
   order: 1,
-  parametersSchema: {}
+  parametersSchema: {},
+  revision: 1
 };
 
 test("archives only when every dragged wafer has a completed assignment", () => {

@@ -20,7 +20,8 @@ export function getInitialGraph(steps: DiagramStep[], transitions: DiagramTransi
       order: index + 1,
       requiredReviewerId: step.required_reviewer_id ?? null,
       requiredReviewerName: step.required_reviewer_name ?? null,
-      parametersSchema: step.parameters_schema ?? {}
+      parametersSchema: step.parameters_schema ?? {},
+      revision: step.revision
     }));
 
   const nodeIds = new Set(nodes.filter((node) => node.executionMode === "main").map((node) => node.id));

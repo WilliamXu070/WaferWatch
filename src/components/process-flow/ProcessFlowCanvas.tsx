@@ -316,6 +316,13 @@ export function ProcessFlowCanvas({
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => onOpenStepParameters(roleMenuNode.id)}
+          >
+            Edit template
+          </button>
           {roleMenuNode.role === "normal" ? (
             <button
               type="button"

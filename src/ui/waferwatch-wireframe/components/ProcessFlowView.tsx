@@ -41,6 +41,7 @@ type ProcessFlowStepModel = {
   required_reviewer_id?: string | null;
   required_reviewer_name?: string | null;
   parameters_schema?: Json;
+  revision: number;
   wafers: ProcessFlowWaferModel[];
 };
 

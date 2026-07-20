@@ -15,6 +15,7 @@ import {
   deleteProcessStepTransitions,
   restoreArchivedProcessWafer,
   updateProcessStepName,
+  updateProcessStepParameters,
   updateProcessStepExecutionMode,
   updateProcessStepPositions,
   updateProcessStepCheckpointReviewer,
@@ -74,6 +75,7 @@ type DiagramStep = {
   required_reviewer_id: string | null;
   required_reviewer_name: string | null;
   parameters_schema: Json;
+  revision: number;
 };
 
 type DiagramTransition = {
@@ -105,6 +107,7 @@ function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null)
       required_reviewer_id: step.required_reviewer_id,
       required_reviewer_name: flowStates.find((state) => state.currentStepId === step.id)?.requiredReviewerName ?? null,
       parameters_schema: step.parameters_schema,
+      revision: step.revision,
       wafers: flowStates
         .filter((state) => state.currentStepId === step.id)
         .map((state) => ({
@@ -288,6 +291,7 @@ export default async function ProcessFlowWireframePage({
         createWafer: createWaferAtProcessStart,
         updatePositions: updateProcessStepPositions,
         updateName: updateProcessStepName,
+        updateStepTemplate: updateProcessStepParameters,
         updateExecutionMode: updateProcessStepExecutionMode,
         createTransition: createProcessStepTransition,
         deleteSteps: deleteProcessSteps,

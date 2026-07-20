@@ -5,7 +5,6 @@ import {
   canMoveSelectedProcessStep,
   canMoveSelectedWafer,
   getProcessMoveActionNote,
-  getStepParametersNavigation,
   getStepDoubleClickAction,
   getWaferDetailsHref,
   getWaferDetailsPrefetchHref,
@@ -46,21 +45,6 @@ test("mounts a full-route prefetch link for the exact hovered die destination", 
 
   assert.match(source, /href=\{waferDetailsFullPrefetchHref\}/);
   assert.match(source, /prefetch=\{true\}/);
-});
-
-test("defers parameter navigation until a newly added step has a persisted id", () => {
-  assert.deepEqual(getStepParametersNavigation({
-    stepId: "temp-step-new-cleaning",
-    processTemplateId: "process-123"
-  }), { kind: "defer" });
-
-  assert.deepEqual(getStepParametersNavigation({
-    stepId: "53d4d014-9275-4ec3-b714-a612eb14aaee",
-    processTemplateId: "process-123"
-  }), {
-    kind: "navigate",
-    href: "/process-flow/steps/53d4d014-9275-4ec3-b714-a612eb14aaee/parameters?processId=process-123"
-  });
 });
 
 test("keeps title double-clicks for rename and routes the rest of a step to parameters", () => {

@@ -47,6 +47,7 @@ export type DiagramStep = {
   required_reviewer_id?: string | null;
   required_reviewer_name?: string | null;
   parameters_schema?: Json;
+  revision: number;
   wafers: WaferPin[];
 };
 
@@ -68,6 +69,8 @@ export type PersistedStepPayload = {
   execution_mode: ProcessStepExecutionMode;
   canvas_x: number | null;
   canvas_y: number | null;
+  parameters_schema: Json;
+  revision: number;
 };
 
 export type PersistedTransitionPayload = {
@@ -96,6 +99,7 @@ export type FlowNode = {
   requiredReviewerId?: string | null;
   requiredReviewerName?: string | null;
   parametersSchema: Json;
+  revision: number;
   isOptimistic?: boolean;
 };
 
@@ -380,6 +384,7 @@ export type CreateProcessFlowStepAction = (input: {
   nodeType: ProcessStepNodeType;
   canvasX: number;
   canvasY: number;
+  parametersSchema: Record<string, Json | undefined>;
 }) => Promise<ActionResult<PersistedStepPayload>>;
 
 export type UpdateProcessStepPositionsAction = (input: {
@@ -403,12 +408,19 @@ export type UpdateProcessStepExecutionModeAction = (input: {
   executionMode: ProcessStepExecutionMode;
 }) => Promise<ActionResult<PersistedStepPayload>>;
 
+export type UpdateProcessStepTemplateAction = (input: {
+  stepId: string;
+  expectedRevision: number;
+  parametersSchema: Record<string, Json | undefined>;
+}) => Promise<ActionResult<PersistedStepPayload>>;
+
 export type ProcessFlowActions = {
   createStep?: CreateProcessFlowStepAction;
   createWafer?: CreateWaferAtProcessStartAction;
   updatePositions?: UpdateProcessStepPositionsAction;
   updateName?: UpdateProcessStepNameAction;
   updateExecutionMode?: UpdateProcessStepExecutionModeAction;
+  updateStepTemplate?: UpdateProcessStepTemplateAction;
   createTransition?: CreateProcessStepTransitionAction;
   deleteSteps?: DeleteProcessStepsAction;
   deleteTransitions?: DeleteProcessTransitionsAction;

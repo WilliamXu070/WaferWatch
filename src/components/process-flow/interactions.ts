@@ -1,5 +1,4 @@
 import {
-  NODE_ID_PREFIX,
   NODE_CHIP_COLUMNS,
   WAFER_CHIP_GAP_X,
   WAFER_CHIP_GAP_Y,
@@ -30,27 +29,6 @@ export function canMoveSelectedProcessStep(isSelected: boolean) {
 /** A capture hand-off can emit pointerleave; it must not cancel a live drag. */
 export function shouldEndWaferDragFromFrameEvent(eventType: string) {
   return eventType === "pointerup" || eventType === "pointercancel";
-}
-
-export function getStepParametersNavigation({
-  stepId,
-  processTemplateId
-}: {
-  stepId: string;
-  processTemplateId?: string;
-}) {
-  if (stepId.startsWith(NODE_ID_PREFIX)) {
-    return { kind: "defer" as const };
-  }
-
-  const search = processTemplateId
-    ? `?${new URLSearchParams({ processId: processTemplateId }).toString()}`
-    : "";
-
-  return {
-    kind: "navigate" as const,
-    href: `/process-flow/steps/${encodeURIComponent(stepId)}/parameters${search}`
-  };
 }
 
 export function getWaferDetailsHref({

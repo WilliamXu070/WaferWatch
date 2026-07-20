@@ -880,7 +880,7 @@ export async function createProcessFlowStep(input: unknown) {
         required_tool_type: null,
         requires_recipe: false,
         instructions: null,
-        parameters_schema: {},
+        parameters_schema: parsed.parametersSchema as Json,
         node_type: parsed.nodeType,
         canvas_x: parsed.canvasX,
         canvas_y: parsed.canvasY
@@ -1048,7 +1048,6 @@ export async function updateProcessStepParameters(input: unknown) {
     }
 
     revalidateProcessFlow(step.template_id);
-    revalidatePath(`/process-flow/steps/${step.id}/parameters`);
     return ok(data);
   } catch (error) {
     return fail(toErrorMessage(error));

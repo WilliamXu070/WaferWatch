@@ -8,6 +8,48 @@ export const processStepExecutionModeSchema = z.enum(["main", "anytime"]);
 
 const canvasCoordinateSchema = z.number().int().min(0).max(20000);
 
+const stepParameterDefinitionSchema = z.object({
+  id: z.string().trim().min(1).max(100),
+  key: z.string().trim().regex(/^[a-z][a-z0-9_]{0,79}$/),
+  label: z.string().trim().min(1).max(160),
+  type: z.enum(["text", "number", "boolean", "select"]),
+  unit: z.string().trim().max(40),
+  required: z.boolean(),
+  description: z.string().trim().max(4000),
+  defaultValue: z.string().max(4000).nullable()
+}).superRefine((field, context) => {
+  const defaultValue = field.defaultValue?.trim() || null;
+  if (field.type === "number" && defaultValue !== null && !Number.isFinite(Number(defaultValue))) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${field.label} needs a valid numeric default.`,
+      path: ["defaultValue"]
+    });
+  }
+  if (field.type === "boolean" && defaultValue !== null && defaultValue !== "true" && defaultValue !== "false") {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${field.label} needs a Yes, No, or blank default.`,
+      path: ["defaultValue"]
+    });
+  }
+});
+
+export const processStepParametersSchema = z.object({
+  version: z.literal(1).default(1),
+  fields: z.array(stepParameterDefinitionSchema).max(100).default([])
+}).passthrough().superRefine((schema, context) => {
+  const keys = schema.fields.map((field) => field.key);
+  const labels = schema.fields.map((field) => field.label.toLocaleLowerCase());
+  if (new Set(keys).size !== keys.length || new Set(labels).size !== labels.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Each parameter name and key must be unique.",
+      path: ["fields"]
+    });
+  }
+});
+
 export const processTemplateCreateSchema = z.object({
   name: z.string().trim().min(2).max(180),
   version: z.string().trim().min(1).max(40).default("1.0"),
@@ -68,7 +110,8 @@ export const processFlowStepCreateSchema = z.object({
   processArea: z.string().trim().min(2).max(120).default("Process step"),
   nodeType: processStepNodeTypeSchema.default("procedure"),
   canvasX: canvasCoordinateSchema,
-  canvasY: canvasCoordinateSchema
+  canvasY: canvasCoordinateSchema,
+  parametersSchema: processStepParametersSchema.default({ version: 1, fields: [] })
 });
 
 export const processStepNameUpdateSchema = z.object({
@@ -80,7 +123,7 @@ export const processStepNameUpdateSchema = z.object({
 export const processStepParametersUpdateSchema = z.object({
   stepId: uuidSchema,
   expectedRevision: z.number().int().nonnegative(),
-  parametersSchema: z.record(z.string(), z.unknown())
+  parametersSchema: processStepParametersSchema
 });
 
 const stepParameterValueSchema = z.union([

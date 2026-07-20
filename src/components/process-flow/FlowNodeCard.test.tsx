@@ -16,6 +16,7 @@ const node: FlowNode = {
   executionMode: "main",
   order: 2,
   parametersSchema: {},
+  revision: 1,
   wafers: [
     {
       assignmentId: "beginning",
@@ -74,6 +75,7 @@ test("renders Beginning and Complete selection through the same wafer chip compo
   assert.doesNotMatch(markup, /flow-node-complete-touch-layer/);
   assert.match(markup, /clipPath id="flow-node-phase-clip-cleaning"/);
   assert.match(markup, /clip-path="url\(#flow-node-phase-clip-cleaning\)"/);
+  assert.match(markup, /data-node-id="cleaning"[^>]*tabindex="-1"/);
 });
 
 test("renders an anytime procedure as a clearly separate disconnected step", () => {

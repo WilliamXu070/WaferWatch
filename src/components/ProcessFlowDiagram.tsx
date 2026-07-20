@@ -32,7 +32,7 @@ import {
   getWaferCodeValidationError,
   normalizeWaferCode
 } from "@/features/process-flows/waferNaming";
-import type { ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
+import type { Json, ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
 import { readDeletedWaferIds } from "@/features/process-flows/waferDeletion";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
 import { ProcessFlowMutationStatus } from "./process-flow/ProcessFlowMutationStatus";
@@ -45,6 +45,11 @@ import {
   StepParameterEntryDialog,
   type PendingStepParameterEntry
 } from "./process-flow/StepParameterEntryDialog";
+import {
+  StepTemplateDialog,
+  type PreparedStepTemplate,
+  type StepTemplateDialogDraft
+} from "./process-flow/StepTemplateDialog";
 import { WaferCreateDialog, type WaferCreateDraft } from "./process-flow/WaferCreateDialog";
 import { useProcessFlowMutationQueue } from "./process-flow/useProcessFlowMutationQueue";
 import {
@@ -93,7 +98,6 @@ import {
   canMoveSelectedProcessStep,
   canMoveSelectedWafer,
   getProcessMoveActionNote,
-  getStepParametersNavigation,
   getWaferDetailsHref,
   getWaferDetailsPrefetchHref,
   getWaferDragCaptureTarget,
@@ -159,6 +163,18 @@ type QueuedStepCreate = {
   fallbackNode: FlowNode;
   stepArea: string;
   nodeType: ProcessStepNodeType;
+  creationDraft: PendingStepTemplateDialog;
+  edgeToSplit: FlowEdge | null;
+  edgeToSplitPriority: number;
+  splitTransitionIds: string[];
+};
+
+type PendingStepTemplateDialog = StepTemplateDialogDraft & {
+  stepId?: string;
+  expectedRevision?: number;
+  canvasX?: number;
+  canvasY?: number;
+  edgeToSplit?: FlowEdge | null;
 };
 
 type QueuedPositionUpdate = {
@@ -355,6 +371,7 @@ export function ProcessFlowDiagram({
     createWafer: onCreateWaferAtProcessStart,
     updatePositions: onUpdateStepPositions,
     updateName: onUpdateStepName,
+    updateStepTemplate: onUpdateStepTemplate,
     updateExecutionMode: onUpdateStepExecutionMode,
     createTransition: onCreateTransition,
     deleteSteps: onDeleteSteps,
@@ -407,6 +424,9 @@ export function ProcessFlowDiagram({
   const [pendingStepParameterEntries, setPendingStepParameterEntries] = useState<PendingStepParameterEntry[]>([]);
   const [waferCreateDraft, setWaferCreateDraft] = useState<WaferCreateDraft | null>(null);
   const [waferCreateError, setWaferCreateError] = useState<string | null>(null);
+  const [stepTemplateDraft, setStepTemplateDraft] = useState<PendingStepTemplateDialog | null>(null);
+  const [stepTemplateError, setStepTemplateError] = useState<string | null>(null);
+  const stepTemplateRestoreFocusRef = useRef<HTMLElement | SVGElement | null>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const [roleMenu, setRoleMenu] = useState<RoleMenu | null>(null);
   const [isPanning, setIsPanning] = useState(false);
@@ -422,6 +442,7 @@ export function ProcessFlowDiagram({
   const editingInputRef = useRef<HTMLInputElement | null>(null);
   const [, startMoveTransition] = useTransition();
   const [isGraphPending, startGraphTransition] = useTransition();
+  const [isStepTemplatePending, startStepTemplateTransition] = useTransition();
   const [isWaferMutationPending, startWaferMutationTransition] = useTransition();
   const scaleRef = useRef(1);
   const pinchInitialAppScaleRef = useRef(1);
@@ -443,7 +464,6 @@ export function ProcessFlowDiagram({
   const pendingZoomAnchorRef = useRef<ZoomAnchor | null>(null);
   const pendingGraphFitRef = useRef<GraphViewportFit | null>(null);
   const pendingStepCreateRef = useRef<Map<string, QueuedStepCreate>>(new Map());
-  const pendingStepParametersOpenRef = useRef<string | null>(null);
   const pendingTransitionCreateRef = useRef<Map<string, QueuedTransition>>(new Map());
   const pendingPositionUpdateRef = useRef<Map<string, QueuedPositionUpdate>>(new Map());
   const inFlightPositionUpdateRef = useRef<Map<string, QueuedPositionUpdate>>(new Map());
@@ -771,6 +791,8 @@ export function ProcessFlowDiagram({
               subLabel: persistedStep.process_area,
               order: persistedStep.step_order,
               executionMode: persistedStep.execution_mode,
+              parametersSchema: persistedStep.parameters_schema,
+              revision: persistedStep.revision,
               isOptimistic: false
             }
           : node
@@ -828,22 +850,9 @@ export function ProcessFlowDiagram({
       });
     }
 
-    if (pendingStepParametersOpenRef.current === temporaryStepId) {
-      pendingStepParametersOpenRef.current = null;
-      const navigation = getStepParametersNavigation({
-        stepId: persistedStep.id,
-        processTemplateId
-      });
-      if (navigation.kind === "navigate") {
-        router.push(navigation.href);
-      }
-    }
-  }, [editingNodeId, getLatestNode, processTemplateId, router]);
+  }, [editingNodeId, getLatestNode]);
 
   const clearQueuedStep = (stepId: string) => {
-    if (pendingStepParametersOpenRef.current === stepId) {
-      pendingStepParametersOpenRef.current = null;
-    }
     pendingStepCreateRef.current.delete(stepId);
     pendingTransitionCreateRef.current.forEach((transition, localId) => {
       if (transition.fromStepId === stepId || transition.toStepId === stepId) {
@@ -857,7 +866,6 @@ export function ProcessFlowDiagram({
   };
 
   const clearQueuedStepMaps = useCallback(() => {
-    pendingStepParametersOpenRef.current = null;
     pendingStepCreateRef.current.clear();
     pendingTransitionCreateRef.current.clear();
     pendingPositionUpdateRef.current.clear();
@@ -1114,14 +1122,29 @@ export function ProcessFlowDiagram({
         processArea: payload.stepArea,
         nodeType: payload.nodeType,
         canvasX,
-        canvasY
+        canvasY,
+        parametersSchema: payload.fallbackNode.parametersSchema as Record<string, Json | undefined>
       });
 
       if (!result.ok) {
         setMoveMessage(result.error);
         setNodes((currentNodes) => currentNodes.filter((node) => node.id !== temporaryStepId));
-        setEdges((currentEdges) => normalizeFlowEdges(currentEdges.filter((edge) => edge.from !== temporaryStepId && edge.to !== temporaryStepId)));
+        setEdges((currentEdges) => normalizeFlowEdges([
+          ...currentEdges.filter((edge) => edge.from !== temporaryStepId && edge.to !== temporaryStepId),
+          ...(payload.edgeToSplit ? [payload.edgeToSplit] : [])
+        ]));
+        if (payload.edgeToSplit?.id.startsWith(EDGE_ID_PREFIX)) {
+          pendingTransitionCreateRef.current.set(payload.edgeToSplit.id, {
+            id: payload.edgeToSplit.id,
+            fromStepId: payload.edgeToSplit.from,
+            toStepId: payload.edgeToSplit.to,
+            edgeType: payload.edgeToSplit.kind,
+            priority: payload.edgeToSplitPriority
+          });
+        }
         clearQueuedStep(temporaryStepId);
+        setStepTemplateDraft(payload.creationDraft);
+        setStepTemplateError(result.error);
         if (editingNodeId === temporaryStepId) {
           setEditingNode(null);
         }
@@ -1129,6 +1152,19 @@ export function ProcessFlowDiagram({
       }
 
       replaceOptimisticStepId(temporaryStepId, result.data);
+      if (payload.edgeToSplit && !payload.edgeToSplit.id.startsWith(EDGE_ID_PREFIX) && onDeleteTransitions) {
+        const deleteResult = await onDeleteTransitions({ transitionIds: [payload.edgeToSplit.id] });
+        if (!deleteResult.ok && !isAlreadyDeletedTransitionError(deleteResult.error)) {
+          for (const transitionId of payload.splitTransitionIds) {
+            pendingTransitionCreateRef.current.delete(transitionId);
+          }
+          setEdges((currentEdges) => normalizeFlowEdges([
+            ...currentEdges.filter((edge) => !payload.splitTransitionIds.includes(edge.id)),
+            payload.edgeToSplit!
+          ]));
+          setMoveMessage(`Created ${result.data.name}, but the existing transition could not be split. ${deleteResult.error}`);
+        }
+      }
     }
 
     if (pendingTransitionCreateRef.current.size > 0) {
@@ -1147,6 +1183,7 @@ export function ProcessFlowDiagram({
     flushPendingNameUpdates,
     getLatestNode,
     onCreateStep,
+    onDeleteTransitions,
     processTemplateId,
     replaceOptimisticStepId,
     schedulePending,
@@ -1803,20 +1840,24 @@ export function ProcessFlowDiagram({
   }, [processTemplateId, router]);
 
   const openStepParameters = useCallback((stepId: string) => {
-    const navigation = getStepParametersNavigation({ stepId, processTemplateId });
-    if (navigation.kind === "defer") {
-      pendingStepParametersOpenRef.current = stepId;
-      if (pendingStepCreateTimerRef.current) {
-        window.clearTimeout(pendingStepCreateTimerRef.current);
-        pendingStepCreateTimerRef.current = null;
-        void flushPendingStepCreates();
-      }
-      return;
-    }
-
-    pendingStepParametersOpenRef.current = null;
-    router.push(navigation.href);
-  }, [flushPendingStepCreates, processTemplateId, router]);
+    const node = getLatestNode(stepId);
+    if (!node) return;
+    const activeElement = document.activeElement;
+    stepTemplateRestoreFocusRef.current = activeElement instanceof HTMLElement && activeElement !== document.body
+      ? activeElement
+      : document.querySelector<SVGElement>(`[data-node-id="${CSS.escape(stepId)}"]`);
+    setRoleMenu(null);
+    setStepTemplateError(null);
+    setStepTemplateDraft({
+      mode: "edit",
+      name: node.label,
+      processArea: node.subLabel,
+      parametersSchema: node.parametersSchema,
+      canEdit: Boolean(canEdit && onUpdateStepTemplate && !node.isOptimistic),
+      stepId: node.id,
+      expectedRevision: node.revision
+    });
+  }, [canEdit, getLatestNode, onUpdateStepTemplate]);
 
   const deleteSelectedWafer = useCallback(() => {
     if (!canEdit || !selectedWafer) {
@@ -2403,12 +2444,35 @@ export function ProcessFlowDiagram({
 
     const canvasX = Math.max(24, Math.round(point.x - NODE_WIDTH / 2));
     const canvasY = Math.max(24, Math.round(point.y - NODE_HEIGHT / 2));
+    setRoleMenu(null);
+    setSelectedWafers([]);
+    setStepTemplateError(null);
+    setStepTemplateDraft({
+      mode: "create",
+      name: "",
+      processArea: "Process step",
+      parametersSchema: { version: 1, fields: [] },
+      canEdit: true,
+      canvasX,
+      canvasY,
+      edgeToSplit
+    });
+  };
+
+  const commitStepCreate = (
+    draft: PendingStepTemplateDialog,
+    template: PreparedStepTemplate
+  ) => {
+    const canvasX = draft.canvasX;
+    const canvasY = draft.canvasY;
+    if (canvasX === undefined || canvasY === undefined) return;
+    const edgeToSplit = draft.edgeToSplit ?? null;
     const temporaryStepId = `${NODE_ID_PREFIX}${Math.random().toString(36).slice(2, 10)}`;
     const splitEdges = edgeToSplit ? splitEdgeWithNode(edgeToSplit, temporaryStepId) : [];
     const fallbackNode: FlowNode = {
       id: temporaryStepId,
-      label: "Untitled",
-      subLabel: "Process step",
+      label: template.name,
+      subLabel: template.processArea,
       wafers: [],
       x: canvasX,
       y: canvasY,
@@ -2417,12 +2481,15 @@ export function ProcessFlowDiagram({
       role: "normal",
       executionMode: "main",
       order: displayNodes.length + 1,
-      parametersSchema: {},
+      parametersSchema: template.parametersSchema,
+      revision: 0,
       isOptimistic: true
     };
 
     setRoleMenu(null);
     setSelectedWafers([]);
+    setStepTemplateDraft(null);
+    setStepTemplateError(null);
     setNodes((currentNodes) => [...currentNodes, fallbackNode]);
     if (edgeToSplit) {
       pendingTransitionCreateRef.current.delete(edgeToSplit.id);
@@ -2442,17 +2509,6 @@ export function ProcessFlowDiagram({
           priority: edges.length * 10 + index
         });
       });
-
-      if (!edgeToSplit.id.startsWith(EDGE_ID_PREFIX) && onDeleteTransitions) {
-        startGraphTransition(() => {
-          void (async () => {
-            const result = await onDeleteTransitions({ transitionIds: [edgeToSplit.id] });
-            if (!result.ok && !isAlreadyDeletedTransitionError(result.error)) {
-              setMoveMessage(result.error);
-            }
-          })();
-        });
-      }
     }
     setSelectedNodeIds(new Set([temporaryStepId]));
     setMoveMessage(edgeToSplit ? "Inserted step into transition locally." : "Added step locally.");
@@ -2460,8 +2516,55 @@ export function ProcessFlowDiagram({
       canvasX,
       canvasY,
       fallbackNode,
-      stepArea: "Process step",
-      nodeType: "procedure"
+      stepArea: template.processArea,
+      nodeType: "procedure",
+      creationDraft: {
+        ...draft,
+        name: template.name,
+        processArea: template.processArea,
+        parametersSchema: template.parametersSchema
+      },
+      edgeToSplit,
+      edgeToSplitPriority: edgeToSplit ? Math.max(0, edges.findIndex((edge) => edge.id === edgeToSplit.id)) * 10 : 0,
+      splitTransitionIds: splitEdges.map((edge) => edge.id)
+    });
+  };
+
+  const submitStepTemplate = (template: PreparedStepTemplate) => {
+    const draft = stepTemplateDraft;
+    if (!draft) return;
+    if (draft.mode === "create") {
+      commitStepCreate(draft, template);
+      return;
+    }
+    if (!draft.stepId || draft.expectedRevision === undefined || !onUpdateStepTemplate) {
+      setStepTemplateError("This step template is read-only.");
+      return;
+    }
+
+    setStepTemplateError(null);
+    startStepTemplateTransition(() => {
+      void (async () => {
+        const result = await onUpdateStepTemplate({
+          stepId: draft.stepId!,
+          expectedRevision: draft.expectedRevision!,
+          parametersSchema: template.parametersSchema
+        });
+        if (!result.ok) {
+          setStepTemplateError(result.error);
+          return;
+        }
+        setNodes((currentNodes) => currentNodes.map((node) => node.id === result.data.id
+          ? {
+              ...node,
+              parametersSchema: result.data.parameters_schema,
+              revision: result.data.revision
+            }
+          : node));
+        setStepTemplateDraft(null);
+        setMoveMessage(`Saved ${result.data.name} template.`);
+        scheduleBackgroundRefresh();
+      })();
     });
   };
 
@@ -4131,6 +4234,23 @@ export function ProcessFlowDiagram({
           }}
         />
       ) : null}
+      {stepTemplateDraft ? (
+        <StepTemplateDialog
+          draft={stepTemplateDraft}
+          errorMessage={stepTemplateError}
+          isPending={isStepTemplatePending}
+          returnFocusTo={stepTemplateRestoreFocusRef.current}
+          onCancel={() => {
+            setStepTemplateDraft(null);
+            setStepTemplateError(null);
+          }}
+          onChange={(draft) => {
+            setStepTemplateDraft((current) => current ? { ...current, ...draft } : current);
+            setStepTemplateError(null);
+          }}
+          onSubmit={submitStepTemplate}
+        />
+      ) : null}
       {waferCreateDraft ? (
         <WaferCreateDialog
           draft={waferCreateDraft}
@@ -4288,14 +4408,25 @@ export function ProcessFlowDiagram({
           >
             Clear
           </button>
-          <button
-            className="button button-secondary"
-            disabled={isGraphPending}
-            onClick={deleteSelectedNodes}
-            type="button"
-          >
-            {selectedNodeIds.size === 1 ? "Delete step" : "Delete steps"}
-          </button>
+          {selectedNodeIds.size === 1 ? (
+            <button
+              className="button button-secondary"
+              onClick={() => openStepParameters([...selectedNodeIds][0])}
+              type="button"
+            >
+              {canEdit ? "Edit template" : "View template"}
+            </button>
+          ) : null}
+          {canEdit ? (
+            <button
+              className="button button-secondary"
+              disabled={isGraphPending}
+              onClick={deleteSelectedNodes}
+              type="button"
+            >
+              {selectedNodeIds.size === 1 ? "Delete step" : "Delete steps"}
+            </button>
+          ) : null}
         </div>
       ) : null}
       <ProcessFlowCanvas

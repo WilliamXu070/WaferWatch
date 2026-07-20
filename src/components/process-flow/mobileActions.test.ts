@@ -4,10 +4,10 @@ import { getAvailableWaferMoveTargets, getSelectedLinkedStepEdge } from "./mobil
 import type { FlowEdge, FlowNode } from "./types";
 
 const nodes: FlowNode[] = [
-  { id: "start", label: "Start", subLabel: "", wafers: [], x: 0, y: 0, width: 10, height: 10, role: "start", executionMode: "main", order: 1, parametersSchema: {} },
-  { id: "dicing", label: "Dicing", subLabel: "", wafers: [], x: 0, y: 20, width: 10, height: 10, role: "normal", executionMode: "main", order: 2, parametersSchema: {} },
-  { id: "piranha", label: "Piranha", subLabel: "", wafers: [], x: 20, y: 20, width: 10, height: 10, role: "normal", executionMode: "anytime", order: 3, parametersSchema: {} },
-  { id: "complete", label: "Complete", subLabel: "", wafers: [], x: 0, y: 40, width: 10, height: 10, role: "end", executionMode: "main", order: 4, parametersSchema: {} }
+  { id: "start", label: "Start", subLabel: "", wafers: [], x: 0, y: 0, width: 10, height: 10, role: "start", executionMode: "main", order: 1, parametersSchema: {}, revision: 1 },
+  { id: "dicing", label: "Dicing", subLabel: "", wafers: [], x: 0, y: 20, width: 10, height: 10, role: "normal", executionMode: "main", order: 2, parametersSchema: {}, revision: 1 },
+  { id: "piranha", label: "Piranha", subLabel: "", wafers: [], x: 20, y: 20, width: 10, height: 10, role: "normal", executionMode: "anytime", order: 3, parametersSchema: {}, revision: 1 },
+  { id: "complete", label: "Complete", subLabel: "", wafers: [], x: 0, y: 40, width: 10, height: 10, role: "end", executionMode: "main", order: 4, parametersSchema: {}, revision: 1 }
 ];
 
 const edges: FlowEdge[] = [
