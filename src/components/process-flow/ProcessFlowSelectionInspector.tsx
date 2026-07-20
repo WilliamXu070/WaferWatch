@@ -25,6 +25,7 @@ import {
   isSingleSelection
 } from "./selectionInspectorState";
 import type { ProcessFlowSyncState } from "./types";
+import { getVisualViewportBottomInset } from "./visualViewportInset";
 
 export type ProcessFlowInspectorItem = {
   assignmentId: string;
@@ -67,6 +68,36 @@ function statusLabel(status: StepStatus | null) {
   return status
     .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function useVisualViewportBottomInset() {
+  const [inset, setInset] = useState(0);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const updateInset = () => {
+      const nextInset = getVisualViewportBottomInset({
+        layoutViewportHeight: window.innerHeight,
+        visualViewportHeight: viewport.height,
+        visualViewportOffsetTop: viewport.offsetTop
+      });
+      setInset((current) => current === nextInset ? current : nextInset);
+    };
+
+    updateInset();
+    viewport.addEventListener("resize", updateInset);
+    viewport.addEventListener("scroll", updateInset);
+    window.addEventListener("resize", updateInset);
+    return () => {
+      viewport.removeEventListener("resize", updateInset);
+      viewport.removeEventListener("scroll", updateInset);
+      window.removeEventListener("resize", updateInset);
+    };
+  }, []);
+
+  return inset;
 }
 
 export function SelectionStackVisual({
@@ -237,6 +268,7 @@ export function ProcessFlowSelectionInspector({
   const activeItem = items.at(-1);
   const isSingle = isSingleSelection(items.length);
   const [isMobileExpanded, setIsMobileExpanded] = useState(false);
+  const keyboardInset = useVisualViewportBottomInset();
   const statusCounts = useMemo(() => {
     const counts = new Map<string, number>();
     items.forEach((item) => {
@@ -256,7 +288,11 @@ export function ProcessFlowSelectionInspector({
   if (!activeItem) return null;
 
   return (
-    <aside className="process-flow-selection-inspector-host" aria-label="Process Flow selection inspector">
+    <aside
+      className="process-flow-selection-inspector-host"
+      aria-label="Process Flow selection inspector"
+      style={{ "--process-flow-selection-inspector-keyboard-inset": `${keyboardInset}px` } as CSSProperties}
+    >
       <section className={`process-flow-selection-inspector ${isMobileExpanded ? "is-mobile-expanded" : ""}`}>
         <header className="process-flow-selection-inspector__header">
           <div>

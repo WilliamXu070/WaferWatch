@@ -4579,15 +4579,15 @@ textarea {
     z-index: 175;
     top: auto;
     right: 8px;
-    bottom: calc(76px + env(safe-area-inset-bottom));
+    bottom: calc(76px + env(safe-area-inset-bottom) + var(--process-flow-selection-inspector-keyboard-inset, 0px));
     left: 8px;
     width: auto;
-    max-height: min(48svh, 460px);
+    max-height: min(48svh, 460px, calc(100svh - 76px - env(safe-area-inset-bottom) - var(--process-flow-selection-inspector-keyboard-inset, 0px)));
   }
 
   .process-flow-selection-inspector {
     height: auto;
-    max-height: min(48svh, 460px);
+    max-height: min(48svh, 460px, calc(100svh - 76px - env(safe-area-inset-bottom) - var(--process-flow-selection-inspector-keyboard-inset, 0px)));
     border-radius: 18px;
     box-shadow: 0 16px 44px oklch(0.22 0.012 92 / 0.22);
   }

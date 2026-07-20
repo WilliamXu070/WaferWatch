@@ -38,7 +38,10 @@ test("keeps the phone inspector compact until details are requested", async () =
 
   assert.match(componentSource, /useState\(false\)/);
   assert.match(componentSource, /aria-expanded=\{isMobileExpanded\}/);
-  assert.match(cssSource, /max-height: min\(48svh, 460px\)/);
+  assert.match(componentSource, /useVisualViewportBottomInset\(\)/);
+  assert.match(componentSource, /--process-flow-selection-inspector-keyboard-inset/);
+  assert.match(cssSource, /bottom: calc\(76px \+ env\(safe-area-inset-bottom\) \+ var\(--process-flow-selection-inspector-keyboard-inset, 0px\)\);/);
+  assert.match(cssSource, /max-height: min\(48svh, 460px, calc\(100svh - 76px - env\(safe-area-inset-bottom\) - var\(--process-flow-selection-inspector-keyboard-inset, 0px\)\)\);/);
   assert.match(cssSource, /:not\(\.is-mobile-expanded\)[\s\S]*__body > :not\(\.process-flow-selection-stack\)/);
   assert.match(cssSource, /\.process-flow-selection-stack \{\s*height: 82px;/);
 });
