@@ -58,5 +58,8 @@ test("explicit query targets remount the Status view without a fragment transiti
 
   assert.match(pageSource, /requestedWaferId \?\? "overview"/);
   assert.match(pageSource, /initialWaferId=\{requestedWaferId\}/);
+  assert.match(pageSource, /processId=\{requestedProcessId\}/);
+  assert.match(viewSource, /readWaferStatusResumeState/);
+  assert.match(viewSource, /if \(initialWaferId\)/);
   assert.doesNotMatch(viewSource, /window\.location\.hash|parseWaferStatusSelectionHash/);
 });

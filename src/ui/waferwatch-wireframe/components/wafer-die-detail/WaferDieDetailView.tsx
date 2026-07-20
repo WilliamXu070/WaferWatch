@@ -32,6 +32,8 @@ export function DieDetailView({
   tile,
   canEdit,
   currentUser,
+  activeTab,
+  onActiveTabChange,
   onBack,
   onNavigate,
   canNavigateBack,
@@ -40,12 +42,13 @@ export function DieDetailView({
   tile: WaferStatusTileModel;
   canEdit: boolean;
   currentUser?: WaferDieNoteViewer | null;
+  activeTab: DieDetailTab;
+  onActiveTabChange: (tab: DieDetailTab) => void;
   onBack: () => void;
   onNavigate: (direction: -1 | 1) => void;
   canNavigateBack: boolean;
   canNavigateForward: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState<DieDetailTab>("overview");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const visits = useMemo(() => buildStepVisitHistory(tile), [tile]);
   const defaultVisitId = visits.find((visit) => visit.state === "current")?.id ?? visits.at(-1)?.id ?? null;
@@ -118,7 +121,7 @@ export function DieDetailView({
                 aria-selected={activeTab === tab.id}
                 aria-controls={`die-status-panel-${tab.id}`}
                 tabIndex={activeTab === tab.id ? 0 : -1}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => onActiveTabChange(tab.id)}
                 onKeyDown={(event) => {
                   const lastIndex = dieDetailTabs.length - 1;
                   const nextIndex = event.key === "ArrowRight"
@@ -133,7 +136,7 @@ export function DieDetailView({
                   if (nextIndex === null) return;
                   event.preventDefault();
                   const nextTab = dieDetailTabs[nextIndex];
-                  setActiveTab(nextTab.id);
+                  onActiveTabChange(nextTab.id);
                   tabRefs.current[nextIndex]?.focus();
                 }}
                 className={[
@@ -172,7 +175,7 @@ export function DieDetailView({
           currentUser={currentUser}
           onOpenHistory={() => {
             setSelectedVisitId(defaultVisitId);
-            setActiveTab("history");
+            onActiveTabChange("history");
           }}
           selectedVisitId={resolvedVisitId}
           onSelectedVisitChange={setSelectedVisitId}

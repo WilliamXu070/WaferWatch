@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIcon,
   StackIcon,
@@ -19,6 +19,10 @@ import {
   findDeepLinkedWaferStatusTile,
   findInitialWaferStatusTile
 } from "./waferStatusSelection";
+import {
+  readWaferStatusResumeState,
+  writeWaferStatusResumeState
+} from "./waferStatusResumeState";
 import { DieAppearancePreview } from "./wafer-die-detail/DieAppearancePreview";
 import {
   canOpenDieDetail,
@@ -27,6 +31,7 @@ import {
   getWaferDisplayLabel,
   isUndicedMode
 } from "./wafer-die-detail";
+import type { DieDetailTab } from "./wafer-die-detail/waferDieDetailData";
 import type { WaferDieNoteViewer } from "./wafer-die-detail/WaferDieNotes";
 
 const metricIcons = {
@@ -163,6 +168,7 @@ export function WaferStatusView({
   model,
   canEdit = true,
   currentUser,
+  processId,
   initialWaferId,
   initialDieLabel,
   emptyTitle = "No wafers available",
@@ -171,6 +177,7 @@ export function WaferStatusView({
   model: WaferStatusModel;
   canEdit?: boolean;
   currentUser?: WaferDieNoteViewer | null;
+  processId: string;
   initialWaferId?: string;
   initialDieLabel?: string;
   emptyTitle?: string;
@@ -191,7 +198,9 @@ export function WaferStatusView({
   );
   const [selectedTile, setSelectedTile] = useState<WaferStatusTileModel | null>(initialSelected);
   const [detailTile, setDetailTile] = useState<WaferStatusTileModel | null>(initialDetail);
-  const latestTiles = model.families.flatMap((family) => family.tiles);
+  const [activeDetailTab, setActiveDetailTab] = useState<DieDetailTab>("overview");
+  const [resumeResolved, setResumeResolved] = useState(Boolean(initialWaferId));
+  const latestTiles = useMemo(() => model.families.flatMap((family) => family.tiles), [model.families]);
   const activeSelectedTile = selectedTile
     ? latestTiles.find((tile) => tile.id === selectedTile.id) ?? selectedTile
     : initialSelected;
@@ -207,10 +216,43 @@ export function WaferStatusView({
     ? detailTiles.findIndex((tile) => tile.id === activeDetailTile.id)
     : -1;
 
+  useEffect(() => {
+    if (initialWaferId) return;
+
+    queueMicrotask(() => {
+      const resume = readWaferStatusResumeState(window.localStorage, processId);
+      const resumedTile = resume
+        ? findDeepLinkedWaferStatusTile(latestTiles, resume.selected.waferId, resume.selected.dieLabel ?? undefined)
+        : null;
+
+      if (resumedTile) {
+        setSelectedTile(resumedTile);
+        setActiveDetailTab(resume!.tab);
+        setDetailTile(resume!.detail && canOpenDieDetail(resumedTile) ? resumedTile : null);
+      }
+      setResumeResolved(true);
+    });
+  }, [initialWaferId, latestTiles, processId]);
+
+  useEffect(() => {
+    if (!resumeResolved || !activeSelectedTile) return;
+
+    writeWaferStatusResumeState(window.localStorage, processId, {
+      version: 1,
+      selected: {
+        waferId: activeSelectedTile.waferId,
+        dieLabel: activeSelectedTile.dieLabel || null
+      },
+      detail: Boolean(activeDetailTile),
+      tab: activeDetailTab
+    });
+  }, [activeDetailTab, activeDetailTile, activeSelectedTile, processId, resumeResolved]);
+
   const handleSelectTile = (tile: WaferStatusTileModel) => {
     setSelectedTile(tile);
     if (canOpenDieDetail(tile)) {
       setDetailTile(tile);
+      setActiveDetailTab("overview");
     }
   };
 
@@ -228,6 +270,8 @@ export function WaferStatusView({
           tile={activeDetailTile}
           canEdit={canEdit}
           currentUser={currentUser}
+          activeTab={activeDetailTab}
+          onActiveTabChange={setActiveDetailTab}
           onBack={() => setDetailTile(null)}
           onNavigate={handleNavigateDetail}
           canNavigateBack={activeDetailIndex > 0}

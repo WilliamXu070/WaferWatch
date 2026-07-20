@@ -35,6 +35,7 @@ export default async function WireframeWaferStatusPage({
       <WaferStatusView
         model={getEmptyWaferStatusModel()}
         canEdit={false}
+        processId=""
         emptyTitle="No process selected"
         emptyDescription="Select a process first. Wafer / die status stays hidden until a process and this sub-view are selected."
       />
@@ -48,6 +49,7 @@ export default async function WireframeWaferStatusPage({
       <WaferStatusView
         model={getEmptyWaferStatusModel()}
         canEdit={false}
+        processId={requestedProcessId}
         emptyTitle="No wafer status data"
         emptyDescription="Sign in with access to wafer records. No wireframe fallback data is injected."
       />
@@ -76,6 +78,7 @@ export default async function WireframeWaferStatusPage({
         id: account.userId,
         displayName: account.profile.display_name?.trim() || account.email?.trim() || "WaferWatch user"
       } : null}
+      processId={requestedProcessId}
       initialWaferId={requestedWaferId}
       initialDieLabel={requestedDieLabel}
     />
