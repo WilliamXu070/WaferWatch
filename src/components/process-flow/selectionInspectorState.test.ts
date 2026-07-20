@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   getSelectionKindLabel,
+  getSingleSelectionDeleteLabel,
   getVisibleSelectionStack,
   isSingleSelection
 } from "./selectionInspectorState";
@@ -23,6 +24,12 @@ test("distinguishes one editable item from a parameter-null multi-selection", ()
   assert.equal(getSelectionKindLabel([{ isDie: true }, { isDie: true }]), "2 dies selected");
 });
 
+test("offers deletion only for one selected wafer or die", () => {
+  assert.equal(getSingleSelectionDeleteLabel([{ isDie: false }]), "Delete wafer");
+  assert.equal(getSingleSelectionDeleteLabel([{ isDie: true }]), "Delete die");
+  assert.equal(getSingleSelectionDeleteLabel([{ isDie: false }, { isDie: false }]), null);
+});
+
 test("mounts the parameter panel only behind the single-selection policy", async () => {
   const source = await readFile(new URL("./ProcessFlowSelectionInspector.tsx", import.meta.url), "utf8");
 
@@ -40,8 +47,11 @@ test("keeps the phone inspector compact until details are requested", async () =
   assert.match(componentSource, /aria-expanded=\{isMobileExpanded\}/);
   assert.match(componentSource, /useVisualViewportBottomInset\(\)/);
   assert.match(componentSource, /--process-flow-selection-inspector-keyboard-inset/);
+  assert.match(componentSource, /canDelete && deleteLabel/);
+  assert.match(componentSource, /button button-danger ghost-button col-span-full justify-center/);
   assert.match(cssSource, /bottom: calc\(76px \+ env\(safe-area-inset-bottom\) \+ var\(--process-flow-selection-inspector-keyboard-inset, 0px\)\);/);
   assert.match(cssSource, /max-height: min\(48svh, 460px, calc\(100svh - 76px - env\(safe-area-inset-bottom\) - var\(--process-flow-selection-inspector-keyboard-inset, 0px\)\)\);/);
   assert.match(cssSource, /:not\(\.is-mobile-expanded\)[\s\S]*__body > :not\(\.process-flow-selection-stack\)/);
   assert.match(cssSource, /\.process-flow-selection-stack \{\s*height: 82px;/);
+  assert.match(cssSource, /:not\(\.is-mobile-expanded\)[\s\S]*__footer \.ghost-button/);
 });

@@ -4456,10 +4456,12 @@ export function ProcessFlowDiagram({
           items={selectionInspectorItems}
           moveTargets={mobileWaferMoveTargets}
           canEdit={canEdit}
+          canDelete={Boolean(canEdit && onDeleteWafer && activeSelectedWafers.length === 1)}
           canUndoMovement={canUndoSelectedDieHistory}
           isPending={activeSelectedWafers.some((wafer) => mutationQueue.lockedAssignmentIds.has(wafer.assignmentId))}
           onActivate={activateWaferInInspector}
           onClear={clearWaferSelectionFromInspector}
+          onDelete={deleteSelectedWafer}
           onRemove={removeWaferFromInspector}
           onMove={(targetId) => {
             if (!confirmDiscardSelectionParameters("Discard the unsaved parameter changes before moving this selection?")) return;

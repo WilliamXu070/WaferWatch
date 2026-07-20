@@ -8,6 +8,7 @@ import {
   Layers3,
   MoveRight,
   RotateCcw,
+  Trash2,
   UserRound,
   X
 } from "lucide-react";
@@ -21,6 +22,7 @@ import { StepParameterHistory } from "@/ui/waferwatch-wireframe/components/wafer
 import type { WaferStatusStepParameterRecord } from "@/ui/waferwatch-wireframe/types";
 import {
   getSelectionKindLabel,
+  getSingleSelectionDeleteLabel,
   getVisibleSelectionStack,
   isSingleSelection
 } from "./selectionInspectorState";
@@ -51,10 +53,12 @@ type SelectionInspectorProps = {
   items: readonly ProcessFlowInspectorItem[];
   moveTargets: readonly { id: string; label: string }[];
   canEdit: boolean;
+  canDelete: boolean;
   canUndoMovement: boolean;
   isPending: boolean;
   onActivate: (assignmentId: string) => void;
   onClear: () => void;
+  onDelete: () => void;
   onRemove: (assignmentId: string) => void;
   onMove: (targetId: string) => void;
   onOpenFullRecord: () => void;
@@ -254,10 +258,12 @@ export function ProcessFlowSelectionInspector({
   items,
   moveTargets,
   canEdit,
+  canDelete,
   canUndoMovement,
   isPending,
   onActivate,
   onClear,
+  onDelete,
   onRemove,
   onMove,
   onOpenFullRecord,
@@ -267,6 +273,7 @@ export function ProcessFlowSelectionInspector({
 }: SelectionInspectorProps) {
   const activeItem = items.at(-1);
   const isSingle = isSingleSelection(items.length);
+  const deleteLabel = getSingleSelectionDeleteLabel(items);
   const [isMobileExpanded, setIsMobileExpanded] = useState(false);
   const keyboardInset = useVisualViewportBottomInset();
   const statusCounts = useMemo(() => {
@@ -406,6 +413,16 @@ export function ProcessFlowSelectionInspector({
           {isSingle && canUndoMovement ? (
             <button className="button ghost-button" disabled={isPending} onClick={onUndoMovement} type="button">
               <RotateCcw aria-hidden size={14} /> Undo movement
+            </button>
+          ) : null}
+          {canDelete && deleteLabel ? (
+            <button
+              className="button button-danger ghost-button col-span-full justify-center"
+              disabled={isPending}
+              onClick={onDelete}
+              type="button"
+            >
+              <Trash2 aria-hidden size={14} /> {deleteLabel}
             </button>
           ) : null}
           {isSingle ? (
