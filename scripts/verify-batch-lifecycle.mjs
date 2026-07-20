@@ -111,11 +111,19 @@ await db.exec(`
     ('${id.sourceExecutionTwo}', '${id.assignmentTwo}', '${id.waferTwo}', '${id.source}', 'queued');
 `);
 
-const migration = await readFile(
-  new URL("../supabase/migrations/202607200002_batch_lifecycle_planning.sql", import.meta.url),
-  "utf8"
-);
-await db.exec(migration);
+const migrations = await Promise.all([
+  readFile(
+    new URL("../supabase/migrations/202607200002_batch_lifecycle_planning.sql", import.meta.url),
+    "utf8"
+  ),
+  readFile(
+    new URL("../supabase/migrations/202607200004_batch_lifecycle_hardening.sql", import.meta.url),
+    "utf8"
+  )
+]);
+for (const migration of migrations) {
+  await db.exec(migration);
+}
 
 const legacy = await db.query(`
   select batch.origin, count(*)::integer as member_count

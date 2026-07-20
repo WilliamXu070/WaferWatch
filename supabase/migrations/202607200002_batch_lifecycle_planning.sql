@@ -11,7 +11,6 @@ create table if not exists public.process_batches (
   note text null,
   origin text not null default 'arrival' check (origin in ('arrival', 'legacy_active', 'split', 'merge', 'restore'))
 );
-
 create table if not exists public.process_batch_members (
   id uuid primary key default gen_random_uuid(),
   batch_id uuid not null references public.process_batches(id) on delete restrict,
@@ -22,7 +21,6 @@ create table if not exists public.process_batch_members (
   created_at timestamptz not null default now(),
   unique (batch_id, step_execution_id)
 );
-
 create table if not exists public.process_batch_links (
   id uuid primary key default gen_random_uuid(),
   parent_batch_id uuid not null references public.process_batches(id) on delete restrict,
@@ -32,21 +30,16 @@ create table if not exists public.process_batch_links (
   unique (parent_batch_id, child_batch_id, link_kind),
   check (parent_batch_id <> child_batch_id)
 );
-
 alter table public.process_calendar_events
   add column if not exists batch_id uuid references public.process_batches(id) on delete set null;
-
 create index if not exists process_batches_template_created_idx
   on public.process_batches (template_id, created_at desc);
 create index if not exists process_batch_members_execution_idx
   on public.process_batch_members (step_execution_id, created_at desc);
-create unique index if not exists process_batch_members_execution_unique_idx
-  on public.process_batch_members (step_execution_id);
 create index if not exists process_batch_members_batch_idx
   on public.process_batch_members (batch_id, created_at);
 create index if not exists process_calendar_events_batch_idx
   on public.process_calendar_events (batch_id) where batch_id is not null;
-
 -- Existing active work predates batch identities. Preserve it as explicit
 -- singleton batches instead of guessing a group from nearby timestamps.
 do $$
@@ -86,11 +79,9 @@ begin
   end loop;
 end;
 $$;
-
 alter table public.process_batches enable row level security;
 alter table public.process_batch_members enable row level security;
 alter table public.process_batch_links enable row level security;
-
 drop policy if exists process_batches_select on public.process_batches;
 create policy process_batches_select on public.process_batches for select to authenticated using (
   exists (
@@ -99,12 +90,10 @@ create policy process_batches_select on public.process_batches for select to aut
       and public.can_access_wafer(member.wafer_id)
   )
 );
-
 drop policy if exists process_batch_members_select on public.process_batch_members;
 create policy process_batch_members_select on public.process_batch_members for select to authenticated using (
   public.can_access_wafer(wafer_id)
 );
-
 drop policy if exists process_batch_links_select on public.process_batch_links;
 create policy process_batch_links_select on public.process_batch_links for select to authenticated using (
   exists (
@@ -113,14 +102,6 @@ create policy process_batch_links_select on public.process_batch_links for selec
       and public.can_access_wafer(member.wafer_id)
   )
 );
-
-revoke insert, update, delete on public.process_batches from public, anon, authenticated;
-revoke insert, update, delete on public.process_batch_members from public, anon, authenticated;
-revoke insert, update, delete on public.process_batch_links from public, anon, authenticated;
-grant select on public.process_batches to authenticated;
-grant select on public.process_batch_members to authenticated;
-grant select on public.process_batch_links to authenticated;
-
 create or replace function public.record_planned_batch_member(
   target_batch_id uuid,
   target_step_execution_id uuid,
@@ -138,9 +119,6 @@ as $$
 declare
   execution public.step_executions%rowtype;
   assignment public.wafer_process_assignments%rowtype;
-  target_batch public.process_batches%rowtype;
-  parent_batch public.process_batches%rowtype;
-  existing_member_batch_id uuid;
 begin
   if auth.uid() is null then
     raise exception using errcode = '42501', message = 'An authenticated account is required.';
@@ -155,28 +133,6 @@ begin
     raise exception using errcode = '42501', message = 'You cannot plan this wafer batch.';
   end if;
 
-  select member.batch_id into existing_member_batch_id
-  from public.process_batch_members member
-  where member.step_execution_id = execution.id
-  order by member.created_at desc
-  limit 1;
-  if existing_member_batch_id is not null then
-    -- An idempotent movement retry must reuse the arrival batch already bound
-    -- to this exact visit, even if a stale client generated another batch id.
-    target_batch_id := existing_member_batch_id;
-  end if;
-
-  select * into target_batch
-  from public.process_batches batch
-  where batch.id = target_batch_id
-  for update;
-  if target_batch.id is not null and (
-    target_batch.template_id <> assignment.template_id
-    or target_batch.process_step_id <> execution.process_step_id
-  ) then
-    raise exception using errcode = '22023', message = 'This batch belongs to a different process step.';
-  end if;
-
   insert into public.process_batches (id, template_id, process_step_id, created_by, note)
   values (target_batch_id, assignment.template_id, execution.process_step_id, auth.uid(), nullif(trim(batch_note), ''))
   on conflict (id) do update set note = coalesce(process_batches.note, excluded.note);
@@ -185,21 +141,9 @@ begin
     batch_id, assignment_id, wafer_id, process_step_id, step_execution_id
   ) values (
     target_batch_id, assignment.id, execution.wafer_id, execution.process_step_id, execution.id
-  ) on conflict (step_execution_id) do nothing;
+  ) on conflict (batch_id, step_execution_id) do nothing;
 
   if parent_batch_id is not null and parent_batch_id <> target_batch_id then
-    select * into parent_batch
-    from public.process_batches batch
-    where batch.id = parent_batch_id;
-    if parent_batch.id is null
-       or parent_batch.template_id <> assignment.template_id
-       or not exists (
-         select 1 from public.process_batch_members member
-         where member.batch_id = parent_batch_id
-           and member.assignment_id = assignment.id
-       ) then
-      raise exception using errcode = '22023', message = 'The predecessor batch no longer matches this process assignment.';
-    end if;
     insert into public.process_batch_links (parent_batch_id, child_batch_id, link_kind)
     values (parent_batch_id, target_batch_id, 'successor')
     on conflict do nothing;
@@ -226,9 +170,7 @@ begin
   return target_batch_id;
 end;
 $$;
-
 revoke all on function public.record_planned_batch_member(uuid, uuid, text, uuid, timestamptz, timestamptz, text) from public, anon;
 grant execute on function public.record_planned_batch_member(uuid, uuid, text, uuid, timestamptz, timestamptz, text) to authenticated;
-
 comment on table public.process_batches is 'Persistent planned batch identities; a destination arrival creates a successor batch.';
-comment on table public.process_batch_members is 'Append-only batch membership; each process-step visit belongs to exactly one arrival batch.';
+comment on table public.process_batch_members is 'Append-only batch membership for process-step arrivals.';
