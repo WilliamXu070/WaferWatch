@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
-import type { ClipboardEvent, MouseEvent, PointerEvent } from "react";
+import type { ClipboardEvent, CSSProperties, MouseEvent, PointerEvent } from "react";
 import {
   getBoundedPinchAccumulatorScale,
   getPanScrollPosition,
@@ -119,6 +119,7 @@ import {
 } from "./process-flow/labels";
 import { applyGraphDisplayOrder, autoLayoutNodes } from "./process-flow/layout";
 import { getInitialGraph } from "./process-flow/graphSeed";
+import { useVisualViewportBottomInset } from "./process-flow/useVisualViewportBottomInset";
 import {
   canMoveToProcessStep,
   canReviewerRouteCheckpoint,
@@ -415,6 +416,7 @@ export function ProcessFlowDiagram({
   const [pendingWaferMoveNote, setPendingWaferMoveNote] = useState("");
   const [pendingWaferMoveFiles, setPendingWaferMoveFiles] = useState<File[]>([]);
   const [pendingWaferMoveFileError, setPendingWaferMoveFileError] = useState<string | null>(null);
+  const keyboardInset = useVisualViewportBottomInset();
   const [pendingStepParameterEntries, setPendingStepParameterEntries] = useState<PendingStepParameterEntry[]>([]);
   const [waferCreateDraft, setWaferCreateDraft] = useState<WaferCreateDraft | null>(null);
   const [waferCreateError, setWaferCreateError] = useState<string | null>(null);
@@ -4345,66 +4347,71 @@ export function ProcessFlowDiagram({
         />
       ) : null}
       {pendingWaferMove ? (
-        <div className="flow-wafer-move-dialog-backdrop">
+        <div
+          className="flow-wafer-move-dialog-backdrop flow-wafer-move-dialog-backdrop--keyboard-aware"
+          style={{ "--flow-wafer-move-dialog-keyboard-inset": `${keyboardInset}px` } as CSSProperties}
+        >
           <section
             aria-labelledby="flow-wafer-move-title"
             aria-modal="true"
-            className="flow-wafer-move-dialog"
+            className="flow-wafer-move-dialog flow-wafer-move-dialog--keyboard-aware"
             onPaste={pastePendingWaferMoveImages}
             role="dialog"
           >
-            <div className="flow-wafer-move-dialog__header">
-              <h2 id="flow-wafer-move-title">
-                {pendingWaferMove.kind === "submit" ? "Checkpoint note" : "Movement note"}
-              </h2>
-              {pendingWaferMove.wafers.length > 1 ? (
-                <p>Applies to {pendingWaferMove.waferLabel}.</p>
-              ) : null}
-            </div>
-            <dl className="flow-wafer-move-dialog__path">
-              <div>
-                <dt>From</dt>
-                <dd>{pendingWaferMove.sourceLabel}</dd>
+            <div className="flow-wafer-move-dialog__content">
+              <div className="flow-wafer-move-dialog__header">
+                <h2 id="flow-wafer-move-title">
+                  {pendingWaferMove.kind === "submit" ? "Checkpoint note" : "Movement note"}
+                </h2>
+                {pendingWaferMove.wafers.length > 1 ? (
+                  <p>Applies to {pendingWaferMove.waferLabel}.</p>
+                ) : null}
               </div>
-              <div>
-                <dt>To</dt>
-                <dd>{pendingWaferMove.targetLabel}</dd>
-              </div>
-            </dl>
-            <label className="flow-wafer-move-dialog__field">
-              <span>
-                {pendingWaferMove.kind === "submit" ? "Required note" : "Movement note"}
-                {pendingWaferMove.kind === "move" ? <small> Optional</small> : null}
-              </span>
-              <textarea
-                autoFocus
+              <dl className="flow-wafer-move-dialog__path">
+                <div>
+                  <dt>From</dt>
+                  <dd>{pendingWaferMove.sourceLabel}</dd>
+                </div>
+                <div>
+                  <dt>To</dt>
+                  <dd>{pendingWaferMove.targetLabel}</dd>
+                </div>
+              </dl>
+              <label className="flow-wafer-move-dialog__field">
+                <span>
+                  {pendingWaferMove.kind === "submit" ? "Required note" : "Movement note"}
+                  {pendingWaferMove.kind === "move" ? <small> Optional</small> : null}
+                </span>
+                <textarea
+                  autoFocus
+                  disabled={isPendingWaferMoveLocked}
+                  id="process-wafer-move-note"
+                  maxLength={4000}
+                  name="processWaferMoveNote"
+                  onChange={(event) => setPendingWaferMoveNote(event.currentTarget.value)}
+                  placeholder={
+                    pendingWaferMove.kind === "submit"
+                      ? "Summarize completed work and any review details."
+                      : `Reason for moving to ${pendingWaferMove.targetLabel}.`
+                  }
+                  rows={5}
+                  value={pendingWaferMoveNote}
+                />
+              </label>
+              <PendingNoteAttachments
+                files={pendingWaferMoveFiles}
                 disabled={isPendingWaferMoveLocked}
-                id="process-wafer-move-note"
-                maxLength={4000}
-                name="processWaferMoveNote"
-                onChange={(event) => setPendingWaferMoveNote(event.currentTarget.value)}
-                placeholder={
-                  pendingWaferMove.kind === "submit"
-                    ? "Summarize completed work and any review details."
-                    : `Reason for moving to ${pendingWaferMove.targetLabel}.`
-                }
-                rows={5}
-                value={pendingWaferMoveNote}
+                error={pendingWaferMoveFileError}
+                description={pendingWaferMove.wafers.length > 1
+                  ? "Paste images or attach files for all selected dies."
+                  : "Paste images or attach files for this step note."}
+                mobileDescription={pendingWaferMove.wafers.length > 1
+                  ? "Photos and files apply to all selected dies."
+                  : "Photos and files save with this movement note."}
+                onAddFiles={appendPendingWaferMoveFiles}
+                onRemoveFile={(file) => setPendingWaferMoveFiles((current) => current.filter((candidate) => candidate !== file))}
               />
-            </label>
-            <PendingNoteAttachments
-              files={pendingWaferMoveFiles}
-              disabled={isPendingWaferMoveLocked}
-              error={pendingWaferMoveFileError}
-              description={pendingWaferMove.wafers.length > 1
-                ? "Paste images or attach files for all selected dies."
-                : "Paste images or attach files for this step note."}
-              mobileDescription={pendingWaferMove.wafers.length > 1
-                ? "Photos and files apply to all selected dies."
-                : "Photos and files save with this movement note."}
-              onAddFiles={appendPendingWaferMoveFiles}
-              onRemoveFile={(file) => setPendingWaferMoveFiles((current) => current.filter((candidate) => candidate !== file))}
-            />
+            </div>
             <div className="flow-wafer-move-dialog__actions">
               <button
                 className="button ghost-button"
