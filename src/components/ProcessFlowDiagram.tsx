@@ -123,9 +123,10 @@ import { getInitialGraph } from "./process-flow/graphSeed";
 import {
   canMoveToProcessStep,
   canReviewerRouteCheckpoint,
-  canSubmitCheckpoint,
+  canSubmitWaferCheckpoint,
   getReviewerRouteDecision
 } from "./process-flow/checkpointPhase";
+import { reconcileCreatedWaferPin } from "./process-flow/waferCreation";
 import type {
   CheckpointReviewerOption,
   ConnectionDraft,
@@ -185,15 +186,6 @@ type QueuedPositionUpdate = {
   canvasY: number;
   expectedCanvasX: number;
   expectedCanvasY: number;
-};
-
-type CreatedWaferPayload = {
-  wafer?: {
-    wafer_code?: string | null;
-  } | null;
-  assignment?: {
-    id?: string | null;
-  } | null;
 };
 
 type SelectedFlowWafer = {
@@ -654,8 +646,7 @@ export function ProcessFlowDiagram({
         canEdit &&
         onSubmitCheckpoint &&
         node.requiredReviewerId &&
-        pin.currentStepExecutionId &&
-        canSubmitCheckpoint(pin.currentStepStatus)
+        canSubmitWaferCheckpoint(pin)
       )
     } satisfies ProcessFlowInspectorItem];
   }), [
@@ -686,7 +677,7 @@ export function ProcessFlowDiagram({
 
     const draggedWafers = source.wafers.filter((wafer) => drag.wafers.some((item) => item.assignmentId === wafer.assignmentId));
     const canSubmit = target.id === source.id && drag.x >= source.x + source.width / 2 &&
-      Boolean(onSubmitCheckpoint) && draggedWafers.every((wafer) => canSubmitCheckpoint(wafer.currentStepStatus));
+      Boolean(onSubmitCheckpoint) && draggedWafers.every(canSubmitWaferCheckpoint);
     const canMove = (target.id !== source.id || drag.x < source.x + source.width / 2) &&
       draggedWafers.every((wafer) =>
         (target.id !== source.id && Boolean(onMoveApprovedWafer) && canMoveToProcessStep({
@@ -1771,30 +1762,20 @@ export function ProcessFlowDiagram({
           return;
         }
 
-        const payload = result.data as CreatedWaferPayload;
-        const assignmentId = payload.assignment?.id;
-        const createdWaferCode = payload.wafer?.wafer_code;
-
-        if (assignmentId && createdWaferCode) {
-          setNodes((currentNodes) =>
-            currentNodes.map((node) =>
-              node.id === startNode.id
-                ? {
-                    ...node,
-                    wafers: node.wafers.map((wafer) =>
-                      wafer.assignmentId === temporaryAssignmentId
-                        ? {
-                            ...wafer,
-                            assignmentId,
-                            waferCode: createdWaferCode
-                          }
-                        : wafer
-                    )
-                  }
-                : node
-            )
-          );
-        }
+        setNodes((currentNodes) =>
+          currentNodes.map((node) =>
+            node.id === startNode.id
+              ? {
+                  ...node,
+                  wafers: node.wafers.map((wafer) =>
+                    wafer.assignmentId === temporaryAssignmentId
+                      ? reconcileCreatedWaferPin(wafer, result.data)
+                      : wafer
+                  )
+                }
+              : node
+          )
+        );
 
         setMoveMessage(`Added ${waferCode}.`);
         scheduleBackgroundRefresh();
@@ -3248,7 +3229,15 @@ export function ProcessFlowDiagram({
       setMoveMessage(`Assign a checkpoint reviewer to ${sourceNode.label} before completing work.`);
       return;
     }
-    if (!eligible.length || !eligible.every((wafer) => wafer.currentStepExecutionId && canSubmitCheckpoint(wafer.currentStepStatus))) {
+    if (!eligible.length) {
+      setMoveMessage("Only work on the Beginning side can be submitted for checkpoint review.");
+      return;
+    }
+    if (eligible.some((wafer) => !wafer.currentStepExecutionId)) {
+      setMoveMessage("This wafer is still being created. It will be ready in a moment.");
+      return;
+    }
+    if (!eligible.every(canSubmitWaferCheckpoint)) {
       setMoveMessage("Only work on the Beginning side can be submitted for checkpoint review.");
       return;
     }

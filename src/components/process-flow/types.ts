@@ -1,5 +1,14 @@
 import type { ActionResult } from "@/lib/action-result";
-import type { Json, ProcessStepExecutionMode, ProcessStepNodeType, ProcessStepTransitionType, StepStatus, StepParameterRecord } from "@/types/database";
+import type {
+  Json,
+  ProcessStepExecutionMode,
+  ProcessStepNodeType,
+  ProcessStepTransitionType,
+  StepParameterRecord,
+  StepStatus,
+  Wafer,
+  WaferProcessAssignment
+} from "@/types/database";
 
 export type WaferPin = {
   assignmentId: string;
@@ -24,6 +33,15 @@ export type WaferPin = {
   isArchivable?: boolean;
   anytimeReturnStepId?: string | null;
   anytimeReturnStepName?: string | null;
+};
+
+export type CreatedWaferAtProcessStartPayload = {
+  wafer: Pick<Wafer, "id" | "project_id" | "wafer_code">;
+  assignment: Pick<WaferProcessAssignment, "id">;
+  stepExecution: {
+    id: string;
+    status: StepStatus;
+  };
 };
 
 export type ProcessArchiveItem = {
@@ -358,7 +376,7 @@ export type CreateWaferAtProcessStartAction = (input: {
   templateId: string;
   waferCode: string;
   dieCount: number;
-}) => Promise<ActionResult<unknown>>;
+}) => Promise<ActionResult<CreatedWaferAtProcessStartPayload>>;
 
 export type DeleteProcessFlowWaferAction = (input: {
   assignmentId: string;

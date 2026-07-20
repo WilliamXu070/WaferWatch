@@ -569,11 +569,20 @@ export async function createWaferAtProcessStart(input: unknown) {
       queue_started_at: index === 0 ? now : null,
       metadata: {}
     }));
-    const { error: executionsError } = await supabase.from("step_executions").insert(executionRows);
+    const { data: createdExecutions, error: executionsError } = await supabase
+      .from("step_executions")
+      .insert(executionRows)
+      .select("id, process_step_id, status");
 
     if (executionsError) {
       const rollbackError = await rollbackIncompleteWaferCreate(wafer.id);
       return fail(appendRollbackError(executionsError.message, rollbackError));
+    }
+
+    const stepExecution = createdExecutions?.find((execution) => execution.process_step_id === startStep.id);
+    if (!stepExecution) {
+      const rollbackError = await rollbackIncompleteWaferCreate(wafer.id);
+      return fail(appendRollbackError("The wafer's Beginning execution was not returned after creation.", rollbackError));
     }
 
     await supabase.from("process_events").insert({
@@ -592,7 +601,7 @@ export async function createWaferAtProcessStart(input: unknown) {
     });
 
     revalidateProcessFlow(parsed.templateId);
-    return ok({ wafer, assignment });
+    return ok({ wafer, assignment, stepExecution });
   } catch (error) {
     return fail(toErrorMessage(error));
   }

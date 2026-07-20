@@ -12,6 +12,13 @@ export function canSubmitCheckpoint(status: StepStatus | null | undefined) {
   return status === "queued" || status === "running" || status === "redo_required";
 }
 
+export function canSubmitWaferCheckpoint(wafer: {
+  currentStepExecutionId?: string | null;
+  currentStepStatus: StepStatus | null | undefined;
+}) {
+  return Boolean(wafer.currentStepExecutionId) && canSubmitCheckpoint(wafer.currentStepStatus);
+}
+
 export function canMoveToAnotherStep(status: StepStatus | null | undefined) {
   return status === "ready_to_move";
 }
