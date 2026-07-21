@@ -197,6 +197,8 @@ export async function uploadWaferNoteAttachments(input: {
   files: readonly File[];
 }): Promise<UploadedNoteAttachment[]> {
   const selectedFiles = input.files.slice(0, MAX_NOTE_ATTACHMENTS);
+  if (selectedFiles.length === 0) return [];
+
   selectedFiles.forEach((file) => {
     if (file.size > NOTE_ATTACHMENT_MAX_BYTES) throw new Error(`${file.name} is larger than 50 MB.`);
   });
