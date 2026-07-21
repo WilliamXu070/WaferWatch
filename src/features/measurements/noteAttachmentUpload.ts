@@ -6,6 +6,7 @@ import {
   MAX_NOTE_ATTACHMENTS,
   NOTE_ATTACHMENT_MAX_BYTES
 } from "@/features/measurements/noteAttachmentDraft";
+import { normalizeNoteAttachmentFiles } from "@/features/measurements/noteAttachmentFile";
 import { createClient } from "@/lib/supabase/client";
 import { getStableAttachmentObjectPath, mapWithConcurrency } from "./backgroundAttachmentQueue";
 import {
@@ -86,14 +87,18 @@ export async function persistWaferStepNoteAttachmentsBatch(
   if (projectIds.size !== 1) throw new Error("Attachment batches must belong to one project.");
 
   const totalStartedAt = performance.now();
-  const jobs = inputs.flatMap(createAttachmentJobs);
+  const normalizedInputs = await Promise.all(inputs.map(async (input) => ({
+    ...input,
+    files: await normalizeNoteAttachmentFiles(input.files)
+  })));
+  const jobs = normalizedInputs.flatMap(createAttachmentJobs);
   const signingStartedAt = performance.now();
   const signedResponse = await fetch("/api/storage/signed-upload", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       uploads: jobs.map((job) => ({
-        projectId: inputs[job.noteIndex].projectId,
+        projectId: normalizedInputs[job.noteIndex].projectId,
         bucketName: NOTE_ATTACHMENT_BUCKET,
         objectPath: job.objectPath
       }))
@@ -124,7 +129,7 @@ export async function persistWaferStepNoteAttachmentsBatch(
   });
 
   const timestamp = new Date().toISOString();
-  const notes = inputs.map((input, noteIndex) => ({
+  const notes = normalizedInputs.map((input, noteIndex) => ({
     noteId: input.noteId,
     waferId: input.waferId,
     stepExecutionId: input.stepExecutionId ?? null,
@@ -150,7 +155,7 @@ export async function persistWaferStepNoteAttachmentsBatch(
     }))
   }));
   const finalizationStartedAt = performance.now();
-  const finalized = await finalizeWaferStepNotesBatch({ projectId: inputs[0].projectId, notes });
+  const finalized = await finalizeWaferStepNotesBatch({ projectId: normalizedInputs[0].projectId, notes });
   if (!finalized.ok) throw new Error(finalized.error);
   const failed = finalized.data.filter((outcome) => !outcome.ok);
   if (failed.length) {
@@ -191,9 +196,13 @@ export async function uploadWaferNoteAttachments(input: {
   noteId: string;
   files: readonly File[];
 }): Promise<UploadedNoteAttachment[]> {
-  const files = input.files.slice(0, MAX_NOTE_ATTACHMENTS);
-  files.forEach((file) => {
+  const selectedFiles = input.files.slice(0, MAX_NOTE_ATTACHMENTS);
+  selectedFiles.forEach((file) => {
     if (file.size > NOTE_ATTACHMENT_MAX_BYTES) throw new Error(`${file.name} is larger than 50 MB.`);
+  });
+  const files = await normalizeNoteAttachmentFiles(selectedFiles);
+  files.forEach((file) => {
+    if (file.size > NOTE_ATTACHMENT_MAX_BYTES) throw new Error(`${file.name} is larger than 50 MB after conversion.`);
   });
   const objectPaths = files.map((file, index) => getStableAttachmentObjectPath({
     projectId: input.projectId,

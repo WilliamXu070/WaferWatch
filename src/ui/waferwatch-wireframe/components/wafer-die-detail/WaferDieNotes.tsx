@@ -18,6 +18,10 @@ import {
   prepareNoteAttachmentFiles
 } from "@/features/measurements/noteAttachmentDraft";
 import {
+  isHeicNoteAttachment,
+  normalizeNoteAttachmentFile
+} from "@/features/measurements/noteAttachmentFile";
+import {
   uploadWaferNoteAttachments,
   type UploadedNoteAttachment
 } from "@/features/measurements/noteAttachmentUpload";
@@ -318,16 +322,26 @@ function NoteImagePreview({ attachment }: { attachment: WaferDieNoteAttachment }
       }
 
       try {
-        const nextUrl = isTiffImage(attachment.fileName, attachment.mimeType)
-          ? await fetch(result.data.signedUrl)
-              .then((response) => {
-                if (!response.ok) throw new Error("Unable to load the TIFF attachment.");
-                return response.arrayBuffer();
-              })
-              .then(createTiffPngPreview)
-          : result.data.signedUrl;
+        const isTiff = isTiffImage(attachment.fileName, attachment.mimeType);
+        const isHeic = isHeicNoteAttachment(attachment.fileName, attachment.mimeType);
+        let nextUrl = result.data.signedUrl;
 
-        if (isTiffImage(attachment.fileName, attachment.mimeType)) generatedUrl = nextUrl;
+        if (isTiff || isHeic) {
+          const response = await fetch(result.data.signedUrl);
+          if (!response.ok) throw new Error(`Unable to load the ${isTiff ? "TIFF" : "HEIC"} attachment.`);
+
+          if (isTiff) {
+            nextUrl = await response.arrayBuffer().then(createTiffPngPreview);
+          } else {
+            const source = await response.blob();
+            const converted = await normalizeNoteAttachmentFile(new File([source], attachment.fileName, {
+              type: attachment.mimeType || source.type || "image/heic"
+            }));
+            nextUrl = URL.createObjectURL(converted);
+          }
+          generatedUrl = nextUrl;
+        }
+
         if (!cancelled) setImageUrl(nextUrl);
       } catch (error) {
         if (!cancelled) setPreviewError(error instanceof Error ? error.message : "Unable to render image preview.");
@@ -351,7 +365,11 @@ function NoteImagePreview({ attachment }: { attachment: WaferDieNoteAttachment }
     />
   ) : (
     <span className="grid h-full place-items-center px-3 text-center text-[12px] font-semibold text-[#777770]">
-      {previewError ?? (isTiffImage(attachment.fileName, attachment.mimeType) ? "Rendering TIFF preview..." : "Image preview")}
+      {previewError ?? (isTiffImage(attachment.fileName, attachment.mimeType)
+        ? "Rendering TIFF preview..."
+        : isHeicNoteAttachment(attachment.fileName, attachment.mimeType)
+          ? "Rendering HEIC preview..."
+          : "Image preview")}
     </span>
   );
 }

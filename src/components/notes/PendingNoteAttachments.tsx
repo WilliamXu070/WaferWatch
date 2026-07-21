@@ -11,37 +11,28 @@ import {
   NOTE_ATTACHMENT_ACCEPT,
   NOTE_ATTACHMENT_IMAGE_ACCEPT
 } from "@/features/measurements/noteAttachmentDraft";
-
-const previewUrlCache = new WeakMap<File, { url: string; consumers: number }>();
-
-function getPreviewUrl(file: File) {
-  if (!file.type.startsWith("image/") || typeof URL.createObjectURL !== "function") {
-    return null;
-  }
-  const cached = previewUrlCache.get(file);
-  if (cached) return cached.url;
-  const url = URL.createObjectURL(file);
-  previewUrlCache.set(file, { url, consumers: 0 });
-  return url;
-}
+import { normalizeNoteAttachmentFile } from "@/features/measurements/noteAttachmentFile";
 
 function PendingAttachmentPreview({ file }: { file: File }) {
-  const [previewUrl] = useState<string | null>(() => getPreviewUrl(file));
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!previewUrl) return;
-    const cached = previewUrlCache.get(file);
-    if (!cached) return;
-    cached.consumers += 1;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    void normalizeNoteAttachmentFile(file).then((normalizedFile) => {
+      if (cancelled || !normalizedFile.type.startsWith("image/") || typeof URL.createObjectURL !== "function") return;
+      objectUrl = URL.createObjectURL(normalizedFile);
+      setPreviewUrl(objectUrl);
+    }).catch(() => {
+      if (!cancelled) setPreviewUrl(null);
+    });
+
     return () => {
-      cached.consumers -= 1;
-      window.setTimeout(() => {
-        if (cached.consumers > 0 || previewUrlCache.get(file) !== cached) return;
-        URL.revokeObjectURL(cached.url);
-        previewUrlCache.delete(file);
-      }, 0);
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [file, previewUrl]);
+  }, [file]);
 
   if (!previewUrl) {
     return <FileText className="size-4 text-[#777770]" aria-hidden />;
