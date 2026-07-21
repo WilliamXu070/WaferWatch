@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   getBoundedPinchAccumulatorScale,
   getPanScrollPosition,
   getPinchTargetScale,
+  getNestedWaferTouchOwner,
   getStableZoomAnchor,
   getTouchGestureOwner,
   getTouchCentroid,
@@ -19,6 +21,21 @@ test("gives one-finger touch ownership only to a selected step or wafer", () => 
   assert.equal(getTouchGestureOwner("wafer", false), "viewport");
   assert.equal(getTouchGestureOwner("step", true), "item");
   assert.equal(getTouchGestureOwner("wafer", true), "item");
+});
+
+test("keeps a selected step in control through its unselected wafer hit areas", () => {
+  assert.equal(getNestedWaferTouchOwner({ isStepSelected: true, isWaferSelected: false }), "step");
+  assert.equal(getNestedWaferTouchOwner({ isStepSelected: true, isWaferSelected: true }), "wafer");
+  assert.equal(getNestedWaferTouchOwner({ isStepSelected: false, isWaferSelected: true }), "wafer");
+  assert.equal(getNestedWaferTouchOwner({ isStepSelected: false, isWaferSelected: false }), "viewport");
+});
+
+test("routes a selected step's nested wafer touch into node drag and preserves a stationary wafer tap", async () => {
+  const source = await readFile(new URL("../ProcessFlowDiagram.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /getNestedWaferTouchOwner\(\{[\s\S]*isStepSelected: selectedNodeIds\.has\(node\.id\)[\s\S]*\}\) === "step"/);
+  assert.match(source, /pendingTouchStepWaferRef\.current = \{[\s\S]*beginNodeDrag\(event, node\)/);
+  assert.match(source, /movedNodes\.length === 0[\s\S]*selectWafer\(pendingWaferTap\.nodeId, wafer\)/);
 });
 
 test("pans the viewport from the physical pointer delta regardless of touch target", () => {

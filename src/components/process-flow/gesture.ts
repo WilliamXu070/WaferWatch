@@ -22,6 +22,18 @@ export function getTouchGestureOwner(
   return target !== "canvas" && isSelected ? "item" : "viewport";
 }
 
+export function getNestedWaferTouchOwner({
+  isStepSelected,
+  isWaferSelected
+}: {
+  isStepSelected: boolean;
+  isWaferSelected: boolean;
+}): "step" | "wafer" | "viewport" {
+  if (isWaferSelected) return "wafer";
+  if (isStepSelected) return "step";
+  return "viewport";
+}
+
 export function getPanScrollPosition({
   startScrollLeft,
   startScrollTop,

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import type { ClipboardEvent, CSSProperties, MouseEvent, PointerEvent } from "react";
 import {
   getBoundedPinchAccumulatorScale,
+  getNestedWaferTouchOwner,
   getPanScrollPosition,
   getStableZoomAnchor,
   getTouchCentroid,
@@ -462,6 +463,11 @@ export function ProcessFlowDiagram({
     pointerId: number;
     startClientX: number;
     startClientY: number;
+  } | null>(null);
+  const pendingTouchStepWaferRef = useRef<{
+    nodeId: string;
+    assignmentId: string;
+    pointerId: number;
   } | null>(null);
   const pendingZoomAnchorRef = useRef<ZoomAnchor | null>(null);
   const pendingGraphFitRef = useRef<GraphViewportFit | null>(null);
@@ -2263,6 +2269,7 @@ export function ProcessFlowDiagram({
     }
 
     pendingTouchNodeRef.current = null;
+    pendingTouchStepWaferRef.current = null;
     touchItemOwnerRef.current = null;
   };
 
@@ -3027,7 +3034,22 @@ export function ProcessFlowDiagram({
       return startPosition && (node.x !== startPosition.x || node.y !== startPosition.y);
     });
 
+    const pendingWaferTap = pendingTouchStepWaferRef.current?.pointerId === event.pointerId
+      ? pendingTouchStepWaferRef.current
+      : null;
+    if (pendingWaferTap) {
+      pendingTouchStepWaferRef.current = null;
+    }
+
     if (movedNodes.length === 0) {
+      if (event.type === "pointerup" && pendingWaferTap) {
+        const wafer = nodeById.get(pendingWaferTap.nodeId)?.wafers.find(
+          (candidate) => candidate.assignmentId === pendingWaferTap.assignmentId
+        );
+        if (wafer) {
+          selectWafer(pendingWaferTap.nodeId, wafer);
+        }
+      }
       return;
     }
 
@@ -3053,6 +3075,18 @@ export function ProcessFlowDiagram({
     const isSelectedForMove = activeSelectedWafers.some(
       (selection) => selection.assignmentId === wafer.assignmentId
     );
+    if (event.pointerType === "touch" && getNestedWaferTouchOwner({
+      isStepSelected: selectedNodeIds.has(node.id),
+      isWaferSelected: isSelectedForMove
+    }) === "step") {
+      pendingTouchStepWaferRef.current = {
+        nodeId: node.id,
+        assignmentId: wafer.assignmentId,
+        pointerId: event.pointerId
+      };
+      beginNodeDrag(event, node);
+      return;
+    }
     if (event.pointerType === "touch" && getTouchGestureOwner("wafer", isSelectedForMove) === "item") {
       touchItemOwnerRef.current = event.pointerId;
     }
