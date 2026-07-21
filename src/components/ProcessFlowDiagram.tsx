@@ -3235,7 +3235,7 @@ export function ProcessFlowDiagram({
       drag.wafers.some((item) => item.assignmentId === wafer.assignmentId)
     )) ?? [];
     if (!areWafersArchivable(pins)) {
-      setArchiveMessage("Only wafers and dies with a completed process can be archived.");
+      setArchiveMessage("Only wafers and dies with a completed current step can be archived.");
       return;
     }
 

@@ -27,6 +27,7 @@ import {
   getProcessDashboardData,
   type ProcessDashboardData
 } from "@/features/process-flows/queries";
+import { isArchiveEligibleAfterCurrentStep } from "@/features/process-flows/archiveEligibility";
 import { getNextGreekWaferCode } from "@/features/process-flows/waferNaming";
 import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -131,7 +132,7 @@ function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null)
           historyCorrectionCount: state.historyCorrectionCount,
           canCorrectCheckpointRoute: state.canCorrectCheckpointRoute,
           checkpointRouteSourceStepId: state.checkpointRouteSourceStepId,
-          isArchivable: state.assignmentStatus === "completed",
+          isArchivable: isArchiveEligibleAfterCurrentStep(state.currentStepStatus),
           anytimeReturnStepId: state.anytimeReturnStepId,
           anytimeReturnStepName: state.anytimeReturnStepName
         }))

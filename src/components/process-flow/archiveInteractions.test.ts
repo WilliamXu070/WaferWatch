@@ -23,7 +23,7 @@ const node: FlowNode = {
   revision: 1
 };
 
-test("archives only when every dragged wafer has a completed assignment", () => {
+test("archives only when every dragged wafer has a completed current step", () => {
   assert.equal(areWafersArchivable([{ isArchivable: true }, { isArchivable: true }]), true);
   assert.equal(areWafersArchivable([{ isArchivable: true }, { isArchivable: false }]), false);
   assert.equal(areWafersArchivable([]), false);

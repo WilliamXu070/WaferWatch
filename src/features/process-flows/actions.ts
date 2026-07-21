@@ -728,7 +728,7 @@ export async function archiveCompletedProcessWafers(input: unknown) {
       return fail(error.message);
     }
     if ((data ?? []).length !== parsed.items.length) {
-      return fail("One or more completed wafers were not archived.");
+      return fail("One or more wafers or dies with a completed current step were not archived.");
     }
 
     revalidateProcessFlow(parsed.templateId);

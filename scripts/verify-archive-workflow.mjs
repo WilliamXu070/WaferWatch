@@ -14,7 +14,12 @@ const id = {
   mutation: "20000000-0000-4000-8000-000000000008",
   restoreMutation: "20000000-0000-4000-8000-000000000009",
   directWafer: "20000000-0000-4000-8000-000000000010",
-  directAssignment: "20000000-0000-4000-8000-000000000011"
+  directAssignment: "20000000-0000-4000-8000-000000000011",
+  middle: "20000000-0000-4000-8000-000000000012",
+  stepCompleteWafer: "20000000-0000-4000-8000-000000000013",
+  stepCompleteAssignment: "20000000-0000-4000-8000-000000000014",
+  stepCompleteMutation: "20000000-0000-4000-8000-000000000015",
+  stepCompleteRestoreMutation: "20000000-0000-4000-8000-000000000016"
 };
 
 await db.exec(`
@@ -121,22 +126,33 @@ await db.exec(`
     ('${id.template}', '${id.project}', 'Archive process');
   insert into public.process_steps (id, template_id, step_order, name) values
     ('${id.first}', '${id.template}', 10, 'Start'),
+    ('${id.middle}', '${id.template}', 15, 'Completed middle step'),
     ('${id.final}', '${id.template}', 20, 'Finish');
   insert into public.wafers (id, project_id, wafer_code, status) values
     ('${id.wafer}', '${id.project}', 'ARCHIVE-VERIFY', 'completed'),
-    ('${id.directWafer}', '${id.project}', 'DIRECT-VERIFY', 'completed');
+    ('${id.directWafer}', '${id.project}', 'DIRECT-VERIFY', 'completed'),
+    ('${id.stepCompleteWafer}', '${id.project}', 'STEP-ARCHIVE-VERIFY', 'in_progress');
   insert into public.wafer_process_assignments (
     id, wafer_id, template_id, assigned_by, status, completed_at, current_step_id
   ) values (
     '${id.assignment}', '${id.wafer}', '${id.template}', '${id.actor}', 'completed', now(), '${id.final}'
+  ), (
+    '${id.stepCompleteAssignment}', '${id.stepCompleteWafer}', '${id.template}', '${id.actor}', 'in_progress', null, '${id.middle}'
   );
+  insert into public.step_executions (assignment_id, wafer_id, process_step_id, status) values
+    ('${id.stepCompleteAssignment}', '${id.stepCompleteWafer}', '${id.middle}', 'completed');
 `);
 
 const migration = await readFile(
   new URL("../supabase/migrations/202607150010_completed_wafer_archive.sql", import.meta.url),
   "utf8"
 );
+const completedStepArchiveMigration = await readFile(
+  new URL("../supabase/migrations/202607210002_allow_completed_step_archive.sql", import.meta.url),
+  "utf8"
+);
 await db.exec(migration);
+await db.exec(completedStepArchiveMigration);
 await db.exec(`select set_config('app.actor_id', '${id.actor}', false)`);
 
 await assert.rejects(
@@ -207,4 +223,46 @@ assert.deepEqual(events.rows.map((event) => event.event_type), [
   "wafer_restored_from_archive"
 ]);
 
-console.log("Archive workflow verification passed: completed history preserved and restore created a new run.");
+const completedStepArchiveResult = await db.query(
+  `select * from public.archive_completed_wafer_assignments($1::uuid[], $2::uuid[])`,
+  [[id.stepCompleteAssignment], [id.stepCompleteMutation]]
+);
+assert.equal(completedStepArchiveResult.rows.length, 1);
+
+const completedStepArchivedState = await db.query(`
+  select wafer.status as wafer_status,
+         wafer.archived_at as wafer_archived_at,
+         assignment.status as assignment_status,
+         assignment.archived_at as assignment_archived_at
+  from public.wafers wafer
+  join public.wafer_process_assignments assignment on assignment.wafer_id = wafer.id
+  where assignment.id = '${id.stepCompleteAssignment}'
+`);
+assert.equal(completedStepArchivedState.rows[0].wafer_status, "in_progress");
+assert.ok(completedStepArchivedState.rows[0].wafer_archived_at);
+assert.equal(completedStepArchivedState.rows[0].assignment_status, "in_progress");
+assert.ok(completedStepArchivedState.rows[0].assignment_archived_at);
+
+const completedStepRestoreResult = await db.query(
+  `select public.restore_archived_wafer_to_step($1, $2, $3, $4) as restored`,
+  [
+    id.stepCompleteWafer,
+    id.stepCompleteAssignment,
+    id.middle,
+    id.stepCompleteRestoreMutation
+  ]
+);
+const completedStepRestored = completedStepRestoreResult.rows[0].restored;
+assert.equal(completedStepRestored.target_step_id, id.middle);
+
+const completedStepEvents = await db.query(`
+  select event_type from public.process_events
+  where wafer_id = '${id.stepCompleteWafer}'
+  order by event_at
+`);
+assert.deepEqual(completedStepEvents.rows.map((event) => event.event_type), [
+  "wafer_archived",
+  "wafer_restored_from_archive"
+]);
+
+console.log("Archive workflow verification passed: completed-step and whole-process history preserved and restore created a new run.");
