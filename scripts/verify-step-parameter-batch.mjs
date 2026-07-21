@@ -78,6 +78,11 @@ const migration = await readFile(
   "utf8"
 );
 await db.exec(migration);
+const ambiguityFixMigration = await readFile(
+  new URL("../supabase/migrations/202607210001_fix_parameter_notes_ambiguity.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(ambiguityFixMigration);
 await db.query(
   "insert into public.profiles (id, role, is_active) values ($1, 'admin', true), ($2, 'researcher', true)",
   [ids.admin, ids.researcher]
@@ -118,6 +123,7 @@ const first = await db.query(
 );
 assert.equal(first.rows.length, 8);
 assert.ok(first.rows.every((row) => row.movement_mutation_id));
+assert.ok(first.rows.every((row) => row.notes === "Shared note"));
 
 const firstRevision = await db.query("select revision from public.process_steps where id = $1", [ids.step]);
 assert.equal(firstRevision.rows[0].revision, 2);
@@ -155,6 +161,7 @@ await assert.rejects(
 
 console.log(JSON.stringify({
   records: first.rows.length,
+  notes: "stored under production ambiguity rules",
   retry: "idempotent",
   invalidBatch: "rolled back",
   reusableSchemaRevision: firstRevision.rows[0].revision,
