@@ -7,7 +7,10 @@ test("keeps clipboard paste available for the complete Die Appearance editor", a
 
   assert.match(source, /window\.addEventListener\("paste", handlePaste\)/);
   assert.match(source, /getClipboardImageFiles\(clipboardData\)/);
-  assert.match(source, /paste a copied PNG, JPEG, or WebP with ⌘V/);
+  assert.match(source, /Choose, drop, or paste a PNG, JPEG, or WebP image/);
+  assert.match(source, /useDropzone\(\{/);
+  assert.match(source, /data-die-appearance-dropzone/);
+  assert.match(source, /Drop to \{attachmentId \? "replace image" : "add image"\}/);
 });
 
 test("does not mount the native appearance picker in read-only status", async () => {

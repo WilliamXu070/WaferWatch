@@ -14,6 +14,7 @@ import {
 import { PendingNoteAttachments } from "@/components/notes/PendingNoteAttachments";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
 import {
+  getNoteAttachmentMergeError,
   mergeNoteAttachmentFiles,
   prepareNoteAttachmentFiles
 } from "@/features/measurements/noteAttachmentDraft";
@@ -331,13 +332,7 @@ export function StepParameterEntryDialog({
     await prepareNoteAttachmentFiles(files);
     setAttachmentFiles((current) => {
       const merged = mergeNoteAttachmentFiles(current, files);
-      setAttachmentError(
-        merged.oversizedCount > 0
-          ? "Files must be 50 MB or smaller."
-          : merged.overflowCount > 0
-            ? "You can attach up to 8 files."
-            : null
-      );
+      setAttachmentError(getNoteAttachmentMergeError(merged));
       return merged.files;
     });
   };
@@ -611,8 +606,8 @@ export function StepParameterEntryDialog({
             disabled={isPending}
             error={attachmentError}
             description={total > 1
-              ? `Paste images or attach files for all ${total} moved items.`
-              : "Paste images or attach files for this step record."}
+              ? `Drop files here, paste images, or attach files for all ${total} moved items.`
+              : "Drop files here, paste images, or attach files for this step record."}
             mobileDescription={total > 1
               ? `Photos and files apply to all ${total} moved items.`
               : "Photos and files save with this parameter record."}

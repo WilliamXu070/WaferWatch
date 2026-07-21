@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getNoteAttachmentMergeError,
+  isAcceptedNoteAttachmentFile,
   MAX_NOTE_ATTACHMENTS,
   mergeNoteAttachmentFiles,
   NOTE_ATTACHMENT_MAX_BYTES,
@@ -45,4 +47,20 @@ test("enforces attachment size and count limits in one shared queue", () => {
   assert.equal(merged.files.length, MAX_NOTE_ATTACHMENTS);
   assert.equal(merged.overflowCount, 2);
   assert.equal(merged.oversizedCount, 1);
+});
+
+test("rejects unsupported dropped files before they enter the shared queue", () => {
+  const executable = new File(["binary"], "dangerous.exe", {
+    type: "application/octet-stream"
+  });
+  const image = makeFile("inspection.png");
+  const merged = mergeNoteAttachmentFiles([], [executable, image]);
+
+  assert.deepEqual(merged.files, [image]);
+  assert.equal(merged.unsupportedCount, 1);
+  assert.equal(
+    getNoteAttachmentMergeError(merged),
+    "Use an image, PDF, Word, PowerPoint, Excel, CSV, or JSON file."
+  );
+  assert.equal(isAcceptedNoteAttachmentFile(new File(["report"], "report.pdf")), true);
 });

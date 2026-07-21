@@ -13,7 +13,7 @@ import { getAttachmentDownloadUrl } from "@/features/measurements/actions";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
 import {
   formatNoteAttachmentSize,
-  MAX_NOTE_ATTACHMENTS,
+  getNoteAttachmentMergeError,
   mergeNoteAttachmentFiles,
   prepareNoteAttachmentFiles
 } from "@/features/measurements/noteAttachmentDraft";
@@ -529,13 +529,7 @@ export function WaferDieNotesDashboard({
     setDraftFilesByStepId((current) => {
       const existing = current[stepId] ?? [];
       const merged = mergeNoteAttachmentFiles(existing, files);
-      setError(
-        merged.oversizedCount > 0
-          ? "Files must be 50 MB or smaller."
-          : merged.overflowCount > 0
-            ? `You can attach up to ${MAX_NOTE_ATTACHMENTS} files.`
-            : null
-      );
+      setError(getNoteAttachmentMergeError(merged));
 
       return {
         ...current,
@@ -970,7 +964,7 @@ export function WaferDieNotesDashboard({
             <PendingNoteAttachments
               files={selectedDraftFiles}
               disabled={isSaving}
-              description="Paste an image or attach a file to this note."
+              description="Drop files here, paste an image, or attach a file to this note."
               onAddFiles={(files) => void appendDraftFiles(selectedDraftKey, files)}
               onRemoveFile={(file) => setDraftFilesByStepId((current) => ({
                 ...current,

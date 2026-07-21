@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { Camera, FileText, Images, Paperclip, X } from "lucide-react";
+import { Camera, FileText, Images, Paperclip, Upload, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useDropzone } from "react-dropzone";
 import {
   formatNoteAttachmentSize,
   getNoteAttachmentFileKey,
@@ -75,8 +76,35 @@ export function PendingNoteAttachments({
   onAddFiles: (files: File[]) => void;
   onRemoveFile: (file: File) => void;
 }) {
+  const isDropDisabled = disabled || files.length >= MAX_NOTE_ATTACHMENTS;
+  const { getRootProps, isDragActive } = useDropzone({
+    disabled: isDropDisabled,
+    multiple: true,
+    noClick: true,
+    noKeyboard: true,
+    onDrop: (droppedFiles) => {
+      if (droppedFiles.length > 0) {
+        onAddFiles(droppedFiles);
+      }
+    }
+  });
+
   return (
-    <div className="grid min-w-0 gap-2" aria-label="Note attachments">
+    <div
+      {...getRootProps({
+        className: [
+          "relative grid min-w-0 gap-2 rounded-lg border border-dashed p-2 transition-colors",
+          isDragActive
+            ? "border-[#55554f] bg-[#f1f1eb]"
+            : "border-[#dcdcd5] bg-[#fafaf7]",
+          isDropDisabled ? "opacity-60" : ""
+        ].join(" "),
+        "aria-label": "Note attachments",
+        "aria-disabled": isDropDisabled,
+        "data-drag-active": isDragActive ? "true" : "false",
+        "data-note-attachment-dropzone": "true"
+      })}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-[#dcdcd5] bg-white px-3 text-[12px] font-semibold text-[#55554f] hover:bg-[#f8f8f4] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 md:hidden">
           <Camera className="size-4" aria-hidden />
@@ -128,12 +156,21 @@ export function PendingNoteAttachments({
           />
         </label>
         <p className="m-0 hidden text-[11px] leading-4 text-[#85857d] md:block">
-          {description ?? `Paste images with ⌘V or attach up to ${MAX_NOTE_ATTACHMENTS} files.`}
+          {description ?? `Drop files here, paste images with ⌘V, or attach up to ${MAX_NOTE_ATTACHMENTS} files.`}
         </p>
         <p className="m-0 basis-full text-[11px] leading-4 text-[#85857d] md:hidden">
           {mobileDescription ?? `Add up to ${MAX_NOTE_ATTACHMENTS} photos or files.`}
         </p>
       </div>
+
+      {isDragActive ? (
+        <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-lg bg-[#f1f1eb]/95 text-[12px] font-semibold text-[#3f3f3a]" role="status">
+          <span className="inline-flex items-center gap-2">
+            <Upload className="size-4" aria-hidden />
+            Drop to attach
+          </span>
+        </div>
+      ) : null}
 
       {files.length ? (
         <div className="flex min-w-0 flex-wrap gap-2" aria-live="polite">

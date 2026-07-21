@@ -18,5 +18,8 @@ test("offers explicit iPhone camera, photo library, and file inputs", () => {
   assert.match(markup, /accept="image\/\*/);
   assert.match(markup, />Files</);
   assert.match(markup, /Attach files/);
+  assert.match(markup, /Drop files here/);
+  assert.match(markup, /data-note-attachment-dropzone="true"/);
+  assert.match(markup, /data-drag-active="false"/);
   assert.equal((markup.match(/type="file"/g) ?? []).length, 3);
 });

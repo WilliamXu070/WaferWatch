@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { PendingNoteAttachments } from "@/components/notes/PendingNoteAttachments";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
 import {
+  getNoteAttachmentMergeError,
   mergeNoteAttachmentFiles,
   prepareNoteAttachmentFiles
 } from "@/features/measurements/noteAttachmentDraft";
@@ -3474,13 +3475,7 @@ export function ProcessFlowDiagram({
     await prepareNoteAttachmentFiles(files);
     setPendingWaferMoveFiles((current) => {
       const merged = mergeNoteAttachmentFiles(current, files);
-      setPendingWaferMoveFileError(
-        merged.oversizedCount > 0
-          ? "Files must be 50 MB or smaller."
-          : merged.overflowCount > 0
-            ? "You can attach up to 8 files."
-            : null
-      );
+      setPendingWaferMoveFileError(getNoteAttachmentMergeError(merged));
       return merged.files;
     });
   };
@@ -4456,8 +4451,8 @@ export function ProcessFlowDiagram({
                 disabled={isPendingWaferMoveLocked}
                 error={pendingWaferMoveFileError}
                 description={pendingWaferMove.wafers.length > 1
-                  ? "Paste images or attach files for all selected dies."
-                  : "Paste images or attach files for this step note."}
+                  ? "Drop files here, paste images, or attach files for all selected dies."
+                  : "Drop files here, paste images, or attach files for this step note."}
                 mobileDescription={pendingWaferMove.wafers.length > 1
                   ? "Photos and files apply to all selected dies."
                   : "Photos and files save with this movement note."}

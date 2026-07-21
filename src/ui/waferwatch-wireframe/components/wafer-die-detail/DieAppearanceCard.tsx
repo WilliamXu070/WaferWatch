@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
-import { ImagePlus } from "lucide-react";
+import { ImagePlus, Upload } from "lucide-react";
+import { useDropzone } from "react-dropzone";
 import { getAttachmentDownloadUrl } from "@/features/measurements/actions";
 import { getClipboardImageFiles } from "@/features/measurements/clipboardImages";
 import { NOTE_ATTACHMENT_MAX_BYTES, uploadWaferNoteAttachments } from "@/features/measurements/noteAttachmentUpload";
@@ -90,6 +91,29 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
     if (file) void uploadImage(file);
   };
 
+  const { getRootProps, isDragActive } = useDropzone({
+    accept: {
+      "image/jpeg": [".jpg", ".jpeg"],
+      "image/png": [".png"],
+      "image/webp": [".webp"]
+    },
+    disabled: !canEdit || isBusy,
+    maxSize: NOTE_ATTACHMENT_MAX_BYTES,
+    multiple: false,
+    noClick: true,
+    noKeyboard: true,
+    onDrop: (acceptedFiles, rejectedFiles) => {
+      const [file] = acceptedFiles;
+      if (file) {
+        void uploadImage(file);
+        return;
+      }
+      if (rejectedFiles.length > 0) {
+        setError("Use a PNG, JPEG, or WebP image up to 50 MB.");
+      }
+    }
+  });
+
   useEffect(() => {
     if (!canEdit) return;
 
@@ -116,8 +140,16 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
   return (
     <DetailCard title="Die appearance" className="die-appearance-card">
       <div
-        className="die-appearance-card__canvas group relative grid min-h-[260px] place-items-center overflow-hidden rounded-lg border border-[#e5e5e0] bg-[#fafaf7] outline-none focus-within:border-[#111111] focus:border-[#111111]"
-        tabIndex={canEdit ? 0 : -1}
+        {...getRootProps({
+          className: [
+            "die-appearance-card__canvas group relative grid min-h-[260px] place-items-center overflow-hidden rounded-lg border bg-[#fafaf7] outline-none focus-within:border-[#111111] focus:border-[#111111]",
+            isDragActive ? "border-[#55554f] bg-[#f1f1eb]" : "border-[#e5e5e0]"
+          ].join(" "),
+          tabIndex: canEdit ? 0 : -1,
+          "aria-label": canEdit ? "Die appearance image drop zone" : "Die appearance",
+          "data-die-appearance-dropzone": canEdit ? "true" : undefined,
+          "data-drag-active": isDragActive ? "true" : "false"
+        })}
       >
         {imageUrl ? (
           <Image
@@ -135,7 +167,7 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
               <p className="text-[14px] font-semibold text-[#22221f]">
                 {isBusy ? "Loading image..." : "Die image template"}
               </p>
-              {canEdit ? <p className="mt-1 text-[12px] leading-5 text-[#777770]">Choose an image or paste a copied PNG, JPEG, or WebP with ⌘V.</p> : null}
+              {canEdit ? <p className="mt-1 text-[12px] leading-5 text-[#777770]">Choose, drop, or paste a PNG, JPEG, or WebP image.</p> : null}
             </div>
           </div>
         )}
@@ -151,6 +183,15 @@ export function DieAppearanceCard({ tile, canEdit }: { tile: WaferStatusTileMode
               <ImagePlus aria-hidden size={15} />
               {attachmentId ? "Replace image" : "Add image"}
             </button>
+          </div>
+        ) : null}
+
+        {isDragActive ? (
+          <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-[#f1f1eb]/95 text-[13px] font-semibold text-[#33332f]" role="status">
+            <span className="inline-flex items-center gap-2">
+              <Upload aria-hidden size={17} />
+              Drop to {attachmentId ? "replace image" : "add image"}
+            </span>
           </div>
         ) : null}
       </div>

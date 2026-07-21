@@ -148,7 +148,7 @@ test("renders the moved item, global template values, and local parameter contro
   assert.match(markup, /Notes/);
   assert.match(markup, /Additional notes/);
   assert.match(markup, /Attach files/);
-  assert.match(markup, /Paste images or attach files for this step record/);
+  assert.match(markup, /Drop files here, paste images, or attach files for this step record/);
   assert.match(markup, /Add reusable row/);
   assert.match(markup, /One-time row/);
   assert.doesNotMatch(markup, /Edit template/);
