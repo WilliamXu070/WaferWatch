@@ -29,6 +29,7 @@ Prefer small domain modules over adding more state or handlers to the two large 
 
 - Process Flow graph edges are visual; server actions remain the authority for movement eligibility.
 - Phone taps select. Only a previously selected die can move; two-finger pinch owns zoom.
+- The Process Flow selection inspector does not expose Move to or Submit review actions; movement and review submission stay on the canvas gesture path.
 - Checkpoint history is append-only. Corrections and undo supersede evidence; they do not rewrite it.
 - Wafer / Die Status has exactly two tabs: Overview and Process History.
 - Poling and inspection workspaces may show shared die data; do not attribute it to a historical visit.

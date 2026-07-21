@@ -957,31 +957,6 @@ textarea {
   padding: 10px;
 }
 
-.process-flow-selection-inspector__footer label {
-  position: relative;
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid oklch(0.83 0.012 92);
-  border-radius: 9px;
-  background: oklch(0.995 0.004 92);
-  padding-left: 10px;
-  color: oklch(0.38 0.012 92);
-}
-
-.process-flow-selection-inspector__footer select {
-  min-width: 0;
-  height: 38px;
-  flex: 1;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  outline: none;
-}
-
 .process-flow-selection-inspector__footer .button {
   min-height: 40px;
   padding: 0 12px;
@@ -4668,6 +4643,10 @@ textarea {
     display: none;
   }
 
+  .process-flow-selection-inspector:not(.is-mobile-expanded) .process-flow-selection-inspector__footer {
+    display: none;
+  }
+
   .process-flow-selection-stack {
     height: 82px;
   }
@@ -4725,7 +4704,6 @@ textarea {
     padding: 7px;
   }
 
-  .process-flow-selection-inspector__footer label,
   .process-flow-selection-inspector__footer .button {
     min-height: 44px;
   }

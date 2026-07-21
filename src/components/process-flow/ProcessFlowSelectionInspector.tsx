@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Clock3,
   Layers3,
-  MoveRight,
   RotateCcw,
   Trash2,
   UserRound,
@@ -60,10 +59,8 @@ type SelectionInspectorProps = {
   onClear: () => void;
   onDelete: () => void;
   onRemove: (assignmentId: string) => void;
-  onMove: (targetId: string) => void;
   onOpenFullRecord: () => void;
   onParameterDirtyChange: (isDirty: boolean) => void;
-  onSubmitCheckpoint: () => void;
   onUndoMovement: () => void;
 };
 
@@ -265,10 +262,8 @@ export function ProcessFlowSelectionInspector({
   onClear,
   onDelete,
   onRemove,
-  onMove,
   onOpenFullRecord,
   onParameterDirtyChange,
-  onSubmitCheckpoint,
   onUndoMovement
 }: SelectionInspectorProps) {
   const activeItem = items.at(-1);
@@ -388,28 +383,6 @@ export function ProcessFlowSelectionInspector({
         </div>
 
         <footer className="process-flow-selection-inspector__footer">
-          <label>
-            <span className="sr-only">Move selected items</span>
-            <MoveRight aria-hidden size={15} />
-            <select
-              aria-label="Move selected items"
-              defaultValue=""
-              disabled={isPending || moveTargets.length === 0}
-              onChange={(event) => {
-                const targetId = event.currentTarget.value;
-                event.currentTarget.value = "";
-                if (targetId) onMove(targetId);
-              }}
-            >
-              <option value="">Move to…</option>
-              {moveTargets.map((target) => <option key={target.id} value={target.id}>{target.label}</option>)}
-            </select>
-          </label>
-          {submitEligibleCount === items.length ? (
-            <button className="button primary-button" disabled={isPending} onClick={onSubmitCheckpoint} type="button">
-              Submit review
-            </button>
-          ) : null}
           {isSingle && canUndoMovement ? (
             <button className="button ghost-button" disabled={isPending} onClick={onUndoMovement} type="button">
               <RotateCcw aria-hidden size={14} /> Undo movement

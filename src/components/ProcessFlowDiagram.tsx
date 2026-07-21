@@ -4518,16 +4518,8 @@ export function ProcessFlowDiagram({
           onClear={clearWaferSelectionFromInspector}
           onDelete={deleteSelectedWafer}
           onRemove={removeWaferFromInspector}
-          onMove={(targetId) => {
-            if (!confirmDiscardSelectionParameters("Discard the unsaved parameter changes before moving this selection?")) return;
-            openWaferMoveDialog(activeSelectedWafers, selectedWafer.nodeId, targetId, true);
-          }}
           onOpenFullRecord={() => openWaferDetails(selectedWaferPin)}
           onParameterDirtyChange={handleSelectionParameterDirtyChange}
-          onSubmitCheckpoint={() => {
-            if (!confirmDiscardSelectionParameters("Discard the unsaved parameter changes before submitting this selection?")) return;
-            openCheckpointSubmitDialog(activeSelectedWafers, selectedWafer.nodeId);
-          }}
           onUndoMovement={undoSelectedDieHistory}
         />
       ) : null}

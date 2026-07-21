@@ -54,4 +54,12 @@ test("keeps the phone inspector compact until details are requested", async () =
   assert.match(cssSource, /:not\(\.is-mobile-expanded\)[\s\S]*__body > :not\(\.process-flow-selection-stack\)/);
   assert.match(cssSource, /\.process-flow-selection-stack \{\s*height: 82px;/);
   assert.match(cssSource, /:not\(\.is-mobile-expanded\)[\s\S]*__footer \.ghost-button/);
+  assert.match(cssSource, /:not\(\.is-mobile-expanded\) \.process-flow-selection-inspector__footer \{\s*display: none;/);
+});
+
+test("does not offer move or checkpoint submission from the selection inspector", async () => {
+  const source = await readFile(new URL("./ProcessFlowSelectionInspector.tsx", import.meta.url), "utf8");
+
+  assert.doesNotMatch(source, /aria-label="Move selected items"/);
+  assert.doesNotMatch(source, /onClick=\{onSubmitCheckpoint\}/);
 });
