@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getNoteAttachmentMergeError,
+  getNoteAttachmentMimeType,
   isAcceptedNoteAttachmentFile,
   MAX_NOTE_ATTACHMENTS,
   mergeNoteAttachmentFiles,
@@ -63,4 +64,27 @@ test("rejects unsupported dropped files before they enter the shared queue", () 
     "Use an image, PDF, Word, PowerPoint, Excel, CSV, or JSON file."
   );
   assert.equal(isAcceptedNoteAttachmentFile(new File(["report"], "report.pdf")), true);
+});
+
+test("accepts and preserves the MIME type reported by an iPhone HEIC image", () => {
+  const heic = new File(["heic image"], "IMG_2048.HEIC", { type: "image/heic" });
+
+  assert.equal(isAcceptedNoteAttachmentFile(heic), true);
+  assert.equal(getNoteAttachmentMimeType(heic), "image/heic");
+});
+
+test("infers canonical HEIC and HEIF MIME types when iPhone file sources omit them", () => {
+  const heic = new File(["heic image"], "IMG_2048.HEIC");
+  const heif = new File(["heif image"], "IMG_2049.heif", { type: "application/octet-stream" });
+
+  assert.equal(isAcceptedNoteAttachmentFile(heic), true);
+  assert.equal(getNoteAttachmentMimeType(heic), "image/heic");
+  assert.equal(isAcceptedNoteAttachmentFile(heif), true);
+  assert.equal(getNoteAttachmentMimeType(heif), "image/heif");
+});
+
+test("keeps the shared image picker aligned with the storage allowlist", () => {
+  assert.equal(getNoteAttachmentMimeType(new File(["gif"], "image.gif", { type: "image/gif" })), "image/gif");
+  assert.equal(getNoteAttachmentMimeType(new File(["webp"], "image.webp", { type: "image/webp" })), "image/webp");
+  assert.equal(isAcceptedNoteAttachmentFile(new File(["svg"], "unsafe.svg", { type: "image/svg+xml" })), false);
 });

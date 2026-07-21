@@ -22,6 +22,27 @@ const NOTE_ATTACHMENT_EXTENSIONS = [
   ".json"
 ];
 
+const NOTE_ATTACHMENT_MIME_TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
+  ".tif": "image/tiff",
+  ".tiff": "image/tiff",
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".ppt": "application/vnd.ms-powerpoint",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".csv": "text/csv",
+  ".json": "application/json"
+};
+
 export const NOTE_ATTACHMENT_ACCEPT = NOTE_ATTACHMENT_EXTENSIONS.join(",");
 
 export const NOTE_ATTACHMENT_IMAGE_ACCEPT = "image/*,.heic,.heif,.tif,.tiff";
@@ -38,14 +59,39 @@ const NOTE_ATTACHMENT_MIME_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/gif",
+  "image/heic",
+  "image/heic-sequence",
+  "image/heif",
+  "image/heif-sequence",
+  "image/jpeg",
+  "image/png",
+  "image/tiff",
+  "image/webp",
   "text/csv"
 ]);
 
+const NOTE_ATTACHMENT_MIME_ALIASES: Readonly<Record<string, string>> = {
+  "image/jpg": "image/jpeg",
+  "image/x-tiff": "image/tiff"
+};
+
+function getNoteAttachmentExtension(fileName: string) {
+  const normalizedName = fileName.trim().toLowerCase();
+  return NOTE_ATTACHMENT_EXTENSIONS.find((extension) => normalizedName.endsWith(extension)) ?? null;
+}
+
+export function getNoteAttachmentMimeType(file: Pick<File, "name" | "type">) {
+  const reportedType = file.type.trim().toLowerCase();
+  const normalizedReportedType = NOTE_ATTACHMENT_MIME_ALIASES[reportedType] ?? reportedType;
+  if (NOTE_ATTACHMENT_MIME_TYPES.has(normalizedReportedType)) return normalizedReportedType;
+
+  const extension = getNoteAttachmentExtension(file.name);
+  return extension ? NOTE_ATTACHMENT_MIME_TYPE_BY_EXTENSION[extension] : null;
+}
+
 export function isAcceptedNoteAttachmentFile(file: File) {
-  const normalizedName = file.name.trim().toLowerCase();
-  return file.type.startsWith("image/")
-    || NOTE_ATTACHMENT_MIME_TYPES.has(file.type.toLowerCase())
-    || NOTE_ATTACHMENT_EXTENSIONS.some((extension) => normalizedName.endsWith(extension));
+  return getNoteAttachmentMimeType(file) !== null;
 }
 
 async function cacheNoteAttachmentContentKey(file: File) {
@@ -54,7 +100,7 @@ async function cacheNoteAttachmentContentKey(file: File) {
     if (!subtle) return;
     const digest = await subtle.digest("SHA-256", await file.arrayBuffer());
     const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-    contentKeyByFile.set(file, `sha256:${file.type}:${file.size}:${hash}`);
+    contentKeyByFile.set(file, `sha256:${getNoteAttachmentMimeType(file) ?? file.type}:${file.size}:${hash}`);
   } catch {
     // Metadata identity remains available when content hashing is unsupported.
   }
@@ -73,7 +119,7 @@ export async function prepareNoteAttachmentFiles(files: readonly File[]) {
 }
 
 export function getNoteAttachmentFileKey(file: File) {
-  return contentKeyByFile.get(file) ?? `${file.name}:${file.type}:${file.size}`;
+  return contentKeyByFile.get(file) ?? `${file.name}:${getNoteAttachmentMimeType(file) ?? file.type}:${file.size}`;
 }
 
 export function formatNoteAttachmentSize(sizeBytes: number | null | undefined) {

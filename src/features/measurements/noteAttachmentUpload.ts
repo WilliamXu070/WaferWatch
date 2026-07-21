@@ -2,6 +2,7 @@
 
 import { finalizeWaferStepNotesBatch, registerAttachmentsBatch } from "@/features/measurements/actions";
 import {
+  getNoteAttachmentMimeType,
   MAX_NOTE_ATTACHMENTS,
   NOTE_ATTACHMENT_MAX_BYTES
 } from "@/features/measurements/noteAttachmentDraft";
@@ -116,7 +117,7 @@ export async function persistWaferStepNoteAttachmentsBatch(
     const { error } = await supabase.storage
       .from(NOTE_ATTACHMENT_BUCKET)
       .uploadToSignedUrl(signedUpload.path, signedUpload.token, job.file, {
-        contentType: job.file.type || "application/octet-stream"
+        contentType: getNoteAttachmentMimeType(job.file) ?? "application/octet-stream"
       });
     if (error) throw new Error(error.message);
     job.status = "uploaded";
@@ -144,7 +145,7 @@ export async function persistWaferStepNoteAttachmentsBatch(
     attachments: jobs.filter((job) => job.noteIndex === noteIndex).map((job) => ({
       objectPath: job.objectPath,
       fileName: job.file.name || sanitizeFileName(job.file.name),
-      mimeType: job.file.type || null,
+      mimeType: getNoteAttachmentMimeType(job.file),
       sizeBytes: job.file.size
     }))
   }));
@@ -226,7 +227,7 @@ export async function uploadWaferNoteAttachments(input: {
       signedUpload.path,
       signedUpload.token,
       file,
-      { contentType: file.type || "application/octet-stream" }
+      { contentType: getNoteAttachmentMimeType(file) ?? "application/octet-stream" }
     );
     if (error) throw new Error(error.message);
   });
@@ -238,7 +239,7 @@ export async function uploadWaferNoteAttachments(input: {
       bucketName: NOTE_ATTACHMENT_BUCKET,
       objectPath: objectPaths[index],
       fileName: file.name || sanitizeFileName(file.name),
-      mimeType: file.type || null,
+      mimeType: getNoteAttachmentMimeType(file),
       sizeBytes: file.size
     }))
   });
