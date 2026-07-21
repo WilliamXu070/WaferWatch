@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
-import { getSupabaseStatus } from "@/lib/supabase/status";
+import { checkSupabaseHealth } from "@/lib/supabase/status";
 
-export function GET() {
-  return NextResponse.json({
-    ok: true,
-    service: "waferwatch",
-    supabase: getSupabaseStatus()
-  });
+export async function GET() {
+  const supabase = await checkSupabaseHealth();
+
+  return NextResponse.json(
+    {
+      ok: supabase.ok,
+      service: "waferwatch",
+      supabase
+    },
+    {
+      status: supabase.ok ? 200 : 503,
+      headers: {
+        "Cache-Control": "no-store"
+      }
+    }
+  );
 }
