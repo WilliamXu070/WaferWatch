@@ -4443,8 +4443,7 @@ textarea {
 }
 
 .wafer-step-history__scroll,
-.wafer-step-detail__parameters,
-.wafer-step-detail__notes,
+.wafer-step-detail__scroll,
 .wafer-step-parameter-sheet {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -4453,24 +4452,21 @@ textarea {
 }
 
 .wafer-step-history__scroll::-webkit-scrollbar,
-.wafer-step-detail__parameters::-webkit-scrollbar,
-.wafer-step-detail__notes::-webkit-scrollbar,
+.wafer-step-detail__scroll::-webkit-scrollbar,
 .wafer-step-parameter-sheet::-webkit-scrollbar {
   width: 7px;
   height: 7px;
 }
 
 .wafer-step-history__scroll::-webkit-scrollbar-thumb,
-.wafer-step-detail__parameters::-webkit-scrollbar-thumb,
-.wafer-step-detail__notes::-webkit-scrollbar-thumb,
+.wafer-step-detail__scroll::-webkit-scrollbar-thumb,
 .wafer-step-parameter-sheet::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: #c9c9c1;
 }
 
 .wafer-step-history__scroll::-webkit-scrollbar-track,
-.wafer-step-detail__parameters::-webkit-scrollbar-track,
-.wafer-step-detail__notes::-webkit-scrollbar-track,
+.wafer-step-detail__scroll::-webkit-scrollbar-track,
 .wafer-step-parameter-sheet::-webkit-scrollbar-track {
   background: transparent;
 }
@@ -5355,10 +5351,10 @@ textarea {
   }
 
   .wafer-parameters-table-wrap {
-    margin-right: -16px;
-    margin-left: -16px;
-    padding-left: 16px;
-    padding-right: 16px;
+    margin-right: -12px;
+    margin-left: -12px;
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
   .wafer-step-workspace {
@@ -5433,10 +5429,6 @@ textarea {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .wafer-step-detail__parameters {
-    max-height: 190px;
   }
 
   .wafer-step-detail__composer {

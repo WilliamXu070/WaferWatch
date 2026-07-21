@@ -736,7 +736,7 @@ export function WaferDieNotesDashboard({
         </div>
       </section>
 
-      <section className="wafer-step-detail grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
+      <section className="wafer-step-detail grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-[#e6e6e0] bg-white">
         <div className="row-start-1 min-w-0 w-full border-b border-[#eeeeea] px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -787,39 +787,40 @@ export function WaferDieNotesDashboard({
           </section>
         ) : null}
 
-        <section className="wafer-step-detail__parameters row-start-3 min-w-0 w-full max-w-full max-h-[360px] overflow-y-auto" aria-label={`${selectedStepName} workspace`}>
-          {workspaceCapability === "poling" ? (
-            <div className="grid gap-3 p-3">
-              <div>
-                <h4 className="text-[13px] font-semibold text-[#111111]">Shared die Poling matrix</h4>
-                <p className="mt-1 text-[11px] font-medium text-[#777770]">Applies to this die; not attributed to this visit.</p>
+        <div className="wafer-step-detail__scroll row-start-3 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
+          <section className="wafer-step-detail__parameters min-w-0 w-full max-w-full" aria-label={`${selectedStepName} workspace`}>
+            {workspaceCapability === "poling" ? (
+              <div className="grid gap-3 p-3">
+                <div>
+                  <h4 className="text-[13px] font-semibold text-[#111111]">Shared die Poling matrix</h4>
+                  <p className="mt-1 text-[11px] font-medium text-[#777770]">Applies to this die; not attributed to this visit.</p>
+                </div>
+                <ParametersTableCard tile={tile} canEdit={canEdit} onPolingNotesChange={onNotesChange} />
               </div>
-              <ParametersTableCard tile={tile} canEdit={canEdit} onPolingNotesChange={onNotesChange} />
-            </div>
-          ) : workspaceCapability === "inspection" ? (
-            <div className="grid gap-3 p-3">
-              <div>
-                <h4 className="text-[13px] font-semibold text-[#111111]">Shared die inspection evidence</h4>
-                <p className="mt-1 text-[11px] font-medium text-[#777770]">Applies to this die; not attributed to this visit.</p>
+            ) : workspaceCapability === "inspection" ? (
+              <div className="grid gap-3 p-3">
+                <div>
+                  <h4 className="text-[13px] font-semibold text-[#111111]">Shared die inspection evidence</h4>
+                  <p className="mt-1 text-[11px] font-medium text-[#777770]">Applies to this die; not attributed to this visit.</p>
+                </div>
+                <ResultsReviewBoard tile={tile} canEdit={canEdit} />
               </div>
-              <ResultsReviewBoard tile={tile} canEdit={canEdit} />
-            </div>
-          ) : (
-            <StepParameterHistory
-              key={`${selectedVisit?.id ?? "die"}:${selectedStepParameterRecords[0]?.revision ?? 0}`}
-              records={selectedStepParameterRecords}
-              templateSchema={selectedStep?.parametersSchema ?? {}}
-              projectId={tile.projectId}
-              waferId={tile.waferId}
-              stepId={selectedStepId}
-              stepExecutionId={selectedStepExecutionId}
-              canEdit={canEdit && Boolean(selectedVisit)}
-              onSave={saveWaferStatusStepParameterRecord}
-            />
-          )}
-        </section>
+            ) : (
+              <StepParameterHistory
+                key={`${selectedVisit?.id ?? "die"}:${selectedStepParameterRecords[0]?.revision ?? 0}`}
+                records={selectedStepParameterRecords}
+                templateSchema={selectedStep?.parametersSchema ?? {}}
+                projectId={tile.projectId}
+                waferId={tile.waferId}
+                stepId={selectedStepId}
+                stepExecutionId={selectedStepExecutionId}
+                canEdit={canEdit && Boolean(selectedVisit)}
+                onSave={saveWaferStatusStepParameterRecord}
+              />
+            )}
+          </section>
 
-        <div className="wafer-step-detail__notes row-start-4 flex min-h-0 min-w-0 w-full max-w-full flex-col gap-3 overflow-y-auto bg-[#fbfbf8] p-3">
+          <div className="wafer-step-detail__notes flex min-w-0 w-full max-w-full flex-col gap-3 border-t border-[#eeeeea] bg-[#fbfbf8] p-3">
           {visibleNotes.length ? (
             visibleNotes.map((note) => {
               const authorName = getNoteAuthorName(note, currentUser);
@@ -956,55 +957,56 @@ export function WaferDieNotesDashboard({
           ) : (
             <EmptyNotesState />
           )}
-        </div>
+          </div>
 
-        {canEdit ? (
-        <div className="wafer-step-detail__composer row-start-5 min-w-0 w-full max-w-full border-t border-[#e6e6e0] bg-white p-2">
-          <div className="mb-2">
-            <PendingNoteAttachments
-              files={selectedDraftFiles}
-              disabled={isSaving}
-              description="Drop files here, paste an image, or attach a file to this note."
-              onAddFiles={(files) => void appendDraftFiles(selectedDraftKey, files)}
-              onRemoveFile={(file) => setDraftFilesByStepId((current) => ({
-                ...current,
-                [selectedDraftKey]: (current[selectedDraftKey] ?? []).filter((candidate) => candidate !== file)
-              }))}
-            />
+          {canEdit ? (
+          <div className="wafer-step-detail__composer min-w-0 w-full max-w-full border-t border-[#e6e6e0] bg-white p-2">
+            <div className="mb-2">
+              <PendingNoteAttachments
+                files={selectedDraftFiles}
+                disabled={isSaving}
+                description="Drop files here, paste an image, or attach a file to this note."
+                onAddFiles={(files) => void appendDraftFiles(selectedDraftKey, files)}
+                onRemoveFile={(file) => setDraftFilesByStepId((current) => ({
+                  ...current,
+                  [selectedDraftKey]: (current[selectedDraftKey] ?? []).filter((candidate) => candidate !== file)
+                }))}
+              />
+            </div>
+            <div className="wafer-step-detail__composer-row flex min-w-0 items-end gap-1.5">
+              <textarea
+                id={`wafer-die-note-${selectedDraftKey}`}
+                name="waferDieNote"
+                value={selectedDraft}
+                onChange={(event) => setDraftByStepId((current) => ({
+                  ...current,
+                  [selectedDraftKey]: event.target.value.slice(0, MAX_NOTE_LENGTH)
+                }))}
+                placeholder={`Write a note for ${selectedStepName}...`}
+                className="wafer-step-detail__composer-input min-h-10 max-h-20 min-w-0 flex-1 resize-y rounded-md border border-[#deded8] bg-[#fbfbf8] px-3 py-2 text-[14px] leading-5 text-[#111111] outline-none placeholder:text-[#9b9b94] focus:border-[#777770]"
+                onPaste={(event) => {
+                  const pastedImages = getClipboardImageFiles(event.clipboardData);
+                  if (pastedImages.length > 0) {
+                    event.preventDefault();
+                    void appendDraftFiles(selectedDraftKey, pastedImages);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => void addNote(selectedStepId, selectedStepName, selectedStepExecutionId, selectedDraftKey)}
+                disabled={(!selectedDraft.trim() && selectedDraftFiles.length === 0) || isSaving}
+                className="h-10 shrink-0 rounded-md bg-[#171714] px-3.5 text-[12px] font-semibold text-white transition-transform hover:bg-[#30302b] active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
+              >
+                Add note
+              </button>
+            </div>
+            {selectedDraft.length ? (
+              <p className="mt-1 text-right text-[10px] font-medium text-[#8a8a83]">{selectedDraft.length}/{MAX_NOTE_LENGTH}</p>
+            ) : null}
           </div>
-          <div className="wafer-step-detail__composer-row flex min-w-0 items-end gap-1.5">
-            <textarea
-              id={`wafer-die-note-${selectedDraftKey}`}
-              name="waferDieNote"
-              value={selectedDraft}
-              onChange={(event) => setDraftByStepId((current) => ({
-                ...current,
-                [selectedDraftKey]: event.target.value.slice(0, MAX_NOTE_LENGTH)
-              }))}
-              placeholder={`Write a note for ${selectedStepName}...`}
-              className="wafer-step-detail__composer-input min-h-10 max-h-20 min-w-0 flex-1 resize-y rounded-md border border-[#deded8] bg-[#fbfbf8] px-3 py-2 text-[14px] leading-5 text-[#111111] outline-none placeholder:text-[#9b9b94] focus:border-[#777770]"
-              onPaste={(event) => {
-                const pastedImages = getClipboardImageFiles(event.clipboardData);
-                if (pastedImages.length > 0) {
-                  event.preventDefault();
-                  void appendDraftFiles(selectedDraftKey, pastedImages);
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => void addNote(selectedStepId, selectedStepName, selectedStepExecutionId, selectedDraftKey)}
-              disabled={(!selectedDraft.trim() && selectedDraftFiles.length === 0) || isSaving}
-              className="h-10 shrink-0 rounded-md bg-[#171714] px-3.5 text-[12px] font-semibold text-white transition-transform hover:bg-[#30302b] active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-[#c9c9c2]"
-            >
-              Add note
-            </button>
-          </div>
-          {selectedDraft.length ? (
-            <p className="mt-1 text-right text-[10px] font-medium text-[#8a8a83]">{selectedDraft.length}/{MAX_NOTE_LENGTH}</p>
           ) : null}
         </div>
-        ) : null}
       </section>
       {historyCorrectionMode && selectedVisit ? (
         <HistoryCorrectionDialog
