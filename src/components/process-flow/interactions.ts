@@ -16,6 +16,15 @@ export function getWaferDragCaptureTarget(pointerType: string) {
   return pointerType === "touch" ? "frame" : "source";
 }
 
+/**
+ * Direct-touch browsers already implicitly capture the active touch target.
+ * Keeping that target avoids Mobile Safari's SVG-to-HTML capture hand-off,
+ * while mouse drags still use explicit capture on the source node.
+ */
+export function getStepDragCaptureTarget(pointerType: string) {
+  return pointerType === "touch" ? "implicit" : "source";
+}
+
 /** A die must be deliberately selected before a gesture may move it. */
 export function canMoveSelectedWafer(isSelected: boolean) {
   return isSelected;

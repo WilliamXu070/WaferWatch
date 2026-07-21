@@ -5,6 +5,7 @@ import {
   canMoveSelectedProcessStep,
   canMoveSelectedWafer,
   getProcessMoveActionNote,
+  getStepDragCaptureTarget,
   getStepDoubleClickAction,
   getWaferDetailsHref,
   getWaferDetailsPrefetchHref,
@@ -98,6 +99,12 @@ test("routes an iPhone wafer drag through the stable canvas frame from touch-dow
   assert.equal(getWaferDragCaptureTarget("touch"), "frame");
   assert.equal(getWaferDragCaptureTarget("mouse"), "source");
   assert.equal(getWaferDragCaptureTarget("pen"), "source");
+});
+
+test("keeps an iPhone step drag on its native implicit touch target", () => {
+  assert.equal(getStepDragCaptureTarget("touch"), "implicit");
+  assert.equal(getStepDragCaptureTarget("mouse"), "source");
+  assert.equal(getStepDragCaptureTarget("pen"), "source");
 });
 
 test("does not let the SVG-to-frame capture hand-off cancel an iPhone wafer gesture", () => {

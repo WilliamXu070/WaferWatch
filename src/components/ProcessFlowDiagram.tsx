@@ -98,6 +98,7 @@ import {
   canMoveSelectedProcessStep,
   canMoveSelectedWafer,
   getProcessMoveActionNote,
+  getStepDragCaptureTarget,
   getWaferDetailsHref,
   getWaferDetailsPrefetchHref,
   getWaferDragCaptureTarget,
@@ -393,6 +394,9 @@ export function ProcessFlowDiagram({
   const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
   const [pendingConnectionStart, setPendingConnectionStart] = useState<ConnectionDraft | null>(null);
   const [nodeDrag, setNodeDrag] = useState<NodeDrag | null>(null);
+  // Native iPhone moves can arrive before React commits the pointer-down render.
+  // Keep ownership and latest positions synchronous for both node and frame routes.
+  const nodeDragRef = useRef<NodeDrag | null>(null);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const [waferDrag, setWaferDrag] = useState<WaferDrag | null>(null);
   const [waferDropTarget, setWaferDropTarget] = useState<{ nodeId: string; kind: "submit" | "move" } | null>(null);
@@ -861,6 +865,9 @@ export function ProcessFlowDiagram({
       draft && draft.from === temporaryStepId ? { ...draft, from: persistedStep.id } : draft
     );
 
+    if (nodeDragRef.current?.nodeId === temporaryStepId) {
+      nodeDragRef.current = { ...nodeDragRef.current, nodeId: persistedStep.id };
+    }
     setNodeDrag((drag) =>
       drag && drag.nodeId === temporaryStepId ? { ...drag, nodeId: persistedStep.id } : drag
     );
@@ -2113,6 +2120,7 @@ export function ProcessFlowDiagram({
     setEdges(normalizeFlowEdges(serverGraph.edges));
     setConnectionDraft(null);
     setPendingConnectionStart(null);
+    nodeDragRef.current = null;
     setNodeDrag(null);
     setSelectionBox(null);
     setWaferDrag(null);
@@ -2201,7 +2209,7 @@ export function ProcessFlowDiagram({
     const isMiddleMousePan = event.button === 1;
     const isModifiedLeftPan = event.button === 0 && event.altKey;
 
-    if ((!isMiddleMousePan && !isModifiedLeftPan) || connectionDraft || nodeDrag || waferDrag) {
+    if ((!isMiddleMousePan && !isModifiedLeftPan) || connectionDraft || nodeDragRef.current || waferDrag) {
       return;
     }
 
@@ -2246,14 +2254,16 @@ export function ProcessFlowDiagram({
   }, [applyScaleAtAnchor]);
 
   const cancelItemDragForPinch = () => {
-    if (nodeDrag) {
+    const activeNodeDrag = nodeDragRef.current;
+    if (activeNodeDrag) {
       const originalPositions = new Map(
-        nodeDrag.nodeStartPositions.map((position) => [position.nodeId, position])
+        activeNodeDrag.nodeStartPositions.map((position) => [position.nodeId, position])
       );
       setNodes((currentNodes) => currentNodes.map((node) => {
         const original = originalPositions.get(node.id);
         return original ? { ...node, x: original.x, y: original.y } : node;
       }));
+      nodeDragRef.current = null;
       setNodeDrag(null);
       setSnapGuides([]);
     }
@@ -2456,7 +2466,7 @@ export function ProcessFlowDiagram({
     if (event.pointerType === "touch") {
       if (waferDragRef.current?.canMove) {
         updateWaferDrag(event as unknown as PointerEvent<Element>);
-      } else if (nodeDrag) {
+      } else if (nodeDragRef.current) {
         updateNodeDrag(event as unknown as PointerEvent<SVGGElement>);
       }
       return;
@@ -2467,7 +2477,7 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    if (!isPanning || !panStateRef.current || connectionDraft || nodeDrag || waferDrag) {
+    if (!isPanning || !panStateRef.current || connectionDraft || nodeDragRef.current || waferDrag) {
       return;
     }
 
@@ -2483,7 +2493,7 @@ export function ProcessFlowDiagram({
   };
 
   const endPan = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch" && nodeDrag) {
+    if (event.pointerType === "touch" && nodeDragRef.current) {
       finishNodeDrag(event as unknown as PointerEvent<SVGGElement>);
       return;
     }
@@ -2874,7 +2884,7 @@ export function ProcessFlowDiagram({
         y: currentNode.y
       }));
 
-    setNodeDrag({
+    const nextNodeDrag = {
       nodeId: node.id,
       pointerId: event.pointerId,
       offsetX: point.x - node.x,
@@ -2882,13 +2892,14 @@ export function ProcessFlowDiagram({
       startX: node.x,
       startY: node.y,
       nodeStartPositions
-    });
+    };
+    nodeDragRef.current = nextNodeDrag;
+    setNodeDrag(nextNodeDrag);
     if (event.pointerType === "touch") {
       touchItemOwnerRef.current = event.pointerId;
     }
-    const captureTarget = event.pointerType === "touch" ? frameRef.current : event.currentTarget;
-    if (captureTarget) {
-      safelySetPointerCapture(captureTarget, event.pointerId);
+    if (getStepDragCaptureTarget(event.pointerType) === "source") {
+      safelySetPointerCapture(event.currentTarget, event.pointerId);
     }
   };
 
@@ -2948,42 +2959,45 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    if (!nodeDrag || nodeDrag.pointerId !== event.pointerId) {
+    const activeNodeDrag = nodeDragRef.current;
+    if (!activeNodeDrag || activeNodeDrag.pointerId !== event.pointerId) {
       return;
+    }
+    if (event.pointerType === "touch") {
+      event.stopPropagation();
     }
 
     const point = getScenePoint(event);
-    const draggedNode = nodes.find((node) => node.id === nodeDrag.nodeId);
+    const draggedNode = nodesRef.current.find((node) => node.id === activeNodeDrag.nodeId);
     if (!draggedNode) {
       setSnapGuides([]);
       return;
     }
 
-    const unselectedNodes = nodes.filter((node) => (
-      !nodeDrag.nodeStartPositions.some((position) => position.nodeId === node.id)
+    const unselectedNodes = nodesRef.current.filter((node) => (
+      !activeNodeDrag.nodeStartPositions.some((position) => position.nodeId === node.id)
     ));
     const snapped = getSnappedNodePosition(
       draggedNode,
-      Math.round(point.x - nodeDrag.offsetX),
-      Math.round(point.y - nodeDrag.offsetY),
+      Math.round(point.x - activeNodeDrag.offsetX),
+      Math.round(point.y - activeNodeDrag.offsetY),
       unselectedNodes
     );
-    const deltaX = snapped.x - nodeDrag.startX;
-    const deltaY = snapped.y - nodeDrag.startY;
-    const draggedPositions = new Map(nodeDrag.nodeStartPositions.map((position) => [position.nodeId, position]));
+    const deltaX = snapped.x - activeNodeDrag.startX;
+    const deltaY = snapped.y - activeNodeDrag.startY;
+    const nextPositions = activeNodeDrag.nodeStartPositions.map((position) => ({
+      nodeId: position.nodeId,
+      x: Math.max(24, Math.round(position.x + deltaX)),
+      y: Math.max(24, Math.round(position.y + deltaY))
+    }));
+    const draggedPositions = new Map(nextPositions.map((position) => [position.nodeId, position]));
+    const applyDraggedPositions = (currentNodes: FlowNode[]) => currentNodes.map((node) => {
+      const nextPosition = draggedPositions.get(node.id);
+      return nextPosition ? { ...node, x: nextPosition.x, y: nextPosition.y } : node;
+    });
 
-    setNodes((currentNodes) =>
-      currentNodes.map((node) => {
-        const startPosition = draggedPositions.get(node.id);
-        return startPosition
-          ? {
-              ...node,
-              x: Math.max(24, Math.round(startPosition.x + deltaX)),
-              y: Math.max(24, Math.round(startPosition.y + deltaY))
-            }
-          : node;
-      })
-    );
+    nodesRef.current = applyDraggedPositions(nodesRef.current);
+    setNodes(applyDraggedPositions);
     setSnapGuides(snapped.guides);
   };
 
@@ -3016,7 +3030,8 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    if (!nodeDrag || nodeDrag.pointerId !== event.pointerId) {
+    const activeNodeDrag = nodeDragRef.current;
+    if (!activeNodeDrag || activeNodeDrag.pointerId !== event.pointerId) {
       return;
     }
 
@@ -3024,12 +3039,13 @@ export function ProcessFlowDiagram({
     if (touchItemOwnerRef.current === event.pointerId) {
       touchItemOwnerRef.current = null;
     }
-    const finishedDrag = nodeDrag;
+    const finishedDrag = activeNodeDrag;
+    nodeDragRef.current = null;
     setNodeDrag(null);
     setSnapGuides([]);
 
     const nodeStartPositions = new Map(finishedDrag.nodeStartPositions.map((position) => [position.nodeId, position]));
-    const movedNodes = nodes.filter((node) => {
+    const movedNodes = nodesRef.current.filter((node) => {
       const startPosition = nodeStartPositions.get(node.id);
       return startPosition && (node.x !== startPosition.x || node.y !== startPosition.y);
     });
@@ -4011,6 +4027,9 @@ export function ProcessFlowDiagram({
     setNodes((currentNodes) => currentNodes.filter((node) => !deletedIds.has(node.id)));
     setEdges((currentEdges) => normalizeFlowEdges(currentEdges.filter((edge) => !deletedIds.has(edge.from) && !deletedIds.has(edge.to))));
     setConnectionDraft((draft) => (draft && deletedIds.has(draft.from) ? null : draft));
+    if (nodeDragRef.current && deletedIds.has(nodeDragRef.current.nodeId)) {
+      nodeDragRef.current = null;
+    }
     setNodeDrag((drag) => (drag && deletedIds.has(drag.nodeId) ? null : drag));
     setWaferDrag((drag) => (drag && deletedIds.has(drag.sourceStepId) ? null : drag));
     setSelectedNodeIds(new Set());

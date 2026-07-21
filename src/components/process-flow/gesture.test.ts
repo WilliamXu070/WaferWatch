@@ -38,6 +38,15 @@ test("routes a selected step's nested wafer touch into node drag and preserves a
   assert.match(source, /movedNodes\.length === 0[\s\S]*selectWafer\(pendingWaferTap\.nodeId, wafer\)/);
 });
 
+test("keeps native iPhone step ownership synchronous across pointer retargeting", async () => {
+  const source = await readFile(new URL("../ProcessFlowDiagram.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /nodeDragRef\.current = nextNodeDrag;\s*setNodeDrag\(nextNodeDrag\)/);
+  assert.match(source, /getStepDragCaptureTarget\(event\.pointerType\) === "source"/);
+  assert.match(source, /const activeNodeDrag = nodeDragRef\.current;[\s\S]*nodesRef\.current = applyDraggedPositions\(nodesRef\.current\)/);
+  assert.match(source, /nodeDragRef\.current = null;\s*setNodeDrag\(null\);\s*setSnapGuides\(\[\]\)/);
+});
+
 test("pans the viewport from the physical pointer delta regardless of touch target", () => {
   assert.deepEqual(getPanScrollPosition({
     startScrollLeft: 480,
