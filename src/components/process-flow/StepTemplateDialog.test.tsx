@@ -101,4 +101,7 @@ test("renders the full create template and read-only edit states", () => {
   assert.match(readOnlyMarkup, /Read-only/);
   assert.match(readOnlyMarkup, />Close<\/button>/);
   assert.doesNotMatch(readOnlyMarkup, /Save template/);
+  assert.doesNotMatch(readOnlyMarkup, /These defaults appear/);
+  assert.doesNotMatch(readOnlyMarkup, /Parameter template/);
+  assert.doesNotMatch(readOnlyMarkup, /Defaults are starting values/);
 });

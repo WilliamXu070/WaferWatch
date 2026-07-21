@@ -282,7 +282,6 @@ export function StepTemplateDialog({
           <div className="min-w-0">
             <p className="eyebrow">{draft.mode === "create" ? "New process step" : "Step template"}</p>
             <h2 id="step-template-dialog-title">{draft.mode === "create" ? "Create step" : draft.name}</h2>
-            <p>{draft.mode === "create" ? "Define the step and the values operators should record." : "These defaults appear whenever a wafer or die enters this step."}</p>
           </div>
           <button aria-label="Close step template" className="step-template-dialog__close" disabled={isPending} onClick={requestClose} type="button">
             <X aria-hidden className="size-4" />
@@ -322,13 +321,7 @@ export function StepTemplateDialog({
           ) : null}
 
           <section className="step-template-dialog__parameters" aria-label="Step parameter definitions">
-            <div className="step-template-dialog__section-heading">
-              <div>
-                <h3>Parameter template</h3>
-                <p>Defaults are starting values. Operators can change them for each wafer or die.</p>
-              </div>
-              {!draft.canEdit ? <span>Read-only</span> : null}
-            </div>
+            {!draft.canEdit ? <span className="step-template-dialog__read-only">Read-only</span> : null}
             <div className="step-template-table-wrap">
               <table className="step-template-table">
                 <thead>
