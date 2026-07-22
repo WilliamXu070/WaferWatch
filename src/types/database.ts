@@ -1,3 +1,5 @@
+import type { Database as GeneratedDatabase } from "./database.generated";
+
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type UserRole = "admin" | "process_engineer" | "researcher" | "viewer";
@@ -31,8 +33,29 @@ export type ProcessStepTransitionType = "flow" | "return";
 export type ProcessStepExecutionMode = "main" | "anytime";
 export type ProcessTemplateLifecycleStatus = "draft" | "published";
 export type CheckpointDecisionValue = "approved" | "redo";
-
-type Row<T> = { Row: T; Insert: Partial<T>; Update: Partial<T>; Relationships: [] };
+export type PlanRevisionStatus = "draft" | "published" | "superseded";
+export type OperationRunKind = "normal" | "redo" | "rework" | "restore" | "ad_hoc";
+export type OperationRunStatus =
+  | "queued"
+  | "running"
+  | "blocked"
+  | "completed"
+  | "awaiting_review"
+  | "redo_required"
+  | "failed"
+  | "cancelled";
+export type OperationRunMemberStatus =
+  | "queued"
+  | "running"
+  | "blocked"
+  | "completed"
+  | "awaiting_review"
+  | "redo_required"
+  | "rejected"
+  | "failed"
+  | "skipped"
+  | "cancelled";
+export type OperationResourceKind = "person" | "tool" | "recipe" | "location";
 
 export type Profile = {
   id: string;
@@ -99,6 +122,8 @@ export type ProcessStep = {
   parameters_schema: Json;
   required_reviewer_id: string | null;
   archived_at: string | null;
+  stage_id: string;
+  stage_step_order: number;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -191,6 +216,7 @@ export type WaferProcessAssignment = {
   completed_at: string | null;
   current_step_id: string | null;
   anytime_return_step_id: string | null;
+  current_operation_run_member_id: string | null;
   archived_at: string | null;
   archived_by: string | null;
   deleted_at: string | null;
@@ -253,6 +279,8 @@ export type ProcessStepAttempt = {
   submission_notes: string | null;
   evidence_snapshot: Json;
   batch_id: string | null;
+  operation_run_member_id: string | null;
+  submission_group_id: string | null;
   wafer_code_snapshot: string;
   template_name_snapshot: string;
   template_version_snapshot: string;
@@ -365,6 +393,7 @@ export type ProcessCalendarEvent = {
   process_template_id: string;
   wafer_id: string | null;
   location: string;
+  location_id: string | null;
   starts_at: string;
   ends_at: string;
   process_step_id: string | null;
@@ -374,6 +403,7 @@ export type ProcessCalendarEvent = {
   description: string | null;
   created_by: string | null;
   revision: number;
+  client_mutation_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -503,6 +533,365 @@ export type ProcessEvent = {
   notes: string | null;
   metadata: Json;
   client_mutation_id: string | null;
+  operation_run_id: string | null;
+  operation_run_member_id: string | null;
+  process_plan_revision_id: string | null;
+  planned_operation_id: string | null;
+};
+
+export type ProcessStage = {
+  id: string;
+  template_id: string;
+  name: string;
+  slug: string;
+  stage_order: number;
+  canvas_x: number | null;
+  canvas_y: number | null;
+  revision: number;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FabricationLocation = {
+  id: string;
+  slug: string;
+  name: string;
+  timezone: string;
+  travel_group: string | null;
+  is_active: boolean;
+  metadata: Json;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProcessPlan = {
+  id: string;
+  project_id: string;
+  template_id: string;
+  name: string;
+  is_active: boolean;
+  shared_draft_revision_id: string | null;
+  current_published_revision_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProcessPlanRevision = {
+  id: string;
+  plan_id: string;
+  revision_number: number;
+  status: PlanRevisionStatus;
+  based_on_revision_id: string | null;
+  planning_starts_at: string;
+  planning_ends_at: string;
+  row_version: number;
+  created_by: string | null;
+  created_at: string;
+  published_by: string | null;
+  published_at: string | null;
+  superseded_at: string | null;
+};
+
+export type PlannedBatch = {
+  id: string;
+  revision_id: string;
+  logical_id: string;
+  name: string;
+  note: string | null;
+  row_version: number;
+  user_pinned: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PlannedBatchMember = {
+  id: string;
+  planned_batch_id: string;
+  assignment_id: string;
+  added_by: string | null;
+  created_at: string;
+};
+
+export type PlannedOperation = {
+  id: string;
+  revision_id: string;
+  logical_id: string;
+  process_step_id: string;
+  planned_batch_id: string | null;
+  name: string;
+  description: string | null;
+  scheduled_start_at: string;
+  scheduled_end_at: string;
+  status: "planned" | "ready" | "cancelled";
+  user_pinned: boolean;
+  row_version: number;
+  legacy_calendar_event_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PlannedOperationDependency = {
+  id: string;
+  revision_id: string;
+  predecessor_operation_id: string;
+  successor_operation_id: string;
+  dependency_kind: "finish_to_start";
+  lag_minutes: number;
+  created_at: string;
+};
+
+export type PlannedOperationParameter = {
+  id: string;
+  planned_operation_id: string;
+  assignment_id: string | null;
+  parameter_key: string;
+  scope: "global" | "member";
+  value: Json;
+  schema_snapshot: Json;
+  row_version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PlannedOperationResource = {
+  id: string;
+  planned_operation_id: string;
+  resource_kind: OperationResourceKind;
+  person_id: string | null;
+  tool_id: string | null;
+  recipe_id: string | null;
+  location_id: string | null;
+  quantity: number;
+  row_version: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OperationRun = {
+  id: string;
+  template_id: string;
+  process_step_id: string;
+  planned_operation_id: string | null;
+  run_kind: OperationRunKind;
+  status: OperationRunStatus;
+  reason: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_by: string | null;
+  revision: number;
+  client_mutation_id: string | null;
+  legacy_batch_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OperationRunMember = {
+  id: string;
+  operation_run_id: string;
+  assignment_id: string;
+  wafer_id: string;
+  status: OperationRunMemberStatus;
+  note: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  revision: number;
+  legacy_step_execution_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OperationRunLink = {
+  id: string;
+  parent_run_id: string;
+  child_run_id: string;
+  link_kind: "successor" | "redo" | "split" | "merge" | "restore";
+  created_at: string;
+};
+
+export type OperationRunParameterRecord = {
+  id: string;
+  operation_run_id: string;
+  operation_run_member_id: string | null;
+  scope: "global" | "member";
+  schema_snapshot: Json;
+  values: Json;
+  recorded_by: string | null;
+  recorded_at: string;
+  supersedes_record_id: string | null;
+  correction_reason: string | null;
+  client_mutation_id: string | null;
+};
+
+export type OperationRunNote = {
+  id: string;
+  operation_run_id: string;
+  operation_run_member_id: string | null;
+  note_kind: "general" | "completion" | "error" | "redo" | "correction";
+  body: string;
+  created_by: string | null;
+  created_at: string;
+  supersedes_note_id: string | null;
+  correction_reason: string | null;
+  client_mutation_id: string | null;
+};
+
+export type OperationRunResource = {
+  id: string;
+  operation_run_id: string;
+  operation_run_member_id: string | null;
+  resource_kind: OperationResourceKind;
+  person_id: string | null;
+  tool_id: string | null;
+  recipe_id: string | null;
+  location_id: string | null;
+  resource_snapshot: Json;
+  recorded_by: string | null;
+  recorded_at: string;
+};
+
+export type WorkflowRevision = {
+  template_id: string;
+  current_revision: number;
+  updated_at: string;
+};
+
+export type WorkflowChangeLog = {
+  id: string;
+  template_id: string;
+  revision: number;
+  client_mutation_id: string;
+  mutation_kind: string;
+  changed_entities: Json;
+  actor_id: string | null;
+  committed_at: string;
+};
+
+export type PlanReplanRequest = {
+  id: string;
+  plan_id: string;
+  draft_revision_id: string;
+  source_run_id: string | null;
+  request_kind: "redo" | "delay" | "resource_change" | "manual";
+  requested_change: Json;
+  status: "pending" | "processing" | "proposed" | "failed" | "applied" | "dismissed";
+  requested_by: string | null;
+  requested_at: string;
+  processed_at: string | null;
+  client_mutation_id: string;
+};
+
+export type PlanAdjustmentProposal = {
+  id: string;
+  request_id: string;
+  plan_id: string;
+  draft_revision_id: string;
+  base_draft_row_version: number;
+  status: "ready" | "applied" | "stale" | "dismissed";
+  moved_operations: Json;
+  unresolved_conflicts: Json;
+  scheduler_version: string;
+  generated_at: string;
+  applied_by: string | null;
+  applied_at: string | null;
+};
+
+export type ProcessCurrentStateView = {
+  assignment_id: string;
+  project_id: string;
+  template_id: string;
+  wafer_id: string;
+  wafer_code: string;
+  item_type: "wafer" | "die";
+  parent_wafer_id: string | null;
+  die_label: string | null;
+  wafer_family: string;
+  die_count: number | null;
+  wafer_notes: string | null;
+  wafer_created_at: string;
+  wafer_metadata: Json;
+  wafer_status: FabricationStatus;
+  assignment_status: FabricationStatus;
+  assignment_revision: number;
+  current_step_id: string | null;
+  anytime_return_step_id: string | null;
+  current_step_name: string | null;
+  current_step_slug: string | null;
+  current_step_order: number | null;
+  current_stage_id: string | null;
+  current_stage_name: string | null;
+  current_stage_slug: string | null;
+  current_stage_order: number | null;
+  current_operation_run_member_id: string | null;
+  current_operation_run_id: string | null;
+  current_member_status: OperationRunMemberStatus | null;
+  current_member_revision: number | null;
+  current_run_kind: OperationRunKind | null;
+  current_run_status: OperationRunStatus | null;
+  current_run_revision: number | null;
+  planned_operation_id: string | null;
+  legacy_step_execution_id: string | null;
+  current_tool_id: string | null;
+  current_handler_id: string | null;
+  current_handler_name: string | null;
+  required_reviewer_id: string | null;
+  required_reviewer_name: string | null;
+  latest_attempt_id: string | null;
+  latest_attempt_submitted_by: string | null;
+  latest_attempt_notes: string | null;
+  latest_submitted_at: string | null;
+  latest_review_status: string | null;
+  next_step_name: string | null;
+  checkpoint_route_source_step_id: string | null;
+  can_correct_checkpoint_route: boolean;
+  stage_progress: Json;
+  assigned_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  archived_at: string | null;
+  deleted_at: string | null;
+};
+
+export type OperationRunHistoryView = Record<string, Json | undefined> & {
+  operation_run_member_id: string;
+  operation_run_id: string;
+  template_id: string;
+  project_id: string;
+  assignment_id: string;
+  wafer_id: string;
+  process_step_id: string;
+  member_status: OperationRunMemberStatus;
+  run_status: OperationRunStatus;
+  created_at: string;
+};
+
+export type BatchRunStateView = Record<string, Json | undefined> & {
+  operation_run_id: string;
+  template_id: string;
+  process_step_id: string;
+  run_status: OperationRunStatus;
+  member_status: string;
+  member_count: number;
+  members: Json;
+  created_at: string;
+};
+
+export type PlanCurrentStateView = Record<string, Json | undefined> & {
+  plan_id: string;
+  project_id: string;
+  template_id: string;
+  plan_revision_id: string;
+  revision_status: PlanRevisionStatus;
+  is_shared_draft: boolean;
+  is_current_published: boolean;
+  planned_operation_id: string;
+  process_step_id: string;
+  scheduled_start_at: string;
+  scheduled_end_at: string;
+  operation_row_version: number;
 };
 
 export type AuditEvent = {
@@ -569,318 +958,124 @@ export type ToolUtilizationMetric = {
   completed_run_minutes: number;
 };
 
-export interface Database {
-  public: {
-    Tables: {
-      profiles: Row<Profile>;
-      projects: Row<Project>;
-      project_members: Row<ProjectMember>;
-      process_templates: Row<ProcessTemplate>;
-      process_steps: Row<ProcessStep>;
-      process_step_transitions: Row<ProcessStepTransition>;
-      fabrication_tools: Row<FabricationTool>;
-      recipes: Row<Recipe>;
-      wafer_lots: Row<WaferLot>;
-      wafers: Row<Wafer>;
-      wafer_process_assignments: Row<WaferProcessAssignment>;
-      step_executions: Row<StepExecution>;
-      step_parameter_records: Row<StepParameterRecord>;
-      process_step_attempts: Row<ProcessStepAttempt>;
-      checkpoint_decisions: Row<CheckpointDecision>;
-      checkpoint_submission_withdrawals: Row<CheckpointSubmissionWithdrawal>;
-      checkpoint_reviewer_reassignments: Row<CheckpointReviewerReassignment>;
-      tool_reservations: Row<ToolReservation>;
-      process_people: Row<ProcessPerson>;
-      process_calendar_events: Row<ProcessCalendarEvent>;
-      process_batches: Row<ProcessBatch>;
-      process_batch_members: Row<ProcessBatchMember>;
-      process_batch_links: Row<ProcessBatchLink>;
-      process_calendar_event_people: Row<ProcessCalendarEventPerson>;
-      measurements: Row<Measurement>;
-      attachments: Row<Attachment>;
-      die_inspections: Row<DieInspection>;
-      text_surfaces: Row<TextSurface>;
-      process_issues: Row<ProcessIssue>;
-      process_events: Row<ProcessEvent>;
-      audit_events: Row<AuditEvent>;
-      team_messages: Row<TeamMessage>;
+type GeneratedPublic = GeneratedDatabase["public"];
+type GeneratedTables = GeneratedPublic["Tables"];
+type GeneratedViews = GeneratedPublic["Views"];
+type GeneratedFunctions = GeneratedPublic["Functions"];
+type WithArgs<FunctionContract, Args> = Omit<FunctionContract, "Args"> & { Args: Args };
+type NullableArgs<Args, Keys extends keyof Args> = Omit<Args, Keys> & {
+  [Key in Keys]: Args[Key] | null;
+};
+
+type ProcessStepInsert = Omit<
+  GeneratedTables["process_steps"]["Insert"],
+  "stage_id" | "stage_step_order" | "node_type" | "execution_mode"
+> & {
+  stage_id?: string;
+  stage_step_order?: number;
+  node_type?: ProcessStepNodeType;
+  execution_mode?: ProcessStepExecutionMode;
+};
+
+type RuntimeTables = Omit<GeneratedTables, "process_templates" | "process_steps" | "process_step_transitions"> & {
+  process_templates: Omit<GeneratedTables["process_templates"], "Row" | "Insert" | "Update"> & {
+    Row: ProcessTemplate;
+    Insert: Omit<GeneratedTables["process_templates"]["Insert"], "lifecycle_status"> & {
+      lifecycle_status?: ProcessTemplateLifecycleStatus;
     };
-    Views: {
-      vw_process_batch_history: { Row: ProcessBatchHistoryView; Relationships: [] };
-      vw_wafer_cycle_time: { Row: WaferCycleTimeMetric; Relationships: [] };
-      vw_step_cycle_metrics: { Row: StepCycleMetric; Relationships: [] };
-      vw_wip_by_stage: { Row: WipByStageMetric; Relationships: [] };
-      vw_tool_utilization_daily: { Row: ToolUtilizationMetric; Relationships: [] };
+    Update: Omit<GeneratedTables["process_templates"]["Update"], "lifecycle_status"> & {
+      lifecycle_status?: ProcessTemplateLifecycleStatus;
     };
-    Functions: {
-      can_access_project: {
-        Args: { target_project_id: string | null };
-        Returns: boolean;
-      };
-      can_edit_project: {
-        Args: { target_project_id: string | null };
-        Returns: boolean;
-      };
-      can_access_wafer: {
-        Args: { target_wafer_id: string | null };
-        Returns: boolean;
-      };
-      can_access_step_execution: {
-        Args: { target_step_execution_id: string | null };
-        Returns: boolean;
-      };
-      record_planned_batch_member: {
-        Args: {
-          target_batch_id: string;
-          target_step_execution_id: string;
-          batch_note?: string | null;
-          parent_batch_id?: string | null;
-          planned_start_at?: string | null;
-          planned_end_at?: string | null;
-          planned_location?: string | null;
-        };
-        Returns: string;
-      };
-      claim_wafer_assignment_move: {
-        Args: {
-          target_assignment_id: string;
-          expected_source_step_id: string;
-          next_step_id: string;
-        };
-        Returns: WaferProcessAssignment;
-      };
-      upsert_text_surface_versioned: {
-        Args: {
-          target_project_id: string;
-          target_scope_type: string;
-          target_scope_key: string;
-          target_field_key: string;
-          next_value: string;
-          expected_version?: number | null;
-        };
-        Returns: TextSurface;
-      };
-      mutate_text_surface_json_array: {
-        Args: {
-          target_project_id: string;
-          target_scope_type: string;
-          target_scope_key: string;
-          target_field_key: string;
-          operation: "add" | "update" | "delete";
-          item_id: string;
-          item?: Json | null;
-        };
-        Returns: TextSurface;
-      };
-      patch_wafer_die_poling_parameters: {
-        Args: {
-          target_wafer_id: string;
-          target_die_code: string;
-          updates: Json;
-        };
-        Returns: Wafer;
-      };
-      update_process_step_positions_versioned: {
-        Args: { position_updates: Json };
-        Returns: ProcessStep[];
-      };
-      duplicate_process_template_version: {
-        Args: { source_template_id: string; next_version: string; next_name?: string | null };
-        Returns: ProcessTemplate;
-      };
-      publish_process_template_version: {
-        Args: { target_template_id: string };
-        Returns: ProcessTemplate;
-      };
-      normalize_draft_process_step_order: {
-        Args: { target_template_id: string; moved_step_id: string; target_position: number };
-        Returns: ProcessStep[];
-      };
-      create_ordered_draft_process_step: {
-        Args: {
-          target_template_id: string;
-          target_position: number;
-          step_name: string;
-          step_slug: string;
-          step_process_area: string;
-          reviewer_id?: string | null;
-          step_expected_duration_minutes?: number | null;
-          step_queue_target_minutes?: number | null;
-          step_required_tool_type?: string | null;
-          step_requires_recipe?: boolean;
-          step_instructions?: string | null;
-          step_parameters_schema?: Json;
-          step_canvas_x?: number | null;
-          step_canvas_y?: number | null;
-        };
-        Returns: ProcessStep;
-      };
-      archive_draft_process_step: {
-        Args: { target_step_id: string };
-        Returns: ProcessStep;
-      };
-      assign_draft_process_step_reviewer: {
-        Args: { target_step_id: string; reviewer_id: string | null };
-        Returns: ProcessStep;
-      };
-      submit_step_checkpoint: {
-        Args: {
-          target_step_execution_id: string;
-          mutation_id: string;
-          notes?: string | null;
-          evidence?: Json;
-        };
-        Returns: ProcessStepAttempt;
-      };
-      withdraw_step_checkpoint_submission: {
-        Args: { target_attempt_id: string; mutation_id: string; reason?: string | null };
-        Returns: CheckpointSubmissionWithdrawal;
-      };
-      review_step_checkpoint: {
-        Args: {
-          target_attempt_id: string;
-          review_decision: CheckpointDecisionValue;
-          mutation_id: string;
-          notes?: string | null;
-          redo_target_step_id?: string | null;
-        };
-        Returns: CheckpointDecision;
-      };
-      review_dicing_step_checkpoint: {
-        Args: {
-          target_attempt_id: string;
-          mutation_id: string;
-          notes?: string | null;
-          child_specs?: Json;
-        };
-        Returns: CheckpointDecision;
-      };
-      reconcile_dicing_checkpoint_split: {
-        Args: {
-          target_decision_id: string;
-          target_child_wafer_ids: string[];
-        };
-        Returns: Json;
-      };
-      reassign_unavailable_checkpoint_reviewer: {
-        Args: {
-          target_step_id: string;
-          replacement_reviewer_id: string;
-          mutation_id: string;
-          reason: string;
-        };
-        Returns: CheckpointReviewerReassignment;
-      };
-      assign_process_step_checkpoint_reviewer: {
-        Args: { target_step_id: string; reviewer_id: string | null };
-        Returns: ProcessStep;
-      };
-      move_approved_checkpoint_assignment: {
-        Args: {
-          target_assignment_id: string;
-          target_step_id: string;
-          mutation_id: string;
-          notes: string;
-        };
-        Returns: Json;
-      };
-      correct_checkpoint_route_assignment: {
-        Args: {
-          target_assignment_id: string;
-          target_step_id: string;
-          mutation_id: string;
-          notes: string;
-        };
-        Returns: Json;
-      };
-      correct_wafer_process_history: {
-        Args: {
-          target_assignment_id: string;
-          correction_kind: string;
-          target_visit_id: string;
-          anchor_visit_id: string | null;
-          placement: string | null;
-          target_step_id: string | null;
-          completed_at: string | null;
-          reason: string;
-          expected_history_revision: number;
-          mutation_id: string;
-          parameter_values?: Json;
-          parameter_notes?: Json;
-        };
-        Returns: Json;
-      };
-      undo_die_process_history_state: {
-        Args: {
-          target_assignment_id: string;
-          expected_step_id: string;
-          expected_step_status: string;
-          mutation_id: string;
-        };
-        Returns: Json;
-      };
-      route_checkpoint_submission: {
-        Args: {
-          target_attempt_id: string;
-          target_step_id: string;
-          decision_mutation_id: string;
-          movement_mutation_id: string;
-          notes: string;
-          child_specs?: Json;
-        };
-        Returns: Json;
-      };
-      save_step_parameter_records_batch: {
-        Args: {
-          entries: Json;
-          global_values: Json;
-          local_parameters: Json;
-          notes?: string | null;
-        };
-        Returns: StepParameterRecord[];
-      };
-      soft_delete_process_flow_wafer_family: {
-        Args: {
-          target_project_id: string;
-          target_wafer_ids: string[];
-        };
-        Returns: { wafer_id: string }[];
-      };
-      archive_completed_wafer_assignments: {
-        Args: {
-          target_assignment_ids: string[];
-          mutation_ids: string[];
-        };
-        Returns: Array<{
-          assignment_id: string;
-          wafer_id: string;
-          archived_at: string;
-        }>;
-      };
-      restore_archived_wafer_to_step: {
-        Args: {
-          target_wafer_id: string;
-          archived_assignment_id: string;
-          target_step_id: string;
-          mutation_id: string;
-        };
-        Returns: Json;
-      };
-    };
-    Enums: {
-      user_role: UserRole;
-      project_member_role: ProjectMemberRole;
-      project_status: ProjectStatus;
-      project_visibility: ProjectVisibility;
-      fabrication_status: FabricationStatus;
-      step_status: StepStatus;
-      tool_status: ToolStatus;
-      reservation_status: ReservationStatus;
-      issue_severity: IssueSeverity;
-      issue_status: IssueStatus;
-      process_step_node_type: ProcessStepNodeType;
-      process_step_transition_type: ProcessStepTransitionType;
-    };
-    CompositeTypes: Record<string, never>;
   };
-}
+  process_steps: Omit<GeneratedTables["process_steps"], "Row" | "Insert" | "Update"> & {
+    Row: ProcessStep;
+    Insert: ProcessStepInsert;
+    Update: Partial<ProcessStepInsert>;
+  };
+  process_step_transitions: Omit<GeneratedTables["process_step_transitions"], "Row"> & {
+    Row: ProcessStepTransition;
+  };
+};
+
+type RuntimeFunctions = Omit<
+  GeneratedFunctions,
+  | "assign_process_step_checkpoint_reviewer"
+  | "correct_wafer_process_history"
+  | "create_calendar_schedule_item"
+  | "create_plan_replan_request"
+  | "create_planned_batch"
+  | "create_planned_operation"
+  | "save_operation_parameter_records_batch"
+  | "start_operation_run"
+  | "update_calendar_schedule_item"
+  | "upsert_text_surface_versioned"
+> & {
+  assign_process_step_checkpoint_reviewer: WithArgs<
+    Omit<GeneratedFunctions["assign_process_step_checkpoint_reviewer"], "Returns"> & { Returns: ProcessStep },
+    NullableArgs<GeneratedFunctions["assign_process_step_checkpoint_reviewer"]["Args"], "reviewer_id">
+  >;
+  correct_wafer_process_history: WithArgs<
+    GeneratedFunctions["correct_wafer_process_history"],
+    NullableArgs<
+      GeneratedFunctions["correct_wafer_process_history"]["Args"],
+      "anchor_visit_id" | "completed_at" | "placement" | "target_step_id"
+    >
+  >;
+  create_calendar_schedule_item: WithArgs<
+    GeneratedFunctions["create_calendar_schedule_item"],
+    NullableArgs<
+      GeneratedFunctions["create_calendar_schedule_item"]["Args"],
+      "description" | "manual_action" | "target_step_id" | "target_wafer_id"
+    >
+  >;
+  create_plan_replan_request: WithArgs<
+    GeneratedFunctions["create_plan_replan_request"],
+    NullableArgs<GeneratedFunctions["create_plan_replan_request"]["Args"], "source_run_id">
+  >;
+  create_planned_batch: WithArgs<
+    GeneratedFunctions["create_planned_batch"],
+    NullableArgs<GeneratedFunctions["create_planned_batch"]["Args"], "batch_note">
+  >;
+  create_planned_operation: WithArgs<
+    GeneratedFunctions["create_planned_operation"],
+    NullableArgs<GeneratedFunctions["create_planned_operation"]["Args"], "target_batch_id">
+  >;
+  save_operation_parameter_records_batch: WithArgs<
+    GeneratedFunctions["save_operation_parameter_records_batch"],
+    Omit<GeneratedFunctions["save_operation_parameter_records_batch"]["Args"], "notes"> & { notes?: string | null }
+  >;
+  start_operation_run: WithArgs<
+    GeneratedFunctions["start_operation_run"],
+    NullableArgs<GeneratedFunctions["start_operation_run"]["Args"], "planned_operation_id" | "reason">
+  >;
+  update_calendar_schedule_item: WithArgs<
+    GeneratedFunctions["update_calendar_schedule_item"],
+    NullableArgs<
+      GeneratedFunctions["update_calendar_schedule_item"]["Args"],
+      "description" | "manual_action" | "target_step_id" | "target_wafer_id"
+    >
+  >;
+  upsert_text_surface_versioned: WithArgs<
+    GeneratedFunctions["upsert_text_surface_versioned"],
+    Omit<GeneratedFunctions["upsert_text_surface_versioned"]["Args"], "expected_version"> & {
+      expected_version?: number | null;
+    }
+  >;
+};
+
+type RuntimeViews = Omit<GeneratedViews, "vw_process_current_state"> & {
+  vw_process_current_state: Omit<GeneratedViews["vw_process_current_state"], "Row"> & {
+    Row: ProcessCurrentStateView;
+  };
+};
+
+// The linked-Supabase output is authoritative. These narrow overrides express
+// check-constrained text values, nullable RPC inputs, and the stage trigger's
+// optional insert fields that PostgreSQL introspection cannot infer.
+export type Database = Omit<GeneratedDatabase, "public"> & {
+  public: Omit<GeneratedPublic, "Tables" | "Views" | "Functions"> & {
+    Tables: RuntimeTables;
+    Views: RuntimeViews;
+    Functions: RuntimeFunctions;
+  };
+};

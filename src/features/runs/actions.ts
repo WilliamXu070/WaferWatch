@@ -17,64 +17,6 @@ import type { ProcessFlowMutationOutcome } from "@/components/process-flow/types
 import type { Json, ProcessStep } from "@/types/database";
 
 const DIE_COUNT = 8;
-const DASHBOARD_BATCH_EVIDENCE_KEY = "_waferwatch_batch_id";
-
-function withDashboardBatchEvidence(
-  evidence: Record<string, unknown>,
-  batchId: string
-): Json {
-  return {
-    ...evidence,
-    [DASHBOARD_BATCH_EVIDENCE_KEY]: batchId
-  } as Json;
-}
-
-function stepExecutionIdFromMutationData(data: unknown) {
-  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
-  const value = (data as Record<string, unknown>).step_execution_id;
-  return typeof value === "string" ? value : null;
-}
-
-async function recordPlannedBatchMember({
-  supabase,
-  batchId,
-  stepExecutionId,
-  note,
-  parentBatchId
-}: {
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
-  batchId: string;
-  stepExecutionId: string | null;
-  note: string | null | undefined;
-  parentBatchId?: string | null;
-}) {
-  if (!stepExecutionId) return;
-  const { error } = await supabase.rpc("record_planned_batch_member", {
-    target_batch_id: batchId,
-    target_step_execution_id: stepExecutionId,
-    batch_note: note ?? null,
-    parent_batch_id: parentBatchId ?? null
-  });
-  if (error) {
-    // The movement already succeeded in its authoritative RPC. Do not report a
-    // false movement failure while a migration is rolling out; surface it to logs.
-    console.error("[ProcessFlow] failed to persist planned batch member", error);
-  }
-}
-
-async function batchIdForStepExecution(
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
-  stepExecutionId: string
-) {
-  const { data } = await supabase
-    .from("process_batch_members")
-    .select("batch_id")
-    .eq("step_execution_id", stepExecutionId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data?.batch_id ?? null;
-}
 
 function toJsonRecord(value: unknown): Record<string, Json | undefined> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -191,22 +133,14 @@ async function getDicingChildSpecsForCheckpoint({
   }));
 }
 
-async function mapWithConcurrency<T, R>(
-  values: readonly T[],
-  limit: number,
-  mapper: (value: T, index: number) => Promise<R>
-) {
-  const results = new Array<R>(values.length);
-  let nextIndex = 0;
-  const workers = Array.from({ length: Math.min(limit, values.length) }, async () => {
-    while (nextIndex < values.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await mapper(values[index], index);
-    }
-  });
-  await Promise.all(workers);
-  return results;
+function processFlowBatchOutcomes(data: Json): ProcessFlowMutationOutcome[] {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return [];
+  const outcomes = data.outcomes;
+  return Array.isArray(outcomes) ? outcomes as unknown as ProcessFlowMutationOutcome[] : [];
+}
+
+function firstProcessFlowBatchData(data: Json) {
+  return processFlowBatchOutcomes(data)[0]?.data ?? null;
 }
 
 export async function persistProcessFlowMutationsBatch(input: unknown) {
@@ -219,95 +153,25 @@ export async function persistProcessFlowMutationsBatch(input: unknown) {
     const supabase = await createServerSupabaseClient();
     const rpcStartedAt = performance.now();
 
-    const outcomes = await mapWithConcurrency(parsed.mutations, 4, async (mutation): Promise<ProcessFlowMutationOutcome> => {
-      const operationId = mutation.kind === "route" ? mutation.movementMutationId : mutation.mutationId;
-      try {
-        if (mutation.kind === "submit") {
-          const existingBatchId = await batchIdForStepExecution(supabase, mutation.stepExecutionId);
-          const batchId = existingBatchId ?? mutation.batchId;
-          const { data, error } = await supabase.rpc("submit_step_checkpoint", {
-            target_step_execution_id: mutation.stepExecutionId,
-            mutation_id: mutation.mutationId,
-            notes: mutation.notes ?? null,
-            evidence: withDashboardBatchEvidence(mutation.evidence, batchId)
-          });
-          if (error) throw error;
-          return { operationId, assignmentId: mutation.assignmentId, ok: true, data };
-        }
-
-        if (mutation.kind === "move") {
-          const { data: sourceExecution } = await supabase
-            .from("step_executions")
-            .select("id")
-            .eq("assignment_id", mutation.assignmentId)
-            .eq("process_step_id", mutation.sourceStepId)
-            .order("updated_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          const parentBatchId = sourceExecution?.id
-            ? await batchIdForStepExecution(supabase, sourceExecution.id)
-            : null;
-          const { data, error } = await supabase.rpc(
-            mutation.correctCheckpointRoute
-              ? "correct_checkpoint_route_assignment"
-              : "move_approved_checkpoint_assignment",
-            {
-              target_assignment_id: mutation.assignmentId,
-              target_step_id: mutation.targetStepId,
-              mutation_id: mutation.mutationId,
-              notes: mutation.note
-            }
-          );
-          if (error) throw error;
-          await recordPlannedBatchMember({
-            supabase,
-            batchId: mutation.batchId,
-            stepExecutionId: stepExecutionIdFromMutationData(data),
-            note: mutation.note,
-            parentBatchId
-          });
-          return { operationId, assignmentId: mutation.assignmentId, ok: true, data };
-        }
-
-        const { data: attempt } = await supabase
-          .from("process_step_attempts")
-          .select("batch_id")
-          .eq("id", mutation.attemptId)
-          .maybeSingle();
-        const dicingChildSpecs = await getDicingChildSpecsForCheckpoint({
-          attemptId: mutation.attemptId,
-          supabase
-        });
-        const childSpecs = (dicingChildSpecs ?? []).map((spec) => ({
+    const mutations = await Promise.all(parsed.mutations.map(async (mutation) => {
+      if (mutation.kind !== "route") return mutation;
+      const dicingChildSpecs = await getDicingChildSpecsForCheckpoint({
+        attemptId: mutation.attemptId,
+        supabase
+      });
+      return {
+        ...mutation,
+        childSpecs: (dicingChildSpecs ?? []).map((spec) => ({
           ...spec,
           movement_mutation_id: crypto.randomUUID()
-        }));
-        const { data, error } = await supabase.rpc("route_checkpoint_submission", {
-          target_attempt_id: mutation.attemptId,
-          target_step_id: mutation.targetStepId,
-          decision_mutation_id: mutation.decisionMutationId,
-          movement_mutation_id: mutation.movementMutationId,
-          notes: mutation.note,
-          child_specs: childSpecs as Json
-        });
-        if (error) throw error;
-        await recordPlannedBatchMember({
-          supabase,
-          batchId: mutation.batchId,
-          stepExecutionId: stepExecutionIdFromMutationData(data),
-          note: mutation.note,
-          parentBatchId: attempt?.batch_id ?? null
-        });
-        return { operationId, assignmentId: mutation.assignmentId, ok: true, data };
-      } catch (error) {
-        return {
-          operationId,
-          assignmentId: mutation.assignmentId,
-          ok: false,
-          error: toErrorMessage(error)
-        };
-      }
+        }))
+      };
+    }));
+    const { data, error } = await supabase.rpc("execute_process_flow_mutations_batch", {
+      mutations: mutations as unknown as Json
     });
+    if (error) throw error;
+    const outcomes = processFlowBatchOutcomes(data);
 
     console.info("[ProcessFlowPerf]", JSON.stringify({
       action: "workflow_batch",
@@ -327,18 +191,22 @@ export async function submitStepCheckpoint(input: unknown) {
     await requireAccount();
     const parsed = submitStepCheckpointSchema.parse(input);
     const supabase = await createServerSupabaseClient();
-    const { data, error } = await supabase.rpc("submit_step_checkpoint", {
-      target_step_execution_id: parsed.stepExecutionId,
-      mutation_id: parsed.mutationId,
-      notes: parsed.notes ?? null,
-      evidence: withDashboardBatchEvidence(parsed.evidence, parsed.batchId)
+    const { data, error } = await supabase.rpc("execute_process_flow_mutations_batch", {
+      mutations: [{
+        kind: "submit",
+        stepExecutionId: parsed.stepExecutionId,
+        mutationId: parsed.mutationId,
+        batchId: parsed.batchId,
+        notes: parsed.notes ?? null,
+        evidence: parsed.evidence
+      }] as Json
     });
 
     if (error) {
       return fail(error.message);
     }
 
-    return ok(data);
+    return ok(firstProcessFlowBatchData(data));
   } catch (error) {
     return fail(toErrorMessage(error));
   }
@@ -349,30 +217,15 @@ export async function moveApprovedCheckpointWafer(input: unknown) {
     await requireAccount();
     const parsed = moveApprovedCheckpointSchema.parse(input);
     const supabase = await createServerSupabaseClient();
-    const { data, error } = await supabase.rpc(
-      parsed.correctCheckpointRoute
-        ? "correct_checkpoint_route_assignment"
-        : "move_approved_checkpoint_assignment",
-      {
-        target_assignment_id: parsed.assignmentId,
-        target_step_id: parsed.targetStepId,
-        mutation_id: parsed.mutationId,
-        notes: parsed.note
-      }
-    );
+    const { data, error } = await supabase.rpc("execute_process_flow_mutations_batch", {
+      mutations: [{ kind: "move", ...parsed }] as Json
+    });
 
     if (error) {
       return fail(error.message);
     }
 
-    await recordPlannedBatchMember({
-      supabase,
-      batchId: parsed.batchId,
-      stepExecutionId: stepExecutionIdFromMutationData(data),
-      note: parsed.note
-    });
-
-    return ok(data);
+    return ok(firstProcessFlowBatchData(data));
   } catch (error) {
     return fail(toErrorMessage(error));
   }
@@ -439,11 +292,6 @@ export async function routeCheckpointSubmission(input: unknown) {
     await requireAccount();
     const parsed = routeCheckpointSubmissionSchema.parse(input);
     const supabase = await createServerSupabaseClient();
-    const { data: attempt } = await supabase
-      .from("process_step_attempts")
-      .select("batch_id")
-      .eq("id", parsed.attemptId)
-      .maybeSingle();
     const dicingChildSpecs = await getDicingChildSpecsForCheckpoint({
       attemptId: parsed.attemptId,
       supabase
@@ -452,29 +300,15 @@ export async function routeCheckpointSubmission(input: unknown) {
       ...spec,
       movement_mutation_id: crypto.randomUUID()
     }));
-    const { data, error } = await supabase.rpc("route_checkpoint_submission", {
-      target_attempt_id: parsed.attemptId,
-      target_step_id: parsed.targetStepId,
-      decision_mutation_id: parsed.decisionMutationId,
-      movement_mutation_id: parsed.movementMutationId,
-      notes: parsed.note,
-      child_specs: childSpecs as Json
+    const { data, error } = await supabase.rpc("execute_process_flow_mutations_batch", {
+      mutations: [{ kind: "route", ...parsed, childSpecs }] as Json
     });
 
     if (error) {
       return fail(error.message);
     }
 
-    await recordPlannedBatchMember({
-      supabase,
-      batchId: parsed.batchId,
-      stepExecutionId: stepExecutionIdFromMutationData(data),
-      note: parsed.note,
-      parentBatchId: attempt?.batch_id ?? null
-    });
-
-    revalidateCheckpointWorkflow();
-    return ok(data);
+    return ok(firstProcessFlowBatchData(data));
   } catch (error) {
     return fail(toErrorMessage(error));
   }

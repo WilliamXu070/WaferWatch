@@ -1,19 +1,14 @@
 import "server-only";
 
-import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import { readStepParameterDefinitions } from "@/features/process-flows/stepParameters";
 import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
-import { getCheckpointRouteCorrectionState } from "@/features/process-flows/checkpointRouteCorrection";
-import { getHistoryUndoState } from "@/features/process-flows/historyUndo";
 import type {
   Attachment,
-  Json,
   FabricationStatus,
-  ProcessStep,
-  ProcessStepTransition,
-  StepExecution,
-  StepStatus,
-  WaferProcessAssignment
+  Json,
+  OperationRunHistoryView,
+  ProcessCurrentStateView,
+  StepStatus
 } from "@/types/database";
 import type {
   DiePolingRows,
@@ -24,6 +19,7 @@ import type {
   WaferStatusHistoryCorrection,
   WaferStatusMetric,
   WaferStatusModel,
+  WaferStatusOperationRunVisit,
   WaferStatusRevertEvent,
   WaferStatusStepParameterRecord,
   WaferStatusStepParameterValue,
@@ -55,517 +51,164 @@ import {
 } from "@/features/wafers/waferStatusAppearance";
 
 type JsonRecord = { [key: string]: Json | undefined };
+type UnknownRecord = Record<string, unknown>;
 type DiePolingParameters = Record<string, DiePolingRows>;
 
-type WaferStatusWaferRow = {
+type StatusStep = {
   id: string;
-  project_id: string;
-  wafer_code: string;
-  parent_wafer_id: string | null;
-  die_label: string | null;
-  wafer_family: string;
-  die_count: number | null;
-  status: FabricationStatus;
-  notes: string | null;
-  metadata: Json;
-  created_at: string;
+  name: string;
+  process_area: string;
+  execution_mode: "main" | "anytime";
+  step_order: number;
+  stage_step_order: number;
+  parameters_schema: Json;
 };
 
-type WaferStatusTextSurfaceRow = {
+type TextSurfaceRow = {
   project_id: string;
-  scope_type: string;
   scope_key: string;
   field_key: string;
   value: string;
   version: number;
 };
 
-type WaferStatusAssignmentRow = Pick<
-  WaferProcessAssignment,
-  | "id"
-  | "wafer_id"
-  | "template_id"
-  | "status"
-  | "assigned_at"
-  | "started_at"
-  | "completed_at"
-  | "current_step_id"
->;
-
-type WaferStatusExecutionRow = Pick<
-  StepExecution,
-  | "id"
-  | "assignment_id"
-  | "process_step_id"
-  | "status"
-  | "created_at"
-  | "started_at"
-  | "completed_at"
-  | "completed_by"
-  | "operator_id"
-  | "run_notes"
-  | "metadata"
->;
-
-type WaferStatusStepRow = Pick<
-  ProcessStep,
-  "id" | "template_id" | "name" | "process_area" | "step_order" | "node_type" | "execution_mode" | "parameters_schema"
->;
-type WaferStatusTransitionRow = Pick<ProcessStepTransition, "from_step_id" | "to_step_id" | "edge_type" | "priority" | "created_at">;
-type WaferStatusProcessEventRow = {
-  id: string;
-  wafer_id: string | null;
-  actor_id: string | null;
-  event_type: string;
-  event_at: string;
-  notes: string | null;
-  metadata: Json;
+type CanonicalHistory = {
+  visits: WaferStatusOperationRunVisit[];
+  checkpointHistory: WaferStatusCheckpointHistoryEntry[];
+  corrections: WaferStatusHistoryCorrection[];
+  reverts: WaferStatusRevertEvent[];
 };
 
-type UnknownRow = Record<string, unknown>;
-type OptionalTableError = {
-  code?: string;
-  message?: string;
-};
-type OptionalTableResult = {
-  data: unknown[] | null;
-  error: OptionalTableError | null;
-};
-type OptionalTableClient = {
-  from: (table: string) => {
-    select: (columns: string) => {
-      in: (column: string, values: readonly string[]) => PromiseLike<OptionalTableResult>;
-    };
-  };
-};
-
-const ACTIVE_ASSIGNMENT_STATUSES: FabricationStatus[] = ["planned", "queued", "in_progress", "on_hold"];
 const DIE_POLING_PARAMETERS_KEY = "die_poling_parameters";
+const MAX_STATUS_HISTORY_ROWS = 10_000;
 
-function toJsonRecord(metadata: Json): JsonRecord {
-  return metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
-}
-
-function getRecord(record: JsonRecord, key: string): JsonRecord | null {
-  const value = record[key];
-  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
-}
-
-function readDiePolingParameters(metadata: Json): DiePolingParameters {
-  const root = toJsonRecord(metadata);
-  const value = root[DIE_POLING_PARAMETERS_KEY];
+function asRecord(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as DiePolingParameters)
-    : {};
-}
-
-function getString(record: JsonRecord, key: string) {
-  const value = record[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function asUnknownRow(value: unknown): UnknownRow | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as UnknownRow)
+    ? value as UnknownRecord
     : null;
 }
 
-function getUnknownString(record: UnknownRow, key: string) {
+function asJsonRecord(value: Json): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function asRecordArray(value: unknown): UnknownRecord[] {
+  return Array.isArray(value)
+    ? value.map(asRecord).filter((row): row is UnknownRecord => Boolean(row))
+    : [];
+}
+
+function stringValue(record: UnknownRecord, key: string) {
   const value = record[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function getUnknownNumber(record: UnknownRow, key: string) {
+function numberValue(record: UnknownRecord, key: string) {
   const value = record[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function getStepParameterRecordMapKey(assignmentId: string, stepId: string) {
-  return `${assignmentId}:${stepId}`;
+function jsonValue(record: UnknownRecord, key: string): Json {
+  return (record[key] ?? null) as Json;
 }
 
-function readStepParameterRecordValues(row: UnknownRow) {
-  const schema = (row.schema_snapshot ?? {}) as Json;
-  const schemaRoot = asUnknownRow(schema) ?? {};
-  const recordNotes = asUnknownRow(schemaRoot.recordNotes) ?? {};
-  const globalValues = asUnknownRow(row.global_values) ?? {};
-  const templateValues = readStepParameterDefinitions(schema).map((definition) => {
-    const note = recordNotes[definition.key];
-    return {
-      id: definition.id,
-      key: definition.key,
-      label: definition.label,
-      type: definition.type,
-      value: (globalValues[definition.key] ?? null) as string | number | boolean | null,
-      unit: definition.unit,
-      notes: typeof note === "string" ? note : "",
-      scope: "global" as const
-    };
-  });
-  const localRows = Array.isArray(row.local_parameters) ? row.local_parameters : [];
-  const localValues = localRows.flatMap((value) => {
-    const parameter = asUnknownRow(value);
-    const key = parameter ? getUnknownString(parameter, "key") : null;
-    const label = parameter ? getUnknownString(parameter, "label") : null;
-    if (!parameter || !key || !label) return [];
-    const rawValue = parameter.value;
-    const rawType = getUnknownString(parameter, "type");
-    const parameterType: WaferStatusStepParameterValue["type"] = rawType === "number" || rawType === "boolean" || rawType === "select"
-      ? rawType
-      : "text";
-    return [{
-      id: getUnknownString(parameter, "id") ?? key,
-      key,
-      label,
-      type: parameterType,
-      value: typeof rawValue === "string" || typeof rawValue === "number" || typeof rawValue === "boolean"
-        ? rawValue
-        : null,
-      unit: getUnknownString(parameter, "unit") ?? "",
-      notes: getUnknownString(parameter, "notes") ?? "",
-      scope: "local" as const
-    }];
-  });
-
-  return [...templateValues, ...localValues];
+function readDiePolingParameters(metadata: Json): DiePolingParameters {
+  const value = asJsonRecord(metadata)[DIE_POLING_PARAMETERS_KEY];
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as DiePolingParameters
+    : {};
 }
 
-function isMissingRelationError(error: OptionalTableError) {
-  if (error.code === "42P01") return true;
-
-  const message = error.message?.toLowerCase() ?? "";
-  return error.code === "PGRST205" && message.includes("could not find the table");
+function readMetadataString(metadata: Json, key: string) {
+  const value = asJsonRecord(metadata)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-async function listOptionalCheckpointRows({
-  client,
-  table,
-  assignmentIds
-}: {
-  client: unknown;
-  table: string;
-  assignmentIds: readonly string[];
-}) {
-  if (assignmentIds.length === 0) return [];
-
-  const result = await (client as OptionalTableClient)
-    .from(table)
-    .select("*")
-    .in("assignment_id", assignmentIds);
-
-  if (result.error) {
-    if (isMissingRelationError(result.error)) return [];
-    throw result.error;
-  }
-
-  return (result.data ?? [])
-    .map(asUnknownRow)
-    .filter((row): row is UnknownRow => Boolean(row));
-}
-
-function appendGrouped<T>(groups: Map<string, T[]>, key: string, value: T) {
-  const group = groups.get(key);
-  if (group) {
-    group.push(value);
-  } else {
-    groups.set(key, [value]);
-  }
-}
-
-function getTimelineActor({
-  actorId,
-  snapshotName,
-  profileNameById
-}: {
-  actorId: string | null;
-  snapshotName: string | null;
-  profileNameById: ReadonlyMap<string, string>;
-}) {
-  return {
-    id: actorId,
-    name: snapshotName ?? (actorId ? profileNameById.get(actorId) ?? null : null)
-  };
-}
-
-function getNoteAuthorValue(record: JsonRecord) {
-  const metadataAuthor = getString(record, "note_author_name");
-  const metadataAuthorId = getString(record, "note_author_id");
-
-  return {
-    noteAuthorId: metadataAuthorId,
-    noteAuthorName: metadataAuthor
-  };
-}
-
-function getBoolean(record: JsonRecord, key: string) {
-  const value = record[key];
+function readMetadataBoolean(metadata: Json, key: string) {
+  const value = asJsonRecord(metadata)[key];
   return typeof value === "boolean" ? value : null;
+}
+
+function readNestedMetadata(metadata: Json) {
+  const root = asJsonRecord(metadata);
+  const candidate = root.viewer ?? root.wafer_viewer ?? root.wafer_status;
+  return candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    ? candidate as JsonRecord
+    : null;
+}
+
+function readNestedString(record: JsonRecord | null, key: string) {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function normalizeWaferMode(value: string): WaferDisplayMode | null {
   const normalized = value.toLowerCase().replace(/[^a-z]/g, "");
-
-  if (["undiced", "predice", "pre"].includes(normalized)) {
-    return "undiced";
-  }
-
-  if (["diced", "postdice", "post"].includes(normalized)) {
-    return "diced";
-  }
-
+  if (["undiced", "predice", "pre"].includes(normalized)) return "undiced";
+  if (["diced", "postdice", "post"].includes(normalized)) return "diced";
   return null;
 }
 
-function readMetadataFamily(metadata: Json) {
-  const root = toJsonRecord(metadata);
-  const viewer = getRecord(root, "viewer") ?? getRecord(root, "wafer_viewer") ?? getRecord(root, "wafer_status");
-
-  return (
-    getString(root, "wafer_family") ??
-    getString(root, "family") ??
-    getString(root, "family_code") ??
-    (viewer ? getString(viewer, "family") ?? getString(viewer, "wafer_family") : null)
-  );
-}
-
-function deriveFamily(waferCode: string, metadata: Json) {
-  const metadataFamily = readMetadataFamily(metadata);
-  if (metadataFamily) {
-    return metadataFamily.toUpperCase();
-  }
-
-  const code = waferCode.trim().toUpperCase();
-  const leadingFamily = code.match(/^[A-Z]+/)?.[0];
-  return leadingFamily || "WAFERS";
-}
-
-function readMetadataMode(metadata: Json): WaferDisplayMode | null {
-  const root = toJsonRecord(metadata);
-  const viewer = getRecord(root, "viewer") ?? getRecord(root, "wafer_viewer") ?? getRecord(root, "wafer_status");
-  const mode =
-    getString(root, "wafer_display_mode") ??
-    getString(root, "wafer_mode") ??
-    getString(root, "dice_state") ??
-    getString(root, "dicing_state") ??
-    (viewer ? getString(viewer, "mode") ?? getString(viewer, "wafer_mode") : null);
-
+function deriveWaferMode(row: ProcessCurrentStateView): WaferDisplayMode {
+  if (row.item_type === "die" || row.die_label) return "diced";
+  const nested = readNestedMetadata(row.wafer_metadata);
+  const mode = readMetadataString(row.wafer_metadata, "wafer_display_mode")
+    ?? readMetadataString(row.wafer_metadata, "wafer_mode")
+    ?? readMetadataString(row.wafer_metadata, "dice_state")
+    ?? readNestedString(nested, "mode")
+    ?? readNestedString(nested, "wafer_mode");
   if (mode) {
-    const normalizedMode = normalizeWaferMode(mode);
-    if (normalizedMode) {
-      return normalizedMode;
-    }
+    const normalized = normalizeWaferMode(mode);
+    if (normalized) return normalized;
   }
-
-  const isUndiced = getBoolean(root, "is_undiced") ?? (viewer ? getBoolean(viewer, "is_undiced") : null);
-  if (isUndiced !== null) {
-    return isUndiced ? "undiced" : "diced";
-  }
-
-  const isDiced = getBoolean(root, "is_diced") ?? getBoolean(root, "diced") ?? (viewer ? getBoolean(viewer, "is_diced") : null);
-  if (isDiced !== null) {
-    return isDiced ? "diced" : "undiced";
-  }
-
-  return null;
+  const diced = readMetadataBoolean(row.wafer_metadata, "is_diced")
+    ?? readMetadataBoolean(row.wafer_metadata, "diced");
+  return diced ? "diced" : "undiced";
 }
 
-function extractDieLabel(metadata: Json): string | null {
-  const root = toJsonRecord(metadata);
-  const candidate =
-    getString(root, "current_die") ??
-    getString(root, "die") ??
-    getString(root, "chip") ??
-    getString(root, "chip_id") ??
-    getString(root, "die_id");
-
-  return candidate ?? null;
-}
-
-function extractDieLabels(metadata: Json, waferCode: string) {
-  const root = toJsonRecord(metadata);
-  const labels = Array.isArray(root.die_labels)
-    ? root.die_labels
-        .filter((value): value is string => typeof value === "string")
-        .map((value) => value.trim())
-        .filter(Boolean)
+function extractDieLabels(row: ProcessCurrentStateView) {
+  if (row.die_label?.trim()) return [row.die_label.trim()];
+  const metadata = asJsonRecord(row.wafer_metadata);
+  const labels = Array.isArray(metadata.die_labels)
+    ? metadata.die_labels.filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
     : [];
-
-  if (labels.length > 0) {
-    return Array.from(new Set(labels));
-  }
-
-  const dieCount = typeof root.die_count === "number" && Number.isInteger(root.die_count)
-    ? Math.min(256, Math.max(0, root.die_count))
+  if (labels.length > 0) return Array.from(new Set(labels.map((value) => value.trim())));
+  const count = typeof metadata.die_count === "number" && Number.isInteger(metadata.die_count)
+    ? Math.min(256, Math.max(0, metadata.die_count))
     : 0;
-
-  return Array.from({ length: dieCount }, (_, index) => `${waferCode}_${index + 1}`);
+  return count > 0
+    ? Array.from({ length: count }, (_, index) => `${row.wafer_code}_${index + 1}`)
+    : [row.wafer_code];
 }
 
-function deriveWaferMode(metadata: Json, dieLabel: string | null): WaferDisplayMode {
-  return readMetadataMode(metadata) ?? (dieLabel ? "diced" : "undiced");
+function isDicedParent(metadata: Json) {
+  const root = asJsonRecord(metadata);
+  return (Array.isArray(root.diced_child_wafer_ids) && root.diced_child_wafer_ids.length > 0)
+    || (Array.isArray(root.diced_child_die_labels) && root.diced_child_die_labels.length > 0);
 }
 
-function deriveStepStatusRank(status: StepStatus) {
-  if (status === "awaiting_checkpoint") return 0;
-  if (status === "redo_required") return 1;
-  if (status === "running") return 2;
-  if (status === "blocked") return 3;
-  if (status === "failed") return 4;
-  if (status === "queued") return 5;
-  if (status === "pending") return 6;
-  return 9;
+function deriveFamily(row: ProcessCurrentStateView) {
+  const nested = readNestedMetadata(row.wafer_metadata);
+  const metadataFamily = readMetadataString(row.wafer_metadata, "wafer_family")
+    ?? readMetadataString(row.wafer_metadata, "family")
+    ?? readNestedString(nested, "wafer_family")
+    ?? readNestedString(nested, "family");
+  if (metadataFamily) return metadataFamily.toUpperCase();
+  if (row.wafer_family?.trim()) return row.wafer_family.trim().toUpperCase();
+  return row.wafer_code.trim().toUpperCase().match(/^[A-Z]+/)?.[0] ?? "WAFERS";
 }
 
-function pickCurrentStepExecution(
-  executions: ReadonlyArray<WaferStatusExecutionRow>,
-  stepOccurrenceById: Map<string, number>
-) {
-  const prioritized = executions
-    .filter((execution) => [
-      "awaiting_checkpoint",
-      "redo_required",
-      "running",
-      "blocked",
-      "failed",
-      "queued",
-      "pending"
-    ].includes(execution.status))
-    .sort((a, b) => {
-      const statusRank = deriveStepStatusRank(a.status) - deriveStepStatusRank(b.status);
-      if (statusRank !== 0) {
-        return statusRank;
-      }
-
-      const orderA = stepOccurrenceById.get(a.process_step_id) ?? Number.MAX_SAFE_INTEGER;
-      const orderB = stepOccurrenceById.get(b.process_step_id) ?? Number.MAX_SAFE_INTEGER;
-      if (orderA !== orderB) {
-        return orderA - orderB;
-      }
-
-      return new Date(b.started_at ?? b.created_at).getTime() - new Date(a.started_at ?? a.created_at).getTime();
-    });
-
-  if (prioritized[0]) {
-    return prioritized[0];
-  }
-
-  return executions
-    .filter((execution) => execution.status === "completed" || execution.status === "skipped")
-    .sort((a, b) => {
-      const orderA = stepOccurrenceById.get(a.process_step_id) ?? Number.MIN_SAFE_INTEGER;
-      const orderB = stepOccurrenceById.get(b.process_step_id) ?? Number.MIN_SAFE_INTEGER;
-      if (orderA !== orderB) {
-        return orderB - orderA;
-      }
-
-      return compareExecutionRecency(b, a);
-    })[0];
+function memberStatusToStepStatus(status: string): StepStatus {
+  if (status === "awaiting_review") return "awaiting_checkpoint";
+  if (status === "rejected") return "redo_required";
+  if (status === "cancelled") return "failed";
+  return ["pending", "queued", "running", "blocked", "awaiting_checkpoint", "redo_required", "completed", "skipped", "failed"]
+    .includes(status)
+    ? status as StepStatus
+    : "pending";
 }
 
-function compareExecutionRecency(a: WaferStatusExecutionRow, b: WaferStatusExecutionRow) {
-  const timeA = new Date(a.completed_at ?? a.started_at ?? a.created_at).getTime();
-  const timeB = new Date(b.completed_at ?? b.started_at ?? b.created_at).getTime();
-  return timeA - timeB;
-}
-
-function pickStepTimelineExecution(executions: ReadonlyArray<WaferStatusExecutionRow>) {
-  return [...executions].sort((a, b) => {
-    const rankDelta = deriveStepStatusRank(a.status) - deriveStepStatusRank(b.status);
-    if (rankDelta !== 0) {
-      return rankDelta;
-    }
-
-    return compareExecutionRecency(b, a);
-  })[0] ?? null;
-}
-
-function mapTileStatus({
-  waferStatus,
-  currentStep,
-  currentStepStatus
-}: {
-  waferStatus: FabricationStatus;
-  currentStep: WaferStatusStepRow | null;
-  currentStepStatus: StepStatus | null;
-}): WaferTileStatus {
-  if (currentStepStatus === "queued" || currentStepStatus === "pending" || waferStatus === "planned" || waferStatus === "queued") {
-    return "queued";
-  }
-
-  const stepText = `${currentStep?.name ?? ""} ${currentStep?.process_area ?? ""}`.toLowerCase();
-  if (stepText.includes("dice") || stepText.includes("dicing")) return "dice";
-  if (stepText.includes("bond")) return "bond";
-  if (stepText.includes("etch")) return "etch";
-  if (stepText.includes("litho") || stepText.includes("expose")) return "litho";
-  if (stepText.includes("test") || stepText.includes("probe") || stepText.includes("characterization")) return "test";
-  if (stepText.includes("inspect") || stepText.includes("metrology") || stepText.includes("scan")) return "inspection";
-
-  if (waferStatus === "completed") return "test";
-  return "queued";
-}
-
-function formatStepLabel({
-  waferStatus,
-  currentStep
-}: {
-  waferStatus: FabricationStatus;
-  currentStep: WaferStatusStepRow | null;
-}) {
-  if (currentStep?.name) {
-    return currentStep.name;
-  }
-
-  const labelByStatus: Record<FabricationStatus, string> = {
-    planned: "Planned",
-    queued: "Queued",
-    in_progress: "In progress",
-    on_hold: "On hold",
-    completed: "Complete",
-    scrapped: "Scrapped"
-  };
-
-  return labelByStatus[waferStatus];
-}
-
-function deriveFamilyStatus(wafers: WaferStatusWaferRow[], tiles: WaferStatusTileModel[]): WaferFamilyStatus {
-  if (wafers.every((wafer) => wafer.status === "planned" || wafer.status === "queued")) {
-    return "setup";
-  }
-
-  if (wafers.every((wafer) => wafer.status === "on_hold")) {
-    return "paused";
-  }
-
-  if (tiles.every((tile) => tile.status === "queued")) {
-    return "setup";
-  }
-
-  return "active";
-}
-
-function buildMetrics(wafers: WaferStatusWaferRow[]): WaferStatusMetric[] {
-  const activeCount = wafers.filter((wafer) => ["planned", "queued", "in_progress", "on_hold"].includes(wafer.status)).length;
-  const runningCount = wafers.filter((wafer) => wafer.status === "in_progress").length;
-  const completedCount = wafers.filter((wafer) => wafer.status === "completed").length;
-  const yieldValue = wafers.length ? `${Math.round((completedCount / wafers.length) * 100)}%` : "0%";
-
-  return [
-    { id: "wafers", label: "Wafers", value: String(wafers.length), tone: "neutral" },
-    { id: "active", label: "Active", value: String(activeCount), tone: "active" },
-    { id: "progress", label: "In progress", value: String(runningCount), tone: "running" },
-    { id: "yield", label: "Yield", value: yieldValue, tone: "yield" }
-  ];
-}
-
-function getTextSurfaceMapKey({
-  projectId,
-  scopeKey,
-  fieldKey
-}: {
-  projectId: string;
-  scopeKey: string;
-  fieldKey: string;
-}) {
+function textSurfaceKey(projectId: string, scopeKey: string, fieldKey: string) {
   return getWaferStatusSurfaceMapKey({
     projectId,
     scopeType: waferDieNotesSurface.scopeType,
@@ -574,936 +217,589 @@ function getTextSurfaceMapKey({
   });
 }
 
-function mapWafersToStatusModel({
-  wafers,
-  assignmentsByWaferId,
-  executionsByAssignmentId,
-  stepsById,
-  processSteps,
-  stepOccurrenceById,
-  textSurfacesByKey,
-  appearancesBySurfaceKey,
-  revertHistoryByWaferId,
-  checkpointHistoryByAssignmentId,
-  stepParameterRecordsByAssignmentStep,
-  historyCorrectionsByAssignmentId
-}: {
-  wafers: WaferStatusWaferRow[];
-  assignmentsByWaferId: Map<string, WaferStatusAssignmentRow>;
-  executionsByAssignmentId: Map<string, WaferStatusExecutionRow[]>;
-  stepsById: Map<string, WaferStatusStepRow>;
-  processSteps: WaferStatusStepRow[];
-  stepOccurrenceById: Map<string, number>;
-  textSurfacesByKey: Map<string, WaferStatusTextSurfaceRow>;
-  appearancesBySurfaceKey: Map<string, WaferStatusAppearanceSnapshot>;
-  revertHistoryByWaferId: Map<string, WaferStatusRevertEvent[]>;
-  checkpointHistoryByAssignmentId: Map<string, WaferStatusCheckpointHistoryEntry[]>;
-  stepParameterRecordsByAssignmentStep: Map<string, WaferStatusStepParameterRecord[]>;
-  historyCorrectionsByAssignmentId: Map<string, WaferStatusHistoryCorrection[]>;
-}): WaferStatusModel {
-  const familyBuckets = new Map<string, { wafers: WaferStatusWaferRow[]; tiles: WaferStatusTileModel[] }>();
-  const tiles: WaferStatusTileModel[] = [];
-
-  for (const wafer of wafers) {
-    const assignment = assignmentsByWaferId.get(wafer.id) ?? null;
-    const assignmentExecutions = assignment ? executionsByAssignmentId.get(assignment.id) ?? [] : [];
-    if (assignment?.status === "planned" && assignmentExecutions.length === 0) {
-      continue;
+function parseStatusSteps(snapshot: Json): StatusStep[] {
+  const root = asRecord(snapshot);
+  const definition = asRecord(root?.processDefinition);
+  const stages = asRecordArray(definition?.stages);
+  const steps: StatusStep[] = [];
+  for (const stage of stages) {
+    for (const row of asRecordArray(stage.steps)) {
+      const id = stringValue(row, "id");
+      const name = stringValue(row, "name");
+      if (!id || !name) continue;
+      steps.push({
+        id,
+        name,
+        process_area: stringValue(row, "process_area") ?? "Process step",
+        execution_mode: stringValue(row, "execution_mode") === "anytime" ? "anytime" : "main",
+        step_order: numberValue(row, "step_order") ?? steps.length + 1,
+        stage_step_order: numberValue(row, "stage_step_order") ?? 1,
+        parameters_schema: jsonValue(row, "parameters_schema")
+      });
     }
+  }
+  return steps;
+}
 
-    const currentExecution = assignment
-      ? assignmentExecutions.find((execution) => execution.process_step_id === assignment.current_step_id) ??
-        pickCurrentStepExecution(assignmentExecutions, stepOccurrenceById)
-      : null;
-    const currentStep = currentExecution ? stepsById.get(currentExecution.process_step_id) ?? null : null;
-    const executionsByStepId = new Map<string, WaferStatusExecutionRow>();
-    for (const step of processSteps) {
-      const execution = pickStepTimelineExecution(
-        assignmentExecutions.filter((candidate) => candidate.process_step_id === step.id)
-      );
-      if (execution) {
-        executionsByStepId.set(step.id, execution);
+function parameterValues(record: UnknownRecord): WaferStatusStepParameterValue[] {
+  const schema = jsonValue(record, "schema_snapshot");
+  const values = asRecord(record.values) ?? {};
+  const legacyGlobal = asRecord(values.global_values);
+  const source = legacyGlobal ?? values;
+  const schemaRoot = asRecord(schema) ?? {};
+  const recordNotes = asRecord(schemaRoot.recordNotes) ?? {};
+  const definitions = readStepParameterDefinitions(schema);
+  const knownKeys = new Set(definitions.map((definition) => definition.key));
+  const defined = definitions.map((definition) => ({
+    id: definition.id,
+    key: definition.key,
+    label: definition.label,
+    type: definition.type,
+    value: (source[definition.key] ?? null) as string | number | boolean | null,
+    unit: definition.unit,
+    notes: typeof recordNotes[definition.key] === "string" ? recordNotes[definition.key] as string : "",
+    scope: "global" as const
+  }));
+  const unknown = Object.entries(source).flatMap(([key, value]) => {
+    if (knownKeys.has(key) || key === "legacy_record_id" || (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean")) return [];
+    return [{
+      id: key,
+      key,
+      label: key.replace(/[_-]+/g, " "),
+      type: typeof value === "number" ? "number" as const : typeof value === "boolean" ? "boolean" as const : "text" as const,
+      value,
+      unit: "",
+      notes: "",
+      scope: "global" as const
+    }];
+  });
+  const local = Array.isArray(values.local_parameters)
+    ? values.local_parameters.flatMap((candidate) => {
+      const row = asRecord(candidate);
+      const key = row ? stringValue(row, "key") : null;
+      if (!row || !key) return [];
+      const raw = row.value;
+      return [{
+        id: stringValue(row, "id") ?? key,
+        key,
+        label: stringValue(row, "label") ?? key.replace(/[_-]+/g, " "),
+        type: stringValue(row, "type") === "number" ? "number" as const
+          : stringValue(row, "type") === "boolean" ? "boolean" as const
+            : stringValue(row, "type") === "select" ? "select" as const : "text" as const,
+        value: typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean" ? raw : null,
+        unit: stringValue(row, "unit") ?? "",
+        notes: stringValue(row, "notes") ?? "",
+        scope: "local" as const
+      }];
+    })
+    : [];
+  return [...defined, ...unknown, ...local];
+}
+
+function parseParameterRecords(row: OperationRunHistoryView, visitId: string) {
+  return asRecordArray(row.parameter_records).map((record, index): WaferStatusStepParameterRecord => {
+    const id = stringValue(record, "id") ?? `${visitId}:parameter:${index + 1}`;
+    return {
+      id,
+      processEventId: null,
+      historyVisitId: visitId,
+      revision: index + 1,
+      movementMutationId: stringValue(record, "client_mutation_id") ?? id,
+      recordedAt: stringValue(record, "recorded_at") ?? row.created_at,
+      recordedById: stringValue(record, "recorded_by"),
+      recordedByName: stringValue(record, "recorded_by_name"),
+      notes: stringValue(record, "correction_reason"),
+      values: parameterValues(record)
+    };
+  });
+}
+
+function currentNote(row: OperationRunHistoryView) {
+  const records = asRecordArray(row.notes);
+  const superseded = new Set(records.map((record) => stringValue(record, "supersedes_note_id")).filter(Boolean));
+  const active = records.filter((record) => {
+    const id = stringValue(record, "id");
+    return !id || !superseded.has(id);
+  });
+  return stringValue(active.at(-1) ?? {}, "body")
+    ?? (typeof row.member_note === "string" ? row.member_note : null)
+    ?? (typeof row.run_reason === "string" ? row.run_reason : null);
+}
+
+function uniqueCorrectionEvents(rows: readonly OperationRunHistoryView[]) {
+  const events = new Map<string, UnknownRecord>();
+  for (const row of rows) {
+    for (const event of asRecordArray(row.history_corrections)) {
+      const id = stringValue(event, "id");
+      if (id) events.set(id, event);
+    }
+  }
+  return Array.from(events.values()).sort((a, b) =>
+    (stringValue(a, "eventAt") ?? "").localeCompare(stringValue(b, "eventAt") ?? "")
+  );
+}
+
+function buildCanonicalHistory(rows: readonly OperationRunHistoryView[]): CanonicalHistory {
+  const correctionEvents = uniqueCorrectionEvents(rows);
+  const undoneAttemptIds = new Set<string>();
+  const undoneDecisionIds = new Set<string>();
+  const undoneCorrectionIds = new Set<string>();
+  for (const event of correctionEvents) {
+    if (stringValue(event, "eventType") !== "wafer_history_undone") continue;
+    const metadata = asRecord(event.metadata) ?? {};
+    const attemptId = stringValue(metadata, "undone_attempt_id");
+    const decisionId = stringValue(metadata, "undone_decision_id");
+    const processEventId = stringValue(metadata, "undone_process_event_id");
+    if (attemptId) undoneAttemptIds.add(attemptId);
+    if (decisionId) undoneDecisionIds.add(decisionId);
+    if (processEventId) undoneCorrectionIds.add(processEventId);
+  }
+
+  const attempts: CheckpointTimelineAttemptSource[] = [];
+  const decisions: CheckpointTimelineDecisionSource[] = [];
+  const withdrawals: CheckpointTimelineWithdrawalSource[] = [];
+  const legacyEntries: CheckpointTimelineLegacySource[] = [];
+  const memberByAttemptId = new Map<string, string>();
+  const visits: WaferStatusOperationRunVisit[] = [];
+  const runById = new Map(rows.map((row) => [row.operation_run_id, row]));
+  const reverts: WaferStatusRevertEvent[] = [];
+
+  for (const row of rows) {
+    const visitId = `operation-member:${row.operation_run_member_id}`;
+    const checkpointRows = asRecordArray(row.checkpoint_history);
+    visits.push({
+      id: visitId,
+      operationRunId: row.operation_run_id,
+      operationRunMemberId: row.operation_run_member_id,
+      legacyStepExecutionId: typeof row.legacy_step_execution_id === "string" ? row.legacy_step_execution_id : null,
+      stepId: row.process_step_id,
+      stepName: typeof row.process_step_name === "string" ? row.process_step_name : "Unknown step",
+      processArea: typeof row.process_area === "string" ? row.process_area : "Process step",
+      runKind: ["normal", "redo", "rework", "restore", "ad_hoc"].includes(String(row.run_kind))
+        ? row.run_kind as WaferStatusOperationRunVisit["runKind"]
+        : "normal",
+      status: memberStatusToStepStatus(row.member_status),
+      startedAt: typeof row.started_at === "string" ? row.started_at : null,
+      completedAt: typeof row.completed_at === "string" ? row.completed_at : null,
+      createdAt: row.created_at,
+      note: currentNote(row),
+      actor: {
+        id: typeof row.created_by === "string" ? row.created_by : null,
+        name: typeof row.created_by_name === "string" ? row.created_by_name : null
+      },
+      parameterRecords: parseParameterRecords(row, visitId)
+    });
+
+    for (const checkpoint of checkpointRows) {
+      const attemptId = stringValue(checkpoint, "attemptId");
+      const submittedAt = stringValue(checkpoint, "submittedAt");
+      if (!attemptId || !submittedAt || undoneAttemptIds.has(attemptId)) continue;
+      memberByAttemptId.set(attemptId, row.operation_run_member_id);
+      attempts.push({
+        id: attemptId,
+        stepId: row.process_step_id,
+        stepName: stringValue(checkpoint, "stepName") ?? (typeof row.process_step_name === "string" ? row.process_step_name : "Unknown step"),
+        attemptNumber: Math.max(1, numberValue(checkpoint, "attemptNumber") ?? 1),
+        status: "awaiting_checkpoint",
+        createdAt: submittedAt,
+        startedAt: stringValue(checkpoint, "startedAt") ?? (typeof row.started_at === "string" ? row.started_at : null),
+        submittedAt,
+        submittedBy: {
+          id: stringValue(checkpoint, "submittedById"),
+          name: stringValue(checkpoint, "submittedByName")
+        },
+        submissionNote: stringValue(checkpoint, "submissionNote")
+      });
+      const decisionId = stringValue(checkpoint, "decisionId");
+      const decidedAt = stringValue(checkpoint, "decidedAt");
+      const decision = stringValue(checkpoint, "decision");
+      if (decisionId && decidedAt && decision && !undoneDecisionIds.has(decisionId)) {
+        decisions.push({
+          id: decisionId,
+          attemptId,
+          outcome: decision === "redo" ? "redo" : "approve",
+          occurredAt: decidedAt,
+          actor: {
+            id: stringValue(checkpoint, "decidedById"),
+            name: stringValue(checkpoint, "decidedByName")
+          },
+          note: stringValue(checkpoint, "decisionNote"),
+          destinationStepId: stringValue(checkpoint, "targetStepId"),
+          destinationStepName: stringValue(checkpoint, "targetStepName"),
+          supersedesDecisionId: stringValue(checkpoint, "supersedesDecisionId")
+        });
+      }
+      const withdrawalId = stringValue(checkpoint, "withdrawalId");
+      const withdrawnAt = stringValue(checkpoint, "withdrawnAt");
+      if (withdrawalId && withdrawnAt) {
+        withdrawals.push({
+          id: withdrawalId,
+          attemptId,
+          occurredAt: withdrawnAt,
+          actor: {
+            id: stringValue(checkpoint, "withdrawnById"),
+            name: stringValue(checkpoint, "withdrawnByName")
+          },
+          note: stringValue(checkpoint, "withdrawalReason")
+        });
       }
     }
-    const legacyDieLabel = extractDieLabel(wafer.metadata);
-    const mode = deriveWaferMode(wafer.metadata, legacyDieLabel);
-    const generatedDieLabels = mode === "diced" && !legacyDieLabel
-      ? extractDieLabels(wafer.metadata, wafer.wafer_code)
-      : [];
-    const dieLabels = generatedDieLabels.length > 0
-      ? generatedDieLabels
-      : [legacyDieLabel ?? wafer.wafer_code];
-    const family = deriveFamily(wafer.wafer_code, wafer.metadata);
-    for (const displayDieLabel of dieLabels) {
-    const notesScopeKey = getWaferDieNotesScopeKey(wafer.id, displayDieLabel);
-    const notesSurface = textSurfacesByKey.get(
-      getTextSurfaceMapKey({
-        projectId: wafer.project_id,
-        scopeKey: notesScopeKey,
-        fieldKey: waferDieNotesSurface.fieldKey
-      })
-    );
-    const appearance = appearancesBySurfaceKey.get(
-      getTextSurfaceMapKey({
-        projectId: wafer.project_id,
-        scopeKey: notesScopeKey,
-        fieldKey: waferDieAppearanceSurface.fieldKey
-      })
-    ) ?? null;
-    const notesSurfaceValuesByStepId = Object.fromEntries(
-      processSteps.map((step) => {
-        const stepNotesSurface = textSurfacesByKey.get(
-          getTextSurfaceMapKey({
-            projectId: wafer.project_id,
-            scopeKey: getWaferDieStepNotesScopeKey(wafer.id, displayDieLabel, step.id),
-            fieldKey: waferDieNotesSurface.fieldKey
-          })
-        );
 
-        return [step.id, stepNotesSurface?.value ?? null];
-      })
-    );
-    const status = mapTileStatus({
-      waferStatus: wafer.status,
-      currentStep,
-      currentStepStatus: currentExecution?.status ?? null
-    });
-    const currentStepOccurrence = currentStep ? stepOccurrenceById.get(currentStep.id) ?? null : null;
-    const tile: WaferStatusTileModel = {
-      id: generatedDieLabels.length > 0 ? `${wafer.id}:${displayDieLabel}` : wafer.id,
-      projectId: wafer.project_id,
-      waferId: wafer.id,
-      assignmentId: assignment?.id ?? null,
-      historyRevision: assignment ? (historyCorrectionsByAssignmentId.get(assignment.id) ?? []).length : 0,
-      code: mode === "undiced" ? wafer.wafer_code : displayDieLabel,
-      family,
-      dieLabel: displayDieLabel,
-      stepLabel: formatStepLabel({ waferStatus: wafer.status, currentStep }),
-      status,
-      waferStateName: mode === "undiced" ? "pre-dice" : "post-dice",
-      legacyNote: wafer.notes,
-      notesSurfaceValue: notesSurface?.value ?? null,
-      notesSurfaceValuesByStepId,
-      appearance,
-      currentStepId: currentStep?.id ?? null,
-      currentStepExecutionId: currentExecution?.id ?? null,
-      processSteps: processSteps.map((step, index) => {
-        const execution = executionsByStepId.get(step.id) ?? null;
-        const executionMetadata = toJsonRecord(execution?.metadata as Json);
-        const noteAuthor = getNoteAuthorValue(executionMetadata);
-        const noteAuthorId = noteAuthor.noteAuthorId ?? execution?.completed_by ?? execution?.operator_id ?? null;
-        const timelineStatus: StepStatus =
-          currentStepOccurrence !== null &&
-          index < currentStepOccurrence &&
-          execution?.status !== "completed" &&
-          execution?.status !== "skipped"
-            ? "completed"
-            : execution?.status ?? "pending";
-
-        return {
-          id: step.id,
-          name: step.name,
-          processArea: step.process_area,
-          executionMode: step.execution_mode,
-          stepOrder: index + 1,
-          status: timelineStatus,
-          executionId: execution?.id ?? null,
-          runNote: execution?.run_notes ?? null,
-          noteAuthorId,
-          noteAuthorName: noteAuthor.noteAuthorName ?? null,
-          startedAt: execution?.started_at ?? null,
-          completedAt: execution?.completed_at ?? null,
-          createdAt: execution?.created_at ?? null,
-          parametersSchema: step.parameters_schema,
-          parameterRecords: assignment
-            ? stepParameterRecordsByAssignmentStep.get(getStepParameterRecordMapKey(assignment.id, step.id)) ?? []
-            : [],
-          branchLabel: null
-        };
-      }),
-      revertHistory: revertHistoryByWaferId.get(wafer.id) ?? [],
-      checkpointHistory: assignment
-        ? checkpointHistoryByAssignmentId.get(assignment.id) ?? []
-        : [],
-      historyCorrections: assignment
-        ? historyCorrectionsByAssignmentId.get(assignment.id) ?? []
-        : [],
-      mode,
-      isUndiced: mode === "undiced",
-      diePolingParameters: readDiePolingParameters(wafer.metadata)
-    };
-
-    tiles.push(tile);
-    const bucket = familyBuckets.get(family);
-    if (bucket) {
-      bucket.wafers.push(wafer);
-      bucket.tiles.push(tile);
-    } else {
-      familyBuckets.set(family, { wafers: [wafer], tiles: [tile] });
+    if (checkpointRows.length === 0) {
+      legacyEntries.push({
+        id: visitId,
+        sourceEventId: null,
+        legacyType: row.run_kind === "restore" ? "wafer_step_reverted" : "step_execution",
+        occurredAt: typeof row.completed_at === "string"
+          ? row.completed_at
+          : typeof row.started_at === "string" ? row.started_at : row.created_at,
+        actor: {
+          id: typeof row.created_by === "string" ? row.created_by : null,
+          name: typeof row.created_by_name === "string" ? row.created_by_name : null
+        },
+        note: currentNote(row),
+        fromStepId: null,
+        fromStepName: null,
+        toStepId: row.process_step_id,
+        toStepName: typeof row.process_step_name === "string" ? row.process_step_name : null,
+        recordedStatus: `${String(row.run_kind)}:${row.member_status}`
+      });
     }
+
+    const parentLinks = asRecordArray(row.parent_runs);
+    const parentLink = parentLinks.find((link) => ["redo", "restore"].includes(stringValue(link, "kind") ?? ""))
+      ?? (row.run_kind === "redo" || row.run_kind === "restore" ? parentLinks[0] : null);
+    const parent = parentLink ? runById.get(stringValue(parentLink, "runId") ?? "") : null;
+    if (parent && parent.process_step_id !== row.process_step_id || row.run_kind === "restore" || row.run_kind === "redo") {
+      reverts.push({
+        id: `run-link:${row.operation_run_id}`,
+        fromStepId: parent?.process_step_id ?? row.process_step_id,
+        toStepId: row.process_step_id,
+        occurredAt: row.created_at,
+        reason: currentNote(row)
+      });
     }
   }
 
-  const families: WaferFamilyModel[] = Array.from(familyBuckets.entries())
-    .sort(([familyA], [familyB]) => familyA.localeCompare(familyB))
-    .map(([family, bucket]) => ({
-      id: family.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "wafers",
-      name: family,
-      status: deriveFamilyStatus(bucket.wafers, bucket.tiles),
-      tiles: bucket.tiles
-    }));
+  const checkpointHistory = buildCheckpointTimeline({ attempts, decisions, withdrawals, legacyEntries })
+    .map((entry): WaferStatusCheckpointHistoryEntry => entry.kind === "attempt"
+      ? { ...entry, operationRunMemberId: memberByAttemptId.get(entry.id) ?? null }
+      : entry);
 
-  const firstActiveTile = families
-    .flatMap((family) => family.tiles)
-    .find((tile) => tile.status !== "queued");
-  const selectedTileId = firstActiveTile?.id ?? families[0]?.tiles[0]?.id ?? null;
+  const corrections = correctionEvents.flatMap((event): WaferStatusHistoryCorrection[] => {
+    const id = stringValue(event, "id");
+    if (!id || stringValue(event, "eventType") !== "wafer_history_correction" || undoneCorrectionIds.has(id)) return [];
+    const metadata = asRecord(event.metadata) ?? {};
+    const kind = stringValue(metadata, "kind");
+    if (kind !== "insert" && kind !== "remove") return [];
+    const placement = stringValue(metadata, "placement");
+    return [{
+      id,
+      kind,
+      visitId: `correction:${id}`,
+      targetVisitId: stringValue(metadata, "target_visit_id"),
+      anchorVisitId: stringValue(metadata, "anchor_visit_id"),
+      placement: placement === "before" || placement === "after" ? placement : null,
+      stepId: stringValue(metadata, "target_step_id"),
+      stepName: stringValue(metadata, "target_step_name_snapshot"),
+      processArea: stringValue(metadata, "target_step_process_area_snapshot"),
+      completedAt: stringValue(metadata, "completed_at") ?? (kind === "insert" ? stringValue(event, "eventAt") : null),
+      occurredAt: stringValue(event, "eventAt") ?? new Date(0).toISOString(),
+      reason: stringValue(event, "notes"),
+      actor: { id: stringValue(event, "actorId"), name: stringValue(event, "actorName") }
+    }];
+  });
 
   return {
-    metrics: buildMetrics(wafers),
-    families: families.map((family) => ({
-      ...family,
-      tiles: family.tiles.map((tile) => ({
-        ...tile,
-        isSelected: tile.id === selectedTileId
-      }))
-    }))
+    visits: visits.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)),
+    checkpointHistory,
+    corrections,
+    reverts
+  };
+}
+
+function mapTileStatus(row: ProcessCurrentStateView, currentStep: StatusStep | null): WaferTileStatus {
+  const status = row.current_member_status ? memberStatusToStepStatus(row.current_member_status) : "pending";
+  if (status === "queued" || status === "pending" || row.wafer_status === "planned" || row.wafer_status === "queued") return "queued";
+  const stepText = `${currentStep?.name ?? ""} ${currentStep?.process_area ?? ""}`.toLowerCase();
+  if (stepText.includes("dice")) return "dice";
+  if (stepText.includes("bond")) return "bond";
+  if (stepText.includes("etch")) return "etch";
+  if (stepText.includes("litho") || stepText.includes("expose")) return "litho";
+  if (stepText.includes("test") || stepText.includes("probe") || stepText.includes("characterization")) return "test";
+  if (stepText.includes("inspect") || stepText.includes("metrology") || stepText.includes("scan")) return "inspection";
+  return row.wafer_status === "completed" ? "test" : "queued";
+}
+
+function stepLabel(row: ProcessCurrentStateView) {
+  if (row.current_step_name) return row.current_step_name;
+  const labels: Record<FabricationStatus, string> = {
+    planned: "Planned",
+    queued: "Queued",
+    in_progress: "In progress",
+    on_hold: "On hold",
+    completed: "Complete",
+    scrapped: "Scrapped"
+  };
+  return labels[row.wafer_status];
+}
+
+function buildMetrics(rows: readonly ProcessCurrentStateView[]): WaferStatusMetric[] {
+  const active = rows.filter((row) => ["planned", "queued", "in_progress", "on_hold"].includes(row.wafer_status)).length;
+  const running = rows.filter((row) => row.wafer_status === "in_progress").length;
+  const completed = rows.filter((row) => row.wafer_status === "completed").length;
+  return [
+    { id: "wafers", label: "Wafers", value: String(rows.length), tone: "neutral" },
+    { id: "active", label: "Active", value: String(active), tone: "active" },
+    { id: "progress", label: "In progress", value: String(running), tone: "running" },
+    { id: "yield", label: "Yield", value: rows.length ? `${Math.round((completed / rows.length) * 100)}%` : "0%", tone: "yield" }
+  ];
+}
+
+function familyStatus(rows: readonly ProcessCurrentStateView[], tiles: readonly WaferStatusTileModel[]): WaferFamilyStatus {
+  if (rows.every((row) => row.wafer_status === "planned" || row.wafer_status === "queued")) return "setup";
+  if (rows.every((row) => row.wafer_status === "on_hold")) return "paused";
+  return tiles.every((tile) => tile.status === "queued") ? "setup" : "active";
+}
+
+function mergeParentHistory(
+  child: CanonicalHistory,
+  parent: CanonicalHistory | null,
+  parentRow: ProcessCurrentStateView | null
+): CanonicalHistory {
+  if (!parent || !parentRow) return child;
+  const inheritance = { waferId: parentRow.wafer_id, waferCode: parentRow.wafer_code };
+  return {
+    visits: [
+      ...parent.visits.map((visit) => ({ ...visit, inheritedFromParent: inheritance })),
+      ...child.visits
+    ].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)),
+    checkpointHistory: mergeCheckpointTimelineLineage({
+      currentEntries: child.checkpointHistory,
+      parentEntries: parent.checkpointHistory,
+      parentWaferId: parentRow.wafer_id,
+      parentWaferCode: parentRow.wafer_code
+    }),
+    corrections: child.corrections,
+    reverts: child.reverts
   };
 }
 
 export function getEmptyWaferStatusModel(): WaferStatusModel {
-  return {
-    metrics: buildMetrics([]),
-    families: []
-  };
+  return { metrics: buildMetrics([]), families: [] };
 }
 
 export async function getWaferStatusModel(processTemplateId?: string): Promise<WaferStatusModel> {
+  if (!processTemplateId) return getEmptyWaferStatusModel();
   const supabase = await createServerSupabaseClient();
-
-  const scopedAssignmentsResult = processTemplateId
-      ? await supabase
-        .from("wafer_process_assignments")
-        .select("id, wafer_id, template_id, status, assigned_at, started_at, completed_at, current_step_id")
-        .eq("template_id", processTemplateId)
-        .is("deleted_at", null)
-        .is("archived_at", null)
-        .order("assigned_at", { ascending: false })
-    : null;
-
-  if (scopedAssignmentsResult?.error) {
-    throw scopedAssignmentsResult.error;
-  }
-
-  const scopedAssignments = (scopedAssignmentsResult?.data ?? []) as WaferStatusAssignmentRow[];
-  const scopedWaferIds = processTemplateId
-    ? Array.from(new Set(scopedAssignments.map((assignment) => assignment.wafer_id)))
-    : null;
-
-  if (processTemplateId && (!scopedWaferIds || scopedWaferIds.length === 0)) {
-    return getEmptyWaferStatusModel();
-  }
-
-  const wafersQuery = supabase
-    .from("wafers")
-    .select("id, project_id, wafer_code, parent_wafer_id, die_label, wafer_family, die_count, status, notes, metadata, created_at")
-    .is("deleted_at", null)
-    .is("archived_at", null)
-    .order("wafer_code", { ascending: true });
-
-  const wafersResult = scopedWaferIds ? await wafersQuery.in("id", scopedWaferIds) : await wafersQuery;
-
-  if (wafersResult.error) {
-    throw wafersResult.error;
-  }
-
-  const allWafers = (wafersResult.data ?? []) as WaferStatusWaferRow[];
-  const wafers = allWafers.filter((wafer) => {
-    const metadata = toJsonRecord(wafer.metadata);
-    const childWaferIds = metadata.diced_child_wafer_ids;
-    const childDieLabels = metadata.diced_child_die_labels;
-    return !(
-      (Array.isArray(childWaferIds) && childWaferIds.length > 0) ||
-      (Array.isArray(childDieLabels) && childDieLabels.length > 0)
-    );
-  });
-  if (wafers.length === 0) {
-    return getEmptyWaferStatusModel();
-  }
-
-  const waferIds = wafers.map((wafer) => wafer.id);
-  const wafersById = new Map(allWafers.map((wafer) => [wafer.id, wafer]));
-  const parentWaferIds = Array.from(new Set(
-    wafers
-      .map((wafer) => wafer.parent_wafer_id)
-      .filter((waferId): waferId is string => Boolean(waferId))
-  ));
-  const projectIds = Array.from(new Set(wafers.map((wafer) => wafer.project_id)));
-  const textSurfacesPromise = projectIds.length
-    ? supabase
-        .from("text_surfaces")
-        .select("project_id, scope_type, scope_key, field_key, value, version")
-        .in("project_id", projectIds)
-        .eq("scope_type", waferDieNotesSurface.scopeType)
-        .in("field_key", [waferDieNotesSurface.fieldKey, waferDieAppearanceSurface.fieldKey])
-    : Promise.resolve({ data: [], error: null } as const);
-
-  const assignmentsResult = processTemplateId
-    ? null
-      : await supabase
-        .from("wafer_process_assignments")
-        .select("id, wafer_id, template_id, status, assigned_at, started_at, completed_at, current_step_id")
-        .in("wafer_id", waferIds)
-        .is("deleted_at", null)
-        .is("archived_at", null)
-        .in("status", ACTIVE_ASSIGNMENT_STATUSES)
-        .order("assigned_at", { ascending: false });
-
-  if (assignmentsResult?.error) {
-    throw assignmentsResult.error;
-  }
-
-  const parentAssignmentsResult = !processTemplateId && parentWaferIds.length
-    ? await supabase
-        .from("wafer_process_assignments")
-        .select("id, wafer_id, template_id, status, assigned_at, started_at, completed_at, current_step_id")
-        .in("wafer_id", parentWaferIds)
-        .is("deleted_at", null)
-        .is("archived_at", null)
-        .order("assigned_at", { ascending: false })
-    : null;
-
-  if (parentAssignmentsResult?.error) {
-    throw parentAssignmentsResult.error;
-  }
-
-  const assignments = processTemplateId
-    ? scopedAssignments
-    : (assignmentsResult?.data ?? []) as WaferStatusAssignmentRow[];
-  const parentAssignments = processTemplateId
-    ? scopedAssignments.filter((assignment) => parentWaferIds.includes(assignment.wafer_id))
-    : (parentAssignmentsResult?.data ?? []) as WaferStatusAssignmentRow[];
-
-  const assignmentsByWaferId = new Map<string, WaferStatusAssignmentRow>();
-  const visibleWaferIds = new Set(waferIds);
-  for (const assignment of assignments) {
-    if (!visibleWaferIds.has(assignment.wafer_id)) {
-      continue;
-    }
-    if (!assignmentsByWaferId.has(assignment.wafer_id)) {
-      assignmentsByWaferId.set(assignment.wafer_id, assignment);
-    }
-  }
-
-  const parentAssignmentsByWaferId = new Map<string, WaferStatusAssignmentRow[]>();
-  for (const assignment of parentAssignments) {
-    appendGrouped(parentAssignmentsByWaferId, assignment.wafer_id, assignment);
-  }
-
-  const parentLineageByAssignmentId = new Map<
-    string,
-    { assignment: WaferStatusAssignmentRow; wafer: WaferStatusWaferRow }
-  >();
-  for (const wafer of wafers) {
-    const parentWaferId = wafer.parent_wafer_id;
-    const childAssignment = assignmentsByWaferId.get(wafer.id);
-    const parentWafer = parentWaferId ? wafersById.get(parentWaferId) : null;
-    if (!parentWaferId || !childAssignment || !parentWafer) continue;
-
-    const parentAssignment = (parentAssignmentsByWaferId.get(parentWaferId) ?? [])
-      .find((candidate) => candidate.template_id === childAssignment.template_id);
-    if (!parentAssignment) continue;
-
-    parentLineageByAssignmentId.set(childAssignment.id, {
-      assignment: parentAssignment,
-      wafer: parentWafer
-    });
-  }
-
-  const assignmentIds = Array.from(new Set([
-    ...Array.from(assignmentsByWaferId.values()).map((assignment) => assignment.id),
-    ...Array.from(parentLineageByAssignmentId.values()).map(({ assignment }) => assignment.id)
-  ]));
-  const historyWaferIds = Array.from(new Set([
-    ...waferIds,
-    ...Array.from(parentLineageByAssignmentId.values()).map(({ wafer }) => wafer.id)
-  ]));
-  const [
-    textSurfacesResult,
-    executionsResult,
-    checkpointAttemptRows,
-    checkpointDecisionRows,
-    checkpointWithdrawalRows,
-    stepParameterRecordRows,
-    processEventsResult,
-    scopedStepsResult,
-    scopedTransitionsResult
-  ] = await Promise.all([
-    textSurfacesPromise,
-    assignmentIds.length
-      ? supabase
-        .from("step_executions")
-        .select(
-          "id, assignment_id, process_step_id, status, created_at, started_at, completed_at, completed_by, operator_id, run_notes, metadata"
-        )
-        .in("assignment_id", assignmentIds)
-      : Promise.resolve({ data: [], error: null } as const),
-    listOptionalCheckpointRows({
-      client: supabase,
-      table: "process_step_attempts",
-      assignmentIds
-    }),
-    listOptionalCheckpointRows({
-      client: supabase,
-      table: "checkpoint_decisions",
-      assignmentIds
-    }),
-    listOptionalCheckpointRows({
-      client: supabase,
-      table: "checkpoint_submission_withdrawals",
-      assignmentIds
-    }),
-    listOptionalCheckpointRows({
-      client: supabase,
-      table: "step_parameter_records",
-      assignmentIds
-    }),
-    historyWaferIds.length
-      ? supabase
-          .from("process_events")
-          .select("id, wafer_id, actor_id, event_type, event_at, notes, metadata")
-          .in("wafer_id", historyWaferIds)
-          .in("event_type", ["wafer_step_moved", "wafer_step_reverted", "checkpoint_step_entered", "wafer_history_undone", "wafer_history_correction"])
-          .order("event_at", { ascending: true })
-      : Promise.resolve({ data: [], error: null } as const),
-    processTemplateId
-      ? supabase
-          .from("process_steps")
-          .select("id, template_id, name, process_area, step_order, node_type, execution_mode, parameters_schema")
-          .eq("template_id", processTemplateId)
-          .order("step_order", { ascending: true })
-      : Promise.resolve(null),
-    processTemplateId
-      ? supabase
-          .from("process_step_transitions")
-          .select("from_step_id, to_step_id, edge_type, priority, created_at")
-          .eq("template_id", processTemplateId)
-          .order("priority", { ascending: true })
-          .order("created_at", { ascending: true })
-      : Promise.resolve(null)
+  const [snapshotResult, currentResult, historyResult] = await Promise.all([
+    supabase.rpc("get_process_workspace_snapshot", { target_template_id: processTemplateId }),
+    supabase
+      .from("vw_process_current_state")
+      .select("*")
+      .eq("template_id", processTemplateId)
+      .order("assigned_at", { ascending: false }),
+    supabase
+      .from("vw_operation_run_history")
+      .select("*")
+      .eq("template_id", processTemplateId)
+      .order("created_at", { ascending: true })
+      .limit(MAX_STATUS_HISTORY_ROWS)
   ]);
+  const firstError = [snapshotResult.error, currentResult.error, historyResult.error].find(Boolean);
+  if (firstError) throw firstError;
 
-  if (textSurfacesResult.error) {
-    throw textSurfacesResult.error;
+  const allStateRows = (currentResult.data ?? []) as ProcessCurrentStateView[];
+  const visibleRows = allStateRows.filter((row) => !row.archived_at && !isDicedParent(row.wafer_metadata));
+  if (visibleRows.length === 0) return getEmptyWaferStatusModel();
+  const processSteps = parseStatusSteps(snapshotResult.data as Json);
+  const stepById = new Map(processSteps.map((step) => [step.id, step]));
+  const stateByWaferId = new Map(allStateRows.map((row) => [row.wafer_id, row]));
+  const historyRows = (historyResult.data ?? []) as OperationRunHistoryView[];
+  const historyRowsByAssignment = new Map<string, OperationRunHistoryView[]>();
+  for (const row of historyRows) {
+    historyRowsByAssignment.set(row.assignment_id, [...(historyRowsByAssignment.get(row.assignment_id) ?? []), row]);
   }
+  const historyByAssignment = new Map<string, CanonicalHistory>();
+  for (const [assignmentId, rows] of historyRowsByAssignment) historyByAssignment.set(assignmentId, buildCanonicalHistory(rows));
 
-  if (executionsResult.error) {
-    throw executionsResult.error;
-  }
-
-  if (processEventsResult.error) {
-    throw processEventsResult.error;
-  }
-
-  if (scopedStepsResult?.error) {
-    throw scopedStepsResult.error;
-  }
-
-  if (scopedTransitionsResult?.error) {
-    throw scopedTransitionsResult.error;
-  }
-
-  const textSurfaces = (textSurfacesResult.data ?? []) as WaferStatusTextSurfaceRow[];
-  const textSurfacesByKey = new Map(
-    textSurfaces.map((surface) => [
-      getTextSurfaceMapKey({
-        projectId: surface.project_id,
-        scopeKey: surface.scope_key,
-        fieldKey: surface.field_key
-      }),
-      surface
-    ])
+  const projectIds = Array.from(new Set(visibleRows.map((row) => row.project_id)));
+  const textResult = await supabase
+    .from("text_surfaces")
+    .select("project_id, scope_key, field_key, value, version")
+    .in("project_id", projectIds)
+    .eq("scope_type", waferDieNotesSurface.scopeType)
+    .in("field_key", [waferDieNotesSurface.fieldKey, waferDieAppearanceSurface.fieldKey]);
+  if (textResult.error) throw textResult.error;
+  const surfaces = (textResult.data ?? []) as TextSurfaceRow[];
+  const surfaceByKey = new Map(surfaces.map((surface) => [
+    textSurfaceKey(surface.project_id, surface.scope_key, surface.field_key),
+    surface
+  ]));
+  const appearanceSurfaces: WaferStatusAppearanceSurfaceSource[] = surfaces.flatMap((surface) =>
+    surface.field_key === waferDieAppearanceSurface.fieldKey && surface.value.trim()
+      ? [{ projectId: surface.project_id, scopeKey: surface.scope_key, attachmentId: surface.value.trim(), version: surface.version }]
+      : []
   );
-  const appearanceSurfaces: WaferStatusAppearanceSurfaceSource[] = textSurfaces.flatMap((surface) => {
-    const attachmentId = surface.value.trim();
-    return surface.field_key === waferDieAppearanceSurface.fieldKey && attachmentId
-      ? [{
-          projectId: surface.project_id,
-          scopeKey: surface.scope_key,
-          attachmentId,
-          version: surface.version
-        }]
-      : [];
-  });
-  const appearanceAttachmentIds = getAppearanceAttachmentIds(appearanceSurfaces);
-  const appearanceAttachmentsResult = appearanceAttachmentIds.length
-    ? await supabase
-        .from("attachments")
-        .select("id, project_id, bucket_name, object_path")
-        .in("id", appearanceAttachmentIds)
-        .in("project_id", projectIds)
+  const attachmentIds = getAppearanceAttachmentIds(appearanceSurfaces);
+  const attachmentResult = attachmentIds.length
+    ? await supabase.from("attachments").select("id, project_id, bucket_name, object_path").in("id", attachmentIds).in("project_id", projectIds)
     : { data: [], error: null };
-
-  if (appearanceAttachmentsResult.error) {
-    throw appearanceAttachmentsResult.error;
-  }
-
-  const appearanceAttachments: WaferStatusAppearanceAttachmentSource[] = (
-    (appearanceAttachmentsResult.data ?? []) as Pick<Attachment, "id" | "project_id" | "bucket_name" | "object_path">[]
+  if (attachmentResult.error) throw attachmentResult.error;
+  const attachments: WaferStatusAppearanceAttachmentSource[] = (
+    (attachmentResult.data ?? []) as Pick<Attachment, "id" | "project_id" | "bucket_name" | "object_path">[]
   ).map((attachment) => ({
     id: attachment.id,
     projectId: attachment.project_id,
     bucketName: attachment.bucket_name,
     objectPath: attachment.object_path
   }));
-  const authorizedAttachmentsByBucket = groupAuthorizedAppearanceAttachments({
-    surfaces: appearanceSurfaces,
-    attachments: appearanceAttachments
-  });
+  const byBucket = groupAuthorizedAppearanceAttachments({ surfaces: appearanceSurfaces, attachments });
   const signedUrlByAttachmentId = new Map<string, string>();
-
-  if (authorizedAttachmentsByBucket.size > 0) {
+  if (byBucket.size > 0) {
     const admin = createSupabaseAdminClient();
-    await Promise.all(Array.from(authorizedAttachmentsByBucket.entries()).map(async ([bucketName, attachments]) => {
-      const signed = await admin.storage
-        .from(bucketName)
-        .createSignedUrls(attachments.map((attachment) => attachment.objectPath), 60 * 60);
+    await Promise.all(Array.from(byBucket.entries()).map(async ([bucket, bucketAttachments]) => {
+      const signed = await admin.storage.from(bucket).createSignedUrls(bucketAttachments.map((attachment) => attachment.objectPath), 3600);
       if (signed.error || !signed.data) return;
-
-      const attachmentByPath = new Map(attachments.map((attachment) => [attachment.objectPath, attachment]));
-      for (const result of signed.data) {
-        const attachment = result.path ? attachmentByPath.get(result.path) : null;
-        if (attachment && result.signedUrl) {
-          signedUrlByAttachmentId.set(attachment.id, result.signedUrl);
-        }
+      const byPath = new Map(bucketAttachments.map((attachment) => [attachment.objectPath, attachment]));
+      for (const item of signed.data) {
+        const attachment = item.path ? byPath.get(item.path) : null;
+        if (attachment && item.signedUrl) signedUrlByAttachmentId.set(attachment.id, item.signedUrl);
       }
     }));
   }
-
-  const appearancesBySurfaceKey = buildAppearanceSnapshotsBySurfaceKey({
+  const appearanceByKey: Map<string, WaferStatusAppearanceSnapshot> = buildAppearanceSnapshotsBySurfaceKey({
     surfaces: appearanceSurfaces,
-    attachments: appearanceAttachments,
+    attachments,
     signedUrlByAttachmentId,
     scopeType: waferDieAppearanceSurface.scopeType,
     fieldKey: waferDieAppearanceSurface.fieldKey
   });
 
-  const executions = (executionsResult.data ?? []) as WaferStatusExecutionRow[];
-  const allProcessEvents = (processEventsResult.data ?? []) as WaferStatusProcessEventRow[];
-  const historyUndoState = getHistoryUndoState(allProcessEvents.map((event) => ({
-    id: event.id,
-    eventType: event.event_type,
-    metadata: event.metadata
-  })));
-  const visibleWorkflowEvents = allProcessEvents.filter((event) =>
-    event.event_type !== "wafer_history_undone" &&
-    !historyUndoState.undoneProcessEventIds.has(event.id)
-  );
-  const checkpointRouteState = getCheckpointRouteCorrectionState(visibleWorkflowEvents.map((event) => ({
-    id: event.id,
-    eventAt: event.event_at,
-    metadata: event.metadata
-  })));
-  const processEvents = visibleWorkflowEvents.filter((event) => checkpointRouteState.visibleEventIds.has(event.id));
-  const activeStepParameterRecordRows = stepParameterRecordRows.filter((row) => {
-    const processEventId = getUnknownString(row, "process_event_id");
-    return !processEventId || (
-      !checkpointRouteState.correctedEventIds.has(processEventId) &&
-      !historyUndoState.undoneProcessEventIds.has(processEventId)
-    );
-  });
-  const executionsByAssignmentId = new Map<string, WaferStatusExecutionRow[]>();
-  for (const execution of executions) {
-    const bucket = executionsByAssignmentId.get(execution.assignment_id);
-    if (bucket) {
-      bucket.push(execution);
-    } else {
-      executionsByAssignmentId.set(execution.assignment_id, [execution]);
+  const buckets = new Map<string, { rows: ProcessCurrentStateView[]; tiles: WaferStatusTileModel[] }>();
+  for (const row of visibleRows) {
+    const ownHistory = historyByAssignment.get(row.assignment_id) ?? buildCanonicalHistory([]);
+    const parentRow = row.parent_wafer_id ? stateByWaferId.get(row.parent_wafer_id) ?? null : null;
+    const parentHistory = parentRow ? historyByAssignment.get(parentRow.assignment_id) ?? null : null;
+    const history = mergeParentHistory(ownHistory, parentHistory, parentRow);
+    const latestVisitByStep = new Map<string, WaferStatusOperationRunVisit>();
+    for (const visit of history.visits) latestVisitByStep.set(visit.stepId, visit);
+    const currentStep = row.current_step_id ? stepById.get(row.current_step_id) ?? null : null;
+    const mode = deriveWaferMode(row);
+    const labels = mode === "diced" ? extractDieLabels(row) : [row.wafer_code];
+    const family = deriveFamily(row);
+    for (const dieLabel of labels) {
+      const scopeKey = getWaferDieNotesScopeKey(row.wafer_id, dieLabel);
+      const stepNotes = Object.fromEntries(processSteps.map((step) => [
+        step.id,
+        surfaceByKey.get(textSurfaceKey(
+          row.project_id,
+          getWaferDieStepNotesScopeKey(row.wafer_id, dieLabel, step.id),
+          waferDieNotesSurface.fieldKey
+        ))?.value ?? null
+      ]));
+      const tile: WaferStatusTileModel = {
+        id: labels.length > 1 ? `${row.wafer_id}:${dieLabel}` : row.wafer_id,
+        projectId: row.project_id,
+        waferId: row.wafer_id,
+        assignmentId: row.assignment_id,
+        historyRevision: row.assignment_revision,
+        code: mode === "undiced" ? row.wafer_code : dieLabel,
+        family,
+        dieLabel,
+        stepLabel: stepLabel(row),
+        status: mapTileStatus(row, currentStep),
+        waferStateName: mode === "undiced" ? "pre-dice" : "post-dice",
+        legacyNote: row.wafer_notes,
+        notesSurfaceValue: surfaceByKey.get(textSurfaceKey(row.project_id, scopeKey, waferDieNotesSurface.fieldKey))?.value ?? null,
+        notesSurfaceValuesByStepId: stepNotes,
+        appearance: appearanceByKey.get(textSurfaceKey(row.project_id, scopeKey, waferDieAppearanceSurface.fieldKey)) ?? null,
+        currentStepId: row.current_step_id,
+        currentStepExecutionId: row.legacy_step_execution_id,
+        processSteps: processSteps.map((step, index) => {
+          const visit = latestVisitByStep.get(step.id) ?? null;
+          const isCurrentWithoutVisit = step.id === row.current_step_id && !visit;
+          return {
+            id: step.id,
+            name: step.name,
+            processArea: step.process_area,
+            executionMode: step.execution_mode,
+            stepOrder: index + 1,
+            status: visit?.status ?? (isCurrentWithoutVisit && row.current_member_status
+              ? memberStatusToStepStatus(row.current_member_status)
+              : "pending"),
+            executionId: visit?.legacyStepExecutionId ?? (isCurrentWithoutVisit ? row.legacy_step_execution_id : null),
+            runNote: visit?.note ?? null,
+            noteAuthorId: visit?.actor.id ?? null,
+            noteAuthorName: visit?.actor.name ?? null,
+            startedAt: visit?.startedAt ?? null,
+            completedAt: visit?.completedAt ?? null,
+            createdAt: visit?.createdAt ?? null,
+            parametersSchema: step.parameters_schema,
+            parameterRecords: history.visits.filter((candidate) => candidate.stepId === step.id).flatMap((candidate) => candidate.parameterRecords),
+            branchLabel: null
+          };
+        }),
+        revertHistory: history.reverts,
+        checkpointHistory: history.checkpointHistory,
+        operationRunVisits: history.visits,
+        historyCorrections: history.corrections,
+        mode,
+        isUndiced: mode === "undiced",
+        diePolingParameters: readDiePolingParameters(row.wafer_metadata)
+      };
+      const bucket = buckets.get(family) ?? { rows: [], tiles: [] };
+      if (!bucket.rows.some((candidate) => candidate.wafer_id === row.wafer_id)) bucket.rows.push(row);
+      bucket.tiles.push(tile);
+      buckets.set(family, bucket);
     }
   }
 
-  const assignmentIdByWaferId = new Map(
-    Array.from(assignmentsByWaferId.values()).map((assignment) => [assignment.wafer_id, assignment.id])
-  );
-  const historyAssignmentIds = new Set(assignmentIds);
-  const revertHistoryByWaferId = new Map<string, WaferStatusRevertEvent[]>();
-  for (const event of processEvents) {
-    if (!event.wafer_id || event.event_type !== "wafer_step_reverted") {
-      continue;
-    }
-
-    const metadata = toJsonRecord(event.metadata);
-    const eventAssignmentId = getString(metadata, "assignment_id");
-    const fromStepId = getString(metadata, "from_step_id");
-    const toStepId = getString(metadata, "to_step_id");
-    if (!fromStepId || !toStepId || eventAssignmentId !== assignmentIdByWaferId.get(event.wafer_id)) {
-      continue;
-    }
-
-    const history = revertHistoryByWaferId.get(event.wafer_id) ?? [];
-    history.push({
-      id: event.id,
-      fromStepId,
-      toStepId,
-      occurredAt: event.event_at,
-      reason: event.notes
-    });
-    revertHistoryByWaferId.set(event.wafer_id, history);
-  }
-
-  const executionStepIds = Array.from(new Set(executions.map((execution) => execution.process_step_id)));
-  const stepsResult = scopedStepsResult ?? (executionStepIds.length
-      ? await supabase
-          .from("process_steps")
-          .select("id, template_id, name, process_area, step_order, node_type, execution_mode, parameters_schema")
-          .in("id", executionStepIds)
-          .order("step_order", { ascending: true })
-      : ({ data: [], error: null } as const));
-
-  if (stepsResult.error) {
-    throw stepsResult.error;
-  }
-
-  const stepRows = (stepsResult.data ?? []) as WaferStatusStepRow[];
-  const templateIds = Array.from(new Set(stepRows.map((step) => step.template_id)));
-  const transitionsResult = scopedTransitionsResult ?? (templateIds.length
-      ? await supabase
-          .from("process_step_transitions")
-          .select("from_step_id, to_step_id, edge_type, priority, created_at")
-          .in("template_id", templateIds)
-          .order("priority", { ascending: true })
-          .order("created_at", { ascending: true })
-      : ({ data: [], error: null } as const));
-
-  if (transitionsResult.error) {
-    throw transitionsResult.error;
-  }
-
-  const transitionRows = (transitionsResult.data ?? []) as WaferStatusTransitionRow[];
-  const stepsById = new Map(stepRows.map((step) => [step.id, step]));
-  const processSteps = orderProcessStepsByOccurrence(stepRows, transitionRows);
-  const stepOccurrenceById = new Map(processSteps.map((step, index) => [step.id, index]));
-
-  const actorIds = new Set<string>();
-  for (const execution of executions) {
-    if (execution.completed_by) actorIds.add(execution.completed_by);
-    if (execution.operator_id) actorIds.add(execution.operator_id);
-  }
-  for (const event of processEvents) {
-    if (event.actor_id) actorIds.add(event.actor_id);
-  }
-  for (const row of checkpointAttemptRows) {
-    const actorId = getUnknownString(row, "submitted_by");
-    if (actorId) actorIds.add(actorId);
-  }
-  for (const row of checkpointDecisionRows) {
-    const actorId = getUnknownString(row, "decided_by");
-    if (actorId) actorIds.add(actorId);
-  }
-  for (const row of checkpointWithdrawalRows) {
-    const actorId = getUnknownString(row, "withdrawn_by");
-    if (actorId) actorIds.add(actorId);
-  }
-  for (const row of activeStepParameterRecordRows) {
-    const actorId = getUnknownString(row, "recorded_by");
-    if (actorId) actorIds.add(actorId);
-  }
-
-  const profilesResult = actorIds.size
-    ? await supabase
-        .from("profiles")
-        .select("id, display_name, email")
-        .in("id", Array.from(actorIds))
-    : ({ data: [], error: null } as const);
-
-  if (profilesResult.error) {
-    throw profilesResult.error;
-  }
-
-  const profileNameById = new Map(
-    (profilesResult.data ?? []).map((profile) => [
-      profile.id,
-      profile.display_name?.trim() || profile.email
-    ])
-  );
-  const historyCorrectionsByAssignmentId = new Map<string, WaferStatusHistoryCorrection[]>();
-  for (const event of processEvents) {
-    if (event.event_type !== "wafer_history_correction") continue;
-    const metadata = toJsonRecord(event.metadata);
-    const assignmentId = getString(metadata, "assignment_id");
-    const kind = getString(metadata, "kind");
-    if (!assignmentId || (kind !== "insert" && kind !== "remove")) continue;
-    const placement = getString(metadata, "placement");
-    appendGrouped(historyCorrectionsByAssignmentId, assignmentId, {
-      id: event.id,
-      kind,
-      visitId: `correction:${event.id}`,
-      targetVisitId: getString(metadata, "target_visit_id"),
-      anchorVisitId: getString(metadata, "anchor_visit_id"),
-      placement: placement === "before" || placement === "after" ? placement : null,
-      stepId: getString(metadata, "target_step_id"),
-      stepName: getString(metadata, "target_step_name_snapshot"),
-      processArea: getString(metadata, "target_step_process_area_snapshot"),
-      completedAt: getString(metadata, "completed_at") ?? (kind === "insert" ? event.event_at : null),
-      occurredAt: event.event_at,
-      reason: event.notes,
-      actor: getTimelineActor({ actorId: event.actor_id, snapshotName: null, profileNameById })
-    });
-  }
-  const stepParameterRecordsByAssignmentStep = new Map<string, WaferStatusStepParameterRecord[]>();
-  for (const row of activeStepParameterRecordRows) {
-    const id = getUnknownString(row, "id");
-    const assignmentId = getUnknownString(row, "assignment_id");
-    const stepId = getUnknownString(row, "process_step_id");
-    const processEventId = getUnknownString(row, "process_event_id");
-    const movementMutationId = getUnknownString(row, "movement_mutation_id");
-    const recordedAt = getUnknownString(row, "updated_at") ?? getUnknownString(row, "created_at");
-    if (!id || !assignmentId || !stepId || !movementMutationId || !recordedAt) continue;
-    const recordedById = getUnknownString(row, "recorded_by");
-    appendGrouped(stepParameterRecordsByAssignmentStep, getStepParameterRecordMapKey(assignmentId, stepId), {
-      id,
-      processEventId,
-      historyVisitId: processEventId ? `correction:${processEventId}` : null,
-      revision: Math.max(1, getUnknownNumber(row, "revision") ?? 1),
-      movementMutationId,
-      recordedAt,
-      recordedById,
-      recordedByName: recordedById ? profileNameById.get(recordedById) ?? null : null,
-      notes: getUnknownString(row, "notes"),
-      values: readStepParameterRecordValues(row)
-    });
-  }
-  const executionsById = new Map(executions.map((execution) => [execution.id, execution]));
-  const attemptsByAssignmentId = new Map<string, CheckpointTimelineAttemptSource[]>();
-  const decisionsByAssignmentId = new Map<string, CheckpointTimelineDecisionSource[]>();
-  const withdrawalsByAssignmentId = new Map<string, CheckpointTimelineWithdrawalSource[]>();
-  const legacyByAssignmentId = new Map<string, CheckpointTimelineLegacySource[]>();
-  const checkpointExecutionIds = new Set<string>();
-
-  for (const row of checkpointAttemptRows) {
-    const id = getUnknownString(row, "id");
-    const assignmentId = getUnknownString(row, "assignment_id");
-    const stepId = getUnknownString(row, "process_step_id");
-    const stepExecutionId = getUnknownString(row, "step_execution_id");
-    const submittedAt = getUnknownString(row, "submitted_at");
-    if (!id || !assignmentId || !stepId || !submittedAt || historyUndoState.undoneAttemptIds.has(id)) continue;
-
-    if (stepExecutionId) checkpointExecutionIds.add(stepExecutionId);
-    const submittedBy = getUnknownString(row, "submitted_by");
-    const execution = stepExecutionId ? executionsById.get(stepExecutionId) ?? null : null;
-    appendGrouped(attemptsByAssignmentId, assignmentId, {
-      id,
-      stepId,
-      stepName:
-        getUnknownString(row, "process_step_name_snapshot") ??
-        stepsById.get(stepId)?.name ??
-        "Unknown step",
-      attemptNumber: Math.max(1, getUnknownNumber(row, "attempt_number") ?? 1),
-      status: "awaiting_checkpoint",
-      createdAt: getUnknownString(row, "created_at") ?? submittedAt,
-      startedAt:
-        getUnknownString(row, "started_at_snapshot") ??
-        execution?.started_at ??
-        execution?.created_at ??
-        null,
-      submittedAt,
-      submittedBy: getTimelineActor({
-        actorId: submittedBy,
-        snapshotName: getUnknownString(row, "submitted_by_name_snapshot"),
-        profileNameById
-      }),
-      submissionNote: getUnknownString(row, "submission_notes")
-    });
-  }
-
-  for (const row of checkpointDecisionRows) {
-    const id = getUnknownString(row, "id");
-    const assignmentId = getUnknownString(row, "assignment_id");
-    const attemptId = getUnknownString(row, "attempt_id");
-    const decision = getUnknownString(row, "decision");
-    const occurredAt = getUnknownString(row, "decided_at") ?? getUnknownString(row, "created_at");
-    if (
-      !id ||
-      !assignmentId ||
-      !attemptId ||
-      !occurredAt ||
-      historyUndoState.undoneDecisionIds.has(id) ||
-      !["approved", "approve", "redo"].includes(decision ?? "")
-    ) {
-      continue;
-    }
-
-    const actorId = getUnknownString(row, "decided_by");
-    const correctedRoute = checkpointRouteState.correctionByDecisionId.get(id);
-    const destinationStepId = correctedRoute?.targetStepId ?? getUnknownString(row, "target_step_id");
-    const correctedOutcome = correctedRoute?.routeDecision;
-    appendGrouped(decisionsByAssignmentId, assignmentId, {
-      id,
-      attemptId,
-      outcome: correctedOutcome === "redo" || (!correctedOutcome && decision === "redo") ? "redo" : "approve",
-      occurredAt,
-      actor: getTimelineActor({
-        actorId,
-        snapshotName: getUnknownString(row, "decided_by_name_snapshot"),
-        profileNameById
-      }),
-      note: getUnknownString(row, "decision_notes"),
-      destinationStepId,
-      destinationStepName:
-        correctedRoute?.targetStepName ??
-        getUnknownString(row, "target_step_name_snapshot") ??
-        (destinationStepId ? stepsById.get(destinationStepId)?.name ?? null : null),
-      supersedesDecisionId: getUnknownString(row, "supersedes_decision_id")
-    });
-  }
-
-  for (const row of checkpointWithdrawalRows) {
-    const id = getUnknownString(row, "id");
-    const assignmentId = getUnknownString(row, "assignment_id");
-    const attemptId = getUnknownString(row, "attempt_id");
-    const occurredAt = getUnknownString(row, "withdrawn_at") ?? getUnknownString(row, "created_at");
-    if (!id || !assignmentId || !attemptId || !occurredAt) continue;
-
-    const actorId = getUnknownString(row, "withdrawn_by");
-    appendGrouped(withdrawalsByAssignmentId, assignmentId, {
-      id,
-      attemptId,
-      occurredAt,
-      actor: getTimelineActor({
-        actorId,
-        snapshotName: getUnknownString(row, "withdrawn_by_name_snapshot"),
-        profileNameById
-      }),
-      note: getUnknownString(row, "withdrawal_reason")
-    });
-  }
-
-  for (const execution of executions) {
-    if (checkpointExecutionIds.has(execution.id)) continue;
-    if (
-      execution.status === "pending" &&
-      !execution.started_at &&
-      !execution.completed_at &&
-      !execution.run_notes
-    ) {
-      continue;
-    }
-
-    const actorId = execution.completed_by ?? execution.operator_id;
-    appendGrouped(legacyByAssignmentId, execution.assignment_id, {
-      id: `legacy-execution:${execution.id}`,
-      sourceEventId: null,
-      legacyType: "step_execution",
-      occurredAt: execution.completed_at ?? execution.started_at ?? execution.created_at,
-      actor: getTimelineActor({ actorId, snapshotName: null, profileNameById }),
-      note: execution.run_notes,
-      fromStepId: null,
-      fromStepName: null,
-      toStepId: execution.process_step_id,
-      toStepName: stepsById.get(execution.process_step_id)?.name ?? null,
-      recordedStatus: execution.status
-    });
-  }
-
-  for (const event of processEvents) {
-    if (!event.wafer_id || event.event_type === "wafer_history_correction") continue;
-
-    const metadata = toJsonRecord(event.metadata);
-    const assignmentId = getString(metadata, "assignment_id");
-    if (!assignmentId || !historyAssignmentIds.has(assignmentId)) continue;
-
-    const fromStepId = getString(metadata, "from_step_id");
-    const toStepId = getString(metadata, "to_step_id") ?? getString(metadata, "target_step_id");
-    appendGrouped(legacyByAssignmentId, assignmentId, {
-      id: `legacy-event:${event.id}`,
-      sourceEventId: event.id,
-      legacyType: event.event_type === "checkpoint_step_entered"
-        ? "checkpoint_step_entered"
-        : event.event_type === "wafer_step_reverted"
-          ? "wafer_step_reverted"
-          : "wafer_step_moved",
-      occurredAt: event.event_at,
-      actor: getTimelineActor({ actorId: event.actor_id, snapshotName: null, profileNameById }),
-      note: event.notes,
-      fromStepId,
-      fromStepName: fromStepId ? stepsById.get(fromStepId)?.name ?? null : null,
-      toStepId,
-      toStepName:
-        getString(metadata, "target_step_name") ??
-        getString(metadata, "to_step_name") ??
-        (toStepId ? stepsById.get(toStepId)?.name ?? null : null),
-      recordedStatus: getString(metadata, "movement_kind") ?? event.event_type
-    });
-  }
-
-  const checkpointHistoryByAssignmentId = new Map<string, WaferStatusCheckpointHistoryEntry[]>();
-  for (const assignmentId of assignmentIds) {
-    checkpointHistoryByAssignmentId.set(assignmentId, buildCheckpointTimeline({
-      attempts: attemptsByAssignmentId.get(assignmentId) ?? [],
-      decisions: decisionsByAssignmentId.get(assignmentId) ?? [],
-      withdrawals: withdrawalsByAssignmentId.get(assignmentId) ?? [],
-      legacyEntries: legacyByAssignmentId.get(assignmentId) ?? []
+  const families: WaferFamilyModel[] = Array.from(buckets.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([family, bucket]) => ({
+      id: family.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "wafers",
+      name: family,
+      status: familyStatus(bucket.rows, bucket.tiles),
+      tiles: bucket.tiles
     }));
-  }
-
-  for (const [childAssignmentId, lineage] of parentLineageByAssignmentId) {
-    checkpointHistoryByAssignmentId.set(childAssignmentId, mergeCheckpointTimelineLineage({
-      currentEntries: checkpointHistoryByAssignmentId.get(childAssignmentId) ?? [],
-      parentEntries: checkpointHistoryByAssignmentId.get(lineage.assignment.id) ?? [],
-      parentWaferId: lineage.wafer.id,
-      parentWaferCode: lineage.wafer.wafer_code
-    }));
-  }
-
-  return mapWafersToStatusModel({
-    wafers,
-    assignmentsByWaferId,
-    executionsByAssignmentId,
-    stepsById,
-    processSteps,
-    stepOccurrenceById,
-    textSurfacesByKey,
-    appearancesBySurfaceKey,
-    revertHistoryByWaferId,
-    checkpointHistoryByAssignmentId,
-    stepParameterRecordsByAssignmentStep,
-    historyCorrectionsByAssignmentId
-  });
+  const selected = families.flatMap((family) => family.tiles).find((tile) => tile.status !== "queued")
+    ?? families[0]?.tiles[0]
+    ?? null;
+  return {
+    metrics: buildMetrics(visibleRows),
+    families: families.map((family) => ({
+      ...family,
+      tiles: family.tiles.map((tile) => ({ ...tile, isSelected: tile.id === selected?.id }))
+    }))
+  };
 }
 
 export async function getWaferTimeline(waferId: string) {
   const supabase = await createServerSupabaseClient();
-  const [steps, events, measurements, issues] = await Promise.all([
+  const [history, measurements, issues] = await Promise.all([
     supabase
-      .from("step_executions")
-      .select("*, process_steps(*), fabrication_tools(*), recipes(*)")
-      .eq("wafer_id", waferId)
-      .order("created_at", { ascending: true }),
-    supabase
-      .from("process_events")
+      .from("vw_operation_run_history")
       .select("*")
       .eq("wafer_id", waferId)
-      .order("event_at", { ascending: true }),
-    supabase
-      .from("measurements")
-      .select("*")
-      .eq("wafer_id", waferId)
-      .order("measured_at", { ascending: true }),
-    supabase
-      .from("process_issues")
-      .select("*")
-      .eq("wafer_id", waferId)
-      .order("opened_at", { ascending: true })
+      .order("created_at", { ascending: true })
+      .limit(500),
+    supabase.from("measurements").select("*").eq("wafer_id", waferId).order("measured_at", { ascending: true }).limit(500),
+    supabase.from("process_issues").select("*").eq("wafer_id", waferId).order("opened_at", { ascending: true }).limit(500)
   ]);
-
-  for (const result of [steps, events, measurements, issues]) {
-    if (result.error) {
-      throw result.error;
+  const firstError = [history.error, measurements.error, issues.error].find(Boolean);
+  if (firstError) throw firstError;
+  const rows = (history.data ?? []) as OperationRunHistoryView[];
+  const events = new Map<string, UnknownRecord>();
+  for (const row of rows) {
+    for (const event of asRecordArray(row.history_corrections)) {
+      const id = stringValue(event, "id");
+      if (id) events.set(id, event);
     }
   }
-
   return {
-    steps: steps.data ?? [],
-    events: events.data ?? [],
+    steps: rows,
+    events: Array.from(events.values()),
     measurements: measurements.data ?? [],
     issues: issues.data ?? []
   };

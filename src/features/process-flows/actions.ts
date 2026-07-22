@@ -39,7 +39,7 @@ import {
   isLegacyDeletedWaferFamily,
   keepExistingWaferFamilyDeleteIds
 } from "@/features/process-flows/waferDeletion";
-import type { Json, ProcessStep, StepParameterRecord } from "@/types/database";
+import type { Json, ProcessStep, StepParameterRecord, StepStatus } from "@/types/database";
 import type {
   WaferStatusStepParameterRecord,
   WaferStatusStepParameterValue
@@ -565,7 +565,7 @@ export async function createWaferAtProcessStart(input: unknown) {
       assignment_id: assignment.id,
       wafer_id: wafer.id,
       process_step_id: step.id,
-      status: index === 0 ? "queued" : "pending",
+      status: (index === 0 ? "queued" : "pending") as StepStatus,
       queue_started_at: index === 0 ? now : null,
       metadata: {}
     }));
@@ -1251,7 +1251,7 @@ export async function saveStepParameterRecordsBatch(input: unknown) {
     const authMs = performance.now() - authStartedAt;
     const supabase = await createServerSupabaseClient();
     const rpcStartedAt = performance.now();
-    const { data, error } = await supabase.rpc("save_step_parameter_records_batch", {
+    const { data, error } = await supabase.rpc("save_operation_parameter_records_batch", {
       entries: parsed.entries.map((entry) => ({
         assignment_id: entry.assignmentId,
         step_id: entry.stepId,
@@ -1271,7 +1271,10 @@ export async function saveStepParameterRecordsBatch(input: unknown) {
       rpcMs: Math.round(performance.now() - rpcStartedAt),
       totalMs: Math.round(performance.now() - startedAt)
     }));
-    return ok((data ?? []) as unknown as import("@/types/database").StepParameterRecord[]);
+    const response = data && typeof data === "object" && !Array.isArray(data)
+      ? data as Record<string, Json | undefined>
+      : {};
+    return ok((Array.isArray(response.records) ? response.records : []) as unknown as import("@/types/database").StepParameterRecord[]);
   } catch (error) {
     return fail(toErrorMessage(error));
   }
@@ -1685,33 +1688,9 @@ export async function deleteProcessSteps(input: unknown) {
     const templateIds = Array.from(new Set((steps ?? []).map((step) => step.template_id)));
     await Promise.all(templateIds.map((templateId) => getTemplateForWrite(templateId)));
     const adminSupabase = createSupabaseAdminClient();
-
-    const { error: executionsDeleteError } = await adminSupabase
-      .from("step_executions")
-      .delete()
-      .in("process_step_id", stepIds);
-
-    if (executionsDeleteError) {
-      return fail(executionsDeleteError.message);
-    }
-
-    for (const step of steps ?? []) {
-      const { error: calendarEventsUpdateError } = await adminSupabase
-        .from("process_calendar_events")
-        .update({
-          process_step_id: null,
-          process_step_name_snapshot: step.name
-        })
-        .eq("process_step_id", step.id);
-
-      if (calendarEventsUpdateError) {
-        return fail(calendarEventsUpdateError.message);
-      }
-    }
-
     const { error } = await adminSupabase
       .from("process_steps")
-      .delete()
+      .update({ archived_at: new Date().toISOString() })
       .in("id", stepIds);
 
     if (error) {

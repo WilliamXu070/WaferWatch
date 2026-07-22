@@ -1,6 +1,8 @@
 export const WORKFLOW_BROADCAST_EVENT = "workflow_changed";
+export const WORKFLOW_REVISION_BROADCAST_EVENT = "workflow_revision_committed";
 export const TEAM_MESSAGE_BROADCAST_EVENT = "team_message_inserted";
 export const WORKFLOW_REALTIME_EVENT = "waferwatch:realtime-change";
+export const WORKFLOW_DELTA_EVENT = "waferwatch:workspace-delta";
 export const WORKFLOW_LIBRARY_TOPIC = "workflow:library";
 export const TEAM_MESSAGES_TOPIC = "team:messages";
 export const DEFAULT_WORKFLOW_REFRESH_DEBOUNCE_MS = 350;
@@ -13,6 +15,15 @@ export type WorkflowBroadcastPayload = {
   processTemplateId?: string | null;
   projectId?: string | null;
   waferId?: string | null;
+  changedAt: string;
+};
+
+export type WorkflowRevisionBroadcastPayload = {
+  processTemplateId: string;
+  revision: number;
+  mutationId: string;
+  mutationKind: string;
+  changedEntities: Record<string, unknown>;
   changedAt: string;
 };
 
@@ -31,6 +42,20 @@ export function isWorkflowBroadcastPayload(value: unknown): value is WorkflowBro
   return (
     typeof payload.table === "string" &&
     ["INSERT", "UPDATE", "DELETE"].includes(String(payload.operation)) &&
+    typeof payload.changedAt === "string"
+  );
+}
+
+export function isWorkflowRevisionBroadcastPayload(value: unknown): value is WorkflowRevisionBroadcastPayload {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as Record<string, unknown>;
+  return (
+    typeof payload.processTemplateId === "string" &&
+    Number.isSafeInteger(payload.revision) &&
+    typeof payload.mutationId === "string" &&
+    typeof payload.mutationKind === "string" &&
+    Boolean(payload.changedEntities) &&
+    typeof payload.changedEntities === "object" &&
     typeof payload.changedAt === "string"
   );
 }

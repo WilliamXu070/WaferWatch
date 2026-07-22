@@ -15,6 +15,12 @@ export type WaferPin = {
   waferId?: string;
   projectId?: string;
   currentStepExecutionId?: string | null;
+  currentOperationRunId?: string | null;
+  currentOperationRunMemberId?: string | null;
+  currentOperationRunRevision?: number | null;
+  currentOperationRunMemberRevision?: number | null;
+  plannedOperationId?: string | null;
+  stageProgress?: Json;
   waferCode: string;
   dieLabel: string | null;
   currentStepStatus: StepStatus | null;
@@ -291,16 +297,6 @@ export type GraphViewportFit = {
   centerY: number;
   scale: number;
 };
-
-export type MoveWaferToProcessStepAction = (input: {
-  mutationId: string;
-  assignmentId: string;
-  sourceStepId: string;
-  targetStepId: string;
-  note: string;
-  completeSourceStep?: boolean;
-  revertToPriorStep?: boolean;
-}) => Promise<ActionResult<unknown>>;
 
 export type SubmitStepCheckpointAction = (input: {
   stepExecutionId: string;

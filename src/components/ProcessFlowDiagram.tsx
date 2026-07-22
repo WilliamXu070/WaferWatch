@@ -35,6 +35,8 @@ import {
 } from "@/features/process-flows/waferNaming";
 import type { Json, ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
 import { readDeletedWaferIds } from "@/features/process-flows/waferDeletion";
+import { WORKFLOW_DELTA_EVENT } from "@/features/collaboration/realtime";
+import type { ProcessWorkspaceDelta } from "@/features/workspace/types";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
 import { ProcessFlowMutationStatus } from "./process-flow/ProcessFlowMutationStatus";
 import { ProcessArchiveDock } from "./process-flow/ProcessArchiveDock";
@@ -341,6 +343,24 @@ function safelyReleasePointerCapture(element: Element, pointerId: number) {
   }
 }
 
+function workspaceRecord(value: Json) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, Json | undefined>
+    : null;
+}
+
+function legacyStepStatusFromWorkspace(value: Json | undefined) {
+  if (value === "awaiting_review") return "awaiting_checkpoint" as const;
+  if (value === "rejected") return "redo_required" as const;
+  if ([
+    "pending", "queued", "running", "blocked", "redo_required",
+    "completed", "skipped", "failed"
+  ].includes(String(value))) {
+    return value as "pending" | "queued" | "running" | "blocked" | "redo_required" | "completed" | "skipped" | "failed";
+  }
+  return null;
+}
+
 export function ProcessFlowDiagram({
   steps,
   transitions = [],
@@ -502,7 +522,6 @@ export function ProcessFlowDiagram({
   const pendingTransitionCreateTimerRef = useRef<TimerHandle>(null);
   const pendingPositionTimerRef = useRef<TimerHandle>(null);
   const pendingNameTimerRef = useRef<TimerHandle>(null);
-  const fallbackRefreshTimerRef = useRef<TimerHandle>(null);
   const viewportPersistTimerRef = useRef<TimerHandle>(null);
   const pendingViewportRestoreRef = useRef<ProcessFlowViewportSnapshot | null>(null);
   const viewportReadyProcessIdRef = useRef<string | null>(null);
@@ -764,21 +783,7 @@ export function ProcessFlowDiagram({
     if (pendingNameTimerRef.current) {
       window.clearTimeout(pendingNameTimerRef.current);
     }
-    if (fallbackRefreshTimerRef.current) {
-      window.clearTimeout(fallbackRefreshTimerRef.current);
-      fallbackRefreshTimerRef.current = null;
-    }
   }, []);
-
-  const scheduleBackgroundRefresh = useCallback(() => {
-    if (fallbackRefreshTimerRef.current) {
-      window.clearTimeout(fallbackRefreshTimerRef.current);
-    }
-    fallbackRefreshTimerRef.current = window.setTimeout(() => {
-      fallbackRefreshTimerRef.current = null;
-      router.refresh();
-    }, 2000);
-  }, [router]);
 
   const setEditingNode = (nodeId: string | null) => {
     setEditingNodeId(nodeId);
@@ -1808,7 +1813,6 @@ export function ProcessFlowDiagram({
         );
 
         setMoveMessage(`Added ${waferCode}.`);
-        scheduleBackgroundRefresh();
       })();
     });
   }, [
@@ -1817,7 +1821,6 @@ export function ProcessFlowDiagram({
     isWaferMutationPending,
     onCreateWaferAtProcessStart,
     processTemplateId,
-    scheduleBackgroundRefresh,
     waferCreateDraft
   ]);
 
@@ -2025,9 +2028,8 @@ export function ProcessFlowDiagram({
       }
 
       setMoveMessage(`Deleted ${wafer.label}.`);
-      scheduleBackgroundRefresh();
     })();
-  }, [canEdit, onDeleteWafer, scheduleBackgroundRefresh, selectedWafer]);
+  }, [canEdit, onDeleteWafer, selectedWafer]);
 
   const mergeServerGraphIntoLocal = useCallback((graph: { nodes: FlowNode[]; edges: FlowEdge[] }) => {
     const serverNodeById = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -2153,6 +2155,84 @@ export function ProcessFlowDiagram({
       centerView(serverGraph.nodes);
     }
   }, [centerView, clearQueuedStepMaps, clearTimers, graphSeedKey, mergeServerGraphIntoLocal, processTemplateId, serverGraph]);
+
+  useEffect(() => {
+    if (!processTemplateId) return;
+    const applyWorkspaceDelta = (event: Event) => {
+      const delta = (event as CustomEvent<ProcessWorkspaceDelta>).detail;
+      if (!delta || delta.templateId !== processTemplateId) return;
+      const removed = delta.removedEntityIds.assignmentIds;
+      const affectedAssignmentIds = new Set(
+        Array.isArray(removed)
+          ? removed.filter((id): id is string => typeof id === "string")
+          : []
+      );
+      const states = delta.currentState.flatMap((value) => {
+        const state = workspaceRecord(value);
+        const assignmentId = state?.assignment_id;
+        if (!state || typeof assignmentId !== "string") return [];
+        affectedAssignmentIds.add(assignmentId);
+        return [state];
+      });
+      if (affectedAssignmentIds.size === 0) return;
+
+      setNodes((currentNodes) => {
+        const priorPins = new Map(
+          currentNodes.flatMap((node) => node.wafers.map((pin) => [pin.assignmentId, pin] as const))
+        );
+        const byNodeId = new Map(currentNodes.map((node) => [
+          node.id,
+          {
+            ...node,
+            wafers: node.wafers.filter((pin) => !affectedAssignmentIds.has(pin.assignmentId))
+          }
+        ]));
+        for (const state of states) {
+          const assignmentId = state.assignment_id;
+          const stepId = state.current_step_id;
+          if (
+            typeof assignmentId !== "string" ||
+            typeof stepId !== "string" ||
+            typeof state.wafer_id !== "string" ||
+            typeof state.wafer_code !== "string" ||
+            typeof state.archived_at === "string" ||
+            typeof state.deleted_at === "string"
+          ) continue;
+          const node = byNodeId.get(stepId);
+          if (!node) continue;
+          const prior = priorPins.get(assignmentId);
+          const status = state.assignment_status === "completed"
+            ? "completed" as const
+            : legacyStepStatusFromWorkspace(state.current_member_status);
+          node.wafers.push({
+            ...prior,
+            assignmentId,
+            waferId: state.wafer_id,
+            projectId: typeof state.project_id === "string" ? state.project_id : prior?.projectId,
+            waferCode: state.wafer_code,
+            dieLabel: typeof state.die_label === "string" ? state.die_label : null,
+            currentStepExecutionId: typeof state.legacy_step_execution_id === "string" ? state.legacy_step_execution_id : null,
+            currentOperationRunId: typeof state.current_operation_run_id === "string" ? state.current_operation_run_id : null,
+            currentOperationRunMemberId: typeof state.current_operation_run_member_id === "string" ? state.current_operation_run_member_id : null,
+            currentOperationRunRevision: typeof state.current_run_revision === "number" ? state.current_run_revision : null,
+            currentOperationRunMemberRevision: typeof state.current_member_revision === "number" ? state.current_member_revision : null,
+            plannedOperationId: typeof state.planned_operation_id === "string" ? state.planned_operation_id : null,
+            stageProgress: state.stage_progress ?? [],
+            currentStepStatus: status,
+            latestStepAttemptId: typeof state.latest_attempt_id === "string" ? state.latest_attempt_id : null,
+            isArchivable: state.assignment_status === "completed" || prior?.isArchivable === true
+          });
+        }
+        return Array.from(byNodeId.values()).map((node) => ({
+          ...node,
+          wafers: node.wafers.sort((left, right) => left.waferCode.localeCompare(right.waferCode)),
+          height: getNodeHeightForWafers(node.wafers)
+        }));
+      });
+    };
+    window.addEventListener(WORKFLOW_DELTA_EVENT, applyWorkspaceDelta);
+    return () => window.removeEventListener(WORKFLOW_DELTA_EVENT, applyWorkspaceDelta);
+  }, [processTemplateId]);
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -2738,7 +2818,6 @@ export function ProcessFlowDiagram({
           : node));
         setStepTemplateDraft(null);
         setMoveMessage(`Saved ${result.data.name} template.`);
-        scheduleBackgroundRefresh();
       })();
     });
   };
@@ -3813,7 +3892,6 @@ export function ProcessFlowDiagram({
               : failureMessage
           );
           if (successfulOutcomes.length > 0) {
-            scheduleBackgroundRefresh();
           }
           return;
         }
@@ -3822,7 +3900,6 @@ export function ProcessFlowDiagram({
           ? `Submitted ${move.waferLabel} for checkpoint review.`
           : `Moved ${move.waferLabel} to ${move.targetLabel}.`;
         setMoveMessage(successMessage);
-        scheduleBackgroundRefresh();
 
       })();
     });
@@ -3840,7 +3917,6 @@ export function ProcessFlowDiagram({
         const result = await onUpdateStepReviewer({ stepId: nodeId, reviewerId });
         if (!result.ok) {
           setMoveMessage(result.error);
-          scheduleBackgroundRefresh();
           return;
         }
         setMoveMessage(reviewerId ? `Checkpoint reviewer set to ${reviewerName}.` : "Checkpoint reviewer removed.");
@@ -4347,7 +4423,6 @@ export function ProcessFlowDiagram({
               );
             }
             setMoveMessage(message);
-            scheduleBackgroundRefresh();
           }}
           onSkipAll={() => {
             const skippedMutationIds = new Set(activeParameterDraft.entries.map((entry) => entry.movementMutationId));

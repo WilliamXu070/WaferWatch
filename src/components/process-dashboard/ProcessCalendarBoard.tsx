@@ -34,6 +34,8 @@ import type {
   ProcessCalendarLocation,
   ProcessCalendarPersonOption
 } from "@/features/calendar/queries";
+import { getProcessWorkspaceState, subscribeProcessWorkspace } from "@/features/workspace/store";
+import type { Json } from "@/types/database";
 import { CalendarEventEditor } from "./calendar/CalendarEventEditor";
 import { CalendarFilterPanel } from "./calendar/CalendarFilterPanel";
 import { renderCalendarTimelineItem } from "./calendar/CalendarTimelineItemRenderer";
@@ -130,6 +132,12 @@ function getManualActionForMode(actionMode: ActionMode, manualAction: string) {
   return actionMode === "manual" ? manualAction : null;
 }
 
+function calendarWorkspaceRecord(value: Json) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, Json | undefined>
+    : null;
+}
+
 export function ProcessCalendarBoard({
   processTemplateId,
   calendarStartDate,
@@ -205,6 +213,62 @@ export function ProcessCalendarBoard({
       setPreviewEventId(null);
     }
   }, [initialEvents]);
+
+  useEffect(() => {
+    return subscribeProcessWorkspace(processTemplateId, () => {
+      const delta = getProcessWorkspaceState(processTemplateId).lastDelta;
+      if (!delta || isPendingRef.current || isItemDragActiveRef.current || itemMoveRef.current) return;
+      const changedIds = new Set(
+        Array.isArray(delta.removedEntityIds.plannedOperationIds)
+          ? delta.removedEntityIds.plannedOperationIds.filter((id): id is string => typeof id === "string")
+          : []
+      );
+      const changedEvents = delta.plan.flatMap((value) => {
+        const operation = calendarWorkspaceRecord(value);
+        if (!operation || operation.is_shared_draft !== true || typeof operation.planned_operation_id !== "string") return [];
+        const resources = Array.isArray(operation.resources)
+          ? operation.resources.map(calendarWorkspaceRecord).filter((resource): resource is Record<string, Json | undefined> => Boolean(resource))
+          : [];
+        const location = resources.find((resource) => resource.resource_kind === "location");
+        if (
+          typeof operation.template_id !== "string" ||
+          typeof operation.process_step_id !== "string" ||
+          typeof operation.process_step_name !== "string" ||
+          typeof operation.scheduled_start_at !== "string" ||
+          typeof operation.scheduled_end_at !== "string" ||
+          typeof operation.operation_row_version !== "number" ||
+          typeof location?.locationName !== "string"
+        ) return [];
+        const batchMembers = Array.isArray(operation.batch_members)
+          ? operation.batch_members.map(calendarWorkspaceRecord).filter((member): member is Record<string, Json | undefined> => Boolean(member))
+          : [];
+        return [{
+          id: operation.planned_operation_id,
+          process_template_id: operation.template_id,
+          wafer_id: batchMembers.length === 1 && typeof batchMembers[0].waferId === "string" ? batchMembers[0].waferId : null,
+          location: location.locationName as ProcessCalendarLocation,
+          starts_at: operation.scheduled_start_at,
+          ends_at: operation.scheduled_end_at,
+          process_step_id: operation.process_step_id,
+          process_step_name_snapshot: operation.process_step_name,
+          manual_action: null,
+          description: typeof operation.description === "string" ? operation.description : null,
+          revision: operation.operation_row_version,
+          wafer: null,
+          people: resources.flatMap((resource) =>
+            resource.resource_kind === "person" && typeof resource.person_id === "string" && typeof resource.personName === "string"
+              ? [{ id: resource.person_id, display_name: resource.personName }]
+              : []
+          )
+        } satisfies ProcessCalendarEventView];
+      });
+      if (changedIds.size === 0 && changedEvents.length === 0) return;
+      setEvents((current) => sortCalendarEvents([
+        ...current.filter((event) => !changedIds.has(event.id)),
+        ...changedEvents
+      ]));
+    });
+  }, [processTemplateId]);
 
   const refreshCalendarOptions = useCallback(async () => {
     try {
@@ -677,6 +741,7 @@ export function ProcessCalendarBoard({
     const persistMove = async () => {
       const result = await moveProcessCalendarEvent({
         eventId: input.eventId,
+        mutationId: crypto.randomUUID(),
         expectedRevision: eventToMove.revision,
         location: input.next.location,
         startsAt: input.next.startsAt,
@@ -1438,6 +1503,7 @@ export function ProcessCalendarBoard({
     startTransition(async () => {
       const result = await createProcessCalendarEvent({
         processTemplateId,
+        mutationId: crypto.randomUUID(),
         location: draft.location,
         startsAt: draft.startsAt.toISOString(),
         endsAt: draft.endsAt.toISOString(),
@@ -1471,6 +1537,7 @@ export function ProcessCalendarBoard({
     startTransition(async () => {
       const result = await updateProcessCalendarEvent({
         eventId: selectedEvent.id,
+        mutationId: crypto.randomUUID(),
         expectedRevision: selectedEvent.revision,
         processStepId: actionMode === "step" ? selectedStepId : null,
         waferId: selectedWaferId || null,
@@ -1504,6 +1571,7 @@ export function ProcessCalendarBoard({
     startTransition(async () => {
       const result = await deleteProcessCalendarEvent({
         eventId: selectedEvent.id,
+        mutationId: crypto.randomUUID(),
         expectedRevision: selectedEvent.revision
       });
 

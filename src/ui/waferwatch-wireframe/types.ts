@@ -308,6 +308,7 @@ export type WaferStatusCheckpointDecision = {
 export type WaferStatusCheckpointAttemptEntry = {
   kind: "attempt";
   id: string;
+  operationRunMemberId?: string | null;
   inheritedFromParent?: WaferStatusTimelineInheritance;
   stepId: string;
   stepName: string;
@@ -341,6 +342,25 @@ export type WaferStatusCheckpointHistoryEntry =
   | WaferStatusCheckpointAttemptEntry
   | WaferStatusLegacyTimelineEntry;
 
+export type WaferStatusOperationRunVisit = {
+  id: string;
+  operationRunId: string;
+  operationRunMemberId: string;
+  legacyStepExecutionId: string | null;
+  stepId: string;
+  stepName: string;
+  processArea: string;
+  runKind: "normal" | "redo" | "rework" | "restore" | "ad_hoc";
+  status: StepStatus;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  note: string | null;
+  actor: WaferStatusTimelineActor;
+  parameterRecords: readonly WaferStatusStepParameterRecord[];
+  inheritedFromParent?: WaferStatusTimelineInheritance;
+};
+
 export type WaferStatusTileModel = {
   id: string;
   projectId: string;
@@ -366,6 +386,7 @@ export type WaferStatusTileModel = {
   processSteps?: readonly WaferStatusProcessStepModel[];
   revertHistory?: readonly WaferStatusRevertEvent[];
   checkpointHistory?: readonly WaferStatusCheckpointHistoryEntry[];
+  operationRunVisits?: readonly WaferStatusOperationRunVisit[];
   historyCorrections?: readonly WaferStatusHistoryCorrection[];
   mode?: WaferDisplayMode;
   isUndiced?: boolean;

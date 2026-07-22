@@ -68,7 +68,7 @@ export async function getProjectMetricSummary(projectId: string) {
   return {
     averageCycleHours,
     completedWaferCount: completedCycleTimes.length,
-    activeWipCount: wip.reduce((sum, row) => sum + row.wafer_count, 0),
+    activeWipCount: wip.reduce((sum, row) => sum + (row.wafer_count ?? 0), 0),
     blockedSteps,
     cycleTimes,
     stepMetrics,

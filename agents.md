@@ -90,3 +90,12 @@ Delegated branches must be integrated before production deployment.
 - Migration `202607170005` adds generated, indexed wafer/die identity columns while keeping metadata as the compatibility write source; production parity is verified.
 - Production persistence still uses the compatibility assignment/execution/attempt/event model. Normalize it only through expand → backfill → shadow compare → cutover → later drop.
 - Next refactor targets are extracting the hook-heavy Process Flow and Calendar controllers, followed by the status query waterfall and manual database contract.
+
+## Planning and execution cutover — 2026-07-21
+
+- `process_stages` are non-executable containers; `process_steps` remain the executable substeps and every legacy step is backfilled into a stage.
+- Shared planning uses one collaborative draft plus immutable published revisions, stable logical batch/operation ids, typed parameters/resources, and explicit publish/replan commands.
+- `operation_runs` and `operation_run_members` are the canonical actual-work identity. Repeats, redo, restore, split, and successor work always receive distinct linked runs.
+- `vw_process_current_state`, operation/batch/plan projections, and workspace snapshot/delta RPCs are the canonical route read layer. Revision broadcasts apply ordered deltas and snapshot only on a retained-log gap.
+- Compatibility tables remain additive evidence during shadow comparison. Do not restore route reconstruction from `step_executions`, event metadata, or process-linked calendar rows.
+- Planning/database changes must also pass `planning:verify`, `operation-runs:verify`, `workspace-projection:verify`, `scheduler:verify`, and `migration-chain:verify`.

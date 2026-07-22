@@ -141,7 +141,42 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
   const attempts = (tile.checkpointHistory ?? []).filter(
     (entry): entry is WaferStatusCheckpointAttemptEntry => entry.kind === "attempt"
   );
-  const visits: StepVisitHistoryItem[] = attempts.map((attempt) => {
+  const canonicalVisits = tile.operationRunVisits ?? [];
+  const visits: StepVisitHistoryItem[] = canonicalVisits.length > 0
+    ? canonicalVisits.map((visit) => {
+      const attempt = attempts.find(
+        (candidate) => candidate.operationRunMemberId === visit.operationRunMemberId
+      ) ?? null;
+      const isActive = ["pending", "queued", "running", "blocked", "failed", "awaiting_checkpoint"].includes(visit.status);
+      return {
+        id: visit.id,
+        stepId: visit.stepId,
+        stepName: visit.stepName,
+        processArea: visit.processArea,
+        executionId: visit.legacyStepExecutionId,
+        state: attempt?.effectiveDecision?.outcome === "redo" || visit.status === "redo_required"
+          ? "returned"
+          : isActive
+            ? "current"
+            : "completed",
+        occurredAt: visit.startedAt ?? visit.createdAt,
+        startedAt: visit.startedAt,
+        completedAt: visit.completedAt,
+        completionNote: attempt?.submission?.note?.trim() || visit.note?.trim() || null,
+        completionActor: attempt?.submission?.actor ?? visit.actor,
+        redoDestinationStepId: attempt?.effectiveDecision?.outcome === "redo"
+          ? attempt.effectiveDecision.destinationStepId
+          : null,
+        redoDestinationStepName: attempt?.effectiveDecision?.outcome === "redo"
+          ? attempt.effectiveDecision.destinationStepName
+          : null,
+        parameterRecords: [...visit.parameterRecords],
+        inheritedFromParent: visit.inheritedFromParent,
+        sequence: 0,
+        visitNumber: 1
+      };
+    })
+    : attempts.map((attempt) => {
     const step = stepsById.get(attempt.stepId);
     return {
       id: `attempt:${attempt.id}`,
@@ -169,7 +204,7 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
   });
 
   const attemptedStepIds = new Set(attempts.map((attempt) => attempt.stepId));
-  for (const step of processSteps) {
+  for (const step of canonicalVisits.length > 0 ? [] : processSteps) {
     const isCurrent = step.id === tile.currentStepId;
     const currentAttemptExists = isCurrent && attempts.some(
       (attempt) => attempt.stepId === step.id && ["in_progress", "awaiting_checkpoint", "withdrawn"].includes(attempt.state)

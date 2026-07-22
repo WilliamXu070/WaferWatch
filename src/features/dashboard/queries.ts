@@ -2,66 +2,45 @@ import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { isDicedParentWafer } from "@/features/process-flows/waferVisibility";
-import {
-  DASHBOARD_BATCH_HISTORY_LIMIT,
-  mapProcessBatchHistoryRows
-} from "@/features/dashboard/batchHistory";
-import type { BatchProcessHistoryItem, DashboardModel } from "@/ui/waferwatch-wireframe/types";
 import type {
+  BatchProcessHistoryItem,
+  BatchProcessHistorySample,
+  BatchProcessHistoryStatus,
+  DashboardModel
+} from "@/ui/waferwatch-wireframe/types";
+import type {
+  BatchRunStateView,
   FabricationStatus,
-  ProcessBatchHistoryView,
-  ProcessBatch,
-  ProcessBatchMember,
-  ProcessCalendarEvent,
-  StepExecution,
-  Wafer,
-  WaferProcessAssignment
+  Json,
+  OperationRunHistoryView,
+  ProcessCurrentStateView
 } from "@/types/database";
 
-type WireframeAssignment = Pick<
-  WaferProcessAssignment,
-  "id" | "wafer_id" | "template_id" | "assigned_by" | "status" | "assigned_at" | "started_at" | "completed_at" | "current_step_id"
->;
-
-type WireframeExecution = Pick<
-  StepExecution,
-  | "id"
-  | "assignment_id"
-  | "process_step_id"
-  | "status"
-  | "planned_start_at"
-  | "planned_end_at"
-  | "started_at"
-  | "completed_at"
-  | "operator_id"
-  | "completed_by"
-  | "created_at"
-  | "updated_at"
->;
-
-type WireframeWafer = Pick<Wafer, "id" | "metadata" | "wafer_code" | "die_label">;
-type WireframeStep = { id: string; name: string };
-type WireframeBatch = Pick<ProcessBatch, "id" | "process_step_id" | "created_at" | "note">;
-type WireframeBatchMember = Pick<ProcessBatchMember, "batch_id" | "assignment_id" | "wafer_id" | "step_execution_id" | "created_at">;
-
-type WireframeCalendarEvent = Pick<
-  ProcessCalendarEvent,
-  | "id"
-  | "process_template_id"
-  | "starts_at"
-  | "ends_at"
-  | "process_step_id"
-  | "process_step_name_snapshot"
-  | "manual_action"
-  | "description"
-  | "location"
-  | "batch_id"
->;
-
-type WireframeDashboardQueryClient = Pick<
+type DashboardQueryClient = Pick<
   Awaited<ReturnType<typeof createServerSupabaseClient>>,
   "from"
 >;
+
+type PlanActualRow = Record<string, Json | undefined> & {
+  planned_operation_id: string;
+  process_step_id: string;
+  process_step_name: string;
+  scheduled_start_at: string;
+  planned_status: string;
+  batch_name: string | null;
+  batch_members: Json;
+  actual_run_count: number;
+};
+
+type CalendarStateRow = Record<string, Json | undefined> & {
+  id: string;
+  starts_at: string;
+};
+
+type StageProgressRow = {
+  completedSteps: number;
+  totalSteps: number;
+};
 
 const ACTIVE_ASSIGNMENT_STATUSES: readonly FabricationStatus[] = [
   "planned",
@@ -89,19 +68,19 @@ const EMPTY_DASHBOARD_MODEL: DashboardModel = {
     footer: "0/0 steps complete"
   },
   stats: [
-      {
-        id: "active-wafers",
-        value: "0",
-        label: "Active wafers",
-        icon: "activity",
-        href: "/process-flow"
-      },
     {
-        id: "blocked-failed",
-        value: "0",
-        label: "Blocked / failed",
-        icon: "warning",
-        href: "/process-flow"
+      id: "active-wafers",
+      value: "0",
+      label: "Active wafers",
+      icon: "activity",
+      href: "/process-flow"
+    },
+    {
+      id: "blocked-failed",
+      value: "0",
+      label: "Blocked / failed",
+      icon: "warning",
+      href: "/process-flow"
     }
   ],
   plannedBatches: [],
@@ -109,184 +88,14 @@ const EMPTY_DASHBOARD_MODEL: DashboardModel = {
   batchHistory: []
 };
 
-function isMissingCalendarTableError(error: unknown) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "PGRST205"
-  );
-}
-
 function dateKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
 function parseDate(value: string | null | undefined) {
   if (!value) return null;
-
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function labelForWafer(wafer: WireframeWafer) {
-  return wafer.die_label?.trim() || wafer.wafer_code.trim() || "Unnamed sample";
-}
-
-function buildPlannedBatches({ assignments, wafers, executions, steps, batches, members, calendarEvents }: {
-  assignments: readonly WireframeAssignment[];
-  wafers: readonly WireframeWafer[];
-  executions: readonly WireframeExecution[];
-  steps: readonly WireframeStep[];
-  batches: readonly WireframeBatch[];
-  members: readonly WireframeBatchMember[];
-  calendarEvents: readonly WireframeCalendarEvent[];
-}): BatchProcessHistoryItem[] {
-  const waferById = new Map(wafers.map((wafer) => [wafer.id, wafer]));
-  const stepNameById = new Map(steps.map((step) => [step.id, step.name]));
-  const assignmentById = new Map(assignments.map((assignment) => [assignment.id, assignment]));
-  const executionById = new Map(executions.map((execution) => [execution.id, execution]));
-  const membersByBatch = new Map<string, WireframeBatchMember[]>();
-  for (const member of members) {
-    const grouped = membersByBatch.get(member.batch_id) ?? [];
-    grouped.push(member);
-    membersByBatch.set(member.batch_id, grouped);
-  }
-  const calendarByBatch = new Map(calendarEvents.filter((event) => event.batch_id).map((event) => [event.batch_id!, event]));
-  const newestByAssignmentStep = new Map<string, WireframeExecution>();
-  for (const execution of executions) {
-    const key = `${execution.assignment_id}:${execution.process_step_id}`;
-    if (!newestByAssignmentStep.has(key)) newestByAssignmentStep.set(key, execution);
-  }
-
-  const persistent = batches.flatMap((batch) => {
-    const activeMembers = (membersByBatch.get(batch.id) ?? []).filter((member) => {
-      const assignment = assignmentById.get(member.assignment_id);
-      const execution = executionById.get(member.step_execution_id);
-      return assignment?.current_step_id === batch.process_step_id && execution?.status &&
-        ["queued", "running", "blocked", "redo_required"].includes(execution.status);
-    });
-    if (!activeMembers.length) return [];
-    const event = calendarByBatch.get(batch.id);
-    return [{
-      id: batch.id,
-      batchId: batch.id,
-      processStepId: batch.process_step_id,
-      processName: stepNameById.get(batch.process_step_id) ?? "Unnamed process",
-      submittedAt: batch.created_at,
-      operatorName: "Unassigned",
-      note: batch.note,
-      status: "planned" as const,
-      samples: activeMembers.flatMap((member) => {
-        const wafer = waferById.get(member.wafer_id);
-        return wafer ? [{ attemptId: member.step_execution_id, label: labelForWafer(wafer), status: "awaiting_review" as const }] : [];
-      }),
-      scheduledStartAt: event?.starts_at ?? null,
-      location: event?.location ?? null
-    }];
-  });
-  const persistentExecutionIds = new Set(members.map((member) => member.step_execution_id));
-  const legacy = assignments.flatMap((assignment) => {
-    if (!assignment.current_step_id || !ACTIVE_ASSIGNMENT_STATUSES.includes(assignment.status)) return [];
-    const execution = newestByAssignmentStep.get(`${assignment.id}:${assignment.current_step_id}`);
-    if (!execution || persistentExecutionIds.has(execution.id) || !["queued", "running", "blocked", "redo_required"].includes(execution.status)) return [];
-    const wafer = waferById.get(assignment.wafer_id);
-    if (!wafer) return [];
-    const scheduledStartAt = execution.planned_start_at;
-    return [{
-      id: `legacy-active:${assignment.id}:${execution.id}`,
-      batchId: null,
-      processStepId: assignment.current_step_id,
-      processName: stepNameById.get(assignment.current_step_id) ?? "Unnamed process",
-      submittedAt: scheduledStartAt ?? execution.started_at ?? execution.created_at,
-      operatorName: "Unassigned",
-      note: null,
-      status: "planned" as const,
-      samples: [{ attemptId: execution.id, label: labelForWafer(wafer), status: "awaiting_review" as const }],
-      scheduledStartAt,
-      location: null
-    }];
-  });
-  return [...persistent, ...legacy].sort((left, right) => {
-    const leftTime = left.scheduledStartAt ? Date.parse(left.scheduledStartAt) : Number.POSITIVE_INFINITY;
-    const rightTime = right.scheduledStartAt ? Date.parse(right.scheduledStartAt) : Number.POSITIVE_INFINITY;
-    return leftTime - rightTime || Date.parse(left.submittedAt) - Date.parse(right.submittedAt);
-  });
-}
-
-
-function activityDateForExecution(execution: WireframeExecution) {
-  return (
-    parseDate(execution.completed_at) ??
-    parseDate(execution.started_at) ??
-    parseDate(execution.planned_start_at) ??
-    parseDate(execution.created_at)
-  );
-}
-
-function buildActivity(
-  executions: readonly WireframeExecution[],
-  calendarEvents: readonly WireframeCalendarEvent[]
-): DashboardModel["activity"] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const days = Array.from({ length: 5 }, (_, index) => {
-    const day = new Date(today);
-    day.setDate(today.getDate() - (4 - index));
-    return day;
-  });
-
-  const stepCountsByDay = new Map(days.map((day) => [dateKey(day), 0]));
-  const calendarCountsByDay = new Map(days.map((day) => [dateKey(day), 0]));
-
-  for (const execution of executions) {
-    const activityDate = activityDateForExecution(execution);
-    if (!activityDate) continue;
-
-    const key = dateKey(activityDate);
-    const existing = stepCountsByDay.get(key);
-    if (existing !== undefined) {
-      stepCountsByDay.set(key, existing + 1);
-    }
-  }
-
-  for (const event of calendarEvents) {
-    const startsAt = parseDate(event.starts_at);
-    if (!startsAt) continue;
-
-    const key = dateKey(startsAt);
-    const existing = calendarCountsByDay.get(key);
-    if (existing !== undefined) {
-      calendarCountsByDay.set(key, existing + 1);
-    }
-  }
-
-  return {
-    title: "Process activity",
-    max: 30,
-    bars: days.map((day) => ({
-      label: day.toLocaleDateString("en-US", { weekday: "short" }),
-      value: stepCountsByDay.get(dateKey(day)) ?? 0,
-      compareValue: calendarCountsByDay.get(dateKey(day)) ?? 0
-    }))
-  };
-}
-
-function buildProgress(executions: readonly WireframeExecution[]): DashboardModel["progress"] {
-  const total = executions.length;
-  const completed = executions.filter(
-    (execution) => execution.status === "completed" || execution.status === "skipped"
-  ).length;
-  const blocked = executions.filter(
-    (execution) => execution.status === "blocked" || execution.status === "failed"
-  ).length;
-
-  return {
-    title: "Step progress",
-    percent: total > 0 ? Math.round((completed / total) * 100) : 0,
-    caption: total === 0 ? "No step data" : blocked > 0 ? "Needs attention" : completed === total ? "Complete" : "In progress",
-    footer: `${completed}/${total} steps complete`
-  };
 }
 
 function makeEmptyDashboardModel(): DashboardModel {
@@ -308,12 +117,10 @@ export function getEmptyWireframeDashboardModel(): DashboardModel {
 }
 
 async function resolveDashboardProcessTemplateId(
-  supabase: WireframeDashboardQueryClient,
+  supabase: DashboardQueryClient,
   requestedProcessTemplateId?: string
 ) {
-  if (requestedProcessTemplateId) {
-    return requestedProcessTemplateId;
-  }
+  if (requestedProcessTemplateId) return requestedProcessTemplateId;
 
   const { data, error } = await supabase
     .from("process_templates")
@@ -323,166 +130,242 @@ async function resolveDashboardProcessTemplateId(
     .limit(1)
     .maybeSingle();
 
-  if (error) {
-    throw error;
-  }
-
+  if (error) throw error;
   return data?.id ?? null;
 }
 
-export async function getWireframeDashboardModel(
-  supabase: WireframeDashboardQueryClient,
-  processTemplateId?: string
-): Promise<DashboardModel> {
-  // The dashboard is entered directly after sign-in. Restrict its initial
-  // hydration to the selected active process instead of loading every process
-  // and historical execution in the workspace.
-  const resolvedProcessTemplateId = await resolveDashboardProcessTemplateId(
-    supabase,
-    processTemplateId
-  );
-
-  if (!resolvedProcessTemplateId) {
-    return makeEmptyDashboardModel();
-  }
-
-  const assignmentsQuery = supabase
-    .from("wafer_process_assignments")
-    .select("id, wafer_id, template_id, assigned_by, status, assigned_at, started_at, completed_at, current_step_id")
-    .eq("template_id", resolvedProcessTemplateId)
-    .is("deleted_at", null)
-    .is("archived_at", null)
-    .order("assigned_at", { ascending: false });
-  const calendarEventsQuery = supabase
-    .from("process_calendar_events")
-    .select("id, process_template_id, starts_at, ends_at, process_step_id, process_step_name_snapshot, manual_action, description, location, batch_id")
-    .eq("process_template_id", resolvedProcessTemplateId)
-    .order("starts_at", { ascending: true });
-  const batchHistoryQuery = supabase
-    .from("vw_process_batch_history")
-    .select(
-      "id, batch_id, template_id, process_step_id, process_name, submitted_at, operator_name, note, status, sample_count, samples"
-    )
-    .eq("template_id", resolvedProcessTemplateId)
-    .order("submitted_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(DASHBOARD_BATCH_HISTORY_LIMIT);
-  const stepsQuery = supabase
-    .from("process_steps")
-    .select("id, name")
-    .eq("template_id", resolvedProcessTemplateId);
-  const batchesQuery = supabase
-    .from("process_batches")
-    .select("id, process_step_id, created_at, note")
-    .eq("template_id", resolvedProcessTemplateId)
-    .order("created_at", { ascending: false })
-    .limit(DASHBOARD_BATCH_HISTORY_LIMIT);
-
-  const [assignmentsResult, calendarEventsResult, batchHistoryResult, stepsResult, batchesResult] = await Promise.all([
-    assignmentsQuery,
-    calendarEventsQuery,
-    batchHistoryQuery,
-    stepsQuery,
-    batchesQuery
-  ]);
-
-  const candidateAssignments = (assignmentsResult.data ?? []) as WireframeAssignment[];
-  const assignmentIds = candidateAssignments.map((assignment) => assignment.id);
-  const candidateWaferIds = candidateAssignments.map((assignment) => assignment.wafer_id);
-  const batchIds = (batchesResult.data ?? []).map((batch) => batch.id);
-  const [wafersResult, executionsResult, membersResult] = await Promise.all([
-    candidateWaferIds.length
-      ? supabase
-          .from("wafers")
-          .select("id, metadata, wafer_code, die_label")
-          .in("id", candidateWaferIds)
-          .is("deleted_at", null)
-          .is("archived_at", null)
-          .order("created_at", { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
-    assignmentIds.length
-      ? supabase
-          .from("step_executions")
-          .select(
-            "id, assignment_id, process_step_id, status, planned_start_at, planned_end_at, started_at, completed_at, operator_id, completed_by, created_at, updated_at"
-          )
-          .in("assignment_id", assignmentIds)
-          .order("updated_at", { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
-    batchIds.length
-      ? supabase
-          .from("process_batch_members")
-          .select("batch_id, assignment_id, wafer_id, step_execution_id, created_at")
-          .in("batch_id", batchIds)
-      : Promise.resolve({ data: [], error: null })
-  ]);
-
-  const queryErrors = [
-    assignmentsResult.error,
-    wafersResult.error,
-    executionsResult.error,
-    stepsResult.error,
-    batchesResult.error,
-    membersResult.error
-  ].filter((error): error is NonNullable<typeof assignmentsResult.error> => Boolean(error));
-
-  if (queryErrors[0]) {
-    throw queryErrors[0];
-  }
-
-  if (calendarEventsResult.error && !isMissingCalendarTableError(calendarEventsResult.error)) {
-    throw calendarEventsResult.error;
-  }
-  if (batchHistoryResult.error && !isMissingCalendarTableError(batchHistoryResult.error)) {
-    throw batchHistoryResult.error;
-  }
-
-  const allWafers = (wafersResult.data ?? []) as WireframeWafer[];
-  const allExecutions = (executionsResult.data ?? []) as WireframeExecution[];
-  const allCalendarEvents = (calendarEventsResult.data ?? []) as WireframeCalendarEvent[];
-  const submittedBatches = mapProcessBatchHistoryRows(
-    (batchHistoryResult.data ?? []) as ProcessBatchHistoryView[]
-  );
-  const candidateWaferIdSet = new Set(candidateWaferIds);
-  const wafers = allWafers.filter(
-    (wafer) => candidateWaferIdSet.has(wafer.id) && !isDicedParentWafer(wafer.metadata)
-  );
-  const visibleWaferIds = new Set(wafers.map((wafer) => wafer.id));
-  const assignments = candidateAssignments.filter((assignment) => visibleWaferIds.has(assignment.wafer_id));
-  const visibleAssignmentIds = new Set(assignments.map((assignment) => assignment.id));
-  const executions = allExecutions.filter((execution) => visibleAssignmentIds.has(execution.assignment_id));
-  const calendarEvents = allCalendarEvents;
-
-  const plannedBatches = buildPlannedBatches({
-    assignments,
-    wafers,
-    executions,
-    steps: (stepsResult.data ?? []) as WireframeStep[],
-    batches: (batchesResult.data ?? []) as WireframeBatch[],
-    members: (membersResult.data ?? []) as WireframeBatchMember[],
-    calendarEvents
+function buildActivity(
+  history: readonly OperationRunHistoryView[],
+  calendarRows: readonly CalendarStateRow[]
+): DashboardModel["activity"] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Array.from({ length: 5 }, (_, index) => {
+    const day = new Date(today);
+    day.setDate(today.getDate() - (4 - index));
+    return day;
   });
-  const reviewQueue = submittedBatches
-    .filter((batch) => batch.samples.some((sample) => sample.status === "awaiting_review"))
-    .sort((left, right) => Date.parse(left.submittedAt) - Date.parse(right.submittedAt));
-  const reviewBatchIds = new Set(reviewQueue.map((batch) => batch.id));
-  const batchHistory = submittedBatches.filter((batch) => !reviewBatchIds.has(batch.id));
+  const actualByDay = new Map(days.map((day) => [dateKey(day), 0]));
+  const plannedByDay = new Map(days.map((day) => [dateKey(day), 0]));
 
-  if (assignments.length === 0 && wafers.length === 0 && executions.length === 0 && submittedBatches.length === 0) {
-    return makeEmptyDashboardModel();
+  for (const member of history) {
+    const occurredAt = parseDate(
+      typeof member.completed_at === "string"
+        ? member.completed_at
+        : typeof member.started_at === "string"
+          ? member.started_at
+          : member.created_at
+    );
+    if (!occurredAt) continue;
+    const key = dateKey(occurredAt);
+    if (actualByDay.has(key)) actualByDay.set(key, (actualByDay.get(key) ?? 0) + 1);
   }
-  const activeAssignments = assignments.filter((assignment) =>
-    ACTIVE_ASSIGNMENT_STATUSES.includes(assignment.status)
-  );
-  const blockedFailedCount = executions.filter(
-    (execution) => execution.status === "blocked" || execution.status === "failed"
-  ).length;
-  const progress = buildProgress(executions);
-  const processQuery = `?processId=${encodeURIComponent(resolvedProcessTemplateId)}`;
+
+  for (const row of calendarRows) {
+    const start = parseDate(row.starts_at);
+    if (!start) continue;
+    const key = dateKey(start);
+    if (plannedByDay.has(key)) plannedByDay.set(key, (plannedByDay.get(key) ?? 0) + 1);
+  }
 
   return {
-    activity: buildActivity(executions, calendarEvents),
-    progress,
+    title: "Process activity",
+    max: 30,
+    bars: days.map((day) => ({
+      label: day.toLocaleDateString("en-US", { weekday: "short" }),
+      value: actualByDay.get(dateKey(day)) ?? 0,
+      compareValue: plannedByDay.get(dateKey(day)) ?? 0
+    }))
+  };
+}
+
+function parseStageProgress(value: Json): StageProgressRow[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+    const completedSteps = Number(candidate.completedSteps);
+    const totalSteps = Number(candidate.totalSteps);
+    return Number.isFinite(completedSteps) && Number.isFinite(totalSteps)
+      ? [{ completedSteps, totalSteps }]
+      : [];
+  });
+}
+
+function buildProgress(rows: readonly ProcessCurrentStateView[]): DashboardModel["progress"] {
+  let completed = 0;
+  let total = 0;
+  for (const row of rows) {
+    for (const stage of parseStageProgress(row.stage_progress)) {
+      completed += stage.completedSteps;
+      total += stage.totalSteps;
+    }
+  }
+  const blocked = rows.filter((row) =>
+    row.current_member_status === "blocked" || row.current_member_status === "failed"
+  ).length;
+
+  return {
+    title: "Step progress",
+    percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+    caption: total === 0 ? "No step data" : blocked > 0 ? "Needs attention" : completed === total ? "Complete" : "In progress",
+    footer: `${completed}/${total} steps complete`
+  };
+}
+
+function sampleStatus(status: string): BatchProcessHistorySample["status"] {
+  if (["completed", "approved", "skipped"].includes(status)) return "approved";
+  if (["redo_required", "rejected", "failed"].includes(status)) return "redo";
+  if (status === "cancelled") return "withdrawn";
+  return "awaiting_review";
+}
+
+function batchStatus(row: BatchRunStateView): BatchProcessHistoryStatus {
+  if (row.member_status === "mixed") return "mixed";
+  if (row.run_status === "completed") return "approved";
+  if (row.run_status === "redo_required" || row.run_status === "failed") return "redo";
+  if (row.run_status === "cancelled") return "withdrawn";
+  return "awaiting_review";
+}
+
+function parseMembers(value: Json): BatchProcessHistorySample[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+    const memberId = typeof candidate.memberId === "string" ? candidate.memberId : null;
+    const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+    const status = typeof candidate.status === "string" ? candidate.status : "queued";
+    return memberId && label
+      ? [{ attemptId: memberId, label, status: sampleStatus(status) }]
+      : [];
+  });
+}
+
+function mapBatchRun(row: BatchRunStateView): BatchProcessHistoryItem {
+  const startedAt = typeof row.started_at === "string" ? row.started_at : null;
+  const completedAt = typeof row.completed_at === "string" ? row.completed_at : null;
+  return {
+    id: row.operation_run_id,
+    batchId: row.operation_run_id,
+    processStepId: row.process_step_id,
+    processName: typeof row.process_step_name === "string" ? row.process_step_name : "Unnamed process",
+    submittedAt: completedAt ?? startedAt ?? row.created_at,
+    operatorName: "Batch operation",
+    note: null,
+    status: batchStatus(row),
+    samples: parseMembers(row.members)
+  };
+}
+
+function parsePlanMembers(value: Json): BatchProcessHistorySample[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+    const assignmentId = typeof candidate.assignmentId === "string" ? candidate.assignmentId : null;
+    const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+    return assignmentId && label
+      ? [{ attemptId: assignmentId, label, status: "awaiting_review" as const }]
+      : [];
+  });
+}
+
+function mapPlannedOperation(row: PlanActualRow): BatchProcessHistoryItem {
+  return {
+    id: row.planned_operation_id,
+    batchId: row.planned_operation_id,
+    processStepId: row.process_step_id,
+    processName: row.process_step_name || "Unnamed process",
+    submittedAt: row.scheduled_start_at,
+    operatorName: "Planned",
+    note: row.batch_name,
+    status: "planned",
+    samples: parsePlanMembers(row.batch_members),
+    scheduledStartAt: row.scheduled_start_at,
+    location: null
+  };
+}
+
+export async function getWireframeDashboardModel(
+  supabase: DashboardQueryClient,
+  processTemplateId?: string
+): Promise<DashboardModel> {
+  const templateId = await resolveDashboardProcessTemplateId(supabase, processTemplateId);
+  if (!templateId) return makeEmptyDashboardModel();
+
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - 4);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 5);
+
+  const [currentResult, planResult, batchResult, historyResult, calendarResult] = await Promise.all([
+    supabase
+      .from("vw_process_current_state")
+      .select("*")
+      .eq("template_id", templateId)
+      .is("archived_at", null),
+    supabase
+      .from("vw_plan_actual_state")
+      .select("*")
+      .eq("template_id", templateId)
+      .eq("is_shared_draft", true)
+      .order("scheduled_start_at", { ascending: true })
+      .limit(100),
+    supabase
+      .from("vw_batch_run_state")
+      .select("*")
+      .eq("template_id", templateId)
+      .order("created_at", { ascending: false })
+      .limit(60),
+    supabase
+      .from("vw_operation_run_history")
+      .select("*")
+      .eq("template_id", templateId)
+      .gte("created_at", start.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1000),
+    supabase
+      .from("vw_process_calendar_state")
+      .select("id, starts_at")
+      .eq("process_template_id", templateId)
+      .gte("starts_at", start.toISOString())
+      .lt("starts_at", end.toISOString())
+      .order("starts_at", { ascending: true })
+      .limit(500)
+  ]);
+
+  const firstError = [currentResult.error, planResult.error, batchResult.error, historyResult.error, calendarResult.error]
+    .find(Boolean);
+  if (firstError) throw firstError;
+
+  const currentRows = ((currentResult.data ?? []) as ProcessCurrentStateView[]).filter(
+    (row) => !isDicedParentWafer(row.wafer_metadata)
+  );
+  const batchRows = (batchResult.data ?? []) as BatchRunStateView[];
+  const historyRows = (historyResult.data ?? []) as OperationRunHistoryView[];
+  const calendarRows = (calendarResult.data ?? []) as CalendarStateRow[];
+  const planRows = (planResult.data ?? []) as PlanActualRow[];
+  const plannedBatches = planRows
+    .filter((row) => Number(row.actual_run_count) === 0 && parsePlanMembers(row.batch_members).length > 0)
+    .map(mapPlannedOperation);
+  const mappedBatches = batchRows.map(mapBatchRun);
+  const reviewQueue = mappedBatches.filter((row) => row.status === "awaiting_review" || row.status === "mixed");
+  const batchHistory = mappedBatches
+    .filter((row) => !reviewQueue.some((candidate) => candidate.id === row.id))
+    .slice(0, 30);
+
+  if (currentRows.length === 0 && plannedBatches.length === 0 && mappedBatches.length === 0) {
+    return makeEmptyDashboardModel();
+  }
+
+  const activeAssignments = currentRows.filter((row) => ACTIVE_ASSIGNMENT_STATUSES.includes(row.assignment_status));
+  const blockedFailedCount = currentRows.filter((row) =>
+    row.current_member_status === "blocked" || row.current_member_status === "failed"
+  ).length;
+  const processQuery = `?processId=${encodeURIComponent(templateId)}`;
+
+  return {
+    activity: buildActivity(historyRows, calendarRows),
+    progress: buildProgress(currentRows),
     stats: [
       {
         id: "active-wafers",
