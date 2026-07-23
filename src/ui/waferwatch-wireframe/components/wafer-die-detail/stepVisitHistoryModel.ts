@@ -45,8 +45,13 @@ function compareVisitBeginnings(first: StepVisitHistoryItem, second: StepVisitHi
 }
 
 function compareVisitProgression(first: StepVisitHistoryItem, second: StepVisitHistoryItem) {
-  const completionDifference = timeValue(first.completedAt) - timeValue(second.completedAt);
-  if (completionDifference) return completionDifference;
+  const progressionTime = (visit: StepVisitHistoryItem) => visit.completedAt
+    ? timeValue(visit.completedAt)
+    : visit.state === "current"
+      ? Number.MAX_SAFE_INTEGER
+      : timeValue(visit.startedAt ?? visit.occurredAt);
+  const progressionDifference = progressionTime(first) - progressionTime(second);
+  if (progressionDifference) return progressionDifference;
 
   return compareVisitBeginnings(first, second);
 }

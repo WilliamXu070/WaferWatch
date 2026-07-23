@@ -155,6 +155,53 @@ test("orders progression by completion time when repeated visits started in a di
   assert.equal(visits[3]?.historyAction, null);
 });
 
+test("orders historical visits without completion timestamps by their displayed event time", () => {
+  const visits = buildStepVisitHistory(tile({
+    checkpointHistory: [],
+    operationRunVisits: [{
+      id: "operation-member:returned-old",
+      operationRunId: "run-returned-old",
+      operationRunMemberId: "returned-old",
+      legacyStepExecutionId: null,
+      stepId: "piranha",
+      stepName: "Piranha",
+      processArea: "Clean",
+      runKind: "redo",
+      status: "redo_required",
+      startedAt: null,
+      completedAt: null,
+      createdAt: "2026-07-16T15:11:00Z",
+      note: null,
+      actor: { id: "user-1", name: "William" },
+      parameterRecords: []
+    }, {
+      id: "operation-member:completed-later",
+      operationRunId: "run-completed-later",
+      operationRunMemberId: "completed-later",
+      legacyStepExecutionId: null,
+      stepId: "pad",
+      stepName: "Pad Formation",
+      processArea: "Lithography",
+      runKind: "normal",
+      status: "completed",
+      startedAt: "2026-07-20T17:30:00Z",
+      completedAt: "2026-07-20T17:38:00Z",
+      createdAt: "2026-07-20T17:30:00Z",
+      note: null,
+      actor: { id: "user-1", name: "William" },
+      parameterRecords: []
+    }]
+  }));
+
+  assert.deepEqual(
+    visits.map((visit) => [visit.stepName, visit.completedAt ?? visit.startedAt ?? visit.occurredAt]),
+    [
+      ["Piranha", "2026-07-16T15:11:00Z"],
+      ["Pad Formation", "2026-07-20T17:38:00Z"]
+    ]
+  );
+});
+
 test("labels the current destination after a redo as a continuation", () => {
   const base = tile();
   const visits = buildStepVisitHistory(tile({
