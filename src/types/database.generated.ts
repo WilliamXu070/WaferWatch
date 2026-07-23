@@ -5895,6 +5895,37 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      ensure_compatibility_history_member: {
+        Args: {
+          actor_id: string
+          identity_id: string
+          occurred_at: string
+          target_run_kind: string
+          target_step_execution_id: string
+        }
+        Returns: {
+          assignment_id: string
+          completed_at: string | null
+          created_at: string
+          history_effective: boolean
+          history_suppression_reason: string | null
+          id: string
+          legacy_step_execution_id: string | null
+          note: string | null
+          operation_run_id: string
+          revision: number
+          started_at: string | null
+          status: string
+          updated_at: string
+          wafer_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "operation_run_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       ensure_compatibility_step_execution: {
         Args: {
           actor_id: string
@@ -6156,6 +6187,11 @@ export type Database = {
         }
         Returns: string
       }
+      refresh_operation_run_history_state: {
+        Args: { target_run_id: string }
+        Returns: undefined
+      }
+      repair_operation_history_from_evidence: { Args: never; Returns: Json }
       replace_planned_batch_members: {
         Args: {
           assignment_ids: string[]
