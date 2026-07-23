@@ -84,7 +84,8 @@ const id = {
   pl2DecisionTwo: "66000000-0000-4000-8000-000000000024",
   polingDecision: "66000000-0000-4000-8000-000000000025",
   otherProject: "66000000-0000-4000-8000-000000000026",
-  otherWafer: "66000000-0000-4000-8000-000000000027"
+  otherWafer: "66000000-0000-4000-8000-000000000027",
+  stalePl2Attempt: "66000000-0000-4000-8000-000000000028"
 };
 
 await db.exec(`
@@ -184,6 +185,14 @@ const attemptValues = [
     submitted: "2026-07-22T19:29:56Z"
   },
   {
+    id: id.stalePl2Attempt,
+    step: id.pl2Step,
+    execution: id.pl2Execution,
+    number: 3,
+    started: "2026-07-22T19:29:57Z",
+    submitted: "2026-07-22T19:29:58Z"
+  },
+  {
     id: id.polingAttempt,
     step: id.polingStep,
     execution: id.polingExecution,
@@ -257,6 +266,7 @@ for (const [decisionId, attemptId, stepId, executionId, decidedAt] of decisionVa
 }
 
 for (const attempt of attemptValues) {
+  const decision = decisionValues.find((row) => row[1] === attempt.id);
   await db.query(`
     insert into public.process_events (
       project_id, wafer_id, step_execution_id, actor_id, event_type, event_at, metadata
@@ -264,8 +274,7 @@ for (const attempt of attemptValues) {
       ($1, $2, $3, $4, 'checkpoint_step_entered', $5, jsonb_build_object(
         'assignment_id', $6::text, 'target_step_id', $7::text
       )),
-      ($1, $2, $3, $4, 'checkpoint_submitted', $8, jsonb_build_object('attempt_id', $9::text)),
-      ($1, $2, $3, $4, 'checkpoint_approved', $10, jsonb_build_object('attempt_id', $9::text))
+      ($1, $2, $3, $4, 'checkpoint_submitted', $8, jsonb_build_object('attempt_id', $9::text))
   `, [
     id.project,
     id.wafer,
@@ -275,9 +284,25 @@ for (const attempt of attemptValues) {
     id.assignment,
     attempt.step,
     attempt.submitted,
-    attempt.id,
-    decisionValues.find((row) => row[1] === attempt.id)?.[4]
+    attempt.id
   ]);
+  if (decision) {
+    await db.query(`
+      insert into public.process_events (
+        project_id, wafer_id, step_execution_id, actor_id, event_type, event_at, metadata
+      ) values (
+        $1, $2, $3, $4, 'checkpoint_approved', $5,
+        jsonb_build_object('attempt_id', $6::text)
+      )
+    `, [
+      id.project,
+      id.wafer,
+      attempt.execution,
+      id.actor,
+      decision[4],
+      attempt.id
+    ]);
+  }
 }
 await db.query(`
   insert into public.process_events (
@@ -314,16 +339,30 @@ const attempts = await db.query(`
   where attempt.assignment_id = '${id.assignment}'
   order by attempt.submitted_at
 `);
-assert.equal(new Set(attempts.rows.map((row) => row.member_id)).size, 3);
+assert.equal(new Set(attempts.rows.map((row) => row.member_id)).size, 4);
 assert.ok(attempts.rows.every((row) => row.process_step_id === row.member_step_id));
 assert.deepEqual(
-  attempts.rows.map((row) => [row.started_at.toISOString(), row.completed_at.toISOString()]),
+  attempts.rows.map((row) => [
+    row.started_at.toISOString(),
+    row.completed_at?.toISOString() ?? null
+  ]),
   [
     ["2026-07-20T17:38:19.000Z", "2026-07-21T13:12:58.000Z"],
     ["2026-07-21T18:08:39.000Z", "2026-07-22T19:29:59.000Z"],
+    ["2026-07-22T19:29:57.000Z", null],
     ["2026-07-22T19:29:59.000Z", "2026-07-22T19:31:09.000Z"]
   ]
 );
+const staleAttemptMember = await db.query(`
+  select member.status, member.history_effective
+  from public.process_step_attempts attempt
+  join public.operation_run_members member on member.id = attempt.operation_run_member_id
+  where attempt.id = '${id.stalePl2Attempt}'
+`);
+assert.deepEqual(staleAttemptMember.rows[0], {
+  status: "cancelled",
+  history_effective: true
+});
 
 const suppressed = await db.query(`
   select id, history_effective, history_suppression_reason
@@ -418,12 +457,13 @@ await db.exec("reset role");
 assert.ok(!visibleMembers.rows.some((row) => row.id === id.eblMember));
 assert.ok(!visibleMembers.rows.some((row) => row.id === id.pl2Member));
 assert.ok(!visibleMembers.rows.some((row) => row.id === id.polingMember));
-assert.equal(visibleMembers.rows.length, 4);
+assert.equal(visibleMembers.rows.length, 5);
 
 console.log(JSON.stringify({
-  exactRepro: "A4 merged PL2 repeats, cross-step Poling link, false EBL completion, and missing Inspection member",
+  exactRepro: "A4 merged PL2 repeats, cross-step Poling link, false EBL completion, missing Inspection member, and stale unresolved submission",
   recoveredVisits: visibleMembers.rows.length,
   distinctAttemptMembers: new Set(attempts.rows.map((row) => row.member_id)).size,
+  staleUnresolvedVisit: staleAttemptMember.rows[0].status,
   orphanEvents: orphanEvents.rows[0].count,
   rerunnable: memberCountAfterRetry.rows[0].count === memberCountBeforeRetry.rows[0].count,
   suppressedEvidenceRetained: suppressed.rows.length,

@@ -732,7 +732,7 @@ begin
       when withdrawal.id is not null then 'cancelled'
       when decision.decision = 'approved' then 'completed'
       when decision.decision = 'redo' then 'rejected'
-      else 'awaiting_review'
+      else 'cancelled'
     end,
     not exists (
       select 1 from public.process_events undone
@@ -774,7 +774,7 @@ begin
       when withdrawal.id is not null then 'cancelled'
       when decision.decision = 'approved' then 'completed'
       when decision.decision = 'redo' then 'redo_required'
-      else 'awaiting_review'
+      else 'cancelled'
     end,
     coalesce(
       attempt.started_at_snapshot,
@@ -824,7 +824,7 @@ begin
       when withdrawal.id is not null then 'cancelled'
       when decision.decision = 'approved' then 'completed'
       when decision.decision = 'redo' then 'rejected'
-      else 'awaiting_review'
+      else 'cancelled'
     end,
     coalesce(
       attempt.started_at_snapshot,
@@ -895,7 +895,7 @@ begin
       when withdrawal.id is not null then 'cancelled'
       when decision.decision = 'approved' then 'completed'
       when decision.decision = 'redo' then 'rejected'
-      else 'awaiting_review'
+      else 'cancelled'
     end,
     not exists (
       select 1 from public.process_events undone
@@ -1135,6 +1135,78 @@ begin
       select 1 from public.process_step_attempts attempt
       where attempt.operation_run_member_id = member.id
     );
+
+  -- A stale submitted attempt can coexist with a newer current destination in
+  -- legacy data. Recovered unresolved attempts are inserted terminally above to
+  -- respect the one-active-member invariant; promote only the single latest
+  -- unresolved visit that still represents the assignment's current step.
+  drop table if exists pg_temp.ww_current_unresolved_visits;
+  create temporary table ww_current_unresolved_visits (
+    assignment_id uuid primary key,
+    operation_run_id uuid not null,
+    operation_run_member_id uuid not null,
+    started_at timestamptz not null
+  ) on commit drop;
+
+  insert into ww_current_unresolved_visits (
+    assignment_id,
+    operation_run_id,
+    operation_run_member_id,
+    started_at
+  )
+  select distinct on (assignment.id)
+    assignment.id,
+    visit.operation_run_id,
+    visit.operation_run_member_id,
+    visit.started_at
+  from ww_recovered_visits visit
+  join public.process_step_attempts attempt on attempt.id = visit.attempt_id
+  join public.wafer_process_assignments assignment
+    on assignment.id = visit.assignment_id
+   and assignment.current_step_id = visit.process_step_id
+  where visit.history_effective
+    and not exists (
+      select 1
+      from public.checkpoint_decisions decision
+      where decision.attempt_id = attempt.id
+        and not exists (
+          select 1 from public.process_events undone
+          where undone.event_type = 'wafer_history_undone'
+            and undone.metadata ->> 'undone_decision_id' = decision.id::text
+        )
+    )
+    and not exists (
+      select 1
+      from public.checkpoint_submission_withdrawals withdrawal
+      where withdrawal.attempt_id = attempt.id
+    )
+    and not exists (
+      select 1
+      from public.operation_run_members newer_member
+      join public.operation_runs newer_run on newer_run.id = newer_member.operation_run_id
+      where newer_member.assignment_id = assignment.id
+        and newer_member.id <> visit.operation_run_member_id
+        and newer_member.history_effective
+        and newer_member.status in ('queued', 'running', 'blocked', 'awaiting_review')
+        and newer_run.process_step_id = assignment.current_step_id
+        and coalesce(newer_member.started_at, newer_member.created_at) > visit.started_at
+    )
+  order by assignment.id, visit.started_at desc, attempt.submitted_at desc, attempt.id desc;
+
+  update public.operation_run_members member
+  set status = 'cancelled',
+      completed_at = coalesce(member.completed_at, target.started_at)
+  from ww_current_unresolved_visits target
+  where member.assignment_id = target.assignment_id
+    and member.id <> target.operation_run_member_id
+    and member.history_effective
+    and member.status in ('queued', 'running', 'blocked', 'awaiting_review');
+
+  update public.operation_run_members member
+  set status = 'awaiting_review',
+      completed_at = null
+  from ww_current_unresolved_visits target
+  where member.id = target.operation_run_member_id;
 
   -- Link checkpoint submission/decision events by immutable attempt id.
   with event_targets as (
