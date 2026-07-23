@@ -132,7 +132,9 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
   const attempts = (tile.checkpointHistory ?? []).filter(
     (entry): entry is WaferStatusCheckpointAttemptEntry => entry.kind === "attempt"
   );
-  const canonicalVisits = tile.operationRunVisits ?? [];
+  const canonicalVisits = (tile.operationRunVisits ?? []).filter((visit) =>
+    !(visit.status === "completed" && !visit.startedAt && !visit.completedAt)
+  );
   const visits: StepVisitHistoryItem[] = canonicalVisits.length > 0
     ? canonicalVisits.map((visit) => {
       const attempt = attempts.find(

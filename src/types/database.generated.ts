@@ -947,6 +947,8 @@ export type Database = {
           assignment_id: string
           completed_at: string | null
           created_at: string
+          history_effective: boolean
+          history_suppression_reason: string | null
           id: string
           legacy_step_execution_id: string | null
           note: string | null
@@ -961,6 +963,8 @@ export type Database = {
           assignment_id: string
           completed_at?: string | null
           created_at?: string
+          history_effective?: boolean
+          history_suppression_reason?: string | null
           id?: string
           legacy_step_execution_id?: string | null
           note?: string | null
@@ -975,6 +979,8 @@ export type Database = {
           assignment_id?: string
           completed_at?: string | null
           created_at?: string
+          history_effective?: boolean
+          history_suppression_reason?: string | null
           id?: string
           legacy_step_execution_id?: string | null
           note?: string | null

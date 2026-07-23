@@ -202,6 +202,46 @@ test("orders historical visits without completion timestamps by their displayed 
   );
 });
 
+test("excludes completed canonical placeholders that have no occurrence timestamp", () => {
+  const visits = buildStepVisitHistory(tile({
+    operationRunVisits: [{
+      id: "operation-member:ghost-ebl",
+      operationRunId: "run-ghost-ebl",
+      operationRunMemberId: "ghost-ebl",
+      legacyStepExecutionId: "exec-ghost-ebl",
+      stepId: "ebl",
+      stepName: "EBL",
+      processArea: "Lithography",
+      runKind: "normal",
+      status: "completed",
+      startedAt: null,
+      completedAt: null,
+      createdAt: "2026-07-16T15:11:00Z",
+      note: null,
+      actor: { id: null, name: null },
+      parameterRecords: []
+    }, {
+      id: "operation-member:cleaning",
+      operationRunId: "run-cleaning",
+      operationRunMemberId: "cleaning",
+      legacyStepExecutionId: "exec-cleaning",
+      stepId: "clean",
+      stepName: "Cleaning",
+      processArea: "Clean",
+      runKind: "normal",
+      status: "completed",
+      startedAt: "2026-07-16T15:20:00Z",
+      completedAt: "2026-07-16T15:25:00Z",
+      createdAt: "2026-07-16T15:20:00Z",
+      note: null,
+      actor: { id: null, name: null },
+      parameterRecords: []
+    }]
+  }));
+
+  assert.deepEqual(visits.map((visit) => visit.stepName), ["Cleaning"]);
+});
+
 test("labels the current destination after a redo as a continuation", () => {
   const base = tile();
   const visits = buildStepVisitHistory(tile({

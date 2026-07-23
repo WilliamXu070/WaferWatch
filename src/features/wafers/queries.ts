@@ -367,6 +367,11 @@ function buildCanonicalHistory(rows: readonly OperationRunHistoryView[]): Canoni
   for (const row of rows) {
     const visitId = `operation-member:${row.operation_run_member_id}`;
     const checkpointRows = asRecordArray(row.checkpoint_history);
+    const isNeverHappenedPlaceholder = row.member_status === "completed"
+      && row.started_at === null
+      && row.completed_at === null
+      && checkpointRows.length === 0;
+    if (isNeverHappenedPlaceholder) continue;
     visits.push({
       id: visitId,
       operationRunId: row.operation_run_id,
