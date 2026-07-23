@@ -288,6 +288,13 @@ await db.query(`
   )
 `, [id.project, id.wafer, id.inspectionExecution, id.actor, id.assignment, id.inspectionStep]);
 
+// Supabase hosts pgcrypto in `extensions`; emulate that production-only schema
+// placement so deterministic recovery ids cannot pass merely in local PGlite.
+await db.exec(`
+  create schema if not exists extensions;
+  alter extension pgcrypto set schema extensions;
+`);
+
 for (const file of migrationFiles.slice(recoveryIndex)) {
   const sql = await readFile(new URL(file, migrationDirectory), "utf8");
   await db.exec(sql);

@@ -18,6 +18,33 @@ create index if not exists operation_run_members_effective_assignment_time_idx
   on public.operation_run_members (assignment_id, created_at, id)
   where history_effective;
 
+-- Supabase installs pgcrypto in the extensions schema while the PGlite
+-- verification runtime installs it in public. Keep deterministic operation ids
+-- portable across both environments.
+create or replace function public.derived_mutation_uuid(
+  mutation_id uuid,
+  entity_id uuid,
+  purpose text
+)
+returns uuid
+language plpgsql
+immutable
+set search_path = pg_catalog, extensions, public
+as $$
+declare
+  hash text;
+begin
+  hash := encode(digest(mutation_id::text || ':' || entity_id::text || ':' || purpose, 'sha256'), 'hex');
+  return (
+    substr(hash, 1, 8) || '-' ||
+    substr(hash, 9, 4) || '-' ||
+    '4' || substr(hash, 14, 3) || '-' ||
+    'a' || substr(hash, 18, 3) || '-' ||
+    substr(hash, 21, 12)
+  )::uuid;
+end;
+$$;
+
 -- User-scoped projections are security-invoker views, so this policy makes the
 -- effective-history rule apply consistently to Status, Process Flow, Dashboard,
 -- Calendar, and direct authenticated reads. Service-role diagnostics retain the
