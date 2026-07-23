@@ -70,6 +70,26 @@ begin
 end;
 $$;
 
+create or replace function public.reject_operation_evidence_mutation()
+returns trigger
+language plpgsql
+as $$
+begin
+  if current_setting('waferwatch.history_recovery', true) = 'on'
+     and tg_op = 'UPDATE'
+     and (
+       to_jsonb(new) - 'operation_run_id' - 'operation_run_member_id'
+     ) = (
+       to_jsonb(old) - 'operation_run_id' - 'operation_run_member_id'
+     ) then
+    return new;
+  end if;
+  raise exception using
+    errcode = '55000',
+    message = format('%I is append-only; add a superseding record instead.', tg_table_name);
+end;
+$$;
+
 create or replace function public.refresh_operation_run_history_state(target_run_id uuid)
 returns void
 language plpgsql

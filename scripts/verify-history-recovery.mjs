@@ -85,7 +85,9 @@ const id = {
   polingDecision: "66000000-0000-4000-8000-000000000025",
   otherProject: "66000000-0000-4000-8000-000000000026",
   otherWafer: "66000000-0000-4000-8000-000000000027",
-  stalePl2Attempt: "66000000-0000-4000-8000-000000000028"
+  stalePl2Attempt: "66000000-0000-4000-8000-000000000028",
+  parameterRecord: "66000000-0000-4000-8000-000000000029",
+  operationNote: "66000000-0000-4000-8000-000000000030"
 };
 
 await db.exec(`
@@ -159,6 +161,21 @@ await db.exec(`
   update public.wafer_process_assignments
   set current_operation_run_member_id = '${id.pl2Member}'
   where id = '${id.assignment}';
+  insert into public.operation_run_parameter_records (
+    id, operation_run_id, operation_run_member_id, scope,
+    schema_snapshot, values, recorded_by, recorded_at
+  ) values (
+    '${id.parameterRecord}', '${id.pl2Run}', '${id.pl2Member}', 'member',
+    '{"power":{"type":"number"}}', '{"power":12.5}',
+    '${id.actor}', '2026-07-21T18:09:00Z'
+  );
+  insert into public.operation_run_notes (
+    id, operation_run_id, operation_run_member_id, note_kind,
+    body, created_by, created_at
+  ) values (
+    '${id.operationNote}', '${id.pl2Run}', '${id.pl2Member}', 'completion',
+    'Preserved PL2 evidence', '${id.actor}', '2026-07-21T18:09:01Z'
+  );
   alter table public.step_executions
     enable trigger step_executions_checkpoint_transition;
   alter table public.wafer_process_assignments
@@ -363,6 +380,28 @@ assert.deepEqual(staleAttemptMember.rows[0], {
   status: "cancelled",
   history_effective: true
 });
+const relinkedEvidence = await db.query(`
+  select
+    parameter.operation_run_member_id as parameter_member_id,
+    parameter.values,
+    parameter.recorded_at,
+    note.operation_run_member_id as note_member_id,
+    note.body,
+    note.created_at
+  from public.operation_run_parameter_records parameter
+  cross join public.operation_run_notes note
+  where parameter.id = '${id.parameterRecord}'
+    and note.id = '${id.operationNote}'
+`);
+assert.notEqual(relinkedEvidence.rows[0].parameter_member_id, id.pl2Member);
+assert.equal(
+  relinkedEvidence.rows[0].parameter_member_id,
+  relinkedEvidence.rows[0].note_member_id
+);
+assert.deepEqual(relinkedEvidence.rows[0].values, { power: 12.5 });
+assert.equal(relinkedEvidence.rows[0].body, "Preserved PL2 evidence");
+assert.equal(relinkedEvidence.rows[0].recorded_at.toISOString(), "2026-07-21T18:09:00.000Z");
+assert.equal(relinkedEvidence.rows[0].created_at.toISOString(), "2026-07-21T18:09:01.000Z");
 
 const suppressed = await db.query(`
   select id, history_effective, history_suppression_reason
@@ -464,6 +503,7 @@ console.log(JSON.stringify({
   recoveredVisits: visibleMembers.rows.length,
   distinctAttemptMembers: new Set(attempts.rows.map((row) => row.member_id)).size,
   staleUnresolvedVisit: staleAttemptMember.rows[0].status,
+  appendOnlyEvidenceRelinked: true,
   orphanEvents: orphanEvents.rows[0].count,
   rerunnable: memberCountAfterRetry.rows[0].count === memberCountBeforeRetry.rows[0].count,
   suppressedEvidenceRetained: suppressed.rows.length,
