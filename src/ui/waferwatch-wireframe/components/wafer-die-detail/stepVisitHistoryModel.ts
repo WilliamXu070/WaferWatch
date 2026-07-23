@@ -115,24 +115,10 @@ function mergeHistoryCorrections(tile: WaferStatusTileModel, visits: StepVisitHi
       };
     })
     .sort(compareVisitProgression);
-  const beforeByAnchor = new Map<string, StepVisitHistoryItem[]>();
-  const afterByAnchor = new Map<string, StepVisitHistoryItem[]>();
-  const unanchored: StepVisitHistoryItem[] = [];
-  for (const visit of inserted) {
-    const correction = corrections.find((entry) => entry.visitId === visit.id);
-    const target = correction?.placement === "before" ? beforeByAnchor : afterByAnchor;
-    const anchor = correction?.anchorVisitId;
-    if (!anchor || !visibleVisits.some((candidate) => candidate.id === anchor)) {
-      unanchored.push(visit);
-    } else {
-      target.set(anchor, [...(target.get(anchor) ?? []), visit]);
-    }
-  }
-  const merged: StepVisitHistoryItem[] = [];
-  for (const visit of visibleVisits.sort(compareVisitProgression)) {
-    merged.push(...(beforeByAnchor.get(visit.id) ?? []), visit, ...(afterByAnchor.get(visit.id) ?? []));
-  }
-  return [...merged, ...unanchored];
+
+  // Anchors preserve why a correction was made, but the effective history is a
+  // timeline: every viewing surface must derive its position from event time.
+  return [...visibleVisits, ...inserted].sort(compareVisitProgression);
 }
 
 export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHistoryItem[] {

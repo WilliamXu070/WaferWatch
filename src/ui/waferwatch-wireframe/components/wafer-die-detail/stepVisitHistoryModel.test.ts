@@ -209,7 +209,7 @@ test("labels a recorded step revert as an undo without changing its chronologica
   assert.deepEqual(cleaning?.historyAction, { kind: "undo", targetStepName: "Dicing" });
 });
 
-test("inserts a parameterized correction at its chosen history anchor and hides removed visits", () => {
+test("inserts a parameterized correction and hides removed visits", () => {
   const base = tile();
   const insertedStep = {
     id: "metrology",
@@ -275,4 +275,81 @@ test("inserts a parameterized correction at its chosen history anchor and hides 
   assert.equal(visits[2]?.isHistoricalCorrection, true);
   assert.deepEqual(visits[2]?.parameterRecords.map((record) => record.id), ["record-correction"]);
   assert.equal(visits.at(-1)?.state, "current");
+});
+
+test("orders anchored and unanchored corrections by completion time across the full history", () => {
+  const base = tile();
+  const correctionSteps = [{
+    id: "metrology",
+    name: "Metrology",
+    processArea: "Characterization",
+    executionMode: "main" as const,
+    stepOrder: 5,
+    status: "completed" as const,
+    executionId: null,
+    noteAuthorId: null,
+    noteAuthorName: null,
+    runNote: null,
+    startedAt: null,
+    completedAt: null,
+    createdAt: null
+  }, {
+    id: "inspection",
+    name: "Inspection",
+    processArea: "Characterization",
+    executionMode: "main" as const,
+    stepOrder: 6,
+    status: "completed" as const,
+    executionId: null,
+    noteAuthorId: null,
+    noteAuthorName: null,
+    runNote: null,
+    startedAt: null,
+    completedAt: null,
+    createdAt: null
+  }];
+  const visits = buildStepVisitHistory(tile({
+    processSteps: [...(base.processSteps ?? []), ...correctionSteps],
+    historyCorrections: [{
+      id: "event-anchored-old",
+      kind: "insert",
+      visitId: "correction:event-anchored-old",
+      targetVisitId: null,
+      anchorVisitId: "attempt-clean",
+      placement: "after",
+      stepId: "metrology",
+      stepName: "Metrology",
+      processArea: "Characterization",
+      completedAt: "2026-07-16T15:31:00Z",
+      occurredAt: "2026-07-20T10:00:00Z",
+      reason: "Recovered from instrument log",
+      actor: { id: "user-1", name: "William" }
+    }, {
+      id: "event-unanchored-old",
+      kind: "insert",
+      visitId: "correction:event-unanchored-old",
+      targetVisitId: null,
+      anchorVisitId: "removed-visit",
+      placement: "before",
+      stepId: "inspection",
+      stepName: "Inspection",
+      processArea: "Characterization",
+      completedAt: "2026-07-16T15:34:30Z",
+      occurredAt: "2026-07-20T10:01:00Z",
+      reason: "Anchor was later removed",
+      actor: { id: "user-1", name: "William" }
+    }]
+  }));
+
+  assert.deepEqual(
+    visits.map((visit) => [visit.stepName, visit.completedAt]),
+    [
+      ["Metrology", "2026-07-16T15:31:00Z"],
+      ["Dicing", "2026-07-16T15:34:00Z"],
+      ["Inspection", "2026-07-16T15:34:30Z"],
+      ["Cleaning", "2026-07-16T15:35:00Z"],
+      ["Piranha", "2026-07-16T17:28:30Z"],
+      ["Pad Formation", null]
+    ]
+  );
 });

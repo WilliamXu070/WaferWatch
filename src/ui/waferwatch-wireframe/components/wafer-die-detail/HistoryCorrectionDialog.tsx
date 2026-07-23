@@ -144,7 +144,7 @@ export function HistoryCorrectionDialog({
             <h3 className="text-[17px] font-semibold text-[#111111]">{mode === "insert" ? "Insert historical step" : "Remove historical step"}</h3>
             <p className="mt-1 text-[12px] leading-5 text-[#777770]">
               {mode === "insert"
-                ? `This records a completed corrective visit ${placement} ${anchorVisit.stepName}. It will not enter verification.`
+                ? `This records a completed corrective visit. Its audit relation is ${placement} ${anchorVisit.stepName}; history is displayed by completion time.`
                 : `This removes ${anchorVisit.stepName} from the effective history without deleting its audit evidence.`}
             </p>
           </div>
@@ -161,7 +161,7 @@ export function HistoryCorrectionDialog({
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="grid gap-1.5 text-[12px] font-semibold text-[#3f3f3a]">
-                  Place it
+                  Audit relation
                   <select value={placement} onChange={(event) => setPlacement(event.target.value as "before" | "after")} className="h-10 rounded-md border border-[#dcdcd5] bg-white px-3 text-[14px] font-medium">
                     <option value="before">Before {anchorVisit.stepName}</option>
                     <option value="after">After {anchorVisit.stepName}</option>
