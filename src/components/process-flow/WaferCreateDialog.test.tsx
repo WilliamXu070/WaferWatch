@@ -22,6 +22,7 @@ test("renders the suggested Greek name and die count", () => {
   assert.match(markup, /name="dieCount"/);
   assert.match(markup, /value="15"/);
   assert.match(markup, /Creates 15 dies labeled SIGMA_1 through SIGMA_15/);
+  assert.match(markup, /class="button button-primary"/);
   assert.match(markup, />Create wafer<\/button>/);
 });
 

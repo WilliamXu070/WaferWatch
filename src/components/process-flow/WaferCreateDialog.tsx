@@ -85,7 +85,7 @@ export function WaferCreateDialog({
               Cancel
             </button>
             <button
-              className="button primary-button"
+              className="button button-primary"
               disabled={isPending || !draft.waferCode.trim() || !Number.isInteger(draft.dieCount) || draft.dieCount < 1}
               type="submit"
             >

@@ -4549,7 +4549,7 @@ export function ProcessFlowDiagram({
                   Cancel
                 </button>
                 <button
-                  className="button primary-button"
+                  className="button button-primary"
                   disabled={isPendingWaferMoveLocked || (pendingWaferMove.kind === "submit" && !pendingWaferMoveNote.trim())}
                   onClick={() => submitPendingWaferMove()}
                   type="button"

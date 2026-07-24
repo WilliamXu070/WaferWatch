@@ -2149,6 +2149,29 @@ textarea {
   gap: 10px;
 }
 
+.flow-wafer-move-dialog__actions .button:disabled {
+  cursor: not-allowed;
+}
+
+.flow-wafer-move-dialog__actions .button-primary {
+  border-color: #151512;
+  background: #151512;
+  color: #f8fafc;
+}
+
+.flow-wafer-move-dialog__actions .button-primary:hover:not(:disabled) {
+  border-color: #050505;
+  background: #050505;
+  color: #f8fafc;
+}
+
+.flow-wafer-move-dialog__actions .button-primary:disabled {
+  border-color: #d1d1ca;
+  background: #e5e5df;
+  color: #85857d;
+  opacity: 1;
+}
+
 .flow-wafer-move-dialog__content {
   display: contents;
 }
