@@ -9,6 +9,7 @@ test("keeps the checkpoint-note submission action above an iPhone keyboard", asy
   ]);
 
   assert.match(diagramSource, /useVisualViewportBottomInset\(\)/);
+  assert.match(diagramSource, /<WaferWatchPortal>/);
   assert.match(diagramSource, /flow-wafer-move-dialog-backdrop--keyboard-aware/);
   assert.match(diagramSource, /flow-wafer-move-dialog__content/);
   assert.match(diagramSource, /Submit for review/);

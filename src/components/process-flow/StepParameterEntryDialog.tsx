@@ -26,6 +26,7 @@ import {
   type StepParameterValue
 } from "@/features/process-flows/stepParameters";
 import type { Json, StepParameterRecord } from "@/types/database";
+import { WaferWatchPortal } from "@/ui/waferwatch-wireframe/components/WaferWatchPortal";
 import type { SaveStepParameterRecordAction, SaveStepParameterRecordsBatchAction } from "./types";
 
 export type PendingStepParameterEntry = {
@@ -416,15 +417,16 @@ export function StepParameterEntryDialog({
   };
 
   return (
-    <div className={`process-flow-parameter-panel-host ${isCollapsed ? "process-flow-parameter-panel-host--collapsed" : ""}`} data-testid="process-flow-parameter-panel" role="presentation">
-      {isCollapsed ? (
-        <button className="process-flow-parameter-pending-bar" data-testid="process-flow-parameter-pending-bar" onClick={() => setIsCollapsed(false)} type="button">
-          <span>Parameters pending</span>
-          <span>{draftPosition} of {draftCount}</span>
-          <ChevronUp aria-hidden />
-        </button>
-      ) : (
-      <form className="flow-wafer-move-dialog process-flow-parameter-dialog" role="dialog" aria-modal="false" aria-labelledby="step-parameter-entry-title" onPaste={pasteAttachmentImages} onSubmit={submit}>
+    <WaferWatchPortal>
+      <div className={`process-flow-parameter-panel-host ${isCollapsed ? "process-flow-parameter-panel-host--collapsed" : ""}`} data-testid="process-flow-parameter-panel" role="presentation">
+        {isCollapsed ? (
+          <button className="process-flow-parameter-pending-bar" data-testid="process-flow-parameter-pending-bar" onClick={() => setIsCollapsed(false)} type="button">
+            <span>Parameters pending</span>
+            <span>{draftPosition} of {draftCount}</span>
+            <ChevronUp aria-hidden />
+          </button>
+        ) : (
+        <form className="flow-wafer-move-dialog process-flow-parameter-dialog" role="dialog" aria-modal="false" aria-labelledby="step-parameter-entry-title" onPaste={pasteAttachmentImages} onSubmit={submit}>
         <header className="border-b border-[#e8e8e1] px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#85857d]">
@@ -632,8 +634,9 @@ export function StepParameterEntryDialog({
                   : "Save parameters"}
           </button>
         </footer>
-      </form>
-      )}
-    </div>
+        </form>
+        )}
+      </div>
+    </WaferWatchPortal>
   );
 }

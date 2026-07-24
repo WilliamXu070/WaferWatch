@@ -34,6 +34,7 @@ import {
   normalizeWaferCode
 } from "@/features/process-flows/waferNaming";
 import type { Json, ProcessStepNodeType, ProcessStepTransitionType } from "@/types/database";
+import { WaferWatchPortal } from "@/ui/waferwatch-wireframe/components/WaferWatchPortal";
 import { readDeletedWaferIds } from "@/features/process-flows/waferDeletion";
 import { WORKFLOW_DELTA_EVENT } from "@/features/collaboration/realtime";
 import type { ProcessWorkspaceDelta } from "@/features/workspace/types";
@@ -4362,18 +4363,20 @@ export function ProcessFlowDiagram({
         </div>
       ) : null}
       {openingWaferDetailsLabel ? (
-        <div className="flow-wafer-move-dialog-backdrop" data-testid="wafer-details-loading">
-          <section className="flow-wafer-move-dialog" aria-live="polite" role="status">
-            <div className="flow-wafer-move-dialog__header">
-              <h2>Opening {openingWaferDetailsLabel}</h2>
-              <p>Loading wafer and die status…</p>
-            </div>
-            <div className="grid gap-3" aria-hidden>
-              <div className="h-4 w-2/3 animate-pulse rounded bg-[#e8e9e5]" />
-              <div className="h-24 animate-pulse rounded-lg bg-[#f2f2ee]" />
-            </div>
-          </section>
-        </div>
+        <WaferWatchPortal>
+          <div className="flow-wafer-move-dialog-backdrop" data-testid="wafer-details-loading">
+            <section className="flow-wafer-move-dialog" aria-live="polite" role="status">
+              <div className="flow-wafer-move-dialog__header">
+                <h2>Opening {openingWaferDetailsLabel}</h2>
+                <p>Loading wafer and die status…</p>
+              </div>
+              <div className="grid gap-3" aria-hidden>
+                <div className="h-4 w-2/3 animate-pulse rounded bg-[#e8e9e5]" />
+                <div className="h-24 animate-pulse rounded-lg bg-[#f2f2ee]" />
+              </div>
+            </section>
+          </div>
+        </WaferWatchPortal>
       ) : null}
       {!pendingWaferMove && activeParameterDraft && onSaveStepParameters ? (
         <StepParameterEntryDialog
@@ -4470,93 +4473,95 @@ export function ProcessFlowDiagram({
         />
       ) : null}
       {pendingWaferMove ? (
-        <div
-          className="flow-wafer-move-dialog-backdrop flow-wafer-move-dialog-backdrop--keyboard-aware"
-          style={{ "--flow-wafer-move-dialog-keyboard-inset": `${keyboardInset}px` } as CSSProperties}
-        >
-          <section
-            aria-labelledby="flow-wafer-move-title"
-            aria-modal="true"
-            className="flow-wafer-move-dialog flow-wafer-move-dialog--keyboard-aware"
-            onPaste={pastePendingWaferMoveImages}
-            role="dialog"
+        <WaferWatchPortal>
+          <div
+            className="flow-wafer-move-dialog-backdrop flow-wafer-move-dialog-backdrop--keyboard-aware"
+            style={{ "--flow-wafer-move-dialog-keyboard-inset": `${keyboardInset}px` } as CSSProperties}
           >
-            <div className="flow-wafer-move-dialog__content">
-              <div className="flow-wafer-move-dialog__header">
-                <h2 id="flow-wafer-move-title">
-                  {pendingWaferMove.kind === "submit" ? "Checkpoint note" : "Movement note"}
-                </h2>
-                {pendingWaferMove.wafers.length > 1 ? (
-                  <p>Applies to {pendingWaferMove.waferLabel}.</p>
-                ) : null}
-              </div>
-              <dl className="flow-wafer-move-dialog__path">
-                <div>
-                  <dt>From</dt>
-                  <dd>{pendingWaferMove.sourceLabel}</dd>
+            <section
+              aria-labelledby="flow-wafer-move-title"
+              aria-modal="true"
+              className="flow-wafer-move-dialog flow-wafer-move-dialog--keyboard-aware"
+              onPaste={pastePendingWaferMoveImages}
+              role="dialog"
+            >
+              <div className="flow-wafer-move-dialog__content">
+                <div className="flow-wafer-move-dialog__header">
+                  <h2 id="flow-wafer-move-title">
+                    {pendingWaferMove.kind === "submit" ? "Checkpoint note" : "Movement note"}
+                  </h2>
+                  {pendingWaferMove.wafers.length > 1 ? (
+                    <p>Applies to {pendingWaferMove.waferLabel}.</p>
+                  ) : null}
                 </div>
-                <div>
-                  <dt>To</dt>
-                  <dd>{pendingWaferMove.targetLabel}</dd>
-                </div>
-              </dl>
-              <label className="flow-wafer-move-dialog__field">
-                <span>
-                  {pendingWaferMove.kind === "submit" ? "Required note" : "Movement note"}
-                  {pendingWaferMove.kind === "move" ? <small> Optional</small> : null}
-                </span>
-                <textarea
-                  autoFocus
+                <dl className="flow-wafer-move-dialog__path">
+                  <div>
+                    <dt>From</dt>
+                    <dd>{pendingWaferMove.sourceLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>To</dt>
+                    <dd>{pendingWaferMove.targetLabel}</dd>
+                  </div>
+                </dl>
+                <label className="flow-wafer-move-dialog__field">
+                  <span>
+                    {pendingWaferMove.kind === "submit" ? "Required note" : "Movement note"}
+                    {pendingWaferMove.kind === "move" ? <small> Optional</small> : null}
+                  </span>
+                  <textarea
+                    autoFocus
+                    disabled={isPendingWaferMoveLocked}
+                    id="process-wafer-move-note"
+                    maxLength={4000}
+                    name="processWaferMoveNote"
+                    onChange={(event) => setPendingWaferMoveNote(event.currentTarget.value)}
+                    placeholder={
+                      pendingWaferMove.kind === "submit"
+                        ? "Summarize completed work and any review details."
+                        : `Reason for moving to ${pendingWaferMove.targetLabel}.`
+                    }
+                    rows={5}
+                    value={pendingWaferMoveNote}
+                  />
+                </label>
+                <PendingNoteAttachments
+                  files={pendingWaferMoveFiles}
                   disabled={isPendingWaferMoveLocked}
-                  id="process-wafer-move-note"
-                  maxLength={4000}
-                  name="processWaferMoveNote"
-                  onChange={(event) => setPendingWaferMoveNote(event.currentTarget.value)}
-                  placeholder={
-                    pendingWaferMove.kind === "submit"
-                      ? "Summarize completed work and any review details."
-                      : `Reason for moving to ${pendingWaferMove.targetLabel}.`
-                  }
-                  rows={5}
-                  value={pendingWaferMoveNote}
+                  error={pendingWaferMoveFileError}
+                  description={pendingWaferMove.wafers.length > 1
+                    ? "Drop files here, paste images, or attach files for all selected dies."
+                    : "Drop files here, paste images, or attach files for this step note."}
+                  mobileDescription={pendingWaferMove.wafers.length > 1
+                    ? "Photos and files apply to all selected dies."
+                    : "Photos and files save with this movement note."}
+                  onAddFiles={appendPendingWaferMoveFiles}
+                  onRemoveFile={(file) => setPendingWaferMoveFiles((current) => current.filter((candidate) => candidate !== file))}
                 />
-              </label>
-              <PendingNoteAttachments
-                files={pendingWaferMoveFiles}
-                disabled={isPendingWaferMoveLocked}
-                error={pendingWaferMoveFileError}
-                description={pendingWaferMove.wafers.length > 1
-                  ? "Drop files here, paste images, or attach files for all selected dies."
-                  : "Drop files here, paste images, or attach files for this step note."}
-                mobileDescription={pendingWaferMove.wafers.length > 1
-                  ? "Photos and files apply to all selected dies."
-                  : "Photos and files save with this movement note."}
-                onAddFiles={appendPendingWaferMoveFiles}
-                onRemoveFile={(file) => setPendingWaferMoveFiles((current) => current.filter((candidate) => candidate !== file))}
-              />
-            </div>
-            <div className="flow-wafer-move-dialog__actions">
-              <button
-                className="button ghost-button"
-                disabled={isPendingWaferMoveLocked}
-                onClick={cancelPendingWaferMove}
-                type="button"
-              >
-                Cancel
-              </button>
-              <button
-                className="button primary-button"
-                disabled={isPendingWaferMoveLocked || (pendingWaferMove.kind === "submit" && !pendingWaferMoveNote.trim())}
-                onClick={() => submitPendingWaferMove()}
-                type="button"
-              >
-                {isPendingWaferMoveLocked
-                  ? "Saving…"
-                  : pendingWaferMove.kind === "submit" ? "Submit for review" : "Create planned batch"}
-              </button>
-            </div>
-          </section>
-        </div>
+              </div>
+              <div className="flow-wafer-move-dialog__actions">
+                <button
+                  className="button ghost-button"
+                  disabled={isPendingWaferMoveLocked}
+                  onClick={cancelPendingWaferMove}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="button primary-button"
+                  disabled={isPendingWaferMoveLocked || (pendingWaferMove.kind === "submit" && !pendingWaferMoveNote.trim())}
+                  onClick={() => submitPendingWaferMove()}
+                  type="button"
+                >
+                  {isPendingWaferMoveLocked
+                    ? "Saving…"
+                    : pendingWaferMove.kind === "submit" ? "Submit for review" : "Create planned batch"}
+                </button>
+              </div>
+            </section>
+          </div>
+        </WaferWatchPortal>
       ) : null}
       <ProcessFlowToolbar
         nodesCount={nodes.length}

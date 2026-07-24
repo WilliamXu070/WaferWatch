@@ -2,13 +2,13 @@
 
 import { Plus, Trash2, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   readStepParameterDefinitions,
   writeStepParameterDefinitions,
   type StepParameterDefinition
 } from "@/features/process-flows/stepParameters";
 import type { Json } from "@/types/database";
+import { WaferWatchPortal } from "@/ui/waferwatch-wireframe/components/WaferWatchPortal";
 
 export type StepTemplateDialogDraft = {
   mode: "create" | "edit";
@@ -419,5 +419,5 @@ export function StepTemplateDialog({
       </form>
     </div>
   );
-  return typeof document === "undefined" ? dialog : createPortal(dialog, document.body);
+  return <WaferWatchPortal>{dialog}</WaferWatchPortal>;
 }

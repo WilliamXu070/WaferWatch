@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { readStepParameterDefinitions, type StepParameterType, type StepParameterValue } from "@/features/process-flows/stepParameters";
 import type { ActionResult } from "@/lib/action-result";
 import type { WaferStatusTileModel } from "../../types";
+import { WaferWatchPortal } from "../WaferWatchPortal";
 import type { StepVisitHistoryItem } from "./stepVisitHistoryModel";
 
 type CorrectionInput =
@@ -137,9 +138,10 @@ export function HistoryCorrectionDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[#11111166] p-4" role="dialog" aria-modal="true" aria-label={mode === "insert" ? "Insert historical process step" : "Remove historical process step"}>
-      <div className="max-h-[min(780px,calc(100vh-32px))] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-[#e6e6e0] px-5 py-4">
+    <WaferWatchPortal>
+      <div className="history-correction-dialog-backdrop fixed inset-0 z-[220] grid place-items-center bg-[#11111166] p-4" role="dialog" aria-modal="true" aria-label={mode === "insert" ? "Insert historical process step" : "Remove historical process step"}>
+        <div className="history-correction-dialog grid max-h-[min(780px,calc(100svh-32px))] w-full max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white shadow-2xl">
+          <div className="history-correction-dialog__header flex items-start justify-between gap-4 border-b border-[#e6e6e0] px-5 py-4">
           <div>
             <h3 className="text-[17px] font-semibold text-[#111111]">{mode === "insert" ? "Insert historical step" : "Remove historical step"}</h3>
             <p className="mt-1 text-[12px] leading-5 text-[#777770]">
@@ -150,7 +152,7 @@ export function HistoryCorrectionDialog({
           </div>
           <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-[13px] font-semibold text-[#55554f] hover:bg-[#f2f2ee]">Close</button>
         </div>
-        <div className="grid gap-4 p-5">
+        <div className="history-correction-dialog__body grid gap-4 overflow-y-auto p-5">
           {mode === "insert" ? (
             <>
               <label className="grid gap-1.5 text-[12px] font-semibold text-[#3f3f3a]">
@@ -209,13 +211,14 @@ export function HistoryCorrectionDialog({
           </label>
           {message ? <p role="status" className="text-[12px] font-semibold text-[#a33a2b]">{message}</p> : null}
         </div>
-        <div className="flex justify-end gap-2 border-t border-[#e6e6e0] px-5 py-4">
+        <div className="history-correction-dialog__actions flex justify-end gap-2 border-t border-[#e6e6e0] px-5 py-4">
           <button type="button" onClick={onClose} disabled={isPending} className="h-9 rounded-md border border-[#dcdcd5] px-4 text-[13px] font-semibold text-[#55554f]">Cancel</button>
           <button type="button" onClick={submit} disabled={saveBlocked} className="h-9 rounded-md bg-[#171714] px-4 text-[13px] font-semibold text-white disabled:bg-[#bdbdb5]">
             {isPending ? "Saving..." : mode === "insert" ? "Insert completed step" : "Remove from history"}
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </WaferWatchPortal>
   );
 }
