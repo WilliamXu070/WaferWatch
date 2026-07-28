@@ -1,0 +1,4 @@
+interface:
+  display_name: "LNOI MODE FDB-MFA"
+  short_description: "Build paper-seeded LNOI MODE/FDE optimization"
+  default_prompt: "Use $lnoi-mode-fdb-mfa to implement the paper-seeded MODE/FDE optimization on the current LNOI platform through the FDB-MFA stage."
