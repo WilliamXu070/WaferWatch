@@ -1,6 +1,7 @@
 switchtolayout;
 selectall;
 delete;
+?"DEBUG optimize_debug.lsf loaded";
 
 ## SIM PARAMS
 wavelength=1.55e-6;
@@ -15,6 +16,10 @@ output_x=__OUTPUT_X__;
 Angle=70;
 mesh=50e-9;
 BOX=4.7e-6;
+?"DEBUG radius=" + num2str(radius);
+?"DEBUG output_x=" + num2str(output_x);
+?"DEBUG WG_width=" + num2str(WG_width);
+?"DEBUG mesh=" + num2str(mesh);
 
 A0=[1;1;1];
 B1=[2.9804;2.6734;2.6734];

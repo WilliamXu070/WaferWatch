@@ -1,12 +1,13 @@
-# Paper PDFs / references
-*.pdf
-
-# Python caches
+# Local editor, OS, and Python state
+.DS_Store
+.claude/settings.local.json
 __pycache__/
 *.py[cod]
 .pytest_cache/
+*.swp
+*.tmp
 
-# Lumerical generated / heavy simulation outputs
+# Lumerical generated and heavy simulation outputs
 *.fsp
 *.ldf
 *.mat
@@ -14,34 +15,37 @@ __pycache__/
 *.hdf5
 *.dat
 *.log
+*.gds
 
-# Generated runtime scripts and exported artifacts
+# Runtime scripts and numerical outputs
 base_runtime*.lsf
 *_runtime*.lsf
 centerline_runtime*.lsf
-*_final.gds
-*.gds
 *.npy
 *.npz
 *.csv
 *.png
-
-# Local diagnostic/output folders
-core_polygon_boundary_plots*/
-core_polygon_test_outputs*/
-centerline_diagnostic_outputs*/
-William Code/core_polygon_boundary_plots*/
-William Code/core_polygon_test_outputs*/
-William Code/centerline_diagnostic_outputs*/
-William Code/centerline_only/diagnostic_*/
-
-# OS/editor/local files
-.DS_Store
-*.swp
-*.tmp
-# Generated parameter/polygon/result text outputs
 *_params.txt
 *_polygon*.txt
 *_centerline*.txt
 *_points*.txt
 initial_bent_waveguide_*.txt
+
+# Authoritative input datasets remain versioned
+!data/seeds/
+!data/seeds/*.npz
+
+# Papers live in one explicit reference location
+*.pdf
+!references/papers/
+!references/papers/*.pdf
+
+# Everything below artifacts is reproducible or runtime state
+artifacts/**
+!artifacts/README.md
+
+# Historical generated-output directories retained inside the archive
+archive/william_code/core_polygon_boundary_plots*/
+archive/william_code/core_polygon_test_outputs*/
+archive/william_code/centerline_diagnostic_outputs*/
+archive/william_code/centerline_only/diagnostic_*/

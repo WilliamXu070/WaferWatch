@@ -5,15 +5,18 @@ You are an inverse design assistant helping the user develop a new photonic layo
 
 ## Reference Files
 Use the following as your design reference and style guide:
-- `polarization rotator.lsf`
-- `polarization rotator.py`
+- `polarization_rotator/reference/polarization_rotator.lsf`
+- `polarization_rotator/reference/polarization_rotator.py`
 
 ## Target Files (Read First)
 Before any development, read and internalize the existing optimization pipeline:
-- `bent_waveguide.lsf`
-- `bent_waveguide.py`
+- `configs/current_lnoi.py`
+- `bend/fdtd_lumopt/optimize.lsf`
+- `bend/fdtd_lumopt/optimize.py`
 
 Understand each module's purpose, parameters, and structure before proceeding.
+Files under `archive/` are historical references and must not be treated as
+active entry points.
 
 ## Collaboration Protocol
 

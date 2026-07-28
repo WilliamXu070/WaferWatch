@@ -1,0 +1,333 @@
+switchtolayout;
+selectall;
+delete;
+
+## SIM PARAMS
+wavelength=1.55e-6;
+WG_length=5e-6;
+WG_width=0.6e-6;
+In_width=2e-6;
+Thickness=0.6e-6;
+mesh=50e-9;
+etch_depth=0.3e-6;
+Length=100e-6;
+Second_length=60e-6;
+Sep=4e-6;
+Width=15e-6;
+BOX=4.7e-6;
+Device_length=2*WG_length+Length+Second_length;
+x_min=-Device_length/2;
+x_max=-Device_length/2+WG_length;
+y_min=-WG_width/2;
+y_max=WG_width/2;
+x2_min=Device_length/2-WG_length;
+x2_max=Device_length/2;
+y2_min=-(WG_width)/2;
+y2_max=(WG_width)/2;
+Angle=70;
+A0=[1;1;1];
+B1=[2.9804;2.6734;2.6734];
+C1=[0.02047;0.01764;0.01764];
+B2=[0.5981;1.229;1.229];
+C2=[0.0666;0.05914;0.05914];
+B3=[8.9543;12.614;12.614];
+C3=[414.08;474.6;474.6];
+# deletematerial('Lithium Niobate');
+opt_material=addmaterial('Sellmeier');
+setmaterial(opt_material,'name','Lithium Niobate');
+setmaterial('Lithium Niobate','Anisotropy','Diagonal');
+setmaterial('Lithium Niobate','A0',A0);
+setmaterial('Lithium Niobate','B1',B1);
+setmaterial('Lithium Niobate','C1',C1);
+setmaterial('Lithium Niobate','B2',B2);
+setmaterial('Lithium Niobate','C2',C2);
+setmaterial('Lithium Niobate','B3',B3);
+setmaterial('Lithium Niobate','C3',C3);
+
+#############################################
+#####################################
+addlayerbuilder;
+set('name', 'WG_builder');
+# Set background geometry
+set('x', Device_length / 2);
+set('y', 0);
+set('z', 0);
+set('x span', Device_length);
+set('y span', 50e-6);
+set('gds position reference', 1);
+set('base mesh order', 1);
+# add layers form scratch
+addlayer('Si_Substrate');
+addlayer('BOX');
+addlayer('TFLN-film');
+addlayer('MMI-core');
+
+
+setlayer('Si_Substrate', 'start position', -BOX);
+setlayer('Si_Substrate', 'thickness', -10e-6);
+setlayer('Si_Substrate', 'process', 'background');
+setlayer('Si_Substrate', 'background material', 'Si (Silicon) - Palik');
+set('base mesh order', 1);
+
+setlayer('BOX', 'start position', -BOX);
+setlayer('BOX', 'thickness', BOX);
+setlayer('BOX', 'process', 'background');
+setlayer('BOX', 'background material', 'SiO2 (Glass) - Palik');
+set('base mesh order', 1);
+
+setlayer('TFLN-film', 'start position', 0);
+setlayer('TFLN-film', 'thickness', Thickness - etch_depth);
+setlayer('TFLN-film', 'process', 'background');
+setlayer('TFLN-film', 'background material', 'Lithium Niobate');
+set('base mesh order', 1);
+
+
+setlayer('MMI-core', 'layer number', '1:0');
+setlayer('MMI-core', 'start position', Thickness - etch_depth);
+setlayer('MMI-core', 'thickness', etch_depth);
+setlayer('MMI-core', 'process', 'grow');
+setlayer('MMI-core', 'pattern material', 'Lithium Niobate');
+set('gds sidewall angle position reference', 'Top');
+setlayer('MMI-core', 'sidewall angle', Angle); 
+set('base mesh order', 1);
+
+set('geometry', {'1:0':{[[x_min,y_min];[x_max,y_min];[x_max,y_max];[x_min,y_max];[x_min,y_min]]}});
+#####################################
+addlayerbuilder;
+set('name', 'WG_builder2');
+# Set background geometry
+set('x',Device_length / 2);
+set('y',0);
+set('z',0);
+set('x span', Device_length);
+set('y span', 50e-6);
+set('gds position reference', 1);
+set('base mesh order',1);
+# add layers form scratch
+addlayer('Si_Substrate');
+addlayer('BOX');
+addlayer('TFLN-film');
+addlayer('MMI-core');
+
+
+setlayer('Si_Substrate','start position',-BOX);
+setlayer('Si_Substrate','thickness',-10e-6);
+setlayer('Si_Substrate','process', 'background');
+setlayer('Si_Substrate','background material','Si (Silicon) - Palik');
+set('base mesh order',1);
+
+setlayer('BOX','start position',-BOX);
+setlayer('BOX','thickness',BOX);
+setlayer('BOX','process', 'background');
+setlayer('BOX','background material','SiO2 (Glass) - Palik');
+set('base mesh order',1);
+
+setlayer('TFLN-film','start position',0);
+setlayer('TFLN-film','thickness',Thickness - etch_depth);
+setlayer('TFLN-film','process', 'background');
+setlayer('TFLN-film','background material','Lithium Niobate');
+set('base mesh order',1);
+
+
+setlayer('MMI-core','layer number', '1:0');
+setlayer('MMI-core','start position',Thickness - etch_depth);
+setlayer('MMI-core','thickness',etch_depth);
+setlayer('MMI-core','process', 'grow');
+setlayer('MMI-core','pattern material','Lithium Niobate');
+set('gds sidewall angle position reference', 'Top');
+setlayer('MMI-core','sidewall angle', 70);
+set('base mesh order',1);
+# --- Calculate the vertices of the rectangle ---
+# Vertices will be defined starting from the bottom-left corner and moving counter-clockwise
+set('geometry', {"1:0":{[[x2_min,y2_min + Sep/2];[x2_max,y2_min + Sep/2];[x2_max,y2_max + Sep/2];[x2_min,y2_max + Sep/2]]}});
+#######################################
+addlayerbuilder;
+set('name', 'WG_builder3');
+# Set background geometry
+set('x',Device_length / 2);
+set('y',0);
+set('z',0);
+set('x span', Device_length);
+set('y span', 50e-6);
+set('gds position reference', 1);
+set('base mesh order',1);
+# add layers form scratch
+addlayer('Si_Substrate');
+addlayer('BOX');
+addlayer('TFLN-film');
+addlayer('MMI-core');
+
+
+setlayer('Si_Substrate','start position',-BOX);
+setlayer('Si_Substrate','thickness',-10e-6);
+setlayer('Si_Substrate','process', 'background');
+setlayer('Si_Substrate','background material','Si (Silicon) - Palik');
+set('base mesh order',1);
+
+setlayer('BOX','start position',-BOX);
+setlayer('BOX','thickness',BOX);
+setlayer('BOX','process', 'background');
+setlayer('BOX','background material','SiO2 (Glass) - Palik');
+set('base mesh order',1);
+
+setlayer('TFLN-film','start position',0);
+setlayer('TFLN-film','thickness',Thickness - etch_depth);
+setlayer('TFLN-film','process', 'background');
+setlayer('TFLN-film','background material','Lithium Niobate');
+set('base mesh order',1);
+
+
+setlayer('MMI-core','layer number', '1:0');
+setlayer('MMI-core','start position',Thickness - etch_depth);
+setlayer('MMI-core','thickness',etch_depth);
+setlayer('MMI-core','process', 'grow');
+setlayer('MMI-core','pattern material','Lithium Niobate');
+set('gds sidewall angle position reference', 'Top');
+setlayer('MMI-core','sidewall angle', 70);
+set('base mesh order',1);
+# --- Calculate the vertices of the rectangle ---
+# Vertices will be defined starting from the bottom-left corner and moving counter-clockwise
+set('geometry', {"1:0":{[[x2_min,y2_min - Sep/2];[x2_max,y2_min - Sep/2];[x2_max,y2_max - Sep/2];[x2_min,y2_max - Sep/2]]}});
+##########################################
+addlayerbuilder;
+set('name', 'WG_builder4');
+# Set background geometry
+set('x',0);
+set('y',0);
+set('z',0);
+set('x span', 300e-6);
+set('y span', 50e-6);
+set('gds position reference', 1);
+set('base mesh order',1);
+# add layers form scratch
+
+addlayer('MMI-core');
+
+setlayer('MMI-core','layer number', '1:0');
+setlayer('MMI-core','start position',Thickness - etch_depth);
+setlayer('MMI-core','thickness',etch_depth);
+setlayer('MMI-core','process', 'grow');
+setlayer('MMI-core','pattern material','Lithium Niobate');
+set('gds sidewall angle position reference', 'Top');
+setlayer('MMI-core','sidewall angle', 70);
+set('base mesh order',1);
+## Optimized rotator geometry is injected by Python into WG_builder4.
+## The MMI-core layer above keeps the grow process and sidewall angle.
+#######################################
+###########################################
+###############################
+##############
+
+addfdtd;
+set('dimension','3D');
+set('index',1);
+set('x', Device_length/2 );
+set('x span', Device_length);
+set('y', 0);
+set('y span', 7e-6);
+set('z', 0.3e-6);
+set('z span', 3e-6);
+set('mesh type','auto non-uniform');
+set('mesh accuracy',2);
+set('mesh refinement','conformal variant 0');
+set('x min bc','PML');
+set('x max bc','PML');
+set('y min bc','PML');
+set('y max bc','PML');
+set('z min bc','PML');
+set('z max bc','PML');
+set('auto scale pml parameters',1);
+set('snap pec to yee cell boundary',1);
+set('pml layers', 16);
+set('simulation time',3e-12);
+set('background material','SiO2 (Glass) - Palik');
+setglobalsource('wavelength start',wavelength);
+setglobalsource('wavelength stop',wavelength);
+#SOURCE
+addmode;
+set('direction','Forward');
+set('injection axis','x-axis');
+set('y',0);
+set('y span',5e-6);
+set('x',1e-6);
+set('z',0.3e-6);
+set('z span',5e-6);
+set('override global source settings',false);
+set('mode selection','fundamental TE mode');
+set('auto update',1);
+set('override global source settings',1);
+set('wavelength start',wavelength);
+set('wavelength stop',wavelength);
+
+
+#addmesh;
+#set('x',Device_length / 2);
+#set('x span',Length + 3e-6);
+#set('y',0);
+#set('y span',6e-6);
+#set('z',0.3e-6);
+#set('z span',4e-6);
+#set('dx',mesh);
+#set('dy',mesh);
+#set('dz',mesh);
+
+addpower;
+set('name','opt_fields');
+set('monitor type','3D');
+set('x',WG_length + Length + Second_length/2);
+set('x span',Second_length);
+set('y',0);
+set('y span',7e-6);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+
+addpower;
+set('name','fom_up');
+set('monitor type','2D X-normal');
+set('x',WG_length + Length + Second_length + 0.5e-6);
+set('y',Sep/2);
+set('y span',2.5e-6);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+addpower;
+set('name','fom_down');
+set('monitor type','2D X-normal');
+set('x',WG_length + Length + Second_length + 0.5e-6);
+set('y',-Sep/2);
+set('y span',2.5e-6);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+addpower;
+set('name','fom_up2');
+set('monitor type','2D X-normal');
+set('x',WG_length + Length + Second_length + 1.2e-6);
+set('y',Sep/2);
+set('y span',2.5e-6);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+addpower;
+set('name','fom_down2');
+set('monitor type','2D X-normal');
+set('x',WG_length + Length + Second_length + 1.2e-6);
+set('y',-Sep/2);
+set('y span',2.5e-6);
+set('z',0.3e-6);
+set('z span',3e-6);
+
+addprofile;
+set('name', 'XY-profile_monitor');
+set('monitor type','2D Z-normal');
+set('z', 0.3e-6);         # Center position in x-direction
+set('y', 0);         # Center position in y-direction
+set('y span', 5e-6); # Span in y-direction
+set('x', Device_length/2);         # Center position in z-direction
+set('x span', Device_length ); # Span in z-direction
+
+
+
+
+
