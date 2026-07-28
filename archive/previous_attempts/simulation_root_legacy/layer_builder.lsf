@@ -1,0 +1,61 @@
+##
+clear; newproject;
+use_process_file = true; # Flag to select method for adding process layers
+
+##
+# Add layer builder object
+addlayerbuilder;
+
+##
+# Load GDS file
+loadgdsfile("y_500.gds");
+
+##
+# Add and edit layers:
+if (use_process_file){ # load existing process file
+    loadprocessfile("lumerical_foundry_process_file.lbr");
+}else{ # add layers form scratch
+    addlayer("Si_Substrate");
+    addlayer("BOX");
+    addlayer("Si_CoreStripWG");
+    addlayer("TOX");
+    
+    setlayer("Si_Substrate","start position",-2e-6);
+    setlayer("Si_Substrate","thickness",-10e-6);
+    setlayer("Si_Substrate","process", "background");
+    setlayer("Si_Substrate","background material","Si (Silicon) - Palik");
+    
+    setlayer("BOX","start position","Auto");
+    setlayer("BOX","thickness",2e-6);
+    setlayer("BOX","process", "background");
+    setlayer("BOX","background material","SiO2 (Glass) - Palik");
+
+    setlayer("Si_CoreStripWG","layer number", "1:0");
+    setlayer("Si_CoreStripWG","start position",0e-6);
+    setlayer("Si_CoreStripWG","thickness",0.22e-6);
+    setlayer("Si_CoreStripWG","process", "grow");
+    setlayer("Si_CoreStripWG","pattern material","Si (Silicon) - Palik");
+    setlayer("Si_CoreStripWG","sidewall angle", 85);
+
+    setlayer("TOX","start position",0e-6);
+    setlayer("TOX","thickness",3.42e-6);
+    setlayer("TOX","process", "background");
+    setlayer("TOX","background material","SiO2 (Glass) - Palik");
+}
+
+##
+# Set background geometry
+set("x",0);
+set("y",0);
+set("z",0);
+set("x span", 20e-6);
+set("y span", 20e-6);
+
+#gds position reference
+#1 = centered at origin
+#2 = centered at upper-left corner
+#3 = centered at upper-right corner
+#4 = centered at lower-left corner
+#5 = centered at lower-right corner
+#6 = centered at custom coordinates
+set("gds position reference", 1);

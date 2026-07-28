@@ -1,0 +1,126 @@
+switchtolayout;
+selectall;
+delete;
+
+# ---------- SIM PARAMS ----------
+R = 25e-6;
+W = 1.83e-6;
+H = 1.0e-6;
+
+L_in = 8e-6;
+L_out = 8e-6;
+wg_overlap  = 0.2e-6;
+
+mesh_size = 50e-9;
+
+n_bg = 1.44;
+no = 2.2111;
+ne = 2.1376;
+
+
+# ---------- LN MATERIAL FOR varFDTD ----------
+n_ln = 2.2111; # scalar LN index used by varFDTD
+
+mat = addmaterial("(n,k) Material");
+setmaterial(mat,"name","Lithium Niobate - LN");
+setmaterial("Lithium Niobate - LN","Refractive Index",n_ln);
+setmaterial("Lithium Niobate - LN","Imaginary Refractive Index",0);
+
+# ---------- INPUT STRAIGHT WAVEGUIDE ----------
+addrect;
+set("name","input wg");
+set("x span",L_in + wg_overlap );
+set("y span",W);
+set("z span",H);
+set("x",-L_in/2 + wg_overlap /2);
+set("y",0);
+set("z",0.5e-6);
+set("material","Lithium Niobate - LN");
+
+
+# ---------- OUTPUT STRAIGHT WAVEGUIDE ----------
+addrect;
+set("name","output wg");
+set("x span",W);
+set("y span",L_out + wg_overlap );
+set("z span",H);
+WG_OUT_X = __WG_OUT_X__;
+WG_OUT_Y = __WG_OUT_Y__;
+set("x",WG_OUT_X);
+set("y",WG_OUT_Y);
+set("z",0.5e-6);
+set("material","Lithium Niobate - LN");
+
+
+# ---------- varFDTD REGION ----------
+addvarfdtd;
+FDTD_X = __FDTD_X__;
+FDTD_Y = __FDTD_Y__;
+FDTD_X_SPAN = __FDTD_X_SPAN__;
+FDTD_Y_SPAN = __FDTD_Y_SPAN__;
+set("x",FDTD_X);
+set("y",FDTD_Y);
+set("x span",FDTD_X_SPAN);
+set("y span",FDTD_Y_SPAN);
+set("z",0.5e-6);
+set("z span",4e-6);
+set("simulation time",3000e-15);
+set("background index",n_bg);
+
+
+# ---------- INPUT MODE SOURCE ----------
+addmodesource;
+set("name","source");
+set("injection axis","x-axis");
+set("direction","Forward");
+set("x",-L_in + 1e-6);
+set("y",0);
+set("y span",6e-6);
+set("wavelength start",1.55e-6);
+set("wavelength stop",1.55e-6);
+set("mode selection","fundamental mode");
+
+# ---------- FOM MONITOR ----------
+adddftmonitor;
+set("name","fom");
+set("monitor type","Linear X");
+FOM_X = __FOM_X__;
+FOM_Y = __FOM_Y__;
+set("x",FOM_X);
+set("x span",6e-6);
+set("y",FOM_Y);
+set("z",0.5e-6);
+
+
+# ---------- OPTIMIZATION FIELD MONITOR ----------
+adddftmonitor;
+set("name","opt_fields");
+set("monitor type","2D Z-normal");
+FIELD_X = __FIELD_X__;
+FIELD_Y = __FIELD_Y__;
+set("x",FIELD_X);
+set("y",FIELD_Y);
+set("z",0.5e-6);
+set("x span",R + 12e-6);
+set("y span",R + 12e-6);
+
+
+# ---------- MESH OVER DESIGN REGION ----------
+addmesh;
+set("name","design_mesh");
+MESH_X = __MESH_X__;
+MESH_Y = __MESH_Y__;
+MESH_X_SPAN = __MESH_X_SPAN__;
+MESH_Y_SPAN = __MESH_Y_SPAN__;
+set("x",MESH_X);
+set("y",MESH_Y);
+set("z",0.5e-6);
+set("x span",MESH_X_SPAN);
+set("y span",MESH_Y_SPAN);
+set("z span",H + 1e-6);
+set("set maximum mesh step",true);
+set("override x mesh",true);
+set("override y mesh",true);
+set("override z mesh",false);
+set("dx",mesh_size);
+set("dy",mesh_size);
