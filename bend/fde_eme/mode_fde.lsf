@@ -1,0 +1,172 @@
+# One-point Lumerical MODE/FDE model for the active X-cut LNOI platform.
+#
+# This file is a strict Python-rendered template. It builds one XY
+# cross-section (Z propagation), rotates the crystal tensor into the local
+# propagation frame, solves either a straight or bent mode problem, and leaves
+# all mode D-CARDs in the deck for Python-side identity checks.
+
+switchtolayout;
+selectall;
+delete;
+
+# Rendered platform and solver parameters (all lengths are SI).
+wavelength_m = __WAVELENGTH_M__;
+film_thickness_m = __FILM_THICKNESS_M__;
+etch_depth_m = __ETCH_DEPTH_M__;
+slab_thickness_m = film_thickness_m - etch_depth_m;
+wg_top_width_m = __WG_TOP_WIDTH_M__;
+wg_bottom_width_m = __WG_BOTTOM_WIDTH_M__;
+box_thickness_m = __BOX_THICKNESS_M__;
+substrate_thickness_m = __SUBSTRATE_THICKNESS_M__;
+structure_z_span_m = __STRUCTURE_Z_SPAN_M__;
+
+fde_x_span_m = __FDE_X_SPAN_M__;
+fde_y_min_m = __FDE_Y_MIN_M__;
+fde_y_max_m = __FDE_Y_MAX_M__;
+mesh_cells_x_requested = __MESH_CELLS_X__;
+mesh_cells_y_requested = __MESH_CELLS_Y__;
+pml_layers_requested = __PML_LAYERS__;
+trial_modes_requested = __TRIAL_MODES__;
+
+bent_waveguide_requested = __BENT_ENABLED__;
+requested_bend_radius_m = __BEND_RADIUS_M__;
+requested_bend_orientation_deg = __BEND_ORIENTATION_DEG__;
+physical_propagation_angle_deg = __PROPAGATION_ANGLE_DEG__;
+propagation_direction_code = __DIRECTION_CODE__;
+
+ln_material_name = __LN_MATERIAL_NAME__;
+air_material_name = __AIR_MATERIAL_NAME__;
+tensor_attribute_name = __TENSOR_ATTRIBUTE_NAME__;
+
+# The coefficient order is the crystal principal-axis order from
+# configs/current_lnoi.py. U is the conjugate transpose of those eigenvectors
+# expressed in this local FDE frame.
+A0 = __LN_SELLMEIER_A0__;
+B1 = __LN_SELLMEIER_B1__;
+C1 = __LN_SELLMEIER_C1__;
+B2 = __LN_SELLMEIER_B2__;
+C2 = __LN_SELLMEIER_C2__;
+B3 = __LN_SELLMEIER_B3__;
+C3 = __LN_SELLMEIER_C3__;
+tensor_U = __TENSOR_U__;
+
+if (materialexists(ln_material_name)) {
+    deletematerial(ln_material_name);
+}
+ln_material = addmaterial("Sellmeier");
+setmaterial(ln_material, "name", ln_material_name);
+setmaterial(ln_material_name, "Anisotropy", "Diagonal");
+setmaterial(ln_material_name, "A0", A0);
+setmaterial(ln_material_name, "B1", B1);
+setmaterial(ln_material_name, "C1", C1);
+setmaterial(ln_material_name, "B2", B2);
+setmaterial(ln_material_name, "C2", C2);
+setmaterial(ln_material_name, "B3", B3);
+setmaterial(ln_material_name, "C3", C3);
+
+addgridattribute("matrix transform");
+set("name", tensor_attribute_name);
+set("U", tensor_U);
+
+# Extend the blanket layers beyond the FDE transverse boundary so each one
+# continues through the PML. The ridge itself remains the physical width.
+blanket_x_span_m = 2 * fde_x_span_m;
+
+addrect;
+set("name", "substrate");
+set("material", __SUBSTRATE_MATERIAL_NAME__);
+set("x", 0);
+set("x span", blanket_x_span_m);
+set("y min", -box_thickness_m - substrate_thickness_m);
+set("y max", -box_thickness_m);
+set("z", 0);
+set("z span", structure_z_span_m);
+
+addrect;
+set("name", "box");
+set("material", __BOX_MATERIAL_NAME__);
+set("x", 0);
+set("x span", blanket_x_span_m);
+set("y min", -box_thickness_m);
+set("y max", 0);
+set("z", 0);
+set("z span", structure_z_span_m);
+
+addrect;
+set("name", "ln_slab");
+set("material", ln_material_name);
+set("grid attribute names", tensor_attribute_name);
+set("x", 0);
+set("x span", blanket_x_span_m);
+set("y min", 0);
+set("y max", slab_thickness_m);
+set("z", 0);
+set("z span", structure_z_span_m);
+
+ridge_vertices = [
+    -wg_bottom_width_m / 2, slab_thickness_m;
+     wg_bottom_width_m / 2, slab_thickness_m;
+     wg_top_width_m / 2, film_thickness_m;
+    -wg_top_width_m / 2, film_thickness_m
+];
+addpoly;
+set("name", "ln_ridge");
+set("material", ln_material_name);
+set("grid attribute names", tensor_attribute_name);
+set("vertices", ridge_vertices);
+set("z", 0);
+set("z span", structure_z_span_m);
+
+addfde;
+set("name", "FDE");
+set("solver type", 3);
+set("x", 0);
+set("x span", fde_x_span_m);
+set("y min", fde_y_min_m);
+set("y max", fde_y_max_m);
+set("z", 0);
+set("background index", 1);
+set("mesh definition", "number of mesh cells");
+set("mesh cells x", mesh_cells_x_requested);
+set("mesh cells y", mesh_cells_y_requested);
+set("x min bc", __X_MIN_BC__);
+set("x max bc", __X_MAX_BC__);
+set("y min bc", __Y_MIN_BC__);
+set("y max bc", __Y_MAX_BC__);
+set("pml layers", pml_layers_requested);
+set("autoscale pml parameters", 1);
+
+setanalysis("wavelength", wavelength_m);
+setanalysis("number of trial modes", trial_modes_requested);
+setanalysis("bent waveguide", bent_waveguide_requested);
+if (bent_waveguide_requested == 1) {
+    setanalysis("bend radius", requested_bend_radius_m);
+    setanalysis("bend orientation", requested_bend_orientation_deg);
+}
+
+# Read back the layout values before solving. Missing or renamed properties
+# stop this script immediately rather than silently changing the model.
+actual_solver_type = getnamed("FDE", "solver type");
+actual_fde_x_span_m = getnamed("FDE", "x span");
+actual_fde_y_min_m = getnamed("FDE", "y min");
+actual_fde_y_max_m = getnamed("FDE", "y max");
+actual_mesh_definition = getnamed("FDE", "mesh definition");
+actual_mesh_cells_x = getnamed("FDE", "mesh cells x");
+actual_mesh_cells_y = getnamed("FDE", "mesh cells y");
+actual_pml_layers = getnamed("FDE", "pml layers");
+actual_x_min_bc = getnamed("FDE", "x min bc");
+actual_x_max_bc = getnamed("FDE", "x max bc");
+actual_y_min_bc = getnamed("FDE", "y min bc");
+actual_y_max_bc = getnamed("FDE", "y max bc");
+actual_wavelength_m = getanalysis("wavelength");
+actual_trial_modes = getanalysis("number of trial modes");
+actual_bent_waveguide = getanalysis("bent waveguide");
+
+mode_count = findmodes;
+
+actual_bend_radius_m = 0;
+actual_bend_orientation_deg = requested_bend_orientation_deg;
+if (bent_waveguide_requested == 1) {
+    actual_bend_radius_m = getanalysis("bend radius");
+    actual_bend_orientation_deg = getanalysis("bend orientation");
+}
