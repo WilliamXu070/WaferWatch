@@ -87,7 +87,20 @@ const id = {
   otherWafer: "66000000-0000-4000-8000-000000000027",
   stalePl2Attempt: "66000000-0000-4000-8000-000000000028",
   parameterRecord: "66000000-0000-4000-8000-000000000029",
-  operationNote: "66000000-0000-4000-8000-000000000030"
+  operationNote: "66000000-0000-4000-8000-000000000030",
+  correctedWafer: "66000000-0000-4000-8000-000000000031",
+  correctedAssignment: "66000000-0000-4000-8000-000000000032",
+  correctedExecution: "66000000-0000-4000-8000-000000000033",
+  staleCompletedRun: "66000000-0000-4000-8000-000000000034",
+  staleCompletedMember: "66000000-0000-4000-8000-000000000035",
+  mistakenRouteEvent: "66000000-0000-4000-8000-000000000036",
+  correctionRouteEvent: "66000000-0000-4000-8000-000000000037",
+  correctionMutation: "66000000-0000-4000-8000-000000000038",
+  queuedWafer: "66000000-0000-4000-8000-000000000039",
+  queuedAssignment: "66000000-0000-4000-8000-000000000040",
+  queuedExecution: "66000000-0000-4000-8000-000000000041",
+  queuedRun: "66000000-0000-4000-8000-000000000042",
+  queuedMember: "66000000-0000-4000-8000-000000000043"
 };
 
 await db.exec(`
@@ -498,6 +511,196 @@ assert.ok(!visibleMembers.rows.some((row) => row.id === id.pl2Member));
 assert.ok(!visibleMembers.rows.some((row) => row.id === id.polingMember));
 assert.equal(visibleMembers.rows.length, 5);
 
+// Exact mixed-selection regression: a route-corrected A7 has an authoritative
+// redo execution but a stale completed canonical pointer, while B4 is valid
+// queued work at the same step. Only A7 should be repaired.
+await db.exec(`
+  insert into public.wafers (id, project_id, wafer_code, status, metadata)
+  values
+    ('${id.correctedWafer}', '${id.project}', 'A7', 'in_progress', '{"wafer_family":"ALPHA"}'),
+    ('${id.queuedWafer}', '${id.project}', 'B4', 'in_progress', '{"wafer_family":"BETA"}');
+  alter table public.wafer_process_assignments
+    disable trigger wafer_assignments_require_published_template;
+  alter table public.wafer_process_assignments
+    disable trigger wafer_assignments_checkpoint_transition;
+  alter table public.step_executions
+    disable trigger step_executions_checkpoint_transition;
+  insert into public.wafer_process_assignments (
+    id, wafer_id, template_id, assigned_by, status, current_step_id
+  ) values
+    (
+      '${id.correctedAssignment}', '${id.correctedWafer}', '${id.template}', '${id.actor}',
+      'in_progress', '${id.polingStep}'
+    ),
+    (
+      '${id.queuedAssignment}', '${id.queuedWafer}', '${id.template}', '${id.actor}',
+      'in_progress', '${id.polingStep}'
+    );
+  insert into public.step_executions (
+    id, assignment_id, wafer_id, process_step_id, status, queue_started_at,
+    created_at, updated_at
+  ) values
+    (
+      '${id.correctedExecution}', '${id.correctedAssignment}', '${id.correctedWafer}',
+      '${id.polingStep}', 'redo_required', '2026-07-22T20:10:00Z',
+      '2026-07-22T20:10:00Z', '2026-07-22T20:10:00Z'
+    ),
+    (
+      '${id.queuedExecution}', '${id.queuedAssignment}', '${id.queuedWafer}',
+      '${id.polingStep}', 'queued', '2026-07-22T20:10:00Z',
+      '2026-07-22T20:10:00Z', '2026-07-22T20:10:00Z'
+    );
+  alter table public.step_executions
+    enable trigger step_executions_checkpoint_transition;
+  alter table public.wafer_process_assignments
+    enable trigger wafer_assignments_checkpoint_transition;
+  alter table public.wafer_process_assignments
+    enable trigger wafer_assignments_require_published_template;
+
+  insert into public.operation_runs (
+    id, template_id, process_step_id, run_kind, status, created_by, created_at, updated_at
+  ) values
+    (
+      '${id.staleCompletedRun}', '${id.template}', '${id.polingStep}', 'normal',
+      'completed', '${id.actor}', '2026-07-22T19:31:09Z', '2026-07-22T19:31:09Z'
+    ),
+    (
+      '${id.queuedRun}', '${id.template}', '${id.polingStep}', 'normal',
+      'queued', '${id.actor}', '2026-07-22T20:10:00Z', '2026-07-22T20:10:00Z'
+    );
+  insert into public.operation_run_members (
+    id, operation_run_id, assignment_id, wafer_id, status,
+    legacy_step_execution_id, created_at, updated_at
+  ) values
+    (
+      '${id.staleCompletedMember}', '${id.staleCompletedRun}', '${id.correctedAssignment}',
+      '${id.correctedWafer}', 'completed', '${id.correctedExecution}',
+      '2026-07-22T19:31:09Z', '2026-07-22T19:31:09Z'
+    ),
+    (
+      '${id.queuedMember}', '${id.queuedRun}', '${id.queuedAssignment}',
+      '${id.queuedWafer}', 'queued', '${id.queuedExecution}',
+      '2026-07-22T20:10:00Z', '2026-07-22T20:10:00Z'
+    );
+  update public.wafer_process_assignments
+  set current_operation_run_member_id = case id
+    when '${id.correctedAssignment}' then '${id.staleCompletedMember}'::uuid
+    when '${id.queuedAssignment}' then '${id.queuedMember}'::uuid
+  end
+  where id in ('${id.correctedAssignment}', '${id.queuedAssignment}');
+
+  alter table public.process_events disable trigger process_events_link_effective_history;
+  insert into public.process_events (
+    id, project_id, wafer_id, actor_id, event_type, event_at, metadata
+  ) values (
+    '${id.mistakenRouteEvent}', '${id.project}', '${id.correctedWafer}', '${id.actor}',
+    'checkpoint_step_entered', '2026-07-22T20:00:00Z',
+    jsonb_build_object(
+      'assignment_id', '${id.correctedAssignment}',
+      'target_step_id', '${id.inspectionStep}'
+    )
+  );
+  insert into public.process_events (
+    id, project_id, wafer_id, step_execution_id, actor_id, event_type,
+    event_at, notes, metadata, client_mutation_id
+  ) values (
+    '${id.correctionRouteEvent}', '${id.project}', '${id.correctedWafer}',
+    '${id.correctedExecution}', '${id.actor}', 'checkpoint_step_entered',
+    '2026-07-22T20:10:00Z', 'Correct route back to Poling',
+    jsonb_build_object(
+      'assignment_id', '${id.correctedAssignment}',
+      'target_step_id', '${id.polingStep}',
+      'from_step_id', '${id.inspectionStep}',
+      'corrected_event_id', '${id.mistakenRouteEvent}',
+      'movement_kind', 'checkpoint_route_correction',
+      'route_decision', 'redo'
+    ),
+    '${id.correctionMutation}'
+  );
+  alter table public.process_events enable trigger process_events_link_effective_history;
+`);
+
+const repairedRoute = await db.query(
+  "select public.repair_checkpoint_route_current_members() as result"
+);
+assert.deepEqual(repairedRoute.rows[0].result, { repairedAssignments: 1 });
+
+const correctedCurrent = await db.query(`
+  select
+    assignment.current_operation_run_member_id as member_id,
+    member.status as member_status,
+    member.legacy_step_execution_id,
+    member.history_effective,
+    run.id as run_id,
+    run.status as run_status,
+    run.run_kind,
+    event.operation_run_id as event_run_id,
+    event.operation_run_member_id as event_member_id
+  from public.wafer_process_assignments assignment
+  join public.operation_run_members member
+    on member.id = assignment.current_operation_run_member_id
+  join public.operation_runs run on run.id = member.operation_run_id
+  join public.process_events event on event.id = '${id.correctionRouteEvent}'
+  where assignment.id = '${id.correctedAssignment}'
+`);
+assert.equal(correctedCurrent.rows[0].member_status, "redo_required");
+assert.equal(correctedCurrent.rows[0].legacy_step_execution_id, id.correctedExecution);
+assert.equal(correctedCurrent.rows[0].history_effective, true);
+assert.equal(correctedCurrent.rows[0].run_status, "redo_required");
+assert.equal(correctedCurrent.rows[0].run_kind, "redo");
+assert.equal(correctedCurrent.rows[0].event_run_id, correctedCurrent.rows[0].run_id);
+assert.equal(correctedCurrent.rows[0].event_member_id, correctedCurrent.rows[0].member_id);
+
+const preservedCompletedVisit = await db.query(`
+  select status, history_effective
+  from public.operation_run_members
+  where id = '${id.staleCompletedMember}'
+`);
+assert.deepEqual(preservedCompletedVisit.rows[0], {
+  status: "completed",
+  history_effective: true
+});
+
+const redoLink = await db.query(`
+  select link_kind
+  from public.operation_run_links
+  where parent_run_id = '${id.staleCompletedRun}'
+    and child_run_id = $1
+`, [correctedCurrent.rows[0].run_id]);
+assert.equal(redoLink.rows[0].link_kind, "redo");
+
+const queuedCurrent = await db.query(`
+  select assignment.current_operation_run_member_id as member_id, member.status, run.status as run_status
+  from public.wafer_process_assignments assignment
+  join public.operation_run_members member on member.id = assignment.current_operation_run_member_id
+  join public.operation_runs run on run.id = member.operation_run_id
+  where assignment.id = '${id.queuedAssignment}'
+`);
+assert.deepEqual(queuedCurrent.rows[0], {
+  member_id: id.queuedMember,
+  status: "queued",
+  run_status: "queued"
+});
+
+const correctedMemberCountBeforeRetry = await db.query(`
+  select count(*)::integer as count
+  from public.operation_run_members
+  where assignment_id = '${id.correctedAssignment}'
+`);
+const repairRetry = await db.query(
+  "select public.repair_checkpoint_route_current_members() as result"
+);
+const correctedMemberCountAfterRetry = await db.query(`
+  select count(*)::integer as count
+  from public.operation_run_members
+  where assignment_id = '${id.correctedAssignment}'
+`);
+assert.deepEqual(repairRetry.rows[0].result, { repairedAssignments: 0 });
+assert.equal(
+  correctedMemberCountAfterRetry.rows[0].count,
+  correctedMemberCountBeforeRetry.rows[0].count
+);
+
 console.log(JSON.stringify({
   exactRepro: "A4 merged PL2 repeats, cross-step Poling link, false EBL completion, missing Inspection member, and stale unresolved submission",
   recoveredVisits: visibleMembers.rows.length,
@@ -507,5 +710,8 @@ console.log(JSON.stringify({
   orphanEvents: orphanEvents.rows[0].count,
   rerunnable: memberCountAfterRetry.rows[0].count === memberCountBeforeRetry.rows[0].count,
   suppressedEvidenceRetained: suppressed.rows.length,
-  hostileMetadataBoundToWafer: currentAfterHostileEvent.rows[0].current_operation_run_member_id === current.rows[0].member_id
+  hostileMetadataBoundToWafer: currentAfterHostileEvent.rows[0].current_operation_run_member_id === current.rows[0].member_id,
+  correctedRouteMemberStatus: correctedCurrent.rows[0].member_status,
+  queuedPeerUntouched: queuedCurrent.rows[0].member_id === id.queuedMember,
+  correctedRouteRepairRerunnable: repairRetry.rows[0].result.repairedAssignments === 0
 }, null, 2));

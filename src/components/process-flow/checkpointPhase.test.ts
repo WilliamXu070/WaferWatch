@@ -5,6 +5,7 @@ import {
   canMoveToAnotherStep,
   canReviewerRouteCheckpoint,
   canSubmitCheckpoint,
+  canSubmitWaferCheckpoint,
   getCheckpointPhase,
   getReviewerRouteDecision,
   getCheckpointStateLabel
@@ -23,6 +24,25 @@ test("separates checkpoint submission from approved cross-step movement", () => 
   assert.equal(canMoveToAnotherStep("awaiting_checkpoint"), false);
   assert.equal(canMoveToAnotherStep("ready_to_move"), true);
   assert.equal(getCheckpointStateLabel("ready_to_move"), "Approved, ready to move");
+});
+
+test("allows a corrected redo die and a queued die to submit together", () => {
+  const correctedA7 = {
+    currentStepExecutionId: "a7-poling-execution",
+    currentStepStatus: "redo_required" as const
+  };
+  const queuedB4 = {
+    currentStepExecutionId: "b4-poling-execution",
+    currentStepStatus: "queued" as const
+  };
+
+  assert.equal(canSubmitWaferCheckpoint(correctedA7), true);
+  assert.equal(canSubmitWaferCheckpoint(queuedB4), true);
+  assert.equal([correctedA7, queuedB4].every(canSubmitWaferCheckpoint), true);
+  assert.equal(canSubmitWaferCheckpoint({
+    ...correctedA7,
+    currentStepStatus: "completed"
+  }), false);
 });
 
 test("allows active main work to detour only into an anytime step", () => {
