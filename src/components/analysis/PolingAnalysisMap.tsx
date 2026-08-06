@@ -27,6 +27,7 @@ import {
   type PolingPulseWidth,
   type PolingRecord
 } from "@/features/analysis/polingData";
+import { getPolingWheelIntent } from "@/features/analysis/polingGestures";
 import styles from "./PolingAnalysisMap.module.css";
 
 type Domain = { xmin: number; xmax: number; ymin: number; ymax: number };
@@ -246,11 +247,12 @@ export function PolingAnalysisMap() {
 
   const handleWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
     event.preventDefault();
-    if (event.ctrlKey || Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
-      zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 0.84 : 1.2);
+    const intent = getPolingWheelIntent(event);
+    if (intent.kind === "zoom") {
+      zoomAt(event.clientX, event.clientY, intent.factor);
       return;
     }
-    panByPixels(event.deltaX, 0);
+    panByPixels(intent.deltaX, intent.deltaY);
   };
 
   const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -569,7 +571,7 @@ export function PolingAnalysisMap() {
             </div>
           </footer>
           <p className={styles.hint}>
-            Scroll to zoom, drag to pan, double-click to reset, or use arrow keys after focusing the graph.
+            Two-finger scroll or drag to pan, pinch to zoom, double-click to reset, or use arrow keys after focusing the graph.
           </p>
         </section>
 
