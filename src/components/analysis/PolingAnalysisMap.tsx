@@ -28,6 +28,7 @@ import {
   type PolingRecord
 } from "@/features/analysis/polingData";
 import { getPolingWheelIntent } from "@/features/analysis/polingGestures";
+import { getPolingImagePreloadOrder } from "@/features/analysis/polingImageLoading";
 import styles from "./PolingAnalysisMap.module.css";
 
 type Domain = { xmin: number; xmax: number; ymin: number; ymax: number };
@@ -39,6 +40,18 @@ const INITIAL_VIEWBOX = { width: 760, height: 520 };
 const MARGIN = { left: 64, right: 24, top: 28, bottom: 54 };
 const FULL_DOMAIN: Domain = { xmin: 425, xmax: 525, ymin: 0, ymax: 210 };
 const PULSE_WIDTHS: readonly (PolingPulseWidth | "all")[] = ["all", 10, 100, 200];
+const IMAGE_PRELOAD_CONCURRENCY = 4;
+
+async function decodePolingImage(imagePath: string) {
+  const image = new window.Image();
+  image.decoding = "async";
+  image.src = imagePath;
+  try {
+    await image.decode();
+  } catch {
+    // The rendered image retains its normal error behavior if warming fails.
+  }
+}
 
 function clampDomain(candidate: Domain): Domain {
   const xSpan = candidate.xmax - candidate.xmin;
@@ -124,6 +137,7 @@ export function PolingAnalysisMap() {
   const [annotations, setAnnotations] = useState<Drawing[]>([]);
   const [activeDrawing, setActiveDrawing] = useState<Drawing | null>(null);
   const [viewBox, setViewBox] = useState(INITIAL_VIEWBOX);
+  const [displayedRecord, setDisplayedRecord] = useState(POLING_RECORDS[0]);
 
   useEffect(() => {
     const chartFrame = chartFrameRef.current;
@@ -153,6 +167,41 @@ export function PolingAnalysisMap() {
 
   const selectedRecord =
     visibleRecords.find((record) => record.id === selectedId) ?? visibleRecords[0] ?? null;
+  const imageLoading =
+    selectedRecord !== null && selectedRecord.imagePath !== displayedRecord.imagePath;
+
+  useEffect(() => {
+    const preloadOrder = getPolingImagePreloadOrder(
+      POLING_RECORDS,
+      POLING_RECORDS[0].imagePath
+    );
+    let cancelled = false;
+    let cursor = 0;
+
+    const warmQueue = async () => {
+      const worker = async () => {
+        while (!cancelled) {
+          const imagePath = preloadOrder[cursor];
+          cursor += 1;
+          if (!imagePath) return;
+          await decodePolingImage(imagePath);
+        }
+      };
+
+      await Promise.all(
+        Array.from({ length: IMAGE_PRELOAD_CONCURRENCY }, () => worker())
+      );
+    };
+
+    let timeoutId: number | null = null;
+    const startWarmup = () => void warmQueue();
+    timeoutId = window.setTimeout(startWarmup, 200);
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   const plotWidth = viewBox.width - MARGIN.left - MARGIN.right;
   const plotHeight = viewBox.height - MARGIN.top - MARGIN.bottom;
@@ -592,14 +641,34 @@ export function PolingAnalysisMap() {
 
               <div className={styles.imageStage}>
                 <Image
-                  key={selectedRecord.imagePath}
-                  src={selectedRecord.imagePath}
+                  key={displayedRecord.imagePath}
+                  src={displayedRecord.imagePath}
                   width={1024}
                   height={1024}
                   sizes="(max-width: 900px) 100vw, 38vw"
-                  priority={selectedRecord.id === POLING_RECORDS[0].id}
-                  alt={`Microscopy result from slide ${selectedRecord.slide}: ${selectedRecord.voltage} volts and ${selectedRecord.pulses} pulses`}
+                  priority={displayedRecord.id === POLING_RECORDS[0].id}
+                  unoptimized
+                  alt={`Microscopy result from slide ${displayedRecord.slide}: ${displayedRecord.voltage} volts and ${displayedRecord.pulses} pulses`}
                 />
+                {imageLoading && selectedRecord ? (
+                  <Image
+                    key={`incoming-${selectedRecord.imagePath}`}
+                    className={styles.incomingImage}
+                    src={selectedRecord.imagePath}
+                    width={1024}
+                    height={1024}
+                    sizes="(max-width: 900px) 100vw, 38vw"
+                    unoptimized
+                    alt=""
+                    aria-hidden="true"
+                    onLoad={() => setDisplayedRecord(selectedRecord)}
+                  />
+                ) : null}
+                {imageLoading ? (
+                  <span className={styles.imageLoading} role="status">
+                    Loading image…
+                  </span>
+                ) : null}
               </div>
 
               <dl className={styles.metadata}>

@@ -435,6 +435,28 @@
   object-fit: contain;
 }
 
+.imageStage .incomingImage {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.imageLoading {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: rgb(19 10 27 / 72%);
+  color: rgb(255 255 255 / 88%);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(6px);
+}
+
 .metadata {
   display: grid;
   grid-template-columns: 1fr 1fr;
