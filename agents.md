@@ -6,6 +6,7 @@ WaferWatch is a Next.js and Supabase fabrication workflow app. The only authenti
 
 - `/dashboard` — process summary
 - `/calendar` — weekly scheduling
+- `/analysis` — experimental result analysis and microscopy maps
 - `/process-flow` — graph, wafer movement, checkpoints, parameters, and archive
 - `/wafer-status` — die overview and process history
 

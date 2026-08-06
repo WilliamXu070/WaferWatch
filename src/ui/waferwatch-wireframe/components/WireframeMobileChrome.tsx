@@ -6,6 +6,7 @@ import { useRef, useState, useTransition } from "react";
 import type { WireframeShellDto } from "@/features/wireframe/types";
 import type { CreateProcessAction } from "./shellActions";
 import {
+  ActivityIcon,
   CalendarIcon,
   CloseIcon,
   FlowIcon,
@@ -28,6 +29,7 @@ import { shouldFullyPrefetchProcessRoute } from "./processRoutePrefetch";
 const iconByKey = {
   grid: GridIcon,
   calendar: CalendarIcon,
+  analysis: ActivityIcon,
   flow: FlowIcon,
   waferStatus: WaferStatusIcon
 } as const;

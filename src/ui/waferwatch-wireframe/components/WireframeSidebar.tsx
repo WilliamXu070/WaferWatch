@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { WireframeShellDto } from "@/features/wireframe/types";
 import type { CreateProcessAction, DeleteProcessAction, UpdateProcessNameAction } from "./shellActions";
 import {
+  ActivityIcon,
   CalendarIcon,
   ChevronRightIcon,
   CloseIcon,
@@ -28,6 +29,7 @@ import { shouldFullyPrefetchProcessRoute } from "./processRoutePrefetch";
 const iconByKey = {
   grid: GridIcon,
   calendar: CalendarIcon,
+  analysis: ActivityIcon,
   flow: FlowIcon,
   waferStatus: WaferStatusIcon
 } as const;

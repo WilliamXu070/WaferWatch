@@ -1,0 +1,652 @@
+.page {
+  min-height: 100%;
+  padding: 28px clamp(16px, 3vw, 38px) 48px;
+  background: #fbfbf8;
+  color: #181816;
+}
+
+.heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 1560px;
+  margin: 0 auto 22px;
+}
+
+.heading h1 {
+  margin: 4px 0 0;
+  font-size: clamp(26px, 3vw, 38px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #77766e;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.intro {
+  max-width: 65ch;
+  margin: 9px 0 0;
+  color: #68675f;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.recordCount {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-bottom: 2px;
+  color: #74736b;
+  white-space: nowrap;
+}
+
+.recordCount strong {
+  color: #181816;
+  font-size: 20px;
+}
+
+.recordCount span {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(560px, 1.25fr) minmax(360px, 0.75fr);
+  gap: 18px;
+  max-width: 1560px;
+  margin: 0 auto;
+}
+
+.plotPanel,
+.detailPanel {
+  border: 1px solid #e4e4de;
+  border-radius: 16px;
+  background: #fefefc;
+  box-shadow: 0 1px 2px rgb(32 32 25 / 4%);
+}
+
+.plotPanel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.filterBar {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  min-height: 72px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #ecece6;
+}
+
+.chipFilters {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.chipFilters legend,
+.widthFilter > span {
+  display: block;
+  margin-bottom: 5px;
+  color: #8a8981;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chipFilters legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.chipFilters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  color: #44433e;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.chipFilters input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #181816;
+}
+
+.chipFilters label > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--chip-color);
+}
+
+.widthFilter {
+  color: #44433e;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.widthFilter select {
+  min-width: 116px;
+  height: 36px;
+  border: 1px solid #deded7;
+  border-radius: 9px;
+  padding: 0 30px 0 10px;
+  background: #fff;
+  color: #2e2e2a;
+  font: inherit;
+}
+
+.modeTools {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 3px;
+  border: 1px solid #e4e4de;
+  border-radius: 10px;
+  background: #f7f7f3;
+}
+
+.modeTools button,
+.zoomTools button,
+.annotationActions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  color: #55544e;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color 160ms ease-out, color 160ms ease-out, opacity 160ms ease-out;
+}
+
+.modeTools button {
+  gap: 6px;
+  min-height: 32px;
+  border-radius: 7px;
+  padding: 0 9px;
+  background: transparent;
+  font-size: 12px;
+}
+
+.modeTools button:hover,
+.modeTools button[aria-pressed="true"] {
+  background: #fff;
+  color: #181816;
+  box-shadow: 0 1px 2px rgb(25 25 20 / 8%);
+}
+
+.modeTools svg,
+.zoomTools svg,
+.annotationActions svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
+}
+
+.chartFrame {
+  position: relative;
+  min-width: 0;
+  padding: 10px 12px 4px;
+  background: #fefefc;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  outline: none;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.chart:focus-visible {
+  border-radius: 10px;
+  outline: 2px solid #181816;
+  outline-offset: -2px;
+}
+
+.chart[data-mode="line"],
+.chart[data-mode="freehand"] {
+  cursor: crosshair;
+}
+
+.gridLine {
+  stroke: #e9e9e3;
+  stroke-width: 1;
+}
+
+.plotBorder {
+  fill: transparent;
+  stroke: #b9b9b0;
+  stroke-width: 1;
+}
+
+.axisLabel {
+  fill: #7a7971;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.axisTitle {
+  fill: #474640;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.point,
+.selectedPoint {
+  stroke: #fefefc;
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+  transition: r 150ms ease-out, stroke 150ms ease-out;
+}
+
+.point:hover,
+.selectedPoint {
+  stroke: #181816;
+  stroke-width: 2.5;
+}
+
+.annotation {
+  fill: none;
+  stroke: #b42318;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.zoomTools {
+  position: absolute;
+  top: 24px;
+  right: 26px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #deded7;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgb(28 28 22 / 8%);
+}
+
+.zoomTools button {
+  width: 34px;
+  height: 34px;
+  background: #fff;
+}
+
+.zoomTools button + button {
+  border-top: 1px solid #ecece6;
+}
+
+.zoomTools button:hover {
+  background: #f3f3ee;
+  color: #181816;
+}
+
+.plotFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 7px 16px;
+  border-top: 1px solid #ecece6;
+}
+
+.legend,
+.annotationActions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #68675f;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.annotationActions {
+  gap: 3px;
+}
+
+.annotationActions button {
+  gap: 5px;
+  min-height: 32px;
+  border-radius: 7px;
+  padding: 0 8px;
+  background: transparent;
+  font-size: 11px;
+}
+
+.annotationActions button:hover:not(:disabled) {
+  background: #f3f3ee;
+  color: #181816;
+}
+
+.annotationActions button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.hint {
+  margin: 0;
+  padding: 0 16px 13px;
+  color: #929188;
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.detailPanel {
+  position: sticky;
+  top: 18px;
+  align-self: start;
+  overflow: hidden;
+}
+
+.detailHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 18px 14px;
+}
+
+.detailHeader p {
+  margin: 0 0 4px;
+  color: #77766e;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detailHeader h2 {
+  margin: 0;
+  color: #181816;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.detailHeader > span {
+  flex: none;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.imageStage {
+  position: relative;
+  margin: 0 12px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #260038;
+  aspect-ratio: 1;
+}
+
+.imageStage img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.metadata {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 14px 18px 0;
+  border-top: 1px solid #ecece6;
+  border-bottom: 1px solid #ecece6;
+}
+
+.metadata > div {
+  min-width: 0;
+  padding: 12px 0;
+}
+
+.metadata > div:nth-child(even) {
+  padding-left: 14px;
+  border-left: 1px solid #ecece6;
+}
+
+.metadata > div:nth-child(n + 3) {
+  border-top: 1px solid #ecece6;
+}
+
+.metadata dt {
+  margin: 0 0 3px;
+  color: #8a8981;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.metadata dd {
+  margin: 0;
+  color: #35342f;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.warning {
+  margin: 14px 18px 0;
+  border: 1px solid #ead6a8;
+  border-radius: 9px;
+  padding: 9px 10px;
+  background: #fff9ec;
+  color: #78541b;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.sourceNote {
+  margin: 0;
+  padding: 13px 18px 17px;
+  color: #8a8981;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.emptyDetail {
+  display: grid;
+  place-items: center;
+  min-height: 420px;
+  padding: 32px;
+  text-align: center;
+}
+
+.emptyDetail strong {
+  font-size: 17px;
+}
+
+.emptyDetail p {
+  margin: 6px 0 0;
+  color: #77766e;
+  font-size: 13px;
+}
+
+.modeTools button:focus-visible,
+.zoomTools button:focus-visible,
+.annotationActions button:focus-visible,
+.widthFilter select:focus-visible,
+.chipFilters input:focus-visible {
+  outline: 2px solid #181816;
+  outline-offset: 2px;
+}
+
+@media (max-width: 1180px) {
+  .workspace {
+    grid-template-columns: minmax(500px, 1.1fr) minmax(320px, 0.9fr);
+  }
+
+  .modeTools button span {
+    display: none;
+  }
+
+  .modeTools button {
+    width: 32px;
+    padding: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding-top: 18px;
+    padding-bottom: 96px;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .detailPanel {
+    position: static;
+  }
+
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .heading {
+    align-items: flex-start;
+    margin-bottom: 15px;
+  }
+
+  .heading h1 {
+    font-size: 27px;
+  }
+
+  .recordCount {
+    display: none;
+  }
+
+  .filterBar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 9px 12px;
+    padding: 12px;
+  }
+
+  .chipFilters {
+    gap: 10px;
+  }
+
+  .widthFilter {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .modeTools {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .modeTools button {
+    flex: 1;
+    width: auto;
+  }
+
+  .modeTools button span {
+    display: inline;
+  }
+
+  .chartFrame {
+    padding: 4px 4px 0;
+  }
+
+  .zoomTools {
+    top: 14px;
+    right: 14px;
+  }
+
+  .plotFooter {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+    padding: 10px 12px;
+  }
+
+  .hint {
+    padding: 0 12px 12px;
+    line-height: 1.4;
+  }
+
+  .detailHeader,
+  .metadata,
+  .warning {
+    margin-right: 12px;
+    margin-left: 12px;
+  }
+
+  .detailHeader {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .sourceNote {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modeTools button,
+  .zoomTools button,
+  .annotationActions button,
+  .point,
+  .selectedPoint {
+    transition: none;
+  }
+}
