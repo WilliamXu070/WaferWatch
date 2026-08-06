@@ -287,8 +287,9 @@ export function PolingAnalysisMap() {
   };
 
   const finishPointerInteraction = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (activeDrawingRef.current) {
-      setAnnotations((current) => [...current, activeDrawingRef.current as Drawing]);
+    const completedDrawing = activeDrawingRef.current;
+    if (completedDrawing) {
+      setAnnotations((current) => [...current, completedDrawing]);
       activeDrawingRef.current = null;
       setActiveDrawing(null);
     }
