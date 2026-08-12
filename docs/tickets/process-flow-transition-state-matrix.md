@@ -12,6 +12,8 @@ Every valid Process Flow transition succeeds atomically and idempotently across 
 
 `execute_process_flow_mutations_batch` enables `waferwatch.canonical_workflow_mutation` and then invokes compatibility checkpoint/movement functions. `enforce_checkpoint_execution_transition` currently requires `step_executions.metadata.operation_run_id` before considering the existing assignment-scoped transition token. Current active compatibility executions have coherent `current_operation_run_member_id` links but lack that metadata, so valid checkpoint submissions fail and roll back. The same ordering can affect route, correction, redo, anytime, and future arrival paths. Existing static verifiers do not execute the real batch RPC, and deployed error normalization hides the database message.
 
+The production migration replay also exposed an append-only compatibility collision: a route-corrected execution already belonged to a legacy batch. The repair now retains that legacy membership while creating a distinct canonical run for the corrected visit.
+
 ## Plan
 
 1. Add an additive migration that backfills execution identity from the coherent current operation-run member.
@@ -30,4 +32,13 @@ Every valid Process Flow transition succeeds atomically and idempotently across 
 
 ## Status
 
-Implementation in progress.
+Resolved and released on 2026-08-12.
+
+- Commits: `eafb18c`, `49fae2d`
+- Production migrations: `202608040001`, `202608050001`, `202608120001`
+- Automated verification: 226 tests, typecheck, lint, optimized build, and every workflow/database verifier passed.
+- Production invariant audit: all 18 active assignments had matching effective member, run, step, execution, and canonical metadata identity; every mismatch counter was zero.
+- Signed-in replay: desktop and 390x844 Process Flow loaded without console errors or the unexpected-error banner; A4 selection projected correctly on mobile.
+- Deployment: `dpl_EMQQLYdZDDfrM5Z31RdTkSf4bWou`; production `/api/health` returned HTTP 200 with a healthy live Supabase probe.
+
+No real wafer movement was performed solely for verification. Mutating transitions were exercised against isolated production-shaped databases.
