@@ -105,7 +105,8 @@
 }
 
 .dieFilters legend,
-.widthFilter > span {
+.widthFilter > span,
+.wheelFilter > span {
   display: block;
   margin-bottom: 5px;
   color: #8a8981;
@@ -148,13 +149,15 @@
   background: var(--series-color);
 }
 
-.widthFilter {
+.widthFilter,
+.wheelFilter {
   color: #44433e;
   font-size: 12px;
   font-weight: 650;
 }
 
-.widthFilter select {
+.widthFilter select,
+.wheelFilter select {
   min-width: 116px;
   height: 36px;
   border: 1px solid #deded7;
@@ -163,6 +166,10 @@
   background: #fff;
   color: #2e2e2a;
   font: inherit;
+}
+
+.wheelFilter select {
+  min-width: 126px;
 }
 
 .variantNote {
@@ -249,6 +256,12 @@
 .chart[data-mode="line"],
 .chart[data-mode="freehand"] {
   cursor: crosshair;
+}
+
+.chart[data-dragging="true"],
+.chart[data-dragging="true"] .point,
+.chart[data-dragging="true"] .selectedPoint {
+  cursor: grabbing;
 }
 
 .gridLine {
@@ -648,6 +661,7 @@
 .zoomTools button:focus-visible,
 .annotationActions button:focus-visible,
 .widthFilter select:focus-visible,
+.wheelFilter select:focus-visible,
 .dieFilterOptions input:focus-visible {
   outline: 2px solid #181816;
   outline-offset: 2px;
@@ -728,15 +742,20 @@
     grid-column: 1;
   }
 
-  .variantNote {
+  .wheelFilter {
     grid-row: 2;
     grid-column: 2;
-    max-width: 150px;
+  }
+
+  .variantNote {
+    grid-row: 3;
+    grid-column: 1 / -1;
+    max-width: none;
     font-size: 10px;
   }
 
   .modeTools {
-    grid-row: 3;
+    grid-row: 4;
     grid-column: 1 / -1;
     width: 100%;
     margin-left: 0;

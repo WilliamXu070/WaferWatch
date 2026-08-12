@@ -22,8 +22,7 @@ import {
   type CSSProperties,
   type Dispatch,
   type PointerEvent as ReactPointerEvent,
-  type SetStateAction,
-  type WheelEvent as ReactWheelEvent
+  type SetStateAction
 } from "react";
 import {
   buildPolingPointPositions,
@@ -34,14 +33,38 @@ import {
   type PolingPointPosition,
   type PolingRecord
 } from "@/features/analysis/polingData";
-import { getPolingWheelIntent } from "@/features/analysis/polingGestures";
+import {
+  POLING_WHEEL_CLASSIFY_DELAY_MS,
+  PolingWheelGestureClassifier,
+  getPolingPanDelta,
+  getPolingZoomFactor,
+  isPolingWheelInputMode,
+  normalizePolingWheelDelta,
+  type PolingWheelAction,
+  type PolingWheelInputMode,
+  type PolingWheelSample
+} from "@/features/analysis/polingGestures";
 import { getPolingImagePreloadOrder } from "@/features/analysis/polingImageLoading";
+import {
+  clampPolingDomain,
+  createPolingFullDomain,
+  panPolingDomainByClientDelta,
+  type PolingDomain
+} from "@/features/analysis/polingViewport";
 import styles from "./PolingAnalysisMap.module.css";
 
-type Domain = { xmin: number; xmax: number; ymin: number; ymax: number };
 type GraphPoint = { x: number; y: number };
 type Drawing = { type: "line" | "freehand"; points: GraphPoint[] };
 type DrawMode = "navigate" | Drawing["type"];
+type DragState = {
+  pointerId: number;
+  x: number;
+  y: number;
+  startX: number;
+  startY: number;
+  moved: boolean;
+  recordId: string | null;
+};
 
 export type PolingAnalysisMapProps = {
   records?: readonly PolingRecord[];
@@ -51,6 +74,8 @@ export type PolingAnalysisMapProps = {
 const INITIAL_VIEWBOX = { width: 760, height: 520 };
 const MARGIN = { left: 64, right: 24, top: 28, bottom: 54 };
 const IMAGE_PRELOAD_CONCURRENCY = 2;
+const POINTER_DRAG_THRESHOLD = 4;
+const WHEEL_INPUT_STORAGE_KEY = "waferwatch-analysis-wheel-input";
 
 async function decodePolingImage(imagePath: string) {
   const image = new window.Image();
@@ -61,45 +86,6 @@ async function decodePolingImage(imagePath: string) {
   } catch {
     // The detail panel reports an image error if the rendered request also fails.
   }
-}
-
-function createFullDomain(
-  records: readonly PolingRecord[],
-  positions: ReadonlyMap<string, PolingPointPosition>
-): Domain {
-  if (!records.length) return { xmin: 0, xmax: 10, ymin: 0, ymax: 10 };
-
-  const voltages = records.map(
-    (record) => positions.get(record.id)?.voltage ?? record.voltage
-  );
-  const pulses = records.map((record) => record.pulses);
-  const voltageMin = Math.min(...voltages);
-  const voltageMax = Math.max(...voltages);
-  const pulseMin = Math.min(...pulses);
-  const pulseMax = Math.max(...pulses);
-  const voltagePadding = Math.max(5, (voltageMax - voltageMin) * 0.04);
-  const pulsePadding = Math.max(5, (pulseMax - pulseMin) * 0.05);
-
-  return {
-    xmin: Math.floor(voltageMin - voltagePadding),
-    xmax: Math.ceil(voltageMax + voltagePadding),
-    ymin: Math.max(0, Math.floor(pulseMin - pulsePadding)),
-    ymax: Math.ceil(pulseMax + pulsePadding)
-  };
-}
-
-function clampDomain(candidate: Domain, fullDomain: Domain): Domain {
-  const xSpan = Math.min(candidate.xmax - candidate.xmin, fullDomain.xmax - fullDomain.xmin);
-  const ySpan = Math.min(candidate.ymax - candidate.ymin, fullDomain.ymax - fullDomain.ymin);
-  const xmin = Math.max(
-    fullDomain.xmin,
-    Math.min(candidate.xmin, fullDomain.xmax - xSpan)
-  );
-  const ymin = Math.max(
-    fullDomain.ymin,
-    Math.min(candidate.ymin, fullDomain.ymax - ySpan)
-  );
-  return { xmin, xmax: xmin + xSpan, ymin, ymax: ymin + ySpan };
 }
 
 function ticks(min: number, max: number, count = 6) {
@@ -186,10 +172,23 @@ export function PolingAnalysisMap({
 }: PolingAnalysisMapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const chartFrameRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<DragState | null>(null);
   const activeDrawingRef = useRef<Drawing | null>(null);
+  const wheelClassifierRef = useRef(new PolingWheelGestureClassifier());
+  const wheelClassificationTimerRef = useRef<number | null>(null);
+  const wheelAnimationFrameRef = useRef<number | null>(null);
+  const queuedWheelPanRef = useRef({ deltaX: 0, deltaY: 0 });
+  const queuedWheelZoomRef = useRef({ deltaY: 0, clientX: 0, clientY: 0 });
+  const nativeWheelHandlerRef = useRef<(event: WheelEvent) => void>(() => undefined);
   const positions = useMemo(() => buildPolingPointPositions(records), [records]);
-  const fullDomain = useMemo(() => createFullDomain(records, positions), [positions, records]);
+  const fullDomain = useMemo(
+    () =>
+      createPolingFullDomain(
+        records.map((record) => positions.get(record.id)?.voltage ?? record.voltage),
+        records.map((record) => record.pulses)
+      ),
+    [positions, records]
+  );
   const specimens = useMemo(() => getPolingSpecimens(records), [records]);
   const pulseWidths = useMemo(() => getPolingPulseWidths(records), [records]);
   const seriesColors = useMemo(() => getPolingSeriesColors(specimens), [specimens]);
@@ -198,8 +197,10 @@ export function PolingAnalysisMap({
   );
   const [pulseWidth, setPulseWidth] = useState<number | "all">("all");
   const [selectedId, setSelectedId] = useState(records[0]?.id ?? "");
-  const [domain, setDomain] = useState<Domain>(() => fullDomain);
+  const [domain, setDomain] = useState<PolingDomain>(() => fullDomain);
   const [mode, setMode] = useState<DrawMode>("navigate");
+  const [wheelInputMode, setWheelInputMode] = useState<PolingWheelInputMode>("auto");
+  const [isDragging, setIsDragging] = useState(false);
   const [annotations, setAnnotations] = useState<Drawing[]>([]);
   const [activeDrawing, setActiveDrawing] = useState<Drawing | null>(null);
   const [viewBox, setViewBox] = useState(INITIAL_VIEWBOX);
@@ -281,6 +282,35 @@ export function PolingAnalysisMap({
     };
   }, [selectedRecord, visibleRecords]);
 
+  useEffect(() => {
+    const storedMode = window.localStorage.getItem(WHEEL_INPUT_STORAGE_KEY);
+    if (!storedMode || !isPolingWheelInputMode(storedMode)) return;
+    const timeoutId = window.setTimeout(() => setWheelInputMode(storedMode), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const wheelClassifier = wheelClassifierRef.current;
+    const listener = (event: WheelEvent) => nativeWheelHandlerRef.current(event);
+    svg.addEventListener("wheel", listener, { passive: false });
+    return () => {
+      svg.removeEventListener("wheel", listener);
+      if (wheelClassificationTimerRef.current !== null) {
+        window.clearTimeout(wheelClassificationTimerRef.current);
+        wheelClassificationTimerRef.current = null;
+      }
+      if (wheelAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(wheelAnimationFrameRef.current);
+        wheelAnimationFrameRef.current = null;
+      }
+      wheelClassifier.reset();
+      queuedWheelPanRef.current = { deltaX: 0, deltaY: 0 };
+      queuedWheelZoomRef.current = { deltaY: 0, clientX: 0, clientY: 0 };
+    };
+  }, []);
+
   const plotWidth = viewBox.width - MARGIN.left - MARGIN.right;
   const plotHeight = viewBox.height - MARGIN.top - MARGIN.bottom;
   const x = (value: number) =>
@@ -327,7 +357,7 @@ export function PolingAnalysisMap({
         next.ymin = point.pulses - ySpan / 2;
         next.ymax = point.pulses + ySpan / 2;
       }
-      return clampDomain(next, fullDomain);
+      return clampPolingDomain(next, fullDomain);
     });
   };
 
@@ -335,8 +365,10 @@ export function PolingAnalysisMap({
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
-    const px = (clientX - rect.left) / rect.width;
-    const py = (clientY - rect.top) / rect.height;
+    const viewX = ((clientX - rect.left) / rect.width) * viewBox.width;
+    const viewY = ((clientY - rect.top) / rect.height) * viewBox.height;
+    const px = Math.max(0, Math.min(1, (viewX - MARGIN.left) / plotWidth));
+    const py = Math.max(0, Math.min(1, (viewY - MARGIN.top) / plotHeight));
     setDomain((current) => {
       const xOrigin = current.xmin + (current.xmax - current.xmin) * px;
       const yOrigin = current.ymax - (current.ymax - current.ymin) * py;
@@ -348,7 +380,7 @@ export function PolingAnalysisMap({
         8,
         Math.min(fullDomain.ymax - fullDomain.ymin, (current.ymax - current.ymin) * factor)
       );
-      return clampDomain(
+      return clampPolingDomain(
         {
           xmin: xOrigin - xSpan * px,
           xmax: xOrigin + xSpan * (1 - px),
@@ -363,32 +395,97 @@ export function PolingAnalysisMap({
   const panByPixels = (deltaX: number, deltaY: number) => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setDomain((current) => {
-      const xDelta = (deltaX / rect.width) * (current.xmax - current.xmin);
-      const yDelta = (deltaY / rect.height) * (current.ymax - current.ymin);
-      return clampDomain(
-        {
-          xmin: current.xmin + xDelta,
-          xmax: current.xmax + xDelta,
-          ymin: current.ymin + yDelta,
-          ymax: current.ymax + yDelta
-        },
-        fullDomain
-      );
+    const renderedPlotWidth = (plotWidth / viewBox.width) * rect.width;
+    const renderedPlotHeight = (plotHeight / viewBox.height) * rect.height;
+    setDomain((current) =>
+      panPolingDomainByClientDelta({
+        domain: current,
+        fullDomain,
+        deltaX,
+        deltaY,
+        renderedPlotWidth,
+        renderedPlotHeight
+      })
+    );
+  };
+
+  const scheduleWheelFrame = () => {
+    if (wheelAnimationFrameRef.current !== null) return;
+    wheelAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      wheelAnimationFrameRef.current = null;
+      const zoom = queuedWheelZoomRef.current;
+      const pan = queuedWheelPanRef.current;
+      queuedWheelZoomRef.current = { deltaY: 0, clientX: 0, clientY: 0 };
+      queuedWheelPanRef.current = { deltaX: 0, deltaY: 0 };
+
+      if (zoom.deltaY) {
+        zoomAt(zoom.clientX, zoom.clientY, getPolingZoomFactor(zoom.deltaY));
+      }
+      if (pan.deltaX || pan.deltaY) {
+        panByPixels(pan.deltaX, pan.deltaY);
+      }
     });
   };
 
-  const handleWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
-    event.preventDefault();
-    const intent = getPolingWheelIntent(event);
-    if (intent.kind === "zoom") {
-      zoomAt(event.clientX, event.clientY, intent.factor);
-      return;
+  const queueWheelActions = (actions: readonly PolingWheelAction[]) => {
+    for (const action of actions) {
+      if (action.modality === "zoom") {
+        queuedWheelZoomRef.current.deltaY += normalizePolingWheelDelta(
+          action.sample.deltaY,
+          action.sample.deltaMode
+        );
+        queuedWheelZoomRef.current.clientX = action.sample.clientX;
+        queuedWheelZoomRef.current.clientY = action.sample.clientY;
+      } else {
+        const pan = getPolingPanDelta(action.sample);
+        queuedWheelPanRef.current.deltaX += pan.deltaX;
+        queuedWheelPanRef.current.deltaY += pan.deltaY;
+      }
     }
-    panByPixels(intent.deltaX, intent.deltaY);
+    if (actions.length) scheduleWheelFrame();
   };
 
+  const clearWheelClassificationTimer = () => {
+    if (wheelClassificationTimerRef.current === null) return;
+    window.clearTimeout(wheelClassificationTimerRef.current);
+    wheelClassificationTimerRef.current = null;
+  };
+
+  const handleNativeWheel = (event: WheelEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const sample: PolingWheelSample = {
+      ctrlKey: event.ctrlKey,
+      deltaMode: event.deltaMode,
+      deltaX: event.deltaX,
+      deltaY: event.deltaY,
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    const decision = wheelClassifierRef.current.ingest(
+      sample,
+      window.performance.now(),
+      wheelInputMode
+    );
+    queueWheelActions(decision.actions);
+
+    if (!decision.pending) {
+      clearWheelClassificationTimer();
+      return;
+    }
+    if (wheelClassificationTimerRef.current !== null) return;
+    wheelClassificationTimerRef.current = window.setTimeout(() => {
+      wheelClassificationTimerRef.current = null;
+      queueWheelActions(wheelClassifierRef.current.flushPendingAsMouse().actions);
+    }, POLING_WHEEL_CLASSIFY_DELAY_MS);
+  };
+
+  useEffect(() => {
+    nativeWheelHandlerRef.current = handleNativeWheel;
+  });
+
   const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (!event.isPrimary || event.button !== 0) return;
     if (mode !== "navigate") {
       const point = clientToGraph(event.clientX, event.clientY);
       if (!point) return;
@@ -398,8 +495,18 @@ export function PolingAnalysisMap({
       event.currentTarget.setPointerCapture(event.pointerId);
       return;
     }
-    if ((event.target as Element).closest("[data-poling-point]")) return;
-    dragRef.current = { x: event.clientX, y: event.clientY };
+    const recordId = (event.target as Element)
+      .closest("[data-poling-record-id]")
+      ?.getAttribute("data-poling-record-id");
+    dragRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+      recordId: recordId ?? null
+    };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -417,19 +524,40 @@ export function PolingAnalysisMap({
       return;
     }
     const drag = dragRef.current;
-    if (!drag) return;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const moved =
+      drag.moved ||
+      Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >=
+        POINTER_DRAG_THRESHOLD;
+    if (!moved) return;
+    if (!drag.moved) setIsDragging(true);
     panByPixels(drag.x - event.clientX, event.clientY - drag.y);
-    dragRef.current = { x: event.clientX, y: event.clientY };
+    dragRef.current = { ...drag, x: event.clientX, y: event.clientY, moved: true };
   };
 
-  const finishPointerInteraction = (event: ReactPointerEvent<SVGSVGElement>) => {
+  const finishPointerInteraction = (
+    event: ReactPointerEvent<SVGSVGElement>,
+    cancelled = false
+  ) => {
+    const drag = dragRef.current;
+    if (drag && drag.pointerId !== event.pointerId) return;
     const completedDrawing = activeDrawingRef.current;
     if (completedDrawing) {
       setAnnotations((current) => [...current, completedDrawing]);
       activeDrawingRef.current = null;
       setActiveDrawing(null);
     }
+    if (
+      !cancelled &&
+      drag?.pointerId === event.pointerId &&
+      !drag.moved &&
+      drag.recordId
+    ) {
+      const record = visibleRecords.find((candidate) => candidate.id === drag.recordId);
+      if (record) selectRecord(record);
+    }
     dragRef.current = null;
+    setIsDragging(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -451,6 +579,19 @@ export function PolingAnalysisMap({
       else next.add(specimen);
       return next;
     });
+  };
+
+  const updateWheelInputMode = (nextMode: PolingWheelInputMode) => {
+    clearWheelClassificationTimer();
+    wheelClassifierRef.current.reset();
+    queuedWheelPanRef.current = { deltaX: 0, deltaY: 0 };
+    queuedWheelZoomRef.current = { deltaY: 0, clientX: 0, clientY: 0 };
+    if (wheelAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(wheelAnimationFrameRef.current);
+      wheelAnimationFrameRef.current = null;
+    }
+    setWheelInputMode(nextMode);
+    window.localStorage.setItem(WHEEL_INPUT_STORAGE_KEY, nextMode);
   };
 
   const drawings = activeDrawing ? [...annotations, activeDrawing] : annotations;
@@ -522,6 +663,23 @@ export function PolingAnalysisMap({
               </select>
             </label>
 
+            <label className={styles.wheelFilter}>
+              <span>Scroll input</span>
+              <select
+                aria-label="Scroll input"
+                value={wheelInputMode}
+                onChange={(event) => {
+                  if (isPolingWheelInputMode(event.target.value)) {
+                    updateWheelInputMode(event.target.value);
+                  }
+                }}
+              >
+                <option value="auto">Auto detect</option>
+                <option value="trackpad">Trackpad</option>
+                <option value="mouse">Mouse</option>
+              </select>
+            </label>
+
             <p className={styles.variantNote}>
               {pulseWidths.map((width) => `${width} ms`).join(", ")} share this map.
             </p>
@@ -557,11 +715,11 @@ export function PolingAnalysisMap({
               aria-label="Source voltage versus number of pulses. Select a point to inspect its die and microscopy result."
               tabIndex={0}
               data-mode={mode}
-              onWheel={handleWheel}
+              data-dragging={isDragging || undefined}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
-              onPointerUp={finishPointerInteraction}
-              onPointerCancel={finishPointerInteraction}
+              onPointerUp={(event) => finishPointerInteraction(event)}
+              onPointerCancel={(event) => finishPointerInteraction(event, true)}
               onDoubleClick={() => mode === "navigate" && setDomain(fullDomain)}
               onKeyDown={handleKeyDown}
             >
@@ -685,15 +843,12 @@ export function PolingAnalysisMap({
                   <circle
                     key={record.id}
                     data-poling-point
+                    data-poling-record-id={record.id}
                     cx={x(point.voltage)}
                     cy={y(point.pulses)}
                     r={selected ? 7.5 : 6}
                     fill={seriesColors[record.specimenReference]}
                     className={className}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (mode === "navigate") selectRecord(record);
-                    }}
                   >
                     <title>{`${record.specimenReference} ${record.dieLabel}, voltage ${record.voltage} (source value), ${record.pulses} pulse${record.pulses === 1 ? "" : "s"}, ${record.pulseWidthMs} ms${record.imagePath ? "" : ", no linked image"}`}</title>
                   </circle>
@@ -752,8 +907,8 @@ export function PolingAnalysisMap({
             </div>
           </footer>
           <p className={styles.hint}>
-            Two-finger scroll or drag pans. Pinch zooms. Double-click resets, and arrow keys
-            move between conditions after focusing the graph.
+            Trackpad two-finger scroll or drag pans. Mouse wheel or pinch zooms. Double-click
+            resets, and arrow keys move between conditions after focusing the graph.
           </p>
           <p className={styles.catalogNote}>
             Source note: deck and workbook voltage headers conflict (V versus mV), so the
@@ -915,8 +1070,8 @@ export function PolingAnalysisMap({
 
 function zoomAtCenter(
   factor: number,
-  setDomain: Dispatch<SetStateAction<Domain>>,
-  fullDomain: Domain
+  setDomain: Dispatch<SetStateAction<PolingDomain>>,
+  fullDomain: PolingDomain
 ) {
   setDomain((current) => {
     const centerX = (current.xmin + current.xmax) / 2;
@@ -929,7 +1084,7 @@ function zoomAtCenter(
       8,
       Math.min(fullDomain.ymax - fullDomain.ymin, (current.ymax - current.ymin) * factor)
     );
-    return clampDomain(
+    return clampPolingDomain(
       {
         xmin: centerX - xSpan / 2,
         xmax: centerX + xSpan / 2,
