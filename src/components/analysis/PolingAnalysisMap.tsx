@@ -633,7 +633,10 @@ export function PolingAnalysisMap({
         </div>
       </header>
 
-      <div className={styles.workspace}>
+      <div
+        className={styles.workspace}
+        style={{ "--analysis-panel-body-height": `${viewBox.height}px` } as CSSProperties}
+      >
         <section className={styles.plotPanel} aria-label="Poling parameter graph">
           <div className={styles.filterBar}>
             <fieldset className={styles.dieFilters}>

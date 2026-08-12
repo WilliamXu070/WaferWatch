@@ -448,6 +448,7 @@
   border-radius: 10px;
   background: #260038;
   aspect-ratio: 1;
+  max-height: var(--analysis-panel-body-height);
 }
 
 .imageStage img {
