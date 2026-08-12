@@ -258,7 +258,7 @@ export function PolingAnalysisMap({
       const width = Math.max(320, Math.round(chartFrame.clientWidth - 24));
       const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
       const availableHeight = Math.round(
-        viewportHeight - chartFrame.getBoundingClientRect().top - 12
+        viewportHeight - chartFrame.getBoundingClientRect().top - 18
       );
       const height =
         width < 560
