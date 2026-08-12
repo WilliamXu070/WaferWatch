@@ -7,7 +7,7 @@
 - Coordinate fidelity: every point uses its raw source voltage and pulse count. Records with identical coordinates overlap exactly; no visual jitter or synthetic voltage offset may imply a different condition.
 - Stack selection: the selected record is rendered last so it is visually on top. Repeated stationary clicks on an overlapping point cycle through that coordinate's visible records in stable catalog order without triggering Reset, while a drag beginning on the same point still pans. Filtering a die or pulse width immediately removes its records from the cycle. Double-click Reset applies only to empty graph space.
 - Density: the duplicate legend, duplicate Reset control, pulse-width repetition sentence, input selector, parameter metadata grid, source-unit text, and repeated data-only prose are removed. Die filters remain the color key; Undo and Clear appear only after annotations exist; interaction instructions live in one compact Map notes popover. Data-only selections show only a concise no-image state.
-- Fit: on desktop, graph height responds to the available viewport so the map and selected-condition panel remain visible without scrolling solely to reach graph controls. The phone layout remains a deliberate vertical stack with no horizontal overflow.
+- Fit: on desktop, graph height uses the chart frame's actual viewport position so the map and selected-condition panel remain visible without scrolling solely to reach graph controls. The phone layout remains a deliberate vertical stack with no horizontal overflow.
 
 ## Implementation workstreams
 

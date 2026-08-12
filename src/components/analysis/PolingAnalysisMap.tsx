@@ -257,12 +257,15 @@ export function PolingAnalysisMap({
     const updateViewBox = () => {
       const width = Math.max(320, Math.round(chartFrame.clientWidth - 24));
       const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const availableHeight = Math.round(
+        viewportHeight - chartFrame.getBoundingClientRect().top - 12
+      );
       const height =
         width < 560
           ? 400
           : Math.max(
               400,
-              Math.min(540, Math.round(width * 0.64), Math.round(viewportHeight - 330))
+              Math.min(540, Math.round(width * 0.64), availableHeight)
             );
       setViewBox((current) =>
         current.width === width && current.height === height ? current : { width, height }
