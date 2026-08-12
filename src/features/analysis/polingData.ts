@@ -88,40 +88,35 @@ export function getPolingSeriesColors(specimens: readonly string[]) {
   ) as Record<string, string>;
 }
 
-/**
- * Spreads records that share the same condition across a small voltage window.
- * This is calculated once per dataset so rendering and keyboard navigation do
- * not repeatedly scan all records for every point.
- */
+/** Keeps graph coordinates faithful to the recorded experimental values. */
 export function buildPolingPointPositions(records: readonly PolingRecord[]) {
-  const groups = new Map<string, PolingRecord[]>();
-
-  for (const record of records) {
-    const key = `${record.voltage}\u0000${record.pulses}`;
-    const group = groups.get(key);
-    if (group) group.push(record);
-    else groups.set(key, [record]);
-  }
-
   const positions = new Map<string, PolingPointPosition>();
-  for (const group of groups.values()) {
-    const ordered = [...group].sort(
-      (a, b) =>
-        a.specimenReference.localeCompare(b.specimenReference, undefined, { numeric: true }) ||
-        a.pulseWidthMs - b.pulseWidthMs ||
-        a.dieLabel.localeCompare(b.dieLabel, undefined, { numeric: true }) ||
-        a.id.localeCompare(b.id)
-    );
-    const step = ordered.length > 1 ? Math.min(0.72, 8 / (ordered.length - 1)) : 0;
-    const center = (ordered.length - 1) / 2;
-
-    ordered.forEach((record, index) => {
-      positions.set(record.id, {
-        voltage: record.voltage + (index - center) * step,
-        pulses: record.pulses
-      });
+  for (const record of records) {
+    positions.set(record.id, {
+      voltage: record.voltage,
+      pulses: record.pulses
     });
   }
 
   return positions;
+}
+
+/**
+ * Selects an exact-coordinate stack in the order supplied by the current
+ * visible dataset. A first click selects the clicked record; repeat clicks
+ * advance through only the overlaps that remain visible.
+ */
+export function getNextPolingOverlapRecord(
+  visibleRecords: readonly PolingRecord[],
+  clickedRecord: PolingRecord,
+  selectedId: string | null
+) {
+  const overlaps = visibleRecords.filter(
+    (record) =>
+      record.voltage === clickedRecord.voltage && record.pulses === clickedRecord.pulses
+  );
+  const selectedIndex = overlaps.findIndex((record) => record.id === selectedId);
+
+  if (selectedIndex < 0) return clickedRecord;
+  return overlaps[(selectedIndex + 1) % overlaps.length] ?? clickedRecord;
 }

@@ -84,6 +84,14 @@ test("classifies a wheel-like repeating burst as zoom and locks it until idle", 
   assert.deepEqual(afterIdle.actions.map((action) => action.modality), ["pan"]);
 });
 
+test("keeps a rapid high-magnitude smooth-mouse burst as zoom when deltas vary", () => {
+  const classifier = new PolingWheelGestureClassifier();
+  classifier.ingest(sample({ deltaY: 100 }), 1_000, "auto");
+  const resolved = classifier.ingest(sample({ deltaY: 120 }), 1_010, "auto");
+
+  assert.deepEqual(resolved.actions.map((action) => action.modality), ["zoom", "zoom"]);
+});
+
 test("pinch cancels a pending ambiguous sample and zooms immediately", () => {
   const classifier = new PolingWheelGestureClassifier();
   classifier.ingest(sample({ deltaY: 48 }), 1_000, "auto");

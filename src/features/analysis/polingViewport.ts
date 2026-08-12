@@ -23,7 +23,7 @@ export function createPolingFullDomain(
   return {
     xmin: Math.floor(voltageMin - voltagePadding),
     xmax: Math.ceil(voltageMax + voltagePadding),
-    ymin: 0,
+    ymin: Math.min(0, Math.floor(pulseMin - pulsePadding)),
     ymax: Math.max(5, Math.ceil(pulseMax + pulsePadding))
   };
 }
@@ -32,19 +32,15 @@ export function clampPolingDomain(
   candidate: PolingDomain,
   fullDomain: PolingDomain
 ): PolingDomain {
-  const fullXSpan = fullDomain.xmax - fullDomain.xmin;
   const fullYSpan = fullDomain.ymax - fullDomain.ymin;
-  const xSpan = Math.min(candidate.xmax - candidate.xmin, fullXSpan);
   const ySpan = Math.min(candidate.ymax - candidate.ymin, fullYSpan);
-  const xmin = Math.max(
-    fullDomain.xmin,
-    Math.min(candidate.xmin, fullDomain.xmax - xSpan)
-  );
-  const ymin = Math.max(
-    fullDomain.ymin,
-    Math.min(candidate.ymin, fullDomain.ymax - ySpan)
-  );
-  return { xmin, xmax: xmin + xSpan, ymin, ymax: ymin + ySpan };
+  const ymax = Math.min(candidate.ymax, fullDomain.ymax);
+  return {
+    xmin: candidate.xmin,
+    xmax: candidate.xmax,
+    ymin: ymax - ySpan,
+    ymax
+  };
 }
 
 export function panPolingDomainByClientDelta({

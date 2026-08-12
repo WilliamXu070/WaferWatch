@@ -4,6 +4,7 @@ import catalog from "./polingCatalog.json";
 import {
   POLING_SERIES_PALETTE,
   buildPolingPointPositions,
+  getNextPolingOverlapRecord,
   getPolingSeriesColors,
   getPolingSpecimens,
   type PolingRecord
@@ -68,14 +69,72 @@ test("future specimen series continue receiving distinct stable colors", () => {
   assert.equal(new Set(Object.values(first)).size, specimens.length);
 });
 
-test("overlapping records receive stable precomputed positions", () => {
+test("overlapping records retain identical source coordinates", () => {
   const overlap = POLING_RECORDS.filter(
     (record) => record.voltage === 500 && record.pulses === 1
   );
   const positions = buildPolingPointPositions(POLING_RECORDS);
-  const voltages = overlap.map((record) => positions.get(record.id)?.voltage);
 
   assert.ok(overlap.length > 1);
-  assert.equal(new Set(voltages).size, overlap.length);
-  assert.ok(Math.max(...(voltages as number[])) - Math.min(...(voltages as number[])) <= 8.01);
+  for (const record of overlap) {
+    assert.deepEqual(positions.get(record.id), {
+      voltage: record.voltage,
+      pulses: record.pulses
+    });
+  }
+});
+
+function polingRecord(
+  id: string,
+  voltage: number,
+  pulses: number
+): PolingRecord {
+  return {
+    id,
+    specimenReference: `SPECIMEN-${id}`,
+    dieLabel: `R1C${id}`,
+    voltage,
+    pulses,
+    pulseWidthMs: 10
+  };
+}
+
+test("exact-coordinate selection cycles in visible order and wraps", () => {
+  const first = polingRecord("1", 500, 20);
+  const second = polingRecord("2", 500, 20);
+  const third = polingRecord("3", 500, 20);
+  const records = [first, second, third];
+
+  assert.equal(getNextPolingOverlapRecord(records, first, null), first);
+  assert.equal(getNextPolingOverlapRecord(records, first, first.id), second);
+  assert.equal(getNextPolingOverlapRecord(records, first, second.id), third);
+  assert.equal(getNextPolingOverlapRecord(records, first, third.id), first);
+});
+
+test("a singleton exact-coordinate stack keeps the clicked record selected", () => {
+  const record = polingRecord("1", 480, 5);
+
+  assert.equal(getNextPolingOverlapRecord([record], record, null), record);
+  assert.equal(getNextPolingOverlapRecord([record], record, record.id), record);
+});
+
+test("overlap cycling uses only the supplied visible records and their order", () => {
+  const hidden = polingRecord("hidden", 510, 10);
+  const firstVisible = polingRecord("first", 510, 10);
+  const secondVisible = polingRecord("second", 510, 10);
+  const differentCoordinate = polingRecord("different", 500, 10);
+  const visibleRecords = [secondVisible, differentCoordinate, firstVisible];
+
+  assert.equal(
+    getNextPolingOverlapRecord(visibleRecords, firstVisible, hidden.id),
+    firstVisible
+  );
+  assert.equal(
+    getNextPolingOverlapRecord(visibleRecords, firstVisible, firstVisible.id),
+    secondVisible
+  );
+  assert.equal(
+    getNextPolingOverlapRecord(visibleRecords, firstVisible, secondVisible.id),
+    firstVisible
+  );
 });

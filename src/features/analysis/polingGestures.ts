@@ -93,16 +93,14 @@ export function classifyPolingWheelSample(
 }
 
 export function classifyPolingAmbiguousBurst(
-  previous: PolingWheelSample,
+  _previous: PolingWheelSample,
   current: PolingWheelSample,
   elapsedMs: number
 ): PolingWheelModality {
   const currentMagnitude = Math.abs(current.deltaY);
-  const previousMagnitude = Math.abs(previous.deltaY);
-  const magnitudeChanged = Math.abs(currentMagnitude - previousMagnitude) >= 1;
   const rapidContinuousStream =
     elapsedMs <= POLING_WHEEL_CLASSIFY_DELAY_MS &&
-    (elapsedMs * currentMagnitude < TRACKPAD_BURST_PRODUCT || magnitudeChanged);
+    elapsedMs * currentMagnitude < TRACKPAD_BURST_PRODUCT;
 
   return rapidContinuousStream ? "pan" : "zoom";
 }
