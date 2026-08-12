@@ -28,6 +28,7 @@ import {
   buildPolingPointPositions,
   getAdjacentPolingOverlapRecord,
   getNextPolingOverlapRecord,
+  getPolingPointTitle,
   getPolingPulseWidths,
   getPolingSeriesColors,
   getPolingSpecimens,
@@ -877,7 +878,7 @@ export function PolingAnalysisMap({
                     fill={seriesColors[record.specimenReference]}
                     className={className}
                   >
-                    <title>{`${record.specimenReference} ${record.dieLabel}, voltage ${record.voltage} (source value), ${record.pulses} pulse${record.pulses === 1 ? "" : "s"}, ${record.pulseWidthMs} ms${record.imagePath ? "" : ", no linked image"}${overlapCount > 1 ? `, ${overlapCount} records at this coordinate; click repeatedly to cycle` : ""}`}</title>
+                    <title>{getPolingPointTitle(record, overlapCount)}</title>
                   </circle>
                 );
               })}
@@ -940,80 +941,81 @@ export function PolingAnalysisMap({
                 </span>
               </div>
 
-              <div className={styles.imageStage}>
-                {!selectedImagePath ? (
-                  <NoImageState
-                    title="No microscopy image"
-                  />
-                ) : imageFailed ? (
-                  <NoImageState
-                    title="Image unavailable"
-                    description="The microscopy file could not be loaded."
-                    action={
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFailedImagePath(null);
-                          setImageRetry((current) => current + 1);
-                        }}
-                      >
-                        <RefreshCw /> Try again
-                      </button>
-                    }
-                  />
-                ) : (
-                  <>
-                    {displayedRecord?.imagePath ? (
-                      <Image
-                        key={`displayed-${displayedRecord.imagePath}`}
-                        className={imageLoading ? styles.staleImage : undefined}
-                        src={displayedRecord.imagePath}
-                        width={1024}
-                        height={1024}
-                        sizes="(max-width: 900px) 100vw, 38vw"
-                        priority={displayedRecord.id === records[0]?.id}
-                        unoptimized
-                        aria-hidden={imageLoading}
-                        alt={`Microscopy result for ${displayedRecord.specimenReference} ${displayedRecord.dieLabel}`}
-                        onError={() => {
-                          if (displayedRecord.imagePath === selectedRecordRef.current?.imagePath) {
-                            setFailedImagePath(displayedRecord.imagePath ?? null);
-                          }
-                        }}
-                      />
-                    ) : null}
-                    {imageLoading ? (
-                      <Image
-                        key={`incoming-${selectedImagePath}-${imageRetry}`}
-                        className={styles.incomingImage}
-                        src={selectedImagePath}
-                        width={1024}
-                        height={1024}
-                        sizes="(max-width: 900px) 100vw, 38vw"
-                        unoptimized
-                        alt=""
-                        aria-hidden="true"
-                        onLoad={() => {
-                          if (selectedRecordRef.current?.id === selectedRecord.id) {
-                            setDisplayedRecord(selectedRecord);
+              {selectedImagePath ? (
+                <div className={styles.imageStage}>
+                  {imageFailed ? (
+                    <NoImageState
+                      title="Image unavailable"
+                      description="The microscopy file could not be loaded."
+                      action={
+                        <button
+                          type="button"
+                          onClick={() => {
                             setFailedImagePath(null);
-                          }
-                        }}
-                        onError={() => {
-                          if (selectedRecordRef.current?.id === selectedRecord.id) {
-                            setFailedImagePath(selectedImagePath);
-                          }
-                        }}
-                      />
-                    ) : null}
-                    {imageLoading ? (
-                      <span className={styles.imageLoading} role="status">
-                        Loading image…
-                      </span>
-                    ) : null}
-                  </>
-                )}
-              </div>
+                            setImageRetry((current) => current + 1);
+                          }}
+                        >
+                          <RefreshCw /> Try again
+                        </button>
+                      }
+                    />
+                  ) : (
+                    <>
+                      {displayedRecord?.imagePath ? (
+                        <Image
+                          key={`displayed-${displayedRecord.imagePath}`}
+                          className={imageLoading ? styles.staleImage : undefined}
+                          src={displayedRecord.imagePath}
+                          width={1024}
+                          height={1024}
+                          sizes="(max-width: 900px) 100vw, 38vw"
+                          priority={displayedRecord.id === records[0]?.id}
+                          unoptimized
+                          aria-hidden={imageLoading}
+                          alt={`Microscopy result for ${displayedRecord.specimenReference} ${displayedRecord.dieLabel}`}
+                          onError={() => {
+                            if (
+                              displayedRecord.imagePath ===
+                              selectedRecordRef.current?.imagePath
+                            ) {
+                              setFailedImagePath(displayedRecord.imagePath ?? null);
+                            }
+                          }}
+                        />
+                      ) : null}
+                      {imageLoading ? (
+                        <Image
+                          key={`incoming-${selectedImagePath}-${imageRetry}`}
+                          className={styles.incomingImage}
+                          src={selectedImagePath}
+                          width={1024}
+                          height={1024}
+                          sizes="(max-width: 900px) 100vw, 38vw"
+                          unoptimized
+                          alt=""
+                          aria-hidden="true"
+                          onLoad={() => {
+                            if (selectedRecordRef.current?.id === selectedRecord.id) {
+                              setDisplayedRecord(selectedRecord);
+                              setFailedImagePath(null);
+                            }
+                          }}
+                          onError={() => {
+                            if (selectedRecordRef.current?.id === selectedRecord.id) {
+                              setFailedImagePath(selectedImagePath);
+                            }
+                          }}
+                        />
+                      ) : null}
+                      {imageLoading ? (
+                        <span className={styles.imageLoading} role="status">
+                          Loading image…
+                        </span>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              ) : null}
 
               {selectedFlags.map((flag, index) => (
                 <p key={`${selectedRecord.id}-flag-${index}`} className={styles.warning}>

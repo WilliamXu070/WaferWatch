@@ -88,6 +88,16 @@ export function getPolingSeriesColors(specimens: readonly string[]) {
   ) as Record<string, string>;
 }
 
+export function getPolingPointTitle(record: PolingRecord, overlapCount = 1) {
+  const pulseLabel = `${record.pulses} pulse${record.pulses === 1 ? "" : "s"}`;
+  const overlapLabel =
+    overlapCount > 1
+      ? `, ${overlapCount} records at this coordinate; click repeatedly to cycle`
+      : "";
+
+  return `${record.specimenReference} ${record.dieLabel}, voltage ${record.voltage} (source value), ${pulseLabel}, ${record.pulseWidthMs} ms${overlapLabel}`;
+}
+
 /** Keeps graph coordinates faithful to the recorded experimental values. */
 export function buildPolingPointPositions(records: readonly PolingRecord[]) {
   const positions = new Map<string, PolingPointPosition>();

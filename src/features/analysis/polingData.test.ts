@@ -6,6 +6,7 @@ import {
   buildPolingPointPositions,
   getAdjacentPolingOverlapRecord,
   getNextPolingOverlapRecord,
+  getPolingPointTitle,
   getPolingSeriesColors,
   getPolingSpecimens,
   type PolingRecord
@@ -59,6 +60,17 @@ test("the seven imported die series receive seven distinct colors", () => {
 
   assert.equal(POLING_SERIES_PALETTE.length, 7);
   assert.equal(new Set(Object.values(colors)).size, 7);
+});
+
+test("data-only point titles describe the condition without no-image copy", () => {
+  const record = POLING_RECORDS.find((candidate) => !candidate.imagePath);
+  assert.ok(record);
+
+  const title = getPolingPointTitle(record, 2);
+
+  assert.match(title, new RegExp(record.specimenReference));
+  assert.match(title, /2 records at this coordinate/);
+  assert.doesNotMatch(title, /image|microscopy/i);
 });
 
 test("future specimen series continue receiving distinct stable colors", () => {
