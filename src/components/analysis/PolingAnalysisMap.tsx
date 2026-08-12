@@ -26,6 +26,7 @@ import {
 } from "react";
 import {
   buildPolingPointPositions,
+  getAdjacentPolingOverlapRecord,
   getNextPolingOverlapRecord,
   getPolingPulseWidths,
   getPolingSeriesColors,
@@ -588,7 +589,10 @@ export function PolingAnalysisMap({
   const handleKeyDown = (event: React.KeyboardEvent<SVGSVGElement>) => {
     if (!selectedRecord || !event.key.startsWith("Arrow")) return;
     const key = event.key as "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
-    const next = nearestDirectionalRecord(visibleRecords, selectedRecord, key, positions);
+    const stackDirection = key === "ArrowRight" || key === "ArrowDown" ? 1 : -1;
+    const next =
+      getAdjacentPolingOverlapRecord(visibleRecords, selectedRecord, stackDirection) ??
+      nearestDirectionalRecord(visibleRecords, selectedRecord, key, positions);
     if (!next) return;
     event.preventDefault();
     selectRecord(next);
@@ -907,7 +911,8 @@ export function PolingAnalysisMap({
               <div>
                 <p>
                   Trackpad scroll or drag pans. Mouse wheel or pinch zooms. Double-click empty
-                  graph space to reset; arrow keys move between conditions after focusing the graph.
+                  graph space to reset; arrow keys move through overlapping records before the
+                  next condition.
                 </p>
               </div>
             </details>

@@ -4,6 +4,7 @@ import catalog from "./polingCatalog.json";
 import {
   POLING_SERIES_PALETTE,
   buildPolingPointPositions,
+  getAdjacentPolingOverlapRecord,
   getNextPolingOverlapRecord,
   getPolingSeriesColors,
   getPolingSpecimens,
@@ -87,7 +88,8 @@ test("overlapping records retain identical source coordinates", () => {
 function polingRecord(
   id: string,
   voltage: number,
-  pulses: number
+  pulses: number,
+  displayOrder?: number
 ): PolingRecord {
   return {
     id,
@@ -95,15 +97,16 @@ function polingRecord(
     dieLabel: `R1C${id}`,
     voltage,
     pulses,
-    pulseWidthMs: 10
+    pulseWidthMs: 10,
+    displayOrder
   };
 }
 
-test("exact-coordinate selection cycles in visible order and wraps", () => {
-  const first = polingRecord("1", 500, 20);
-  const second = polingRecord("2", 500, 20);
-  const third = polingRecord("3", 500, 20);
-  const records = [first, second, third];
+test("exact-coordinate selection cycles in display order and wraps", () => {
+  const first = polingRecord("1", 500, 20, 10);
+  const second = polingRecord("2", 500, 20, 20);
+  const third = polingRecord("3", 500, 20, 30);
+  const records = [third, first, second];
 
   assert.equal(getNextPolingOverlapRecord(records, first, null), first);
   assert.equal(getNextPolingOverlapRecord(records, first, first.id), second);
@@ -118,10 +121,10 @@ test("a singleton exact-coordinate stack keeps the clicked record selected", () 
   assert.equal(getNextPolingOverlapRecord([record], record, record.id), record);
 });
 
-test("overlap cycling uses only the supplied visible records and their order", () => {
+test("overlap cycling uses only visible records while retaining display order", () => {
   const hidden = polingRecord("hidden", 510, 10);
-  const firstVisible = polingRecord("first", 510, 10);
-  const secondVisible = polingRecord("second", 510, 10);
+  const firstVisible = polingRecord("first", 510, 10, 10);
+  const secondVisible = polingRecord("second", 510, 10, 20);
   const differentCoordinate = polingRecord("different", 500, 10);
   const visibleRecords = [secondVisible, differentCoordinate, firstVisible];
 
@@ -137,4 +140,26 @@ test("overlap cycling uses only the supplied visible records and their order", (
     getNextPolingOverlapRecord(visibleRecords, firstVisible, secondVisible.id),
     firstVisible
   );
+});
+
+test("keyboard traversal visits every overlap in both directions without wrapping", () => {
+  const first = polingRecord("1", 510, 10, 10);
+  const second = polingRecord("2", 510, 10, 20);
+  const third = polingRecord("3", 510, 10, 30);
+  const records = [third, first, second];
+
+  assert.equal(getAdjacentPolingOverlapRecord(records, first, 1), second);
+  assert.equal(getAdjacentPolingOverlapRecord(records, second, 1), third);
+  assert.equal(getAdjacentPolingOverlapRecord(records, third, 1), null);
+  assert.equal(getAdjacentPolingOverlapRecord(records, third, -1), second);
+  assert.equal(getAdjacentPolingOverlapRecord(records, second, -1), first);
+  assert.equal(getAdjacentPolingOverlapRecord(records, first, -1), null);
+});
+
+test("keyboard overlap traversal excludes filtered records and ignores singletons", () => {
+  const visible = polingRecord("visible", 480, 5, 10);
+  const filtered = polingRecord("filtered", 480, 5, 20);
+
+  assert.equal(getAdjacentPolingOverlapRecord([visible], visible, 1), null);
+  assert.equal(getAdjacentPolingOverlapRecord([visible], filtered, -1), null);
 });

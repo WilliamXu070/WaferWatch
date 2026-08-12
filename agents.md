@@ -35,7 +35,7 @@ Prefer small domain modules over adding more state or handlers to the two large 
 - Wafer / Die Status has exactly two tabs: Overview and Process History.
 - Poling and inspection workspaces may show shared die data; do not attribute it to a historical visit.
 - Analysis reads only the newest ready, immutable import for the selected process project; unavailable or unauthorized project data must never fall back to a bundled catalog.
-- Analysis automatically interprets trackpad scroll as pan and mouse wheel or pinch as zoom; primary-button drag pans in two dimensions, pulse navigation is unbounded below, and voltage navigation is unbounded in both directions. Records at identical raw coordinates overlap exactly, and repeated clicks cycle the visible stack.
+- Analysis automatically interprets trackpad scroll as pan and mouse wheel or pinch as zoom; primary-button drag pans in two dimensions, pulse navigation is unbounded below, and voltage navigation is unbounded in both directions. Records at identical raw coordinates overlap exactly; repeated clicks wrap the visible stack, while arrow keys traverse it in order before moving spatially.
 - Calendar reads and caches bounded weeks, not the entire event table.
 - Preserve realtime revision/idempotency protections when changing mutations.
 

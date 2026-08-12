@@ -101,22 +101,52 @@ export function buildPolingPointPositions(records: readonly PolingRecord[]) {
   return positions;
 }
 
+function getOrderedPolingOverlaps(
+  visibleRecords: readonly PolingRecord[],
+  target: PolingRecord
+) {
+  return visibleRecords
+    .filter(
+      (record) =>
+        record.voltage === target.voltage && record.pulses === target.pulses
+    )
+    .sort(
+      (a, b) =>
+        (a.displayOrder ?? Number.MAX_SAFE_INTEGER) -
+          (b.displayOrder ?? Number.MAX_SAFE_INTEGER) ||
+        (a.sourceKey ?? "").localeCompare(b.sourceKey ?? "") ||
+        a.id.localeCompare(b.id)
+    );
+}
+
 /**
- * Selects an exact-coordinate stack in the order supplied by the current
- * visible dataset. A first click selects the clicked record; repeat clicks
- * advance through only the overlaps that remain visible.
+ * Selects an exact-coordinate stack by display order, then stable source/id
+ * fallbacks. A first click selects the clicked record; repeat clicks advance
+ * through only the overlaps that remain visible.
  */
 export function getNextPolingOverlapRecord(
   visibleRecords: readonly PolingRecord[],
   clickedRecord: PolingRecord,
   selectedId: string | null
 ) {
-  const overlaps = visibleRecords.filter(
-    (record) =>
-      record.voltage === clickedRecord.voltage && record.pulses === clickedRecord.pulses
-  );
+  const overlaps = getOrderedPolingOverlaps(visibleRecords, clickedRecord);
   const selectedIndex = overlaps.findIndex((record) => record.id === selectedId);
 
   if (selectedIndex < 0) return clickedRecord;
   return overlaps[(selectedIndex + 1) % overlaps.length] ?? clickedRecord;
+}
+
+/**
+ * Moves within an exact-coordinate stack without wrapping. Returning null at
+ * a stack edge lets the graph continue with ordinary spatial navigation.
+ */
+export function getAdjacentPolingOverlapRecord(
+  visibleRecords: readonly PolingRecord[],
+  currentRecord: PolingRecord,
+  direction: -1 | 1
+) {
+  const overlaps = getOrderedPolingOverlaps(visibleRecords, currentRecord);
+  const currentIndex = overlaps.findIndex((record) => record.id === currentRecord.id);
+  if (currentIndex < 0) return null;
+  return overlaps[currentIndex + direction] ?? null;
 }
