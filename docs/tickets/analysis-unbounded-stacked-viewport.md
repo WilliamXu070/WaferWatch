@@ -38,11 +38,11 @@ Because workstreams 2-4 converge on the same component and interaction state, th
 
 Resolved and released on 2026-08-12.
 
-- Runtime commits: `b4db033`, `ecc0805`, `cb2f2d2`, and `aa6cfdc`.
-- Runtime deployment: `dpl_DyWLJ5VA2CroHQFHwtEriVQNSbCA` on `https://wafer-watch.vercel.app`.
-- Automated gates: 243/243 tests, typecheck, lint, and production build passed.
-- Signed-in desktop replay at 1920x907: graph bottom 904 px and selected panel bottom 895 px; no page horizontal overflow. The 10-record `(510, 10)` stack cycled from TFB4 to TFA3 at identical SVG coordinates while the zoomed ticks remained unchanged.
+- Runtime commits: `b4db033`, `ecc0805`, `cb2f2d2`, `aa6cfdc`, and `369d323`.
+- Runtime deployment: `dpl_EbfADMzmCAQp2HTa37mHRUgD3fgc` on `https://wafer-watch.vercel.app`.
+- Automated gates: 245/245 tests, typecheck, lint, and production build passed.
+- Signed-in desktop replay at 1920x907: graph bottom 904 px and selected panel bottom 895 px; no page horizontal overflow. The 10-record `(510, 10)` stack cycled from TFB4 to TFA3 at identical SVG coordinates while the zoomed ticks remained unchanged. ArrowRight then traversed TFA3 → TFA4 data-only → TFA6 R1C9 → TFA6 R2C9, and ArrowLeft returned to TFA6 R1C9; the selected circle stayed at the same SVG coordinate, the viewport ticks stayed fixed, and the linked image changed with each image-backed record.
 - Input replay: an isolated mouse-wheel event reduced the voltage span from 250 to 203 and pulse span from 2199 to 1786; trackpad-style pans reached voltage ticks from -298 to 1128 and pulse ticks below -10,000 without clamping.
-- Exact 390x844 replay: graph controls and Map notes remained inside the viewport, the notes popover fit horizontally, and document horizontal overflow was false.
+- Exact 390x844 replay: graph controls and Map notes remained inside the viewport, the notes popover fit horizontally, document horizontal overflow was false, and ArrowRight advanced the same overlap stack while preserving its plotted coordinate.
 - Production console had no warnings or errors; `/api/health` returned HTTP 200 with a healthy Supabase probe.
 - Browser replay exercised the production event handlers. Physical mouse and trackpad hardware were not mechanically actuated; automatic device intent remains necessarily heuristic because `WheelEvent` does not expose device type.
