@@ -26,8 +26,23 @@ The Analysis poling map treats every unmodified `wheel` event as a pan. A physic
 
 ## Verification
 
-Pending implementation.
+- `npm test`: 238/238 passed.
+- `npm run typecheck`, `npm run lint`, and `npm run build`: passed.
+- Signed-in production desktop replay on `https://wafer-watch.vercel.app/analysis`:
+  - Mouse mode wheel zoom reduced the visible pulse span from 2100 to 1199 while page scroll remained unchanged.
+  - Auto mode classified an isolated mouse notch as zoom (pulse span 2100 to 1706) and a rapid continuous trackpad-style burst as pan (span stayed 1344 while its center moved).
+  - Trackpad mode diagonal scroll preserved both spans while moving both axes, and further scrolling reached an exact `0` pulse minimum.
+  - The Chromium pinch event path reduced pulse span from 1680 to 1365 without changing browser scale or page scroll.
+  - Blank-space and point-origin drags moved both axes, preserved their spans, and did not mis-select the dragged point.
+- Exact 390x844 replay: both input selectors and navigation tools were reachable, the pulse floor remained 0, and document horizontal overflow was false.
+- Production console: no warnings or errors. `/api/health`: HTTP 200 with a healthy Supabase probe.
+
+The browser replay exercised the real production handlers with mouse, pointer, and pinch-equivalent Chromium events. Physical mouse and trackpad hardware were not mechanically actuated; the persisted Mouse/Trackpad override remains available because browsers cannot identify every smooth-scroll device unambiguously.
 
 ## Status
 
-Diagnosed on 2026-08-12. GitHub issue creation was unavailable because the configured `gh` credential is invalid, so this repository-local ticket is the tracked handoff.
+Resolved and released on 2026-08-12.
+
+- Runtime commit: `20dfb1c`
+- Deployment: `dpl_DVJ2NaYe8X1J2PrFmnmz3hSBpUYM`
+- GitHub issue creation was unavailable because the configured `gh` credential is invalid, so this repository-local ticket is the tracked record.
