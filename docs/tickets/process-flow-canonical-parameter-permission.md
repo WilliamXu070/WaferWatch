@@ -30,9 +30,12 @@ A read-only production audit confirmed both moved dies reached the destination w
 - Retrying the same payload creates no duplicates or revisions.
 - Mismatched and unauthorized entries roll back without partial records.
 - Direct authenticated inserts into canonical evidence tables remain denied.
-- Required tests, typecheck, lint, build, and workflow/database verifiers pass.
-- Production migrations align and `/api/health` returns HTTP 200.
+- All 226 tests, typecheck, lint, production build, and workflow/database verifiers pass, including the exact two-item event-state regression from a clean checkout.
+- Commit `a2ea3af` is on `main`; production migration `202608120002` is applied and the local/remote ledgers align.
+- Vercel deployment `dpl_78pkyVYDty7CdAUsqQDciKhx3NWc` reached `READY`, and `/api/health` returned HTTP 200 with a healthy Supabase probe.
+- A post-release read-only audit confirmed `ALPHA_7` and `BETA_4` remain queued at Inspection and their exact movement mutations have zero partial legacy or canonical parameter rows.
+- No real parameter submission was made solely for verification; the operator can safely retry the existing shared form.
 
 ## Status
 
-Implemented and locally verified; production release pending.
+Resolved in production on 2026-08-12.
