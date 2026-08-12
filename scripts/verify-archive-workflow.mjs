@@ -19,7 +19,14 @@ const id = {
   stepCompleteWafer: "20000000-0000-4000-8000-000000000013",
   stepCompleteAssignment: "20000000-0000-4000-8000-000000000014",
   stepCompleteMutation: "20000000-0000-4000-8000-000000000015",
-  stepCompleteRestoreMutation: "20000000-0000-4000-8000-000000000016"
+  stepCompleteRestoreMutation: "20000000-0000-4000-8000-000000000016",
+  reviewWafer: "20000000-0000-4000-8000-000000000017",
+  reviewAssignment: "20000000-0000-4000-8000-000000000018",
+  reviewExecution: "20000000-0000-4000-8000-000000000019",
+  reviewAttempt: "20000000-0000-4000-8000-000000000020",
+  reviewRun: "20000000-0000-4000-8000-000000000021",
+  reviewMember: "20000000-0000-4000-8000-000000000022",
+  reviewMutation: "20000000-0000-4000-8000-000000000023"
 };
 
 await db.exec(`
@@ -27,7 +34,10 @@ await db.exec(`
   create role authenticated;
   create schema auth;
   create type public.fabrication_status as enum ('planned', 'queued', 'in_progress', 'on_hold', 'completed', 'scrapped');
-  create type public.step_status as enum ('pending', 'queued', 'running', 'blocked', 'completed', 'skipped', 'failed');
+  create type public.step_status as enum (
+    'pending', 'queued', 'running', 'blocked', 'awaiting_checkpoint',
+    'ready_to_move', 'redo_required', 'completed', 'skipped', 'failed'
+  );
 
   create function auth.uid() returns uuid language sql stable as $$
     select nullif(current_setting('app.actor_id', true), '')::uuid
@@ -55,6 +65,10 @@ await db.exec(`
     template_id uuid not null references public.process_templates(id),
     step_order integer not null,
     name text not null,
+    slug text,
+    process_area text,
+    node_type text not null default 'step',
+    required_reviewer_id uuid references public.profiles(id),
     archived_at timestamptz,
     created_at timestamptz not null default now()
   );
@@ -89,6 +103,8 @@ await db.exec(`
     process_step_id uuid not null references public.process_steps(id),
     status public.step_status not null,
     queue_started_at timestamptz,
+    completed_at timestamptz,
+    completed_by uuid references public.profiles(id),
     metadata jsonb not null default '{}'::jsonb,
     unique (assignment_id, process_step_id)
   );
@@ -104,6 +120,41 @@ await db.exec(`
     client_mutation_id uuid unique
   );
 
+  create table public.operation_runs (
+    id uuid primary key,
+    status text not null,
+    completed_at timestamptz
+  );
+  create table public.operation_run_members (
+    id uuid primary key,
+    operation_run_id uuid not null references public.operation_runs(id),
+    assignment_id uuid not null references public.wafer_process_assignments(id),
+    status text not null,
+    completed_at timestamptz,
+    legacy_step_execution_id uuid references public.step_executions(id)
+  );
+  alter table public.wafer_process_assignments
+    add column current_operation_run_member_id uuid references public.operation_run_members(id);
+  create table public.process_step_attempts (
+    id uuid primary key,
+    assignment_id uuid not null references public.wafer_process_assignments(id),
+    step_execution_id uuid not null references public.step_executions(id),
+    operation_run_member_id uuid references public.operation_run_members(id),
+    attempt_number integer not null,
+    reviewer_id_snapshot uuid references public.profiles(id)
+  );
+  create table public.checkpoint_decisions (
+    id uuid primary key default gen_random_uuid(),
+    attempt_id uuid not null references public.process_step_attempts(id),
+    decision text not null,
+    decided_by uuid references public.profiles(id),
+    client_mutation_id uuid unique
+  );
+  create table public.checkpoint_submission_withdrawals (
+    id uuid primary key default gen_random_uuid(),
+    attempt_id uuid not null references public.process_step_attempts(id)
+  );
+
   create function public.can_edit_project(target_project_id uuid) returns boolean language sql stable as $$
     select exists (
       select 1 from public.projects project
@@ -112,6 +163,26 @@ await db.exec(`
   $$;
   create function public.checkpoint_dicing_child_is_authorized(uuid, uuid, uuid)
   returns boolean language sql stable as $$ select false $$;
+  create function public.derived_mutation_uuid(uuid, uuid, text)
+  returns uuid language sql immutable as $$ select $2 $$;
+  create function public.review_step_checkpoint(uuid, text, uuid, text, uuid)
+  returns void language plpgsql security definer set search_path = public as $$
+  declare
+    target_attempt public.process_step_attempts%rowtype;
+  begin
+    select * into target_attempt from public.process_step_attempts where id = $1;
+    if target_attempt.id is null
+       or target_attempt.reviewer_id_snapshot is distinct from auth.uid() then
+      raise exception using errcode = '42501', message = 'Only the assigned checkpoint reviewer can decide this submission.';
+    end if;
+    insert into public.checkpoint_decisions (
+      attempt_id, decision, decided_by, client_mutation_id
+    ) values ($1, $2, auth.uid(), $3);
+    update public.step_executions
+    set status = 'ready_to_move', completed_at = now(), completed_by = auth.uid()
+    where id = target_attempt.step_execution_id;
+  end;
+  $$;
   create function public.enforce_published_assignment_template()
   returns trigger language plpgsql as $$ begin return new; end $$;
   create trigger wafer_assignments_require_published_template
@@ -128,19 +199,40 @@ await db.exec(`
     ('${id.first}', '${id.template}', 10, 'Start'),
     ('${id.middle}', '${id.template}', 15, 'Completed middle step'),
     ('${id.final}', '${id.template}', 20, 'Finish');
+  update public.process_steps set required_reviewer_id = '${id.actor}' where id = '${id.middle}';
   insert into public.wafers (id, project_id, wafer_code, status) values
     ('${id.wafer}', '${id.project}', 'ARCHIVE-VERIFY', 'completed'),
     ('${id.directWafer}', '${id.project}', 'DIRECT-VERIFY', 'completed'),
-    ('${id.stepCompleteWafer}', '${id.project}', 'STEP-ARCHIVE-VERIFY', 'in_progress');
+    ('${id.stepCompleteWafer}', '${id.project}', 'STEP-ARCHIVE-VERIFY', 'in_progress'),
+    ('${id.reviewWafer}', '${id.project}', 'REVIEW-ARCHIVE-VERIFY', 'in_progress');
   insert into public.wafer_process_assignments (
     id, wafer_id, template_id, assigned_by, status, completed_at, current_step_id
   ) values (
     '${id.assignment}', '${id.wafer}', '${id.template}', '${id.actor}', 'completed', now(), '${id.final}'
   ), (
     '${id.stepCompleteAssignment}', '${id.stepCompleteWafer}', '${id.template}', '${id.actor}', 'in_progress', null, '${id.middle}'
+  ), (
+    '${id.reviewAssignment}', '${id.reviewWafer}', '${id.template}', '${id.actor}', 'in_progress', null, '${id.middle}'
   );
-  insert into public.step_executions (assignment_id, wafer_id, process_step_id, status) values
-    ('${id.stepCompleteAssignment}', '${id.stepCompleteWafer}', '${id.middle}', 'completed');
+  insert into public.step_executions (id, assignment_id, wafer_id, process_step_id, status) values
+    (gen_random_uuid(), '${id.stepCompleteAssignment}', '${id.stepCompleteWafer}', '${id.middle}', 'completed'),
+    ('${id.reviewExecution}', '${id.reviewAssignment}', '${id.reviewWafer}', '${id.middle}', 'awaiting_checkpoint');
+  insert into public.operation_runs (id, status) values ('${id.reviewRun}', 'awaiting_review');
+  insert into public.operation_run_members (
+    id, operation_run_id, assignment_id, status, legacy_step_execution_id
+  ) values (
+    '${id.reviewMember}', '${id.reviewRun}', '${id.reviewAssignment}', 'awaiting_review', '${id.reviewExecution}'
+  );
+  update public.wafer_process_assignments
+  set current_operation_run_member_id = '${id.reviewMember}'
+  where id = '${id.reviewAssignment}';
+  insert into public.process_step_attempts (
+    id, assignment_id, step_execution_id, operation_run_member_id,
+    attempt_number, reviewer_id_snapshot
+  ) values (
+    '${id.reviewAttempt}', '${id.reviewAssignment}', '${id.reviewExecution}',
+    '${id.reviewMember}', 1, '${id.actor}'
+  );
 `);
 
 const migration = await readFile(
@@ -151,8 +243,18 @@ const completedStepArchiveMigration = await readFile(
   new URL("../supabase/migrations/202607210002_allow_completed_step_archive.sql", import.meta.url),
   "utf8"
 );
+const readyToMoveArchiveMigration = await readFile(
+  new URL("../supabase/migrations/202607220002_archive_ready_to_move.sql", import.meta.url),
+  "utf8"
+);
+const reviewerArchiveMigration = await readFile(
+  new URL("../supabase/migrations/202607220003_archive_reviewer_checkpoint.sql", import.meta.url),
+  "utf8"
+);
 await db.exec(migration);
 await db.exec(completedStepArchiveMigration);
+await db.exec(readyToMoveArchiveMigration);
+await db.exec(reviewerArchiveMigration);
 await db.exec(`select set_config('app.actor_id', '${id.actor}', false)`);
 
 await assert.rejects(
@@ -265,4 +367,32 @@ assert.deepEqual(completedStepEvents.rows.map((event) => event.event_type), [
   "wafer_restored_from_archive"
 ]);
 
-console.log("Archive workflow verification passed: completed-step and whole-process history preserved and restore created a new run.");
+const reviewedArchiveResult = await db.query(
+  `select * from public.archive_completed_wafer_assignments($1::uuid[], $2::uuid[])`,
+  [[id.reviewAssignment], [id.reviewMutation]]
+);
+assert.equal(reviewedArchiveResult.rows.length, 1);
+
+const reviewedArchiveState = await db.query(`
+  select wafer.archived_at as wafer_archived_at,
+         assignment.archived_at as assignment_archived_at,
+         execution.status as execution_status,
+         member.status as member_status,
+         run.status as run_status,
+         decision.decision
+  from public.wafers wafer
+  join public.wafer_process_assignments assignment on assignment.wafer_id = wafer.id
+  join public.step_executions execution on execution.id = '${id.reviewExecution}'
+  join public.operation_run_members member on member.id = '${id.reviewMember}'
+  join public.operation_runs run on run.id = member.operation_run_id
+  join public.checkpoint_decisions decision on decision.attempt_id = '${id.reviewAttempt}'
+  where assignment.id = '${id.reviewAssignment}'
+`);
+assert.ok(reviewedArchiveState.rows[0].wafer_archived_at);
+assert.ok(reviewedArchiveState.rows[0].assignment_archived_at);
+assert.equal(reviewedArchiveState.rows[0].execution_status, "ready_to_move");
+assert.equal(reviewedArchiveState.rows[0].member_status, "completed");
+assert.equal(reviewedArchiveState.rows[0].run_status, "completed");
+assert.equal(reviewedArchiveState.rows[0].decision, "approved");
+
+console.log("Archive workflow verification passed: completed, approved, and reviewer-approved steps archive with preserved history.");

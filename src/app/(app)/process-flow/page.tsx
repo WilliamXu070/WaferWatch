@@ -132,7 +132,10 @@ function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null)
           historyCorrectionCount: state.historyCorrectionCount,
           canCorrectCheckpointRoute: state.canCorrectCheckpointRoute,
           checkpointRouteSourceStepId: state.checkpointRouteSourceStepId,
-          isArchivable: isArchiveEligibleAfterCurrentStep(state.currentStepStatus),
+          isArchivable: isArchiveEligibleAfterCurrentStep(
+            state.currentStepStatus,
+            Boolean(currentUserId && currentUserId === state.requiredReviewerId)
+          ),
           anytimeReturnStepId: state.anytimeReturnStepId,
           anytimeReturnStepName: state.anytimeReturnStepName
         }))

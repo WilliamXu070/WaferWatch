@@ -353,6 +353,7 @@ function workspaceRecord(value: Json) {
 function legacyStepStatusFromWorkspace(value: Json | undefined) {
   if (value === "awaiting_review") return "awaiting_checkpoint" as const;
   if (value === "rejected") return "redo_required" as const;
+  if (value === "ready_to_move") return "ready_to_move" as const;
   if ([
     "pending", "queued", "running", "blocked", "redo_required",
     "completed", "skipped", "failed"
@@ -3315,7 +3316,7 @@ export function ProcessFlowDiagram({
       drag.wafers.some((item) => item.assignmentId === wafer.assignmentId)
     )) ?? [];
     if (!areWafersArchivable(pins)) {
-      setArchiveMessage("Only wafers and dies with a completed current step can be archived.");
+      setArchiveMessage("Only completed steps or checkpoints approved by their assigned reviewer can be archived.");
       return;
     }
 
@@ -3528,26 +3529,21 @@ export function ProcessFlowDiagram({
       return;
     }
 
-    const point = getScenePoint(event);
-    const target = displayNodes.find((node) => nodeContainsPoint(node, point));
-
-    if (!target) {
+    const resolvedTarget = resolveWaferDropTarget(currentDrag);
+    if (!resolvedTarget) {
       return;
     }
+
     const selections = finishedDrag.wafers.map((wafer) => ({
         assignmentId: wafer.assignmentId,
         nodeId: finishedDrag.sourceStepId,
         label: wafer.waferLabel,
         isDie: wafer.isDie
       }));
-    if (target.id === finishedDrag.sourceStepId) {
-      if (point.x >= target.x + target.width / 2) {
-        openCheckpointSubmitDialog(selections, finishedDrag.sourceStepId);
-      } else {
-        openWaferMoveDialog(selections, finishedDrag.sourceStepId, target.id);
-      }
+    if (resolvedTarget.nodeId === finishedDrag.sourceStepId && resolvedTarget.kind === "submit") {
+      openCheckpointSubmitDialog(selections, finishedDrag.sourceStepId);
     } else {
-      openWaferMoveDialog(selections, finishedDrag.sourceStepId, target.id);
+      openWaferMoveDialog(selections, finishedDrag.sourceStepId, resolvedTarget.nodeId);
     }
   };
 
@@ -3609,6 +3605,16 @@ export function ProcessFlowDiagram({
     const movingWafers = previousNodes
       .find((node) => node.id === move.sourceStepId)
       ?.wafers.filter((wafer) => moveAssignmentIds.has(wafer.assignmentId)) ?? [];
+    if (move.kind === "submit") {
+      if (movingWafers.some((wafer) => !wafer.currentStepExecutionId)) {
+        setMoveMessage("This wafer is still being created. It will be ready in a moment.");
+        return;
+      }
+      if (!movingWafers.every((wafer) => canSubmitWaferCheckpoint(wafer))) {
+        setMoveMessage("Only work on the Beginning side can be submitted for checkpoint review.");
+        return;
+      }
+    }
     const movingWafersByAssignmentId = new Map(
       movingWafers.map((wafer) => [wafer.assignmentId, wafer])
     );
@@ -3713,6 +3719,7 @@ export function ProcessFlowDiagram({
             targetStepId: move.targetStepId,
             note: actionNote,
             correctCheckpointRoute: movingWafer?.canCorrectCheckpointRoute === true &&
+              movingWafer.currentStepStatus !== "ready_to_move" &&
               sourceNode?.executionMode === "main" &&
               targetNode?.executionMode === "main"
           };

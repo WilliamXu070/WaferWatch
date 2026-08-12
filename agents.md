@@ -61,6 +61,7 @@ For workflow/database changes also run the relevant verifier:
 
 ```bash
 npm run checkpoint:verify
+npm run process-flow-states:verify
 npm run batch-lifecycle:verify
 npm run archive:verify
 npm run collaboration:verify

@@ -13,6 +13,27 @@ export function toErrorMessage(error: unknown) {
     return error.message;
   }
 
+  if (
+    error !== null &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message === "string"
+  ) {
+    const structuredError = error as Record<string, unknown>;
+    const message = (structuredError.message as string).trim();
+    const details = typeof structuredError.details === "string"
+      ? structuredError.details.trim()
+      : "";
+    const hint = typeof structuredError.hint === "string"
+      ? structuredError.hint.trim()
+      : "";
+    const rawError = typeof structuredError.error === "string"
+      ? structuredError.error.trim()
+      : "";
+    const parts = [message, details, hint, rawError].filter(Boolean);
+    return parts.join(" | ") || "An unexpected error occurred.";
+  }
+
   return "An unexpected error occurred.";
 }
 

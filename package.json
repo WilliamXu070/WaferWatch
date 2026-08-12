@@ -31,6 +31,7 @@
     "researcher:verify": "node scripts/verify-researcher-access.mjs",
     "planning:verify": "node scripts/verify-planning.mjs",
     "operation-runs:verify": "node scripts/verify-operation-runs.mjs",
+    "process-flow-states:verify": "node scripts/verify-process-flow-event-states.mjs",
     "workspace-projection:verify": "node scripts/verify-workspace-projection.mjs",
     "scheduler:verify": "node --import tsx scripts/verify-scheduler.ts",
     "migration-chain:verify": "node scripts/verify-migration-chain.mjs",

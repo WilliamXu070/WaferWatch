@@ -203,7 +203,7 @@ export async function submitStepCheckpoint(input: unknown) {
     });
 
     if (error) {
-      return fail(error.message);
+      return fail(toErrorMessage(error));
     }
 
     return ok(firstProcessFlowBatchData(data));
@@ -222,7 +222,7 @@ export async function moveApprovedCheckpointWafer(input: unknown) {
     });
 
     if (error) {
-      return fail(error.message);
+      return fail(toErrorMessage(error));
     }
 
     return ok(firstProcessFlowBatchData(data));
@@ -244,7 +244,7 @@ export async function undoDieProcessHistoryState(input: unknown) {
     });
 
     if (error) {
-      return fail(error.message);
+      return fail(toErrorMessage(error));
     }
 
     revalidateCheckpointWorkflow();
@@ -278,7 +278,7 @@ export async function correctWaferProcessHistory(input: unknown) {
       parameter_values: parsed.kind === "insert" ? parsed.parameterValues as Json : {},
       parameter_notes: parsed.kind === "insert" ? parsed.parameterNotes as Json : {}
     });
-    if (error) return fail(error.message);
+    if (error) return fail(toErrorMessage(error));
 
     revalidateCheckpointWorkflow();
     return ok(data);
@@ -305,7 +305,7 @@ export async function routeCheckpointSubmission(input: unknown) {
     });
 
     if (error) {
-      return fail(error.message);
+      return fail(toErrorMessage(error));
     }
 
     return ok(firstProcessFlowBatchData(data));
