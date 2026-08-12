@@ -100,7 +100,8 @@ const id = {
   queuedAssignment: "66000000-0000-4000-8000-000000000040",
   queuedExecution: "66000000-0000-4000-8000-000000000041",
   queuedRun: "66000000-0000-4000-8000-000000000042",
-  queuedMember: "66000000-0000-4000-8000-000000000043"
+  queuedMember: "66000000-0000-4000-8000-000000000043",
+  correctedLegacyBatch: "66000000-0000-4000-8000-000000000044"
 };
 
 await db.exec(`
@@ -557,6 +558,19 @@ await db.exec(`
   alter table public.wafer_process_assignments
     enable trigger wafer_assignments_require_published_template;
 
+  insert into public.process_batches (
+    id, template_id, process_step_id, created_by, origin, created_at
+  ) values (
+    '${id.correctedLegacyBatch}', '${id.template}', '${id.polingStep}',
+    '${id.actor}', 'arrival', '2026-07-22T19:29:59Z'
+  );
+  insert into public.process_batch_members (
+    batch_id, assignment_id, wafer_id, process_step_id, step_execution_id, created_at
+  ) values (
+    '${id.correctedLegacyBatch}', '${id.correctedAssignment}', '${id.correctedWafer}',
+    '${id.polingStep}', '${id.correctedExecution}', '2026-07-22T19:29:59Z'
+  );
+
   insert into public.operation_runs (
     id, template_id, process_step_id, run_kind, status, created_by, created_at, updated_at
   ) values
@@ -634,6 +648,7 @@ const correctedCurrent = await db.query(`
     run.id as run_id,
     run.status as run_status,
     run.run_kind,
+    run.legacy_batch_id,
     event.operation_run_id as event_run_id,
     event.operation_run_member_id as event_member_id
   from public.wafer_process_assignments assignment
@@ -648,6 +663,7 @@ assert.equal(correctedCurrent.rows[0].legacy_step_execution_id, id.correctedExec
 assert.equal(correctedCurrent.rows[0].history_effective, true);
 assert.equal(correctedCurrent.rows[0].run_status, "redo_required");
 assert.equal(correctedCurrent.rows[0].run_kind, "redo");
+assert.equal(correctedCurrent.rows[0].legacy_batch_id, id.correctedLegacyBatch);
 assert.equal(correctedCurrent.rows[0].event_run_id, correctedCurrent.rows[0].run_id);
 assert.equal(correctedCurrent.rows[0].event_member_id, correctedCurrent.rows[0].member_id);
 
@@ -668,6 +684,13 @@ const redoLink = await db.query(`
     and child_run_id = $1
 `, [correctedCurrent.rows[0].run_id]);
 assert.equal(redoLink.rows[0].link_kind, "redo");
+
+const preservedLegacyBatch = await db.query(`
+  select batch_id
+  from public.process_batch_members
+  where step_execution_id = '${id.correctedExecution}'
+`);
+assert.deepEqual(preservedLegacyBatch.rows, [{ batch_id: id.correctedLegacyBatch }]);
 
 const queuedCurrent = await db.query(`
   select assignment.current_operation_run_member_id as member_id, member.status, run.status as run_status

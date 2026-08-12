@@ -170,6 +170,9 @@ declare
   target_run public.operation_runs%rowtype;
   target_member public.operation_run_members%rowtype;
   parent_legacy_batch_id uuid;
+  existing_member_batch_id uuid;
+  compatibility_batch_id uuid;
+  target_run_id uuid;
   canonical_member_status text;
   canonical_run_status text;
   effective_run_kind text;
@@ -183,6 +186,17 @@ begin
   if target_run_kind not in ('normal', 'redo', 'rework', 'restore') then
     raise exception using errcode = '22023', message = 'The compatibility run kind is invalid.';
   end if;
+
+  select member.batch_id into existing_member_batch_id
+  from public.process_batch_members member
+  where member.step_execution_id = execution.id
+  order by member.created_at desc, member.id desc
+  limit 1;
+  -- Legacy batch membership is append-only and one-to-one with the execution.
+  -- A corrected canonical visit may therefore receive a fresh run id while
+  -- retaining the execution's already-recorded compatibility batch.
+  compatibility_batch_id := coalesce(existing_member_batch_id, target_batch_id);
+  target_run_id := target_batch_id;
 
   canonical_member_status := case execution.status::text
     when 'running' then 'running'
@@ -213,7 +227,7 @@ begin
   insert into public.process_batches (
     id, template_id, process_step_id, created_by, note, origin
   ) values (
-    target_batch_id, assignment.template_id, execution.process_step_id,
+    compatibility_batch_id, assignment.template_id, execution.process_step_id,
     coalesce(auth.uid(), execution.operator_id, execution.completed_by, assignment.assigned_by),
     nullif(trim(target_note), ''),
     case when effective_run_kind = 'restore' then 'restore' else 'arrival' end
@@ -225,11 +239,11 @@ begin
     id, template_id, process_step_id, run_kind, status, reason,
     created_by, legacy_batch_id, started_at, completed_at
   ) values (
-    target_batch_id, assignment.template_id, execution.process_step_id,
+    target_run_id, assignment.template_id, execution.process_step_id,
     effective_run_kind, canonical_run_status,
     case when effective_run_kind in ('redo', 'rework', 'restore') then nullif(trim(target_note), '') else null end,
     coalesce(auth.uid(), execution.operator_id, execution.completed_by, assignment.assigned_by),
-    target_batch_id, execution.started_at, execution.completed_at
+    compatibility_batch_id, execution.started_at, execution.completed_at
   )
   on conflict (id) do update set
     run_kind = excluded.run_kind,
@@ -238,7 +252,7 @@ begin
     started_at = coalesce(operation_runs.started_at, excluded.started_at),
     completed_at = excluded.completed_at;
 
-  select * into target_run from public.operation_runs where id = target_batch_id for update;
+  select * into target_run from public.operation_runs where id = target_run_id for update;
   if target_run.template_id <> assignment.template_id
      or target_run.process_step_id <> execution.process_step_id then
     raise exception using errcode = '22023', message = 'The batch id already belongs to different process work.';
@@ -269,9 +283,9 @@ begin
   insert into public.process_batch_members (
     batch_id, assignment_id, wafer_id, process_step_id, step_execution_id
   ) values (
-    target_batch_id, assignment.id, execution.wafer_id,
+    compatibility_batch_id, assignment.id, execution.wafer_id,
     execution.process_step_id, execution.id
-  ) on conflict (batch_id, step_execution_id) do nothing;
+  ) on conflict (step_execution_id) do nothing;
 
   if target_parent_run_id is not null and target_parent_run_id <> target_run.id
      and exists (select 1 from public.operation_runs where id = target_parent_run_id) then
@@ -283,11 +297,11 @@ begin
     ) on conflict do nothing;
     select legacy_batch_id into parent_legacy_batch_id
     from public.operation_runs where id = target_parent_run_id;
-    if parent_legacy_batch_id is not null and parent_legacy_batch_id <> target_batch_id then
+    if parent_legacy_batch_id is not null and parent_legacy_batch_id <> compatibility_batch_id then
       insert into public.process_batch_links (parent_batch_id, child_batch_id, link_kind)
       values (
         parent_legacy_batch_id,
-        target_batch_id,
+        compatibility_batch_id,
         case effective_run_kind when 'restore' then 'restore' else 'successor' end
       ) on conflict do nothing;
     end if;
