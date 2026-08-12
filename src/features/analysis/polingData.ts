@@ -1,81 +1,127 @@
-export type PolingChip = "Chip 1" | "Chip 2";
+export type PolingConfidence = "direct" | "reconciled" | "source_conflict" | (string & {});
 
-export type PolingPulseWidth = 10 | 100 | 200;
+export type PolingSourceAppearance = {
+  fileName: string;
+  slide: number | null;
+  label?: string | null;
+};
 
 export type PolingRecord = {
   id: string;
-  chip: PolingChip;
-  slide: number;
+  sourceKey?: string;
+  specimenReference: string;
+  dieLabel: string;
   voltage: number;
   pulses: number;
-  pulseWidthMs: PolingPulseWidth;
-  postPulseVoltage: number;
-  postPulseWidthMs: number;
-  imagePath: string;
+  pulseWidthMs: number;
+  postPulseVoltage?: number | null;
+  postPulseWidthMs?: number | null;
+  imagePath?: string | null;
+  imageSha256?: string | null;
+  sourceFile?: string | null;
+  slide?: number | null;
+  sourceImageLabel?: string | null;
+  sourceAppearances?: readonly PolingSourceAppearance[];
+  parameterSource?: Record<string, unknown> | null;
+  workbookProvenance?: Record<string, unknown> | null;
+  confidence?: PolingConfidence;
+  flags?: readonly string[];
   flag?: string;
+  replicateIndex?: number;
+  replicateCount?: number;
+  displayOrder?: number;
 };
 
-function conditions(
-  chip: PolingChip,
-  slide: number,
-  voltage: number,
-  pulseCounts: readonly number[],
-  pulseWidthMs: PolingPulseWidth,
-  firstImage: number,
-  flag?: string
-): PolingRecord[] {
-  return pulseCounts.map((pulses, index) => ({
-    id: `${chip === "Chip 1" ? "C1" : "C2"}-S${String(slide).padStart(2, "0")}-V${voltage}-P${pulses}-W${pulseWidthMs}`,
-    chip,
-    slide,
-    voltage,
-    pulses,
-    pulseWidthMs,
-    postPulseVoltage: 300,
-    postPulseWidthMs: 250,
-    imagePath: `/analysis/poling/image${firstImage + index}.JPG`,
-    flag
-  }));
+export type AnalysisDataSource =
+  | {
+      kind: "database";
+      projectId: string;
+      importId: string;
+      manifestSha256: string;
+      recordCount: number;
+      assetCount: number;
+      importedAt: string;
+    }
+  | {
+      kind: "unavailable";
+      reason?:
+        | "no-process"
+        | "no-project"
+        | "no-ready-import"
+        | "schema-unavailable"
+        | "read-failed"
+        | "incomplete-import";
+    };
+
+export type PolingPointPosition = {
+  voltage: number;
+  pulses: number;
+};
+
+export const POLING_SERIES_PALETTE = [
+  "#006d77",
+  "#9a4e00",
+  "#6c4ccf",
+  "#b4235a",
+  "#2a6fbb",
+  "#537a1f",
+  "#c04a24"
+] as const;
+
+export function getPolingSpecimens(records: readonly PolingRecord[]) {
+  return [...new Set(records.map((record) => record.specimenReference))].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true })
+  );
 }
 
-export const POLING_RECORDS: readonly PolingRecord[] = [
-  ...conditions("Chip 1", 2, 520, [1], 100, 1),
-  ...conditions("Chip 1", 2, 510, [1], 100, 2),
-  ...conditions("Chip 1", 2, 500, [1], 100, 3),
-  ...conditions("Chip 1", 2, 490, [1], 100, 4),
-  ...conditions("Chip 1", 2, 480, [1], 100, 5),
-  ...conditions("Chip 1", 2, 470, [1], 100, 6),
-  ...conditions("Chip 1", 2, 460, [1], 100, 7),
-  ...conditions("Chip 1", 2, 450, [1], 100, 8),
-  ...conditions("Chip 1", 4, 510, [1], 200, 9),
-  ...conditions("Chip 1", 4, 500, [1], 200, 10),
-  ...conditions("Chip 1", 4, 490, [1], 200, 11),
-  ...conditions("Chip 1", 4, 480, [1], 200, 12),
-  ...conditions("Chip 1", 4, 470, [1], 200, 13),
-  ...conditions("Chip 1", 4, 460, [1], 200, 14),
-  ...conditions("Chip 1", 4, 450, [1], 200, 15),
-  ...conditions("Chip 1", 5, 510, [5, 10, 15, 20, 25, 30], 10, 16),
-  ...conditions("Chip 1", 7, 500, [5, 10, 15, 20, 25, 30, 35, 40], 10, 22),
-  ...conditions("Chip 1", 8, 490, [5, 10, 15, 20, 25, 30, 35], 10, 30),
-  ...conditions("Chip 1", 10, 480, [5, 10, 15, 20, 25, 30, 35, 40], 10, 37),
-  ...conditions("Chip 2", 12, 480, [50, 100, 200], 10, 45),
-  ...conditions("Chip 2", 13, 470, [5, 20, 50, 100, 200], 10, 48),
-  ...conditions("Chip 2", 14, 460, [5, 20, 50, 100], 10, 53),
-  ...conditions("Chip 2", 15, 450, [5, 20, 50, 100, 200], 10, 57),
-  ...conditions("Chip 2", 16, 440, [5, 20, 50, 100, 200], 10, 62),
-  ...conditions("Chip 2", 17, 430, [5, 20, 50, 100, 200], 10, 67),
-  ...conditions(
-    "Chip 2",
-    18,
-    480,
-    [50, 100, 200],
-    10,
-    45,
-    "Uses the same embedded images as slide 12; verify duplicate versus replicate."
-  )
-];
+export function getPolingPulseWidths(records: readonly PolingRecord[]) {
+  return [...new Set(records.map((record) => record.pulseWidthMs))].sort((a, b) => a - b);
+}
 
-export const POLING_CHIP_COLORS: Record<PolingChip, string> = {
-  "Chip 1": "#087e8b",
-  "Chip 2": "#d97706"
-};
+export function getPolingSeriesColors(specimens: readonly string[]) {
+  return Object.fromEntries(
+    specimens.map((specimen, index) => [
+      specimen,
+      POLING_SERIES_PALETTE[index] ??
+        `hsl(${((index * 137.508) % 360).toFixed(2)} 64% 38%)`
+    ])
+  ) as Record<string, string>;
+}
+
+/**
+ * Spreads records that share the same condition across a small voltage window.
+ * This is calculated once per dataset so rendering and keyboard navigation do
+ * not repeatedly scan all records for every point.
+ */
+export function buildPolingPointPositions(records: readonly PolingRecord[]) {
+  const groups = new Map<string, PolingRecord[]>();
+
+  for (const record of records) {
+    const key = `${record.voltage}\u0000${record.pulses}`;
+    const group = groups.get(key);
+    if (group) group.push(record);
+    else groups.set(key, [record]);
+  }
+
+  const positions = new Map<string, PolingPointPosition>();
+  for (const group of groups.values()) {
+    const ordered = [...group].sort(
+      (a, b) =>
+        a.specimenReference.localeCompare(b.specimenReference, undefined, { numeric: true }) ||
+        a.pulseWidthMs - b.pulseWidthMs ||
+        a.dieLabel.localeCompare(b.dieLabel, undefined, { numeric: true }) ||
+        a.id.localeCompare(b.id)
+    );
+    const step = ordered.length > 1 ? Math.min(0.72, 8 / (ordered.length - 1)) : 0;
+    const center = (ordered.length - 1) / 2;
+
+    ordered.forEach((record, index) => {
+      positions.set(record.id, {
+        voltage: record.voltage + (index - center) * step,
+        pulses: record.pulses
+      });
+    });
+  }
+
+  return positions;
+}

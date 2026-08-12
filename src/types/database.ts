@@ -56,6 +56,7 @@ export type OperationRunMemberStatus =
   | "skipped"
   | "cancelled";
 export type OperationResourceKind = "person" | "tool" | "recipe" | "location";
+export type AnalysisImportStatus = "importing" | "ready" | "failed";
 
 export type Profile = {
   id: string;
@@ -490,6 +491,59 @@ export type DieInspection = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type AnalysisImport = {
+  id: string;
+  project_id: string;
+  manifest_sha256: string;
+  schema_version: number;
+  status: AnalysisImportStatus;
+  generated_at: string | null;
+  source_summary: Json;
+  record_count: number;
+  asset_count: number;
+  error_message: string | null;
+  imported_by: string | null;
+  started_at: string;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PolingAnalysisRecord = {
+  id: string;
+  project_id: string;
+  import_id: string;
+  catalog_record_id: string;
+  source_key: string;
+  specimen_reference: string;
+  die_label: string;
+  voltage: number;
+  pulse_width_ms: number;
+  pulse_count: number;
+  post_pulse_voltage: number;
+  post_pulse_width_ms: number;
+  image_path: string | null;
+  image_sha256: string | null;
+  source_file: string;
+  source_slide: number | null;
+  source_image_label: string | null;
+  source_appearances: Json;
+  parameter_source: Json;
+  workbook_provenance: Json | null;
+  confidence: string;
+  flags: Json;
+  replicate_index: number;
+  replicate_count: number;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LatestPolingAnalysisRecord = PolingAnalysisRecord & {
+  manifest_sha256: string;
+  import_completed_at: string;
 };
 
 export type TextSurface = {
@@ -977,7 +1031,70 @@ type ProcessStepInsert = Omit<
   execution_mode?: ProcessStepExecutionMode;
 };
 
-type RuntimeTables = Omit<GeneratedTables, "process_templates" | "process_steps" | "process_step_transitions"> & {
+type AnalysisImportInsert = {
+  id?: string;
+  project_id: string;
+  manifest_sha256: string;
+  schema_version: number;
+  status?: AnalysisImportStatus;
+  generated_at?: string | null;
+  source_summary?: Json;
+  record_count?: number;
+  asset_count?: number;
+  error_message?: string | null;
+  imported_by?: string | null;
+  started_at?: string;
+  completed_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type PolingAnalysisRecordInsert = {
+  id?: string;
+  project_id: string;
+  import_id: string;
+  catalog_record_id: string;
+  source_key: string;
+  specimen_reference: string;
+  die_label: string;
+  voltage: number;
+  pulse_width_ms: number;
+  pulse_count: number;
+  post_pulse_voltage: number;
+  post_pulse_width_ms: number;
+  image_path?: string | null;
+  image_sha256?: string | null;
+  source_file: string;
+  source_slide?: number | null;
+  source_image_label?: string | null;
+  source_appearances?: Json;
+  parameter_source?: Json;
+  workbook_provenance?: Json | null;
+  confidence: string;
+  flags?: Json;
+  replicate_index?: number;
+  replicate_count?: number;
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type RuntimeTables = Omit<
+  GeneratedTables,
+  "process_templates" | "process_steps" | "process_step_transitions"
+> & {
+  analysis_imports: {
+    Row: AnalysisImport;
+    Insert: AnalysisImportInsert;
+    Update: Partial<AnalysisImportInsert>;
+    Relationships: [];
+  };
+  poling_analysis_records: {
+    Row: PolingAnalysisRecord;
+    Insert: PolingAnalysisRecordInsert;
+    Update: Partial<PolingAnalysisRecordInsert>;
+    Relationships: [];
+  };
   process_templates: Omit<GeneratedTables["process_templates"], "Row" | "Insert" | "Update"> & {
     Row: ProcessTemplate;
     Insert: Omit<GeneratedTables["process_templates"]["Insert"], "lifecycle_status"> & {
@@ -1064,6 +1181,10 @@ type RuntimeFunctions = Omit<
 };
 
 type RuntimeViews = Omit<GeneratedViews, "vw_process_current_state"> & {
+  vw_poling_analysis_latest_records: {
+    Row: LatestPolingAnalysisRecord;
+    Relationships: [];
+  };
   vw_process_current_state: Omit<GeneratedViews["vw_process_current_state"], "Row"> & {
     Row: ProcessCurrentStateView;
   };

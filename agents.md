@@ -34,6 +34,7 @@ Prefer small domain modules over adding more state or handlers to the two large 
 - Checkpoint history is append-only. Corrections and undo supersede evidence; they do not rewrite it.
 - Wafer / Die Status has exactly two tabs: Overview and Process History.
 - Poling and inspection workspaces may show shared die data; do not attribute it to a historical visit.
+- Analysis reads only the newest ready, immutable import for the selected process project; unavailable or unauthorized project data must never fall back to a bundled catalog.
 - Calendar reads and caches bounded weeks, not the entire event table.
 - Preserve realtime revision/idempotency protections when changing mutations.
 

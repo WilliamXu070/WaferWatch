@@ -3,12 +3,14 @@
 import Image from "next/image";
 import {
   Eraser,
+  ImageOff,
   LocateFixed,
   Minus,
   MousePointer2,
   Pencil,
   Plus,
   Redo2,
+  RefreshCw,
   RotateCcw,
   TrendingUp
 } from "lucide-react";
@@ -17,14 +19,19 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
+  type Dispatch,
   type PointerEvent as ReactPointerEvent,
+  type SetStateAction,
   type WheelEvent as ReactWheelEvent
 } from "react";
 import {
-  POLING_CHIP_COLORS,
-  POLING_RECORDS,
-  type PolingChip,
-  type PolingPulseWidth,
+  buildPolingPointPositions,
+  getPolingPulseWidths,
+  getPolingSeriesColors,
+  getPolingSpecimens,
+  type AnalysisDataSource,
+  type PolingPointPosition,
   type PolingRecord
 } from "@/features/analysis/polingData";
 import { getPolingWheelIntent } from "@/features/analysis/polingGestures";
@@ -36,11 +43,14 @@ type GraphPoint = { x: number; y: number };
 type Drawing = { type: "line" | "freehand"; points: GraphPoint[] };
 type DrawMode = "navigate" | Drawing["type"];
 
+export type PolingAnalysisMapProps = {
+  records?: readonly PolingRecord[];
+  dataSource?: AnalysisDataSource;
+};
+
 const INITIAL_VIEWBOX = { width: 760, height: 520 };
 const MARGIN = { left: 64, right: 24, top: 28, bottom: 54 };
-const FULL_DOMAIN: Domain = { xmin: 425, xmax: 525, ymin: 0, ymax: 210 };
-const PULSE_WIDTHS: readonly (PolingPulseWidth | "all")[] = ["all", 10, 100, 200];
-const IMAGE_PRELOAD_CONCURRENCY = 4;
+const IMAGE_PRELOAD_CONCURRENCY = 2;
 
 async function decodePolingImage(imagePath: string) {
   const image = new window.Image();
@@ -49,15 +59,46 @@ async function decodePolingImage(imagePath: string) {
   try {
     await image.decode();
   } catch {
-    // The rendered image retains its normal error behavior if warming fails.
+    // The detail panel reports an image error if the rendered request also fails.
   }
 }
 
-function clampDomain(candidate: Domain): Domain {
-  const xSpan = candidate.xmax - candidate.xmin;
-  const ySpan = candidate.ymax - candidate.ymin;
-  const xmin = Math.max(FULL_DOMAIN.xmin, Math.min(candidate.xmin, FULL_DOMAIN.xmax - xSpan));
-  const ymin = Math.max(FULL_DOMAIN.ymin, Math.min(candidate.ymin, FULL_DOMAIN.ymax - ySpan));
+function createFullDomain(
+  records: readonly PolingRecord[],
+  positions: ReadonlyMap<string, PolingPointPosition>
+): Domain {
+  if (!records.length) return { xmin: 0, xmax: 10, ymin: 0, ymax: 10 };
+
+  const voltages = records.map(
+    (record) => positions.get(record.id)?.voltage ?? record.voltage
+  );
+  const pulses = records.map((record) => record.pulses);
+  const voltageMin = Math.min(...voltages);
+  const voltageMax = Math.max(...voltages);
+  const pulseMin = Math.min(...pulses);
+  const pulseMax = Math.max(...pulses);
+  const voltagePadding = Math.max(5, (voltageMax - voltageMin) * 0.04);
+  const pulsePadding = Math.max(5, (pulseMax - pulseMin) * 0.05);
+
+  return {
+    xmin: Math.floor(voltageMin - voltagePadding),
+    xmax: Math.ceil(voltageMax + voltagePadding),
+    ymin: Math.max(0, Math.floor(pulseMin - pulsePadding)),
+    ymax: Math.ceil(pulseMax + pulsePadding)
+  };
+}
+
+function clampDomain(candidate: Domain, fullDomain: Domain): Domain {
+  const xSpan = Math.min(candidate.xmax - candidate.xmin, fullDomain.xmax - fullDomain.xmin);
+  const ySpan = Math.min(candidate.ymax - candidate.ymin, fullDomain.ymax - fullDomain.ymin);
+  const xmin = Math.max(
+    fullDomain.xmin,
+    Math.min(candidate.xmin, fullDomain.xmax - xSpan)
+  );
+  const ymin = Math.max(
+    fullDomain.ymin,
+    Math.min(candidate.ymin, fullDomain.ymax - ySpan)
+  );
   return { xmin, xmax: xmin + xSpan, ymin, ymax: ymin + ySpan };
 }
 
@@ -66,23 +107,18 @@ function ticks(min: number, max: number, count = 6) {
   return Array.from({ length: count }, (_, index) => min + index * step);
 }
 
-function displayVoltage(record: PolingRecord) {
-  const overlaps = POLING_RECORDS.filter(
-    (candidate) =>
-      candidate.chip === record.chip &&
-      candidate.voltage === record.voltage &&
-      candidate.pulses === record.pulses
-  );
-  const has100 = overlaps.some((candidate) => candidate.pulseWidthMs === 100);
-  const has200 = overlaps.some((candidate) => candidate.pulseWidthMs === 200);
-  if (has100 && has200) return record.voltage + (record.pulseWidthMs === 100 ? -0.7 : 0.7);
-  return record.voltage;
+function recordPosition(
+  record: PolingRecord,
+  positions: ReadonlyMap<string, PolingPointPosition>
+) {
+  return positions.get(record.id) ?? { voltage: record.voltage, pulses: record.pulses };
 }
 
 function nearestDirectionalRecord(
   records: readonly PolingRecord[],
   current: PolingRecord,
-  key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown"
+  key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown",
+  positions: ReadonlyMap<string, PolingPointPosition>
 ) {
   const [sx, sy] = {
     ArrowLeft: [-1, 0],
@@ -90,54 +126,114 @@ function nearestDirectionalRecord(
     ArrowUp: [0, 1],
     ArrowDown: [0, -1]
   }[key];
-  const currentX = displayVoltage(current);
+  const currentPoint = recordPosition(current, positions);
   let candidates = records.filter((record) => {
     if (record.id === current.id) return false;
+    const point = recordPosition(record, positions);
     return sx
-      ? Math.sign(displayVoltage(record) - currentX) === sx
-      : Math.sign(record.pulses - current.pulses) === sy;
+      ? Math.sign(point.voltage - currentPoint.voltage) === sx
+      : Math.sign(point.pulses - currentPoint.pulses) === sy;
   });
   if (!candidates.length) return null;
 
-  const aligned = candidates.filter((record) =>
-    sx ? record.pulses === current.pulses : record.voltage === current.voltage
-  );
+  const aligned = candidates.filter((record) => {
+    const point = recordPosition(record, positions);
+    return sx ? point.pulses === currentPoint.pulses : record.voltage === current.voltage;
+  });
   if (aligned.length) candidates = aligned;
 
   return [...candidates].sort((a, b) => {
+    const pointA = recordPosition(a, positions);
+    const pointB = recordPosition(b, positions);
     const primaryA = sx
-      ? Math.abs(displayVoltage(a) - currentX)
-      : Math.abs(a.pulses - current.pulses);
+      ? Math.abs(pointA.voltage - currentPoint.voltage)
+      : Math.abs(pointA.pulses - currentPoint.pulses);
     const primaryB = sx
-      ? Math.abs(displayVoltage(b) - currentX)
-      : Math.abs(b.pulses - current.pulses);
+      ? Math.abs(pointB.voltage - currentPoint.voltage)
+      : Math.abs(pointB.pulses - currentPoint.pulses);
     const secondaryA = sx
-      ? Math.abs(a.pulses - current.pulses)
-      : Math.abs(displayVoltage(a) - currentX);
+      ? Math.abs(pointA.pulses - currentPoint.pulses)
+      : Math.abs(pointA.voltage - currentPoint.voltage);
     const secondaryB = sx
-      ? Math.abs(b.pulses - current.pulses)
-      : Math.abs(displayVoltage(b) - currentX);
+      ? Math.abs(pointB.pulses - currentPoint.pulses)
+      : Math.abs(pointB.voltage - currentPoint.voltage);
     return primaryA - primaryB || secondaryA - secondaryB;
   })[0];
 }
 
-export function PolingAnalysisMap() {
+function dataSourceLabel(dataSource?: AnalysisDataSource) {
+  if (!dataSource) return null;
+  return dataSource.kind === "database" ? "Database import" : "Data unavailable";
+}
+
+function unavailableMessage(dataSource?: AnalysisDataSource) {
+  if (dataSource?.kind !== "unavailable") return null;
+  if (dataSource.reason === "no-ready-import") {
+    return "No ready analysis import exists for this project yet.";
+  }
+  if (dataSource.reason === "incomplete-import") {
+    return "The latest analysis import is incomplete and was not displayed.";
+  }
+  if (dataSource.reason === "no-process" || dataSource.reason === "no-project") {
+    return "Choose an accessible process with an analysis dataset.";
+  }
+  return "The project analysis dataset could not be loaded. Try again shortly.";
+}
+
+export function PolingAnalysisMap({
+  records = [],
+  dataSource
+}: PolingAnalysisMapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const chartFrameRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const activeDrawingRef = useRef<Drawing | null>(null);
-  const [chipVisibility, setChipVisibility] = useState<Record<PolingChip, boolean>>({
-    "Chip 1": true,
-    "Chip 2": true
-  });
-  const [pulseWidth, setPulseWidth] = useState<PolingPulseWidth | "all">("all");
-  const [selectedId, setSelectedId] = useState(POLING_RECORDS[0].id);
-  const [domain, setDomain] = useState<Domain>(FULL_DOMAIN);
+  const positions = useMemo(() => buildPolingPointPositions(records), [records]);
+  const fullDomain = useMemo(() => createFullDomain(records, positions), [positions, records]);
+  const specimens = useMemo(() => getPolingSpecimens(records), [records]);
+  const pulseWidths = useMemo(() => getPolingPulseWidths(records), [records]);
+  const seriesColors = useMemo(() => getPolingSeriesColors(specimens), [specimens]);
+  const [hiddenSpecimens, setHiddenSpecimens] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const [pulseWidth, setPulseWidth] = useState<number | "all">("all");
+  const [selectedId, setSelectedId] = useState(records[0]?.id ?? "");
+  const [domain, setDomain] = useState<Domain>(() => fullDomain);
   const [mode, setMode] = useState<DrawMode>("navigate");
   const [annotations, setAnnotations] = useState<Drawing[]>([]);
   const [activeDrawing, setActiveDrawing] = useState<Drawing | null>(null);
   const [viewBox, setViewBox] = useState(INITIAL_VIEWBOX);
-  const [displayedRecord, setDisplayedRecord] = useState(POLING_RECORDS[0]);
+  const [displayedRecord, setDisplayedRecord] = useState<PolingRecord | null>(() =>
+    records[0]?.imagePath ? records[0] : null
+  );
+  const [failedImagePath, setFailedImagePath] = useState<string | null>(null);
+  const [imageRetry, setImageRetry] = useState(0);
+
+  const activePulseWidth =
+    pulseWidth === "all" || pulseWidths.includes(pulseWidth) ? pulseWidth : "all";
+  const visibleRecords = useMemo(
+    () =>
+      records.filter(
+        (record) =>
+          !hiddenSpecimens.has(record.specimenReference) &&
+          (activePulseWidth === "all" || record.pulseWidthMs === activePulseWidth)
+      ),
+    [activePulseWidth, hiddenSpecimens, records]
+  );
+  const selectedRecord =
+    visibleRecords.find((record) => record.id === selectedId) ?? visibleRecords[0] ?? null;
+  const selectedRecordRef = useRef(selectedRecord);
+  const selectedImagePath = selectedRecord?.imagePath ?? null;
+  const imageFailed = selectedImagePath !== null && failedImagePath === selectedImagePath;
+  const imageLoading = Boolean(
+    selectedImagePath &&
+      !imageFailed &&
+      displayedRecord?.imagePath !== selectedImagePath
+  );
+
+  useEffect(() => {
+    selectedRecordRef.current = selectedRecord;
+  }, [selectedRecord]);
 
   useEffect(() => {
     const chartFrame = chartFrameRef.current;
@@ -155,26 +251,9 @@ export function PolingAnalysisMap() {
     return () => observer.disconnect();
   }, []);
 
-  const visibleRecords = useMemo(
-    () =>
-      POLING_RECORDS.filter(
-        (record) =>
-          chipVisibility[record.chip] &&
-          (pulseWidth === "all" || record.pulseWidthMs === pulseWidth)
-      ),
-    [chipVisibility, pulseWidth]
-  );
-
-  const selectedRecord =
-    visibleRecords.find((record) => record.id === selectedId) ?? visibleRecords[0] ?? null;
-  const imageLoading =
-    selectedRecord !== null && selectedRecord.imagePath !== displayedRecord.imagePath;
-
   useEffect(() => {
-    const preloadOrder = getPolingImagePreloadOrder(
-      POLING_RECORDS,
-      POLING_RECORDS[0].imagePath
-    );
+    if (!selectedRecord) return;
+    const preloadOrder = getPolingImagePreloadOrder(visibleRecords, selectedRecord.id);
     let cancelled = false;
     let cursor = 0;
 
@@ -187,21 +266,20 @@ export function PolingAnalysisMap() {
           await decodePolingImage(imagePath);
         }
       };
-
       await Promise.all(
-        Array.from({ length: IMAGE_PRELOAD_CONCURRENCY }, () => worker())
+        Array.from(
+          { length: Math.min(IMAGE_PRELOAD_CONCURRENCY, preloadOrder.length) },
+          () => worker()
+        )
       );
     };
 
-    let timeoutId: number | null = null;
-    const startWarmup = () => void warmQueue();
-    timeoutId = window.setTimeout(startWarmup, 200);
-
+    const timeoutId = window.setTimeout(() => void warmQueue(), 120);
     return () => {
       cancelled = true;
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      window.clearTimeout(timeoutId);
     };
-  }, []);
+  }, [selectedRecord, visibleRecords]);
 
   const plotWidth = viewBox.width - MARGIN.left - MARGIN.right;
   const plotHeight = viewBox.height - MARGIN.top - MARGIN.bottom;
@@ -234,22 +312,22 @@ export function PolingAnalysisMap() {
 
   const selectRecord = (record: PolingRecord) => {
     setSelectedId(record.id);
-    const voltage = displayVoltage(record);
+    const point = recordPosition(record, positions);
     setDomain((current) => {
       const xSpan = current.xmax - current.xmin;
       const ySpan = current.ymax - current.ymin;
       const xPadding = xSpan * 0.12;
       const yPadding = ySpan * 0.12;
       const next = { ...current };
-      if (voltage < current.xmin + xPadding || voltage > current.xmax - xPadding) {
-        next.xmin = voltage - xSpan / 2;
-        next.xmax = voltage + xSpan / 2;
+      if (point.voltage < current.xmin + xPadding || point.voltage > current.xmax - xPadding) {
+        next.xmin = point.voltage - xSpan / 2;
+        next.xmax = point.voltage + xSpan / 2;
       }
-      if (record.pulses < current.ymin + yPadding || record.pulses > current.ymax - yPadding) {
-        next.ymin = record.pulses - ySpan / 2;
-        next.ymax = record.pulses + ySpan / 2;
+      if (point.pulses < current.ymin + yPadding || point.pulses > current.ymax - yPadding) {
+        next.ymin = point.pulses - ySpan / 2;
+        next.ymax = point.pulses + ySpan / 2;
       }
-      return clampDomain(next);
+      return clampDomain(next, fullDomain);
     });
   };
 
@@ -264,18 +342,21 @@ export function PolingAnalysisMap() {
       const yOrigin = current.ymax - (current.ymax - current.ymin) * py;
       const xSpan = Math.max(
         4,
-        Math.min(FULL_DOMAIN.xmax - FULL_DOMAIN.xmin, (current.xmax - current.xmin) * factor)
+        Math.min(fullDomain.xmax - fullDomain.xmin, (current.xmax - current.xmin) * factor)
       );
       const ySpan = Math.max(
         8,
-        Math.min(FULL_DOMAIN.ymax - FULL_DOMAIN.ymin, (current.ymax - current.ymin) * factor)
+        Math.min(fullDomain.ymax - fullDomain.ymin, (current.ymax - current.ymin) * factor)
       );
-      return clampDomain({
-        xmin: xOrigin - xSpan * px,
-        xmax: xOrigin + xSpan * (1 - px),
-        ymin: yOrigin - ySpan * (1 - py),
-        ymax: yOrigin + ySpan * py
-      });
+      return clampDomain(
+        {
+          xmin: xOrigin - xSpan * px,
+          xmax: xOrigin + xSpan * (1 - px),
+          ymin: yOrigin - ySpan * (1 - py),
+          ymax: yOrigin + ySpan * py
+        },
+        fullDomain
+      );
     });
   };
 
@@ -285,12 +366,15 @@ export function PolingAnalysisMap() {
     setDomain((current) => {
       const xDelta = (deltaX / rect.width) * (current.xmax - current.xmin);
       const yDelta = (deltaY / rect.height) * (current.ymax - current.ymin);
-      return clampDomain({
-        xmin: current.xmin + xDelta,
-        xmax: current.xmax + xDelta,
-        ymin: current.ymin + yDelta,
-        ymax: current.ymax + yDelta
-      });
+      return clampDomain(
+        {
+          xmin: current.xmin + xDelta,
+          xmax: current.xmax + xDelta,
+          ymin: current.ymin + yDelta,
+          ymax: current.ymax + yDelta
+        },
+        fullDomain
+      );
     });
   };
 
@@ -324,9 +408,10 @@ export function PolingAnalysisMap() {
     if (drawing) {
       const point = clientToGraph(event.clientX, event.clientY);
       if (!point) return;
-      const next = drawing.type === "line"
-        ? { ...drawing, points: [drawing.points[0], point] }
-        : { ...drawing, points: [...drawing.points, point] };
+      const next =
+        drawing.type === "line"
+          ? { ...drawing, points: [drawing.points[0], point] }
+          : { ...drawing, points: [...drawing.points, point] };
       activeDrawingRef.current = next;
       setActiveDrawing(next);
       return;
@@ -353,13 +438,32 @@ export function PolingAnalysisMap() {
   const handleKeyDown = (event: React.KeyboardEvent<SVGSVGElement>) => {
     if (!selectedRecord || !event.key.startsWith("Arrow")) return;
     const key = event.key as "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
-    const next = nearestDirectionalRecord(visibleRecords, selectedRecord, key);
+    const next = nearestDirectionalRecord(visibleRecords, selectedRecord, key, positions);
     if (!next) return;
     event.preventDefault();
     selectRecord(next);
   };
 
+  const toggleSpecimen = (specimen: string, visible: boolean) => {
+    setHiddenSpecimens((current) => {
+      const next = new Set(current);
+      if (visible) next.delete(specimen);
+      else next.add(specimen);
+      return next;
+    });
+  };
+
   const drawings = activeDrawing ? [...annotations, activeDrawing] : annotations;
+  const selectedFlags = selectedRecord
+    ? [
+        ...(selectedRecord.flags ?? []),
+        ...(selectedRecord.flag && !selectedRecord.flags?.includes(selectedRecord.flag)
+          ? [selectedRecord.flag]
+          : [])
+      ]
+    : [];
+  const sourceLabel = dataSourceLabel(dataSource);
+  const unavailableCopy = unavailableMessage(dataSource);
 
   return (
     <div className={styles.page}>
@@ -368,50 +472,59 @@ export function PolingAnalysisMap() {
           <p className={styles.eyebrow}>Experiment analysis</p>
           <h1>Poling parameter map</h1>
           <p className={styles.intro}>
-            Inspect the microscopy result recorded for each voltage and pulse condition.
+            Inspect microscopy and workbook results on one source-voltage scale. Pulse-width
+            variants remain filterable without changing the representation.
           </p>
         </div>
         <div className={styles.recordCount} aria-label={`${visibleRecords.length} visible conditions`}>
           <strong>{visibleRecords.length}</strong>
           <span>visible conditions</span>
+          {sourceLabel ? <small>{sourceLabel}</small> : null}
         </div>
       </header>
 
       <div className={styles.workspace}>
         <section className={styles.plotPanel} aria-label="Poling parameter graph">
           <div className={styles.filterBar}>
-            <fieldset className={styles.chipFilters}>
-              <legend>Chip</legend>
-              {(["Chip 1", "Chip 2"] as const).map((chip) => (
-                <label key={chip}>
-                  <input
-                    type="checkbox"
-                    checked={chipVisibility[chip]}
-                    onChange={(event) =>
-                      setChipVisibility((current) => ({ ...current, [chip]: event.target.checked }))
-                    }
-                  />
-                  <span style={{ "--chip-color": POLING_CHIP_COLORS[chip] } as React.CSSProperties} />
-                  {chip}
-                </label>
-              ))}
+            <fieldset className={styles.dieFilters}>
+              <legend>Die</legend>
+              <div className={styles.dieFilterOptions}>
+                {specimens.map((specimen) => (
+                  <label key={specimen}>
+                    <input
+                      type="checkbox"
+                      checked={!hiddenSpecimens.has(specimen)}
+                      onChange={(event) => toggleSpecimen(specimen, event.target.checked)}
+                    />
+                    <span
+                      style={{ "--series-color": seriesColors[specimen] } as CSSProperties}
+                    />
+                    {specimen}
+                  </label>
+                ))}
+              </div>
             </fieldset>
 
             <label className={styles.widthFilter}>
               <span>Pulse width</span>
               <select
-                value={pulseWidth}
+                value={activePulseWidth}
                 onChange={(event) =>
-                  setPulseWidth(event.target.value === "all" ? "all" : Number(event.target.value) as PolingPulseWidth)
+                  setPulseWidth(event.target.value === "all" ? "all" : Number(event.target.value))
                 }
               >
-                {PULSE_WIDTHS.map((width) => (
+                <option value="all">All widths</option>
+                {pulseWidths.map((width) => (
                   <option key={width} value={width}>
-                    {width === "all" ? "All widths" : `${width} ms`}
+                    {width} ms
                   </option>
                 ))}
               </select>
             </label>
+
+            <p className={styles.variantNote}>
+              {pulseWidths.map((width) => `${width} ms`).join(", ")} share this map.
+            </p>
 
             <div className={styles.modeTools} aria-label="Graph tools">
               <ToolButton
@@ -441,7 +554,7 @@ export function PolingAnalysisMap() {
               viewBox={`0 0 ${viewBox.width} ${viewBox.height}`}
               className={styles.chart}
               role="img"
-              aria-label="Voltage versus number of pulses. Select a point to inspect its microscopy image."
+              aria-label="Source voltage versus number of pulses. Select a point to inspect its die and microscopy result."
               tabIndex={0}
               data-mode={mode}
               onWheel={handleWheel}
@@ -449,7 +562,7 @@ export function PolingAnalysisMap() {
               onPointerMove={handlePointerMove}
               onPointerUp={finishPointerInteraction}
               onPointerCancel={finishPointerInteraction}
-              onDoubleClick={() => mode === "navigate" && setDomain(FULL_DOMAIN)}
+              onDoubleClick={() => mode === "navigate" && setDomain(fullDomain)}
               onKeyDown={handleKeyDown}
             >
               <defs>
@@ -538,7 +651,7 @@ export function PolingAnalysisMap() {
                 className={styles.axisTitle}
                 textAnchor="middle"
               >
-                Voltage (V)
+                Voltage (source value)
               </text>
               <text
                 x={16}
@@ -551,57 +664,76 @@ export function PolingAnalysisMap() {
               </text>
 
               {visibleRecords.map((record) => {
-                const voltage = displayVoltage(record);
+                const point = recordPosition(record, positions);
                 if (
-                  voltage < domain.xmin ||
-                  voltage > domain.xmax ||
-                  record.pulses < domain.ymin ||
-                  record.pulses > domain.ymax
+                  point.voltage < domain.xmin ||
+                  point.voltage > domain.xmax ||
+                  point.pulses < domain.ymin ||
+                  point.pulses > domain.ymax
                 ) {
                   return null;
                 }
                 const selected = record.id === selectedRecord?.id;
+                const className = [
+                  styles.point,
+                  !record.imagePath ? styles.dataOnlyPoint : "",
+                  selected ? styles.selectedPoint : ""
+                ]
+                  .filter(Boolean)
+                  .join(" ");
                 return (
                   <circle
-                    key={`${record.id}-${record.pulseWidthMs}`}
+                    key={record.id}
                     data-poling-point
-                    cx={x(voltage)}
-                    cy={y(record.pulses)}
+                    cx={x(point.voltage)}
+                    cy={y(point.pulses)}
                     r={selected ? 7.5 : 6}
-                    fill={POLING_CHIP_COLORS[record.chip]}
-                    className={selected ? styles.selectedPoint : styles.point}
+                    fill={seriesColors[record.specimenReference]}
+                    className={className}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (mode === "navigate") selectRecord(record);
                     }}
                   >
-                    <title>{`${record.chip}, ${record.voltage} V, ${record.pulses} pulse${record.pulses === 1 ? "" : "s"}, ${record.pulseWidthMs} ms`}</title>
+                    <title>{`${record.specimenReference} ${record.dieLabel}, voltage ${record.voltage} (source value), ${record.pulses} pulse${record.pulses === 1 ? "" : "s"}, ${record.pulseWidthMs} ms${record.imagePath ? "" : ", no linked image"}`}</title>
                   </circle>
                 );
               })}
             </svg>
 
             <div className={styles.zoomTools} aria-label="View controls">
-              <button type="button" onClick={() => zoomAtCenter(0.8, setDomain)} aria-label="Zoom in">
+              <button
+                type="button"
+                onClick={() => zoomAtCenter(0.8, setDomain, fullDomain)}
+                aria-label="Zoom in"
+              >
                 <Plus />
               </button>
-              <button type="button" onClick={() => zoomAtCenter(1.25, setDomain)} aria-label="Zoom out">
+              <button
+                type="button"
+                onClick={() => zoomAtCenter(1.25, setDomain, fullDomain)}
+                aria-label="Zoom out"
+              >
                 <Minus />
               </button>
-              <button type="button" onClick={() => setDomain(FULL_DOMAIN)} aria-label="Reset view">
+              <button type="button" onClick={() => setDomain(fullDomain)} aria-label="Reset view">
                 <LocateFixed />
               </button>
             </div>
           </div>
 
           <footer className={styles.plotFooter}>
-            <div className={styles.legend}>
-              {(Object.entries(POLING_CHIP_COLORS) as [PolingChip, string][]).map(([chip, color]) => (
-                <span key={chip}>
-                  <i style={{ backgroundColor: color }} />
-                  {chip}
+            <div className={styles.legend} aria-label="Die color legend">
+              <strong>Die</strong>
+              {specimens.map((specimen) => (
+                <span key={specimen}>
+                  <i style={{ backgroundColor: seriesColors[specimen] }} />
+                  {specimen}
                 </span>
               ))}
+              <span className={styles.dataOnlyLegend}>
+                <i /> Data only
+              </span>
             </div>
             <div className={styles.annotationActions}>
               <button
@@ -614,13 +746,18 @@ export function PolingAnalysisMap() {
               <button type="button" disabled={!annotations.length} onClick={() => setAnnotations([])}>
                 <Eraser /> Clear
               </button>
-              <button type="button" onClick={() => setDomain(FULL_DOMAIN)}>
+              <button type="button" onClick={() => setDomain(fullDomain)}>
                 <RotateCcw /> Reset view
               </button>
             </div>
           </footer>
           <p className={styles.hint}>
-            Two-finger scroll or drag to pan, pinch to zoom, double-click to reset, or use arrow keys after focusing the graph.
+            Two-finger scroll or drag pans. Pinch zooms. Double-click resets, and arrow keys
+            move between conditions after focusing the graph.
+          </p>
+          <p className={styles.catalogNote}>
+            Source note: deck and workbook voltage headers conflict (V versus mV), so the
+            numeric values are preserved without assigning a unit.
           </p>
         </section>
 
@@ -629,78 +766,145 @@ export function PolingAnalysisMap() {
             <>
               <div className={styles.detailHeader}>
                 <div>
-                  <p>{selectedRecord.chip} · Slide {selectedRecord.slide}</p>
+                  <p>
+                    {selectedRecord.specimenReference} · {selectedRecord.dieLabel}
+                    {selectedRecord.slide ? ` · Slide ${selectedRecord.slide}` : ""}
+                  </p>
                   <h2>
-                    {selectedRecord.voltage} V, {selectedRecord.pulses} pulse{selectedRecord.pulses === 1 ? "" : "s"}
+                    {selectedRecord.voltage} source value, {selectedRecord.pulses} pulse
+                    {selectedRecord.pulses === 1 ? "" : "s"}
                   </h2>
                 </div>
-                <span style={{ backgroundColor: POLING_CHIP_COLORS[selectedRecord.chip] }}>
+                <span
+                  style={{ backgroundColor: seriesColors[selectedRecord.specimenReference] }}
+                >
                   {selectedRecord.pulseWidthMs} ms
                 </span>
               </div>
 
               <div className={styles.imageStage}>
-                <Image
-                  key={displayedRecord.imagePath}
-                  src={displayedRecord.imagePath}
-                  width={1024}
-                  height={1024}
-                  sizes="(max-width: 900px) 100vw, 38vw"
-                  priority={displayedRecord.id === POLING_RECORDS[0].id}
-                  unoptimized
-                  alt={`Microscopy result from slide ${displayedRecord.slide}: ${displayedRecord.voltage} volts and ${displayedRecord.pulses} pulses`}
-                />
-                {imageLoading && selectedRecord ? (
-                  <Image
-                    key={`incoming-${selectedRecord.imagePath}`}
-                    className={styles.incomingImage}
-                    src={selectedRecord.imagePath}
-                    width={1024}
-                    height={1024}
-                    sizes="(max-width: 900px) 100vw, 38vw"
-                    unoptimized
-                    alt=""
-                    aria-hidden="true"
-                    onLoad={() => setDisplayedRecord(selectedRecord)}
+                {!selectedImagePath ? (
+                  <NoImageState
+                    title="No microscopy image"
+                    description="This workbook condition has parameters but no linked slide image."
                   />
-                ) : null}
-                {imageLoading ? (
-                  <span className={styles.imageLoading} role="status">
-                    Loading image…
-                  </span>
-                ) : null}
+                ) : imageFailed ? (
+                  <NoImageState
+                    title="Image unavailable"
+                    description="The microscopy file could not be loaded."
+                    action={
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFailedImagePath(null);
+                          setImageRetry((current) => current + 1);
+                        }}
+                      >
+                        <RefreshCw /> Try again
+                      </button>
+                    }
+                  />
+                ) : (
+                  <>
+                    {displayedRecord?.imagePath ? (
+                      <Image
+                        key={`displayed-${displayedRecord.imagePath}`}
+                        className={imageLoading ? styles.staleImage : undefined}
+                        src={displayedRecord.imagePath}
+                        width={1024}
+                        height={1024}
+                        sizes="(max-width: 900px) 100vw, 38vw"
+                        priority={displayedRecord.id === records[0]?.id}
+                        unoptimized
+                        aria-hidden={imageLoading}
+                        alt={`Microscopy result for ${displayedRecord.specimenReference} ${displayedRecord.dieLabel}`}
+                        onError={() => {
+                          if (displayedRecord.imagePath === selectedRecordRef.current?.imagePath) {
+                            setFailedImagePath(displayedRecord.imagePath ?? null);
+                          }
+                        }}
+                      />
+                    ) : null}
+                    {imageLoading ? (
+                      <Image
+                        key={`incoming-${selectedImagePath}-${imageRetry}`}
+                        className={styles.incomingImage}
+                        src={selectedImagePath}
+                        width={1024}
+                        height={1024}
+                        sizes="(max-width: 900px) 100vw, 38vw"
+                        unoptimized
+                        alt=""
+                        aria-hidden="true"
+                        onLoad={() => {
+                          if (selectedRecordRef.current?.id === selectedRecord.id) {
+                            setDisplayedRecord(selectedRecord);
+                            setFailedImagePath(null);
+                          }
+                        }}
+                        onError={() => {
+                          if (selectedRecordRef.current?.id === selectedRecord.id) {
+                            setFailedImagePath(selectedImagePath);
+                          }
+                        }}
+                      />
+                    ) : null}
+                    {imageLoading ? (
+                      <span className={styles.imageLoading} role="status">
+                        Loading image…
+                      </span>
+                    ) : null}
+                  </>
+                )}
               </div>
 
               <dl className={styles.metadata}>
                 <div>
                   <dt>Applied pulse</dt>
-                  <dd>{selectedRecord.voltage} V for {selectedRecord.pulseWidthMs} ms</dd>
+                  <dd>
+                    Voltage {selectedRecord.voltage} (source value), {selectedRecord.pulseWidthMs} ms
+                  </dd>
                 </div>
                 <div>
                   <dt>Pulse count</dt>
                   <dd>{selectedRecord.pulses}</dd>
                 </div>
                 <div>
-                  <dt>Post-pulse</dt>
-                  <dd>{selectedRecord.postPulseVoltage} V for {selectedRecord.postPulseWidthMs} ms</dd>
+                  <dt>Post-pulse values</dt>
+                  <dd>
+                    {selectedRecord.postPulseVoltage ?? "Not recorded"} / {selectedRecord.postPulseWidthMs ?? "Not recorded"}
+                  </dd>
                 </div>
                 <div>
                   <dt>Source</dt>
-                  <dd>PowerPoint slide {selectedRecord.slide}</dd>
+                  <dd>
+                    {selectedRecord.sourceFile ?? "Imported record"}
+                    {selectedRecord.slide ? `, slide ${selectedRecord.slide}` : ""}
+                  </dd>
                 </div>
               </dl>
 
-              {selectedRecord.flag ? (
-                <p className={styles.warning}>{selectedRecord.flag}</p>
-              ) : null}
+              {selectedFlags.map((flag, index) => (
+                <p key={`${selectedRecord.id}-flag-${index}`} className={styles.warning}>
+                  {flag}
+                </p>
+              ))}
               <p className={styles.sourceNote}>
-                Original embedded microscopy image, presented without image processing.
+                {selectedRecord.imagePath
+                  ? "Original embedded microscopy image, presented without image processing."
+                  : "Parameter-only workbook record; no image was linked in the source decks."}
+                {selectedRecord.sourceAppearances && selectedRecord.sourceAppearances.length > 1
+                  ? ` Preserved from ${selectedRecord.sourceAppearances.length} source appearances.`
+                  : ""}
+                {selectedRecord.postPulseVoltage != null || selectedRecord.postPulseWidthMs != null
+                  ? " Post-pulse units were not stated, so raw source values are shown."
+                  : ""}
               </p>
             </>
           ) : (
             <div className={styles.emptyDetail}>
-              <strong>No visible conditions</strong>
-              <p>Enable a chip or choose another pulse width.</p>
+              <strong>{unavailableCopy ? "Analysis unavailable" : "No visible conditions"}</strong>
+              <p>{unavailableCopy ?? "Enable a die or choose another pulse width."}</p>
             </div>
           )}
         </aside>
@@ -711,25 +915,29 @@ export function PolingAnalysisMap() {
 
 function zoomAtCenter(
   factor: number,
-  setDomain: React.Dispatch<React.SetStateAction<Domain>>
+  setDomain: Dispatch<SetStateAction<Domain>>,
+  fullDomain: Domain
 ) {
   setDomain((current) => {
     const centerX = (current.xmin + current.xmax) / 2;
     const centerY = (current.ymin + current.ymax) / 2;
     const xSpan = Math.max(
       4,
-      Math.min(FULL_DOMAIN.xmax - FULL_DOMAIN.xmin, (current.xmax - current.xmin) * factor)
+      Math.min(fullDomain.xmax - fullDomain.xmin, (current.xmax - current.xmin) * factor)
     );
     const ySpan = Math.max(
       8,
-      Math.min(FULL_DOMAIN.ymax - FULL_DOMAIN.ymin, (current.ymax - current.ymin) * factor)
+      Math.min(fullDomain.ymax - fullDomain.ymin, (current.ymax - current.ymin) * factor)
     );
-    return clampDomain({
-      xmin: centerX - xSpan / 2,
-      xmax: centerX + xSpan / 2,
-      ymin: centerY - ySpan / 2,
-      ymax: centerY + ySpan / 2
-    });
+    return clampDomain(
+      {
+        xmin: centerX - xSpan / 2,
+        xmax: centerX + xSpan / 2,
+        ymin: centerY - ySpan / 2,
+        ymax: centerY + ySpan / 2
+      },
+      fullDomain
+    );
   });
 }
 
@@ -749,5 +957,24 @@ function ToolButton({
       {icon}
       <span>{label}</span>
     </button>
+  );
+}
+
+function NoImageState({
+  title,
+  description,
+  action
+}: {
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className={styles.noImage}>
+      <ImageOff aria-hidden="true" />
+      <strong>{title}</strong>
+      <p>{description}</p>
+      {action}
+    </div>
   );
 }

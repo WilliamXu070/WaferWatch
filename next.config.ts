@@ -8,6 +8,19 @@ const dependencyRoot = scriptRoot.includes(worktreeMarker)
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost", "host.docker.internal"],
+  async headers() {
+    return [
+      {
+        source: "/analysis/poling/:version/:asset",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable"
+          }
+        ]
+      }
+    ];
+  },
   experimental: {
     // The default persistent Turbopack cache grew to 7.7 GB in this checkout.
     // Keep dev artifacts in memory so restart/page work cannot steadily consume disk.

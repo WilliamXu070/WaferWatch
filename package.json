@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "test": "tsx --test $(rg --files src -g '*.test.ts' -g '*.test.tsx')",
     "lint": "eslint .",
@@ -34,6 +34,8 @@
     "process-flow-states:verify": "node scripts/verify-process-flow-event-states.mjs",
     "workspace-projection:verify": "node scripts/verify-workspace-projection.mjs",
     "scheduler:verify": "node --import tsx scripts/verify-scheduler.ts",
+    "analysis:import": "node --env-file=.env.local scripts/import-poling-analysis.mjs",
+    "analysis-persistence:verify": "node scripts/verify-analysis-persistence.mjs",
     "migration-chain:verify": "node scripts/verify-migration-chain.mjs",
     "process:seed": "node --env-file=.env.local scripts/current-process-flow.mjs seed",
     "process:verify": "node --env-file=.env.local scripts/current-process-flow.mjs verify",
