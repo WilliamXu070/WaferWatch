@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
+import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 
-const db = new PGlite();
+const db = new PGlite({ extensions: { pgcrypto } });
 await db.exec(`
   create role anon;
   create role authenticated;
@@ -19,6 +20,8 @@ await db.exec(`
   create function auth.role() returns text language sql stable as $$
     select coalesce(nullif(current_setting('app.role', true), ''), 'authenticated')
   $$;
+  grant usage on schema auth to authenticated;
+  grant execute on function auth.uid(), auth.role() to authenticated;
 
   create schema storage;
   create table storage.buckets (
@@ -50,6 +53,7 @@ const files = (await readdir(migrationDirectory)).filter((file) => file.endsWith
 
 const id = {
   actor: "60000000-0000-4000-8000-000000000001",
+  outsider: "60000000-0000-4000-8000-000000000008",
   project: "60000000-0000-4000-8000-000000000002",
   template: "60000000-0000-4000-8000-000000000003",
   previousStep: "60000000-0000-4000-8000-000000000004",
@@ -87,9 +91,9 @@ const fixture = Object.fromEntries(fixtureNames.map((name, index) => {
 let seededPreRepair = false;
 let reproducedOriginalFailure = false;
 
-async function setAuthenticated() {
+async function setAuthenticated(actorId = id.actor) {
   await db.exec(`
-    select set_config('app.actor_id', '${id.actor}', false);
+    select set_config('app.actor_id', '${actorId}', false);
     select set_config('app.role', 'authenticated', false);
     set role authenticated;
   `);
@@ -129,9 +133,11 @@ async function seedPreRepairFixtures() {
   }).join(",\n");
 
   await db.exec(`
-    insert into auth.users (id, email, raw_user_meta_data)
-    values ('${id.actor}', 'process-flow-states@example.test', '{"display_name":"State verifier"}');
+    insert into auth.users (id, email, raw_user_meta_data) values
+      ('${id.actor}', 'process-flow-states@example.test', '{"display_name":"State verifier"}'),
+      ('${id.outsider}', 'process-flow-outsider@example.test', '{"display_name":"State verifier outsider"}');
     update public.profiles set role = 'admin' where id = '${id.actor}';
+    update public.profiles set role = 'researcher' where id = '${id.outsider}';
     insert into public.projects (id, slug, name, owner_id)
     values ('${id.project}', 'process-flow-states', 'Process Flow states', '${id.actor}');
     insert into public.process_templates (id, owner_project_id, name, version, created_by)
@@ -194,8 +200,7 @@ async function seedPreRepairFixtures() {
 for (const file of files) {
   if (file === repairMigration) await seedPreRepairFixtures();
   try {
-    const sql = (await readFile(new URL(file, migrationDirectory), "utf8"))
-      .replace(/^create extension if not exists "pgcrypto";\s*$/m, "");
+    const sql = await readFile(new URL(file, migrationDirectory), "utf8");
     await db.exec(sql);
   } catch (error) {
     throw new Error(`Migration ${file} failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
@@ -317,6 +322,99 @@ assert.equal(routeState.rows.find((row) => row.id === fixture.running.assignment
 assert.equal(routeState.rows.find((row) => row.id === fixture.running.assignment).status, "redo_required");
 assert.equal(routeState.rows.find((row) => row.id === fixture.running.assignment).run_kind, "redo");
 
+const parameterEntries = [
+  {
+    assignment_id: fixture.queued.assignment,
+    step_id: id.nextStep,
+    movement_mutation_id: routeMutations[0].movementMutationId
+  },
+  {
+    assignment_id: fixture.redo_required.assignment,
+    step_id: id.nextStep,
+    movement_mutation_id: routeMutations[2].movementMutationId
+  }
+];
+const parameterInput = [
+  JSON.stringify(parameterEntries),
+  JSON.stringify({}),
+  JSON.stringify([{
+    id: "inspection-result",
+    key: "inspection_result",
+    label: "Inspection result",
+    type: "text",
+    unit: "",
+    value: "Pass",
+    notes: "",
+    scope: "local"
+  }]),
+  "Shared Inspection note"
+];
+const saveParameterBatch = () => db.query(
+  "select public.save_operation_parameter_records_batch($1::jsonb, $2::jsonb, $3::jsonb, $4) as result",
+  parameterInput
+);
+const parameterSave = await saveParameterBatch();
+assert.equal(parameterSave.rows[0].result.records.length, 2);
+
+const parameterEvidence = await db.query(`
+  select
+    count(distinct legacy.id)::integer as legacy_records,
+    count(distinct canonical.id)::integer as canonical_records,
+    count(distinct note.id)::integer as canonical_notes
+  from public.process_events event
+  join public.step_parameter_records legacy
+    on legacy.movement_mutation_id = event.client_mutation_id
+  join public.operation_run_parameter_records canonical
+    on canonical.operation_run_member_id = event.operation_run_member_id
+  join public.operation_run_notes note
+    on note.operation_run_member_id = event.operation_run_member_id
+   and note.body = 'Shared Inspection note'
+  where event.client_mutation_id = any($1::uuid[])
+`, [parameterEntries.map((entry) => entry.movement_mutation_id)]);
+assert.deepEqual(parameterEvidence.rows, [{
+  legacy_records: 2,
+  canonical_records: 2,
+  canonical_notes: 2
+}]);
+
+const parameterRetry = await saveParameterBatch();
+assert.equal(parameterRetry.rows[0].result.alreadyApplied, true);
+const parameterEvidenceAfterRetry = await db.query(`
+  select
+    (select count(*)::integer from public.step_parameter_records record
+      where record.movement_mutation_id = any($1::uuid[])) as legacy_records,
+    (select count(*)::integer from public.operation_run_parameter_records record
+      where record.operation_run_member_id in (
+        select event.operation_run_member_id from public.process_events event
+        where event.client_mutation_id = any($1::uuid[])
+      )) as canonical_records
+`, [parameterEntries.map((entry) => entry.movement_mutation_id)]);
+assert.deepEqual(parameterEvidenceAfterRetry.rows, [{ legacy_records: 2, canonical_records: 2 }]);
+
+const parameterMember = await db.query(`
+  select event.operation_run_id, event.operation_run_member_id
+  from public.process_events event
+  where event.client_mutation_id = $1
+`, [parameterEntries[0].movement_mutation_id]);
+await assert.rejects(
+  db.query(`
+    insert into public.operation_run_parameter_records (
+      operation_run_id, operation_run_member_id, scope, schema_snapshot, values, recorded_by
+    ) values ($1, $2, 'invalid', '{}'::jsonb, '{}'::jsonb, $3)
+  `, [
+    parameterMember.rows[0].operation_run_id,
+    parameterMember.rows[0].operation_run_member_id,
+    id.actor
+  ]),
+  /permission denied for table operation_run_parameter_records/i
+);
+
+await resetRole();
+await setAuthenticated(id.outsider);
+await assert.rejects(saveParameterBatch(), /missing, mismatched, or not editable/i);
+await resetRole();
+await setAuthenticated();
+
 await db.query(
   "select public.review_step_checkpoint($1, 'approved', $2, 'Approved for move', null)",
   [
@@ -427,6 +525,7 @@ console.log(JSON.stringify({
   identityBackfill: `${identityBackfill.rows[0].matched} current executions`,
   validSubmissions: ["queued", "running", "redo_required"],
   validRoutes: ["approved", "redo", "approved_move", "checkpoint_route_correction", "anytime_enter"],
+  parameterBatch: "two moved items, canonical evidence, idempotent retry, direct-write and unauthorized rejection",
   idempotentRetries: true,
   rejectedSubmitStates: invalidSubmitStates,
   directProtectedWrite: "rejected",
