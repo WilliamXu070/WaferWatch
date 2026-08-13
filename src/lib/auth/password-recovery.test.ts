@@ -4,7 +4,7 @@ import { safeAuthRedirectPath } from "./password-recovery";
 
 test("allows internal authentication redirect paths", () => {
   assert.equal(safeAuthRedirectPath("/reset-password"), "/reset-password");
-  assert.equal(safeAuthRedirectPath("/dashboard?processId=123"), "/dashboard?processId=123");
+  assert.equal(safeAuthRedirectPath("/dashboard?view=compact"), "/dashboard?view=compact");
 });
 
 test("rejects external and protocol-relative authentication redirects", () => {

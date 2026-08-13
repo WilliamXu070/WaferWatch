@@ -487,7 +487,6 @@ export function ProcessCalendarBoard({
   const eventHandlerNames = previewEvent?.people.map((person) => person.display_name).join(", ") || null;
   const waferPreview: WaferDiePreviewModel | null = previewEvent?.wafer_id
     ? {
-        processId: processTemplateId,
         waferId: previewEvent.wafer_id,
         waferCode: previewWafer?.wafer_code ?? previewEvent.wafer?.wafer_code ?? "Wafer",
         dieLabel: previewWafer?.die_label ?? null,

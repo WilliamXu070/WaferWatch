@@ -22,7 +22,6 @@ type PanelDrag = {
 };
 
 export type WaferDiePreviewModel = {
-  processId: string;
   waferId: string;
   waferCode: string;
   dieLabel?: string | null;
@@ -75,7 +74,7 @@ export function WaferDiePreview({ preview }: { preview: WaferDiePreviewModel | n
     ? null
     : preview.waferCode;
   const isDie = Boolean(preview.dieLabel?.trim());
-  const search = new URLSearchParams({ processId: preview.processId, waferId: preview.waferId });
+  const search = new URLSearchParams({ waferId: preview.waferId });
   if (preview.dieLabel?.trim()) {
     search.set("dieLabel", preview.dieLabel.trim());
   }

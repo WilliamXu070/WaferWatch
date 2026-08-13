@@ -45,6 +45,7 @@ export type WireframeShellDto = {
     initials: string;
     name: string;
   } | null;
+  /** The active process resolved from browser-session state on the server. */
   currentProcess: {
     id: string;
     name: string;

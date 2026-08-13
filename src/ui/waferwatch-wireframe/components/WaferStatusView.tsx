@@ -191,8 +191,8 @@ export function WaferStatusView({
 
     return {
       initialSelected: findInitialWaferStatusTile(tiles, deepLinkedTile),
-      // Only an explicit URL target opens a die detail. The ordinary Status
-      // navigation link carries only processId and must land on the overview.
+      // Only an explicit valid URL target opens a die detail. Process-only or
+      // unmatched shared navigation remains on the active process overview.
       initialDetail: deepLinkedTile && canOpenDieDetail(deepLinkedTile) ? deepLinkedTile : null
     };
   },

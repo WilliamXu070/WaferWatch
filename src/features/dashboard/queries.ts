@@ -116,24 +116,6 @@ export function getEmptyWireframeDashboardModel(): DashboardModel {
   return makeEmptyDashboardModel();
 }
 
-async function resolveDashboardProcessTemplateId(
-  supabase: DashboardQueryClient,
-  requestedProcessTemplateId?: string
-) {
-  if (requestedProcessTemplateId) return requestedProcessTemplateId;
-
-  const { data, error } = await supabase
-    .from("process_templates")
-    .select("id")
-    .eq("is_active", true)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data?.id ?? null;
-}
-
 function buildActivity(
   history: readonly OperationRunHistoryView[],
   calendarRows: readonly CalendarStateRow[]
@@ -286,10 +268,10 @@ function mapPlannedOperation(row: PlanActualRow): BatchProcessHistoryItem {
 
 export async function getWireframeDashboardModel(
   supabase: DashboardQueryClient,
-  processTemplateId?: string
+  processTemplateId: string | null
 ): Promise<DashboardModel> {
-  const templateId = await resolveDashboardProcessTemplateId(supabase, processTemplateId);
-  if (!templateId) return makeEmptyDashboardModel();
+  if (!processTemplateId) return makeEmptyDashboardModel();
+  const templateId = processTemplateId;
 
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -361,8 +343,6 @@ export async function getWireframeDashboardModel(
   const blockedFailedCount = currentRows.filter((row) =>
     row.current_member_status === "blocked" || row.current_member_status === "failed"
   ).length;
-  const processQuery = `?processId=${encodeURIComponent(templateId)}`;
-
   return {
     activity: buildActivity(historyRows, calendarRows),
     progress: buildProgress(currentRows),
@@ -372,14 +352,14 @@ export async function getWireframeDashboardModel(
         value: String(activeAssignments.length),
         label: "Active wafers",
         icon: "activity",
-        href: `/process-flow${processQuery}`
+        href: "/process-flow"
       },
       {
         id: "blocked-failed",
         value: String(blockedFailedCount),
         label: "Blocked / failed",
         icon: "warning",
-        href: `/process-flow${processQuery}`
+        href: "/process-flow"
       }
     ],
     plannedBatches,

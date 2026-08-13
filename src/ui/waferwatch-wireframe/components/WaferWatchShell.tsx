@@ -4,7 +4,12 @@ import { WireframeSidebar } from "./WireframeSidebar";
 import { WireframeMobileChrome } from "./WireframeMobileChrome";
 import { WireframeTopbar } from "./WireframeTopbar";
 import { ProcessRoutePrefetcher } from "./ProcessRoutePrefetcher";
-import type { CreateProcessAction, DeleteProcessAction, UpdateProcessNameAction } from "./shellActions";
+import type {
+  CreateProcessAction,
+  DeleteProcessAction,
+  SelectProcessAction,
+  UpdateProcessNameAction
+} from "./shellActions";
 
 export function WaferWatchShell({
   children,
@@ -12,7 +17,8 @@ export function WaferWatchShell({
   onSignOut,
   onUpdateProcessName,
   onCreateProcess,
-  onDeleteProcess
+  onDeleteProcess,
+  onSelectProcess
 }: {
   children: ReactNode;
   shell: WireframeShellDto;
@@ -20,11 +26,12 @@ export function WaferWatchShell({
   onUpdateProcessName?: UpdateProcessNameAction;
   onCreateProcess?: CreateProcessAction;
   onDeleteProcess?: DeleteProcessAction;
+  onSelectProcess?: SelectProcessAction;
 }) {
   return (
     <div className="waferwatch-wireframe flex h-[100svh] w-full overflow-hidden bg-white text-[#151512]">
       <ProcessRoutePrefetcher
-        defaultProcessId={shell.currentProcess?.id}
+        activeProcessId={shell.currentProcess?.id ?? null}
       />
       <WireframeMobileChrome
         shell={shell}
@@ -36,6 +43,7 @@ export function WaferWatchShell({
         onUpdateProcessName={onUpdateProcessName}
         onCreateProcess={onCreateProcess}
         onDeleteProcess={onDeleteProcess}
+        onSelectProcess={onSelectProcess}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <WireframeTopbar

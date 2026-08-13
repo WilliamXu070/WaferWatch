@@ -31,6 +31,7 @@ import { isArchiveEligibleAfterCurrentStep } from "@/features/process-flows/arch
 import { getNextGreekWaferCode } from "@/features/process-flows/waferNaming";
 import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { resolveActiveProcess } from "@/features/process-selection/server";
 import { ProcessFlowView } from "@/ui/waferwatch-wireframe/components/ProcessFlowView";
 import type { FlowStatModel } from "@/ui/waferwatch-wireframe/types";
 import type { Json, ProcessStepExecutionMode, ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
@@ -38,8 +39,6 @@ import type { Json, ProcessStepExecutionMode, ProcessStepNodeType, ProcessStepTr
 export const dynamic = "force-dynamic";
 
 export const metadata = { title: "Process flow · WaferWatch" };
-
-type ProcessFlowSearchParams = { processId?: string | string[] };
 
 type DiagramStep = {
   id: string;
@@ -88,10 +87,6 @@ type DiagramTransition = {
   label: string | null;
   priority: number;
 };
-
-function firstSearchValue(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 function toFlowColumns(data: ProcessDashboardData, currentUserId: string | null): DiagramStep[] {
   const flowStates = data.workspaceWaferStates.filter((state) => state.assignmentStatus !== "scrapped");
@@ -212,12 +207,12 @@ function toFlowStats(data: ProcessDashboardData | null, columns: DiagramStep[]):
 }
 
 async function loadProcessFlowData(
-  requestedProcessId: string | undefined,
+  activeProcessId: string | null,
   account: Awaited<ReturnType<typeof getCurrentAccount>>
 ) {
-  if (!requestedProcessId) return null;
+  if (!activeProcessId) return null;
   if (!account) return null;
-  return getProcessDashboardData(requestedProcessId, 14, false).catch(() => null);
+  return getProcessDashboardData(activeProcessId, 14, false).catch(() => null);
 }
 
 async function getCanEditProcessFlow(
@@ -245,14 +240,11 @@ async function getSuggestedWaferCode(data: ProcessDashboardData | null) {
   return getNextGreekWaferCode(error ? fallbackCodes : (wafers ?? []).map((wafer) => wafer.wafer_code));
 }
 
-export default async function ProcessFlowWireframePage({
-  searchParams
-}: {
-  searchParams: Promise<ProcessFlowSearchParams>;
-}) {
-  const requestedProcessId = firstSearchValue((await searchParams).processId);
+export default async function ProcessFlowWireframePage() {
   const account = await getCurrentAccount();
-  const dashboardData = await loadProcessFlowData(requestedProcessId, account);
+  const activeProcess = await resolveActiveProcess(account);
+  const activeProcessId = activeProcess?.id ?? null;
+  const dashboardData = await loadProcessFlowData(activeProcessId, account);
   const [canEdit, suggestedWaferCode, reviewerOptions, archiveItems] = await Promise.all([
     getCanEditProcessFlow(dashboardData, account),
     getSuggestedWaferCode(dashboardData),
@@ -265,22 +257,22 @@ export default async function ProcessFlowWireframePage({
   const flowTransitions = toFlowTransitions(dashboardData);
   const processLabel = dashboardData
     ? `${dashboardData.process.name}${dashboardData.process.version ? ` · ${dashboardData.process.version}` : ""}`
-    : requestedProcessId ? "No active process" : "Select a process";
+    : activeProcessId ? "No active process" : "Select a process";
   const statusLabel = dashboardData
     ? undefined
-    : requestedProcessId
+    : activeProcessId
       ? "No authenticated process template or wafer assignment data is available."
-      : "Choose a process from the sidebar, then open Process Flow.";
+      : "Create or select an active process to open Process Flow.";
 
   return (
     <ProcessFlowView
       processLabel={processLabel}
       statusLabel={statusLabel}
-      emptyTitle={flowColumns.length === 0 ? (requestedProcessId ? "No process flow data" : "No process selected") : undefined}
+      emptyTitle={flowColumns.length === 0 ? (activeProcessId ? "No process flow data" : "No process selected") : undefined}
       emptyDescription={flowColumns.length === 0
-        ? requestedProcessId
+        ? activeProcessId
           ? "Sign in with access to an active process template, or assign wafers to a process. No wireframe fallback data is injected."
-          : "Select a process first. The process flow stays hidden until a process and this sub-view are selected."
+          : "Create or select an active process. The process flow stays hidden until one is available."
         : undefined}
       steps={flowColumns}
       transitions={flowTransitions}

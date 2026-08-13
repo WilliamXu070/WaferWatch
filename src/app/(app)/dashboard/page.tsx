@@ -5,6 +5,7 @@ import {
 } from "@/features/dashboard/queries";
 import { getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { resolveActiveProcess } from "@/features/process-selection/server";
 
 export const metadata = {
   title: "Dashboard · WaferWatch"
@@ -12,20 +13,7 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
-type DashboardSearchParams = {
-  processId?: string | string[];
-};
-
-function firstSearchValue(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-export default async function DashboardPage({
-  searchParams
-}: {
-  searchParams: Promise<DashboardSearchParams>;
-}) {
-  const requestedProcessId = firstSearchValue((await searchParams).processId);
+export default async function DashboardPage() {
   const account = await getCurrentAccount();
 
   if (!account) {
@@ -39,7 +27,8 @@ export default async function DashboardPage({
   }
 
   const supabase = await createServerSupabaseClient();
-  const dashboard = await getWireframeDashboardModel(supabase, requestedProcessId);
+  const activeProcess = await resolveActiveProcess(account);
+  const dashboard = await getWireframeDashboardModel(supabase, activeProcess?.id ?? null);
 
   return <DashboardView dashboard={dashboard} />;
 }

@@ -2,6 +2,10 @@ import "server-only";
 
 import { getCurrentAccount, type AccountContext } from "@/lib/auth/session";
 import { createServerSupabaseClient, createSupabaseAdminClient } from "@/lib/supabase/server";
+import {
+  resolveActiveProcess,
+  type ActiveProcessSelection
+} from "@/features/process-selection/server";
 import type { FabricationStatus } from "@/types/database";
 import type { WireframeShellDto } from "./types";
 import {
@@ -18,7 +22,8 @@ const ACTIVE_ASSIGNMENT_STATUSES: readonly FabricationStatus[] = [
 ];
 
 export async function getWireframeShellModel(
-  knownAccount?: AccountContext | null
+  knownAccount?: AccountContext | null,
+  knownActiveProcess?: ActiveProcessSelection | null
 ): Promise<WireframeShellDto> {
   const account = knownAccount ?? await getCurrentAccount();
 
@@ -32,6 +37,9 @@ export async function getWireframeShellModel(
     };
   }
 
+  const activeProcess = knownActiveProcess === undefined
+    ? await resolveActiveProcess(account)
+    : knownActiveProcess;
   const supabase = await createServerSupabaseClient();
   const templatesResult = await supabase
     .from("process_templates")
@@ -44,8 +52,10 @@ export async function getWireframeShellModel(
     throw templatesResult.error;
   }
 
-  const activeTemplates = templatesResult.data ?? [];
-  const activeTemplate = activeTemplates[0] ?? null;
+  const newestActiveTemplates = templatesResult.data ?? [];
+  const activeTemplates = activeProcess && !newestActiveTemplates.some((template) => template.id === activeProcess.id)
+    ? [activeProcess, ...newestActiveTemplates.slice(0, 23)]
+    : newestActiveTemplates;
   const templateIds = activeTemplates.map((template) => template.id);
   const [assignmentsResult, calendarResult] = await Promise.all([
     templateIds.length
@@ -57,11 +67,11 @@ export async function getWireframeShellModel(
           .is("archived_at", null)
           .in("status", [...ACTIVE_ASSIGNMENT_STATUSES])
       : Promise.resolve({ data: [], error: null }),
-    activeTemplate
+    activeProcess
       ? supabase
           .from("process_calendar_events")
           .select("id", { count: "exact", head: true })
-          .eq("process_template_id", activeTemplate.id)
+          .eq("process_template_id", activeProcess.id)
       : Promise.resolve({ count: 0, error: null })
   ]);
 
@@ -90,12 +100,12 @@ export async function getWireframeShellModel(
 
   return {
     currentUser: mapProfileToTeamIdentity(account.profile as TeamDirectoryProfile),
-    currentProcess: activeTemplate
+    currentProcess: activeProcess
       ? {
-          id: activeTemplate.id,
-          name: activeTemplate.name,
-          version: activeTemplate.version,
-          activeDieCount: activeDieCountByTemplate.get(activeTemplate.id) ?? 0
+          id: activeProcess.id,
+          name: activeProcess.name,
+          version: activeProcess.version,
+          activeDieCount: activeDieCountByTemplate.get(activeProcess.id) ?? 0
         }
       : null,
     processes,

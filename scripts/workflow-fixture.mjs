@@ -799,9 +799,11 @@ async function verifyFixture(supabase) {
     })),
     expectedStartDies,
     routeHints: {
+      legacySelection: `/process-flow?processId=${FIXTURE.templateId}`,
       dashboard: "/dashboard",
-      calendar: `/calendar?processId=${FIXTURE.templateId}`,
-      processFlow: `/process-flow?processId=${FIXTURE.templateId}`,
+      calendar: "/calendar",
+      analysis: "/analysis",
+      processFlow: "/process-flow",
       waferStatus: "/wafer-status"
     }
   };

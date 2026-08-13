@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   getWorkflowRefreshDebounceMs,
@@ -20,9 +20,15 @@ import {
   setProcessWorkspaceSnapshot
 } from "@/features/workspace/store";
 
-export function RealtimeWorkflowBridge({ enabled = true }: { enabled?: boolean }) {
+export function RealtimeWorkflowBridge({
+  activeProcessId,
+  enabled = true
+}: {
+  activeProcessId: string | null;
+  enabled?: boolean;
+}) {
   const router = useRouter();
-  const processTemplateId = useSearchParams().get("processId");
+  const processTemplateId = activeProcessId;
   const refreshTimerRef = useRef<number | null>(null);
   const revisionRef = useRef(0);
 

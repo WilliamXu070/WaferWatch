@@ -32,6 +32,10 @@ test("keeps the last selected die and tab isolated to its process", () => {
     tab: "history"
   });
   assert.equal(readWaferStatusResumeState(storage, "process-b"), null);
+  assert.equal(
+    getWaferStatusResumeStorageKey("process-a"),
+    "waferwatch:wafer-status:resume:process-a"
+  );
 });
 
 test("ignores malformed or outdated saved Status state", () => {

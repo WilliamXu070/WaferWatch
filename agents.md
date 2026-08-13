@@ -29,6 +29,7 @@ Prefer small domain modules over adding more state or handlers to the two large 
 ## Invariants
 
 - Process Flow graph edges are visual; server actions remain the authority for movement eligibility.
+- Active process selection is server-resolved browser-session state. Product URLs omit `processId`; internal database, API, realtime, cache, mutation, and local-storage scopes continue to use the canonical process UUID.
 - Phone taps select. Only a previously selected die can move; two-finger pinch owns zoom.
 - The Process Flow selection inspector does not expose Move to or Submit review actions; movement and review submission stay on the canvas gesture path.
 - Checkpoint history is append-only. Corrections and undo supersede evidence; they do not rewrite it.

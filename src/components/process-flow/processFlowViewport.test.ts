@@ -50,6 +50,10 @@ test("stores independent viewport state for every process", () => {
   assert.notEqual(getProcessFlowViewportStorageKey("process-a"), getProcessFlowViewportStorageKey("process-b"));
   assert.equal(readProcessFlowViewport(storage, "process-a")?.centerX, 1200);
   assert.equal(readProcessFlowViewport(storage, "process-b")?.centerX, 2200);
+  assert.equal(
+    getProcessFlowViewportStorageKey("process-a"),
+    "waferwatch:process-flow-viewport:v1:process-a"
+  );
 });
 
 test("captures scene-space center and restores it across viewport sizes", () => {

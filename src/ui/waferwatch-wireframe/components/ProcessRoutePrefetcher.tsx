@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { getProcessRoutesToPrefetch } from "./processRoutePrefetch";
 
 /**
@@ -10,19 +10,17 @@ import { getProcessRoutesToPrefetch } from "./processRoutePrefetch";
  * the remaining routes stay serialized across idle slices.
  */
 export function ProcessRoutePrefetcher({
-  defaultProcessId
+  activeProcessId
 }: {
-  defaultProcessId?: string | null;
+  activeProcessId: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
-  const selectedProcessId = useSearchParams().get("processId");
-  const processId = selectedProcessId ?? defaultProcessId ?? null;
 
   useEffect(() => {
-    if (!processId) return;
+    if (!activeProcessId) return;
 
-    const pendingHrefs = getProcessRoutesToPrefetch(processId, pathname);
+    const pendingHrefs = getProcessRoutesToPrefetch(pathname);
     let cancelled = false;
     let timeoutId: number | null = null;
     let idleId: number | null = null;
@@ -72,7 +70,7 @@ export function ProcessRoutePrefetcher({
         window.cancelIdleCallback(idleId);
       }
     };
-  }, [pathname, processId, router]);
+  }, [activeProcessId, pathname, router]);
 
   return null;
 }

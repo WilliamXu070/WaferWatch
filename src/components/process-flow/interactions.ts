@@ -41,24 +41,19 @@ export function shouldEndWaferDragFromFrameEvent(eventType: string) {
 }
 
 export function getWaferDetailsHref({
-  processTemplateId,
   waferId,
   dieLabel,
   detailTab
 }: {
-  processTemplateId?: string;
   waferId?: string;
   dieLabel?: string | null;
   detailTab?: "history";
 }) {
-  if (!processTemplateId || !waferId) {
+  if (!waferId) {
     return null;
   }
 
-  const routeSearch = new URLSearchParams({
-    processId: processTemplateId,
-    waferId
-  });
+  const routeSearch = new URLSearchParams({ waferId });
   if (dieLabel?.trim()) {
     routeSearch.set("dieLabel", dieLabel.trim());
   }

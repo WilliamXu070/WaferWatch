@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { fail, ok } from "@/lib/action-result";
 import { assertProjectAccess, requireAccount, requireProcessManager } from "@/lib/auth/session";
 import { toErrorMessage } from "@/lib/errors";
@@ -44,6 +44,10 @@ import type {
   WaferStatusStepParameterRecord,
   WaferStatusStepParameterValue
 } from "@/ui/waferwatch-wireframe/types";
+import {
+  clearActiveProcessCookieIfSelected,
+  setActiveProcessCookie
+} from "@/features/process-selection/server";
 
 type ProcessTemplateWriteContext = {
   id: string;
@@ -841,6 +845,8 @@ export async function createProcessTemplate(input: unknown) {
 
     revalidatePath("/", "layout");
     revalidateProcessFlow(data.id);
+    await setActiveProcessCookie(data.id);
+    refresh();
     return ok(data);
   } catch (error) {
     return fail(toErrorMessage(error));
@@ -915,7 +921,9 @@ export async function deleteProcessTemplate(input: unknown) {
       return fail(templateError.message);
     }
 
+    await clearActiveProcessCookieIfSelected(parsed.templateId);
     revalidateProcessFlow(template.id);
+    refresh();
     return ok({ deleted: parsed.templateId });
   } catch (error) {
     return fail(toErrorMessage(error));

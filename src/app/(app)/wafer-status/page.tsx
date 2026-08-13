@@ -5,6 +5,7 @@ import {
 import { canEditProject, getCurrentAccount } from "@/lib/auth/session";
 import { WaferStatusView } from "@/ui/waferwatch-wireframe/components/WaferStatusView";
 import type { DieDetailTab } from "@/ui/waferwatch-wireframe/components/wafer-die-detail/waferDieDetailData";
+import { resolveActiveProcess } from "@/features/process-selection/server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,6 @@ export const metadata = {
 };
 
 type WaferStatusSearchParams = {
-  processId?: string | string[];
   waferId?: string | string[];
   dieLabel?: string | string[];
   tab?: string | string[];
@@ -33,22 +33,9 @@ export default async function WireframeWaferStatusPage({
   searchParams: Promise<WaferStatusSearchParams>;
 }) {
   const resolvedSearchParams = await searchParams;
-  const requestedProcessId = firstSearchValue(resolvedSearchParams.processId);
   const requestedWaferId = firstSearchValue(resolvedSearchParams.waferId);
   const requestedDieLabel = firstSearchValue(resolvedSearchParams.dieLabel);
   const requestedTab = getInitialDetailTab(firstSearchValue(resolvedSearchParams.tab));
-  if (!requestedProcessId) {
-    return (
-      <WaferStatusView
-        model={getEmptyWaferStatusModel()}
-        canEdit={false}
-        processId=""
-        emptyTitle="No process selected"
-        emptyDescription="Select a process first. Wafer / die status stays hidden until a process and this sub-view are selected."
-      />
-    );
-  }
-
   const account = await getCurrentAccount();
 
   if (!account) {
@@ -56,14 +43,29 @@ export default async function WireframeWaferStatusPage({
       <WaferStatusView
         model={getEmptyWaferStatusModel()}
         canEdit={false}
-        processId={requestedProcessId}
+        processId=""
         emptyTitle="No wafer status data"
         emptyDescription="Sign in with access to wafer records. No wireframe fallback data is injected."
       />
     );
   }
 
-  const model = await getWaferStatusModel(requestedProcessId);
+  const activeProcess = await resolveActiveProcess(account);
+  const activeProcessId = activeProcess?.id ?? null;
+
+  if (!activeProcessId) {
+    return (
+      <WaferStatusView
+        model={getEmptyWaferStatusModel()}
+        canEdit={false}
+        processId=""
+        emptyTitle="No process selected"
+        emptyDescription="Create or select an active process to view wafer and die status."
+      />
+    );
+  }
+
+  const model = await getWaferStatusModel(activeProcessId);
   const projectIds = Array.from(
     new Set(
       model.families
@@ -78,14 +80,14 @@ export default async function WireframeWaferStatusPage({
 
   return (
     <WaferStatusView
-      key={[requestedProcessId, requestedWaferId ?? "overview", requestedDieLabel ?? "", requestedTab].join(":")}
+      key={[activeProcessId, requestedWaferId ?? "overview", requestedDieLabel ?? "", requestedTab].join(":")}
       model={model}
       canEdit={canEdit}
       currentUser={account ? {
         id: account.userId,
         displayName: account.profile.display_name?.trim() || account.email?.trim() || "WaferWatch user"
       } : null}
-      processId={requestedProcessId}
+      processId={activeProcessId}
       initialWaferId={requestedWaferId}
       initialDieLabel={requestedDieLabel}
       initialDetailTab={requestedTab}

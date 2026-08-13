@@ -1,4 +1,5 @@
 import type { ActionResult } from "@/lib/action-result";
+import type { ActiveProcessDestination } from "@/features/process-selection/selection";
 
 export type UpdateProcessNameAction = (input: {
   templateId: string;
@@ -16,3 +17,8 @@ export type CreateProcessAction = (input: {
 export type DeleteProcessAction = (input: {
   templateId: string;
 }) => Promise<ActionResult<{ deleted: string }>>;
+
+export type SelectProcessAction = (input: {
+  processId: string;
+  destination: ActiveProcessDestination;
+}) => Promise<void>;

@@ -1893,7 +1893,6 @@ export function ProcessFlowDiagram({
   const prefetchWaferDetails = useCallback((wafer: WaferPin) => {
     if (!wafer.waferId) return;
     const href = getWaferDetailsPrefetchHref({
-      processTemplateId,
       waferId: wafer.waferId,
       dieLabel: wafer.dieLabel,
       detailTab: "history"
@@ -1904,11 +1903,10 @@ export function ProcessFlowDiagram({
 
     prefetchedWaferDetailsRef.current.add(href);
     setWaferDetailsFullPrefetchHref(href);
-  }, [processTemplateId]);
+  }, []);
 
   const openWaferDetails = useCallback((wafer: WaferPin) => {
     const href = getWaferDetailsHref({
-      processTemplateId,
       waferId: wafer.waferId,
       dieLabel: wafer.dieLabel,
       detailTab: "history"
@@ -1919,7 +1917,7 @@ export function ProcessFlowDiagram({
 
     setOpeningWaferDetailsLabel(getWaferChipLabel(wafer));
     router.push(href);
-  }, [processTemplateId, router]);
+  }, [router]);
 
   const openStepParameters = useCallback((stepId: string) => {
     const node = getLatestNode(stepId);

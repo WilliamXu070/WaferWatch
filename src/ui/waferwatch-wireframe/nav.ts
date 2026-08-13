@@ -1,7 +1,9 @@
+import type { ActiveProcessDestination } from "@/features/process-selection/selection";
+
 export type SidebarNavItem = {
   key: string;
   label: string;
-  href: string;
+  href: ActiveProcessDestination;
   icon: "grid" | "calendar" | "analysis" | "flow" | "waferStatus";
   badge?: number;
 };

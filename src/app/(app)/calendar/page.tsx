@@ -1,10 +1,10 @@
 import { CalendarView } from "@/ui/waferwatch-wireframe/components/CalendarView";
 import { getProcessCalendarSchedule, type ProcessCalendarLocation } from "@/features/calendar/queries";
 import {
-  getFirstActiveProcessTemplateId,
   getProcessDashboardData,
   getProcessTemplate
 } from "@/features/process-flows/queries";
+import { resolveActiveProcess } from "@/features/process-selection/server";
 import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -14,10 +14,6 @@ export const metadata = {
 };
 
 export const dynamic = "force-dynamic";
-
-type SearchParams = {
-  processId?: string | string[];
-};
 
 const LOCATIONS: readonly ProcessCalendarLocation[] = ["McMaster", "Waterloo", "Toronto"];
 
@@ -62,11 +58,6 @@ type CalendarLoadResult =
   | { status: "no-process" }
   | { status: "unavailable"; message: string };
 
-function getRequestedProcessId(searchParams: SearchParams) {
-  const raw = searchParams.processId;
-  return Array.isArray(raw) ? raw[0] : raw;
-}
-
 function toCalendarLocation(value: string): ProcessCalendarLocation {
   return LOCATIONS.find((location) => location === value) ?? "McMaster";
 }
@@ -85,7 +76,7 @@ function getWeekEndExclusiveIso(startDate: Date) {
   return endDate.toISOString();
 }
 
-async function loadBackendCalendar(requestedProcessId?: string): Promise<CalendarLoadResult> {
+async function loadBackendCalendar(processId: string | null): Promise<CalendarLoadResult> {
   const supabase = await createServerSupabaseClient();
   const account = await getCurrentAccount();
 
@@ -93,7 +84,6 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
     return { status: "unauthenticated" };
   }
 
-  const processId = requestedProcessId ?? await getFirstActiveProcessTemplateId();
   if (!processId) {
     return { status: "no-process" };
   }
@@ -162,13 +152,9 @@ async function loadBackendCalendar(requestedProcessId?: string): Promise<Calenda
   };
 }
 
-export default async function WireframeCalendarPage({
-  searchParams
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
-  const requestedProcessId = getRequestedProcessId(await searchParams);
-  const calendarResult = await loadBackendCalendar(requestedProcessId).catch((error: unknown) => ({
+export default async function WireframeCalendarPage() {
+  const activeProcess = await resolveActiveProcess();
+  const calendarResult = await loadBackendCalendar(activeProcess?.id ?? null).catch((error: unknown) => ({
     status: "unavailable" as const,
     message: error instanceof Error ? error.message : "Calendar backend could not be loaded."
   }));

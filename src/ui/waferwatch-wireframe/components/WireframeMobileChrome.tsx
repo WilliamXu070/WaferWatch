@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import type { WireframeShellDto } from "@/features/wireframe/types";
 import type { CreateProcessAction } from "./shellActions";
@@ -33,14 +33,6 @@ const iconByKey = {
   flow: FlowIcon,
   waferStatus: WaferStatusIcon
 } as const;
-
-function hrefWithProcess(href: string, processId: string) {
-  return `${href}?processId=${encodeURIComponent(processId)}`;
-}
-
-function withCurrentProcess(href: string, processId: string | null | undefined) {
-  return processId ? hrefWithProcess(href, processId) : href;
-}
 
 function MobileNavLink({
   item,
@@ -90,8 +82,6 @@ export function WireframeMobileChrome({
 }) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const selectedProcessId = searchParams.get("processId");
   const currentProcess = shell.currentProcess;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isCreatingProcess, setIsCreatingProcess] = useState(false);
@@ -103,17 +93,11 @@ export function WireframeMobileChrome({
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   const mainNav = mainNavItems.map((item) => ({
     ...item,
-    href: withCurrentProcess(item.href, currentProcess?.id),
     badge: item.key === "calendar" && shell.calendarEventCount > 0 ? shell.calendarEventCount : item.badge
   }));
-  const processNav = currentProcess
-    ? processNavItems.map((item) => ({
-        ...item,
-        href: hrefWithProcess(item.href, currentProcess.id)
-      }))
-    : processNavItems;
+  const processNav = processNavItems;
   const bottomNav = [...mainNav, ...processNav];
-  const currentProcessSelected = Boolean(currentProcess && selectedProcessId === currentProcess.id);
+  const currentProcessSelected = Boolean(currentProcess);
 
   const startCreatingProcess = () => {
     if (!onCreateProcess) return;
@@ -148,8 +132,7 @@ export function WireframeMobileChrome({
         setIsCreatingProcess(false);
         setCreateNameDraft("");
         setDrawerOpen(false);
-        router.refresh();
-        router.push(hrefWithProcess("/process-flow", res.data.id));
+        router.push("/process-flow");
       }).catch(() => {
         createInFlightRef.current = false;
       });

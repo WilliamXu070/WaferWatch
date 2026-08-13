@@ -2,9 +2,14 @@
 
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { WireframeShellDto } from "@/features/wireframe/types";
-import type { CreateProcessAction, DeleteProcessAction, UpdateProcessNameAction } from "./shellActions";
+import type {
+  CreateProcessAction,
+  DeleteProcessAction,
+  SelectProcessAction,
+  UpdateProcessNameAction
+} from "./shellActions";
 import {
   ActivityIcon,
   CalendarIcon,
@@ -69,55 +74,41 @@ function NavRow({
   );
 }
 
-function hrefWithProcess(href: string, processId: string) {
-  return `${href}?processId=${encodeURIComponent(processId)}`;
-}
-
-function withCurrentProcess(href: string, processId: string | null | undefined) {
-  return processId ? hrefWithProcess(href, processId) : href;
-}
-
 export function WireframeSidebar({
   shell,
   onUpdateProcessName,
   onCreateProcess,
-  onDeleteProcess
+  onDeleteProcess,
+  onSelectProcess
 }: {
   shell: WireframeShellDto;
   onUpdateProcessName?: UpdateProcessNameAction;
   onCreateProcess?: CreateProcessAction;
   onDeleteProcess?: DeleteProcessAction;
+  onSelectProcess?: SelectProcessAction;
 }) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
-  const searchParams = useSearchParams();
-  const selectedProcessId = searchParams.get("processId");
   const processes = shell.processes.length
     ? shell.processes
     : shell.currentProcess
       ? [shell.currentProcess]
       : [];
-  const currentProcess =
-    processes.find((process) => process.id === selectedProcessId) ??
-    shell.currentProcess ??
-    processes[0] ??
-    null;
-  const mainNav = mainNavItems.map((item) => ({
-    ...item,
-    href: withCurrentProcess(item.href, currentProcess?.id)
-  }));
+  const currentProcess = shell.currentProcess ?? processes[0] ?? null;
+  const activeProcessId = currentProcess?.id ?? null;
+  const mainNav = mainNavItems;
   const processNav = processNavItems;
 
   const [expandedProcessState, setExpandedProcessState] = useState<{
-    routeProcessId: string | null;
+    activeProcessId: string | null;
     expandedProcessId: string | null;
   }>(() => ({
-    routeProcessId: selectedProcessId,
-    expandedProcessId: selectedProcessId ?? currentProcess?.id ?? null
+    activeProcessId,
+    expandedProcessId: activeProcessId
   }));
-  const expandedProcessId = expandedProcessState.routeProcessId === selectedProcessId
+  const expandedProcessId = expandedProcessState.activeProcessId === activeProcessId
     ? expandedProcessState.expandedProcessId
-    : selectedProcessId;
+    : activeProcessId;
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   // inline rename
@@ -128,6 +119,7 @@ export function WireframeSidebar({
   const [, startRename] = useTransition();
   const [, startCreate] = useTransition();
   const [, startDelete] = useTransition();
+  const [, startSelect] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
   const createInFlightRef = useRef(false);
@@ -166,14 +158,14 @@ export function WireframeSidebar({
   const handleProcessClick = (processId: string) => {
     if (editingProcessId) return;
     setExpandedProcessState({
-      routeProcessId: selectedProcessId,
+      activeProcessId,
       expandedProcessId: toggleExpandedProcessId(expandedProcessId, processId)
     });
   };
 
   const handleProcessDoubleClick = (process: NonNullable<WireframeShellDto["currentProcess"]>) => {
     if (!onUpdateProcessName) return;
-    setExpandedProcessState({ routeProcessId: selectedProcessId, expandedProcessId: process.id });
+    setExpandedProcessState({ activeProcessId, expandedProcessId: process.id });
     startEditing(process);
   };
 
@@ -209,8 +201,7 @@ export function WireframeSidebar({
         if (!res.ok) return;
         setIsCreatingProcess(false);
         setCreateNameDraft("");
-        router.refresh();
-        router.push(hrefWithProcess("/process-flow", res.data.id));
+        router.push("/process-flow");
       }).catch(() => {
         createInFlightRef.current = false;
       });
@@ -228,15 +219,16 @@ export function WireframeSidebar({
         deletingProcessIdsRef.current.delete(process.id);
         if (!res.ok) return;
         setExpandedProcessState({
-          routeProcessId: selectedProcessId,
+          activeProcessId,
           expandedProcessId: expandedProcessId === process.id ? null : expandedProcessId
         });
         if (editingProcessId === process.id) {
           setEditingProcessId(null);
         }
-        router.refresh();
-        if (selectedProcessId === process.id) {
+        if (activeProcessId === process.id) {
           router.push("/dashboard");
+        } else {
+          router.refresh();
         }
       }).catch(() => {
         deletingProcessIdsRef.current.delete(process.id);
@@ -284,8 +276,8 @@ export function WireframeSidebar({
           {processes.length ? (
             processes.map((process) => {
               const processDrawerOpen = expandedProcessId === process.id;
-              const processIsSelected = process.id === selectedProcessId;
-              const processActive = processDrawerOpen && processNav.some((item) => isActive(item.href));
+              const processIsSelected = process.id === activeProcessId;
+              const processActive = processDrawerOpen && processIsSelected && processNav.some((item) => isActive(item.href));
 
               return (
                 <div key={process.id}>
@@ -354,23 +346,48 @@ export function WireframeSidebar({
                       <div className="mt-2 flex flex-col gap-1 pl-6">
                         {processNav.map((item) => {
                           const Icon = iconByKey[item.icon];
-                          const active = processActive && isActive(item.href) && process.id === selectedProcessId;
-                          return (
-                            <Link
-                              key={item.key}
-                              href={hrefWithProcess(item.href, process.id)}
-                              prefetch={shouldFullyPrefetchProcessRoute(item.key) ? true : undefined}
-                              aria-current={active ? "page" : undefined}
-                              className={[
-                                "flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-[14px] transition-colors",
-                                active
-                                  ? "bg-[#f3f4f6] font-semibold text-[#151512]"
-                                  : "font-semibold text-[#6b6a5f] hover:bg-[#f8f9fb]"
-                              ].join(" ")}
-                            >
+                          const active = processActive && isActive(item.href);
+                          const className = [
+                            "flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 text-left text-[14px] transition-colors",
+                            active
+                              ? "bg-[#f3f4f6] font-semibold text-[#151512]"
+                              : "font-semibold text-[#6b6a5f] hover:bg-[#f8f9fb]"
+                          ].join(" ");
+                          const content = (
+                            <>
                               <Icon className={active ? "text-[#151512]" : "text-[#9c9a8c]"} />
                               {item.label}
+                            </>
+                          );
+
+                          return processIsSelected ? (
+                            <Link
+                              key={item.key}
+                              href={item.href}
+                              prefetch={shouldFullyPrefetchProcessRoute(item.key) ? true : undefined}
+                              aria-current={active ? "page" : undefined}
+                              className={className}
+                            >
+                              {content}
                             </Link>
+                          ) : (
+                            <button
+                              key={item.key}
+                              type="button"
+                              disabled={!onSelectProcess}
+                              className={className}
+                              onClick={() => {
+                                if (!onSelectProcess) return;
+                                startSelect(() => {
+                                  void onSelectProcess({
+                                    processId: process.id,
+                                    destination: item.href
+                                  });
+                                });
+                              }}
+                            >
+                              {content}
+                            </button>
                           );
                         })}
                       </div>

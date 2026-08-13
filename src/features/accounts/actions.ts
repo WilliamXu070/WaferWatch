@@ -9,6 +9,7 @@ import { PASSWORD_RECOVERY_COOKIE } from "@/lib/auth/password-recovery";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { formString } from "@/lib/validation";
 import { getAppUrl } from "@/lib/app-url";
+import { clearActiveProcessCookie } from "@/features/process-selection/server";
 
 const authSchema = z.object({
   email: z.string().email(),
@@ -258,6 +259,7 @@ export async function updatePasswordFormAction(
     };
   }
 
+  await clearActiveProcessCookie();
   await supabase.auth.signOut({ scope: "local" });
   cookieStore.delete(PASSWORD_RECOVERY_COOKIE);
   revalidatePath("/", "layout");
@@ -265,6 +267,7 @@ export async function updatePasswordFormAction(
 }
 
 export async function signOut() {
+  await clearActiveProcessCookie();
   const supabase = await createServerSupabaseClient();
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
