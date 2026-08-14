@@ -33,6 +33,7 @@ Prefer small domain modules over adding more state or handlers to the two large 
 - Phone taps select. Only a previously selected die can move; two-finger pinch owns zoom.
 - The Process Flow selection inspector does not expose Move to or Submit review actions; movement and review submission stay on the canvas gesture path.
 - Checkpoint history is append-only. Corrections and undo supersede evidence; they do not rewrite it.
+- Diced-child Process History shows the inherited parent Dicing visit once. Redo preserves the completed source visit and highlights the distinct repeated destination visit.
 - Wafer / Die Status has exactly two tabs: Overview and Process History.
 - Poling and inspection workspaces may show shared die data; do not attribute it to a historical visit.
 - Analysis reads only the newest ready, immutable import for the selected process project; unavailable or unauthorized project data must never fall back to a bundled catalog.

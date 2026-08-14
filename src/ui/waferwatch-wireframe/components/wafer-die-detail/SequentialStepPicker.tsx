@@ -95,13 +95,14 @@ export function SequentialStepPicker({
         const isSelected = selectedVisitId === visit.id;
         const wasReturned = visit.state === "returned";
         const historyAction = getHistoryAction(visit, visits.slice(0, index));
+        const hasRedoTone = wasReturned || historyAction?.kind === "redo";
         const visitTimeLabel = visit.completedAt
           ? formatVisitTime(visit.completedAt)
           : visit.state === "current"
             ? "Current step"
             : formatVisitTime(visit.startedAt ?? visit.occurredAt);
-        const markerColor = wasReturned ? "#a65d22" : palette.accent;
-        const rowBackground = wasReturned
+        const markerColor = hasRedoTone ? "#a65d22" : palette.accent;
+        const rowBackground = hasRedoTone
           ? isSelected ? "#f5dfca" : "#fff6eb"
           : isSelected ? palette.selected : undefined;
 
@@ -123,9 +124,9 @@ export function SequentialStepPicker({
               <span
                 className="wafer-step-picker__marker relative z-10 grid h-7 w-7 place-items-center rounded-full border text-[11px] font-semibold text-[#fffefb]"
                 style={{
-                  backgroundColor: wasReturned ? markerColor : isSelected ? "#171714" : markerColor,
-                  borderColor: wasReturned ? markerColor : isSelected ? "#171714" : markerColor,
-                  boxShadow: wasReturned && isSelected ? "0 0 0 2px #171714" : undefined
+                  backgroundColor: hasRedoTone ? markerColor : isSelected ? "#171714" : markerColor,
+                  borderColor: hasRedoTone ? markerColor : isSelected ? "#171714" : markerColor,
+                  boxShadow: hasRedoTone && isSelected ? "0 0 0 2px #171714" : undefined
                 }}
                 aria-hidden
               >

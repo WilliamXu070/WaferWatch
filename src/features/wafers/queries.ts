@@ -49,6 +49,7 @@ import {
   type WaferStatusAppearanceSurfaceSource,
   type WaferStatusAppearanceSnapshot
 } from "@/features/wafers/waferStatusAppearance";
+import { buildEffectiveCheckpointRouteMap } from "@/features/wafers/effectiveCheckpointRoutes";
 
 type JsonRecord = { [key: string]: Json | undefined };
 type UnknownRecord = Record<string, unknown>;
@@ -341,6 +342,7 @@ function uniqueCorrectionEvents(rows: readonly OperationRunHistoryView[]) {
 
 function buildCanonicalHistory(rows: readonly OperationRunHistoryView[]): CanonicalHistory {
   const correctionEvents = uniqueCorrectionEvents(rows);
+  const effectiveCheckpointRoutes = buildEffectiveCheckpointRouteMap(correctionEvents);
   const undoneAttemptIds = new Set<string>();
   const undoneDecisionIds = new Set<string>();
   const undoneCorrectionIds = new Set<string>();
@@ -419,18 +421,24 @@ function buildCanonicalHistory(rows: readonly OperationRunHistoryView[]): Canoni
       const decidedAt = stringValue(checkpoint, "decidedAt");
       const decision = stringValue(checkpoint, "decision");
       if (decisionId && decidedAt && decision && !undoneDecisionIds.has(decisionId)) {
+        const effectiveRoute = effectiveCheckpointRoutes.get(decisionId) ?? null;
+        const effectiveOutcome = effectiveRoute?.outcome ?? (decision === "redo" ? "redo" : "approve");
         decisions.push({
           id: decisionId,
           attemptId,
-          outcome: decision === "redo" ? "redo" : "approve",
+          outcome: effectiveOutcome,
           occurredAt: decidedAt,
           actor: {
             id: stringValue(checkpoint, "decidedById"),
             name: stringValue(checkpoint, "decidedByName")
           },
           note: stringValue(checkpoint, "decisionNote"),
-          destinationStepId: stringValue(checkpoint, "targetStepId"),
-          destinationStepName: stringValue(checkpoint, "targetStepName"),
+          destinationStepId: effectiveRoute
+            ? effectiveRoute.destinationStepId
+            : stringValue(checkpoint, "targetStepId"),
+          destinationStepName: effectiveRoute
+            ? effectiveRoute.destinationStepName
+            : stringValue(checkpoint, "targetStepName"),
           supersedesDecisionId: stringValue(checkpoint, "supersedesDecisionId")
         });
       }
@@ -478,6 +486,7 @@ function buildCanonicalHistory(rows: readonly OperationRunHistoryView[]): Canoni
     if (parent && parent.process_step_id !== row.process_step_id || row.run_kind === "restore" || row.run_kind === "redo") {
       reverts.push({
         id: `run-link:${row.operation_run_id}`,
+        kind: row.run_kind === "redo" ? "redo" : "restore",
         fromStepId: parent?.process_step_id ?? row.process_step_id,
         toStepId: row.process_step_id,
         occurredAt: row.created_at,

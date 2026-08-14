@@ -40,6 +40,89 @@ test("reduces audit events to one row per performed step plus the current step",
   assert.equal(visits[3]?.state, "current");
 });
 
+test("shows one inherited Dicing visit instead of the zero-duration child handoff marker", () => {
+  const inheritedFromParent = { waferId: "parent-beta", waferCode: "BETA" };
+  const dicingCompletedAt = "2026-07-17T13:15:01.583493Z";
+  const visits = buildStepVisitHistory(tile({
+    currentStepId: "clean",
+    checkpointHistory: [{
+      kind: "attempt",
+      id: "parent-dicing-attempt",
+      operationRunMemberId: "parent-dicing-member",
+      inheritedFromParent,
+      stepId: "dice",
+      stepName: "Dicing",
+      attemptNumber: 1,
+      state: "approved",
+      occurredAt: "2026-07-17T13:14:52.334Z",
+      startedAt: "2026-07-17T13:14:52.334Z",
+      submission: {
+        id: "parent-dicing-submission",
+        occurredAt: "2026-07-17T13:14:58.066Z",
+        actor: { id: "reviewer", name: "Reviewer" },
+        note: "Moved to Cleaning."
+      },
+      withdrawals: [],
+      decisions: [],
+      effectiveDecision: null
+    }],
+    operationRunVisits: [{
+      id: "operation-member:parent-dicing-member",
+      operationRunId: "parent-dicing-run",
+      operationRunMemberId: "parent-dicing-member",
+      legacyStepExecutionId: "parent-dicing-execution",
+      stepId: "dice",
+      stepName: "Dicing",
+      processArea: "Dicing",
+      runKind: "normal",
+      status: "completed",
+      startedAt: "2026-07-17T13:14:52.334Z",
+      completedAt: dicingCompletedAt,
+      createdAt: "2026-07-17T13:14:52.537Z",
+      note: "Moved to Cleaning.",
+      actor: { id: "reviewer", name: "Reviewer" },
+      parameterRecords: [],
+      inheritedFromParent
+    }, {
+      id: "operation-member:child-dicing-member",
+      operationRunId: "child-dicing-run",
+      operationRunMemberId: "child-dicing-member",
+      legacyStepExecutionId: "child-dicing-execution",
+      stepId: "dice",
+      stepName: "Dicing",
+      processArea: "Dicing",
+      runKind: "normal",
+      status: "completed",
+      startedAt: dicingCompletedAt,
+      completedAt: dicingCompletedAt,
+      createdAt: dicingCompletedAt,
+      note: null,
+      actor: { id: null, name: null },
+      parameterRecords: []
+    }, {
+      id: "operation-member:child-cleaning-member",
+      operationRunId: "child-cleaning-run",
+      operationRunMemberId: "child-cleaning-member",
+      legacyStepExecutionId: "child-cleaning-execution",
+      stepId: "clean",
+      stepName: "Cleaning",
+      processArea: "Clean",
+      runKind: "normal",
+      status: "queued",
+      startedAt: dicingCompletedAt,
+      completedAt: null,
+      createdAt: dicingCompletedAt,
+      note: null,
+      actor: { id: null, name: null },
+      parameterRecords: []
+    }]
+  }));
+
+  assert.deepEqual(visits.map((visit) => visit.stepName), ["Dicing", "Cleaning"]);
+  assert.deepEqual(visits[0]?.inheritedFromParent, inheritedFromParent);
+  assert.equal(visits[1]?.state, "current");
+});
+
 test("keeps repeated visits separate and assigns parameter records to the matching visit", () => {
   const base = tile();
   const cleaningStep = base.processSteps?.find((step) => step.id === "clean");
@@ -149,9 +232,10 @@ test("orders progression by completion time when repeated visits started in a di
       ["Pad Formation", null]
     ]
   );
-  assert.equal(visits[1]?.state, "returned");
+  assert.equal(visits[1]?.state, "completed");
   assert.equal(visits[1]?.redoDestinationStepName, "Cleaning");
-  assert.deepEqual(visits[1]?.historyAction, { kind: "redo", targetStepName: "Cleaning" });
+  assert.equal(visits[1]?.historyAction, null);
+  assert.deepEqual(visits[2]?.historyAction, { kind: "redo", targetStepName: "Cleaning" });
   assert.equal(visits[3]?.historyAction, null);
 });
 
@@ -242,43 +326,111 @@ test("excludes completed canonical placeholders that have no occurrence timestam
   assert.deepEqual(visits.map((visit) => visit.stepName), ["Cleaning"]);
 });
 
-test("labels the current destination after a redo as a continuation", () => {
-  const base = tile();
+test("keeps completed Chromium and marks the current Pre-Bake destination as the redo", () => {
   const visits = buildStepVisitHistory(tile({
-    currentStepId: "clean",
-    processSteps: base.processSteps?.map((step) => step.id === "clean" ? {
-      ...step,
-      status: "queued",
+    currentStepId: "pre-bake",
+    processSteps: [{
+      id: "chromium",
+      name: "Chromium Deposition",
+      processArea: "Deposition",
+      executionMode: "main",
+      stepOrder: 1,
+      status: "completed",
+      executionId: "chromium-execution",
+      noteAuthorId: null,
+      noteAuthorName: null,
+      runNote: "Chromium complete",
+      startedAt: "2026-07-16T15:10:00Z",
+      completedAt: "2026-07-16T15:14:00Z",
+      createdAt: "2026-07-16T15:10:00Z"
+    }, {
+      id: "pre-bake",
+      name: "Pre-Bake",
+      processArea: "Lithography",
+      executionMode: "main",
+      stepOrder: 2,
+      status: "redo_required",
+      executionId: "pre-bake-redo-execution",
+      noteAuthorId: null,
+      noteAuthorName: null,
+      runNote: null,
+      startedAt: null,
       completedAt: null,
-      startedAt: "2026-07-16T15:16:00Z"
-    } : step),
+      createdAt: "2026-07-16T15:15:00Z"
+    }],
     checkpointHistory: [{
       kind: "attempt",
-      id: "attempt-clean-redo",
-      stepId: "dice",
-      stepName: "Dicing",
+      id: "attempt-chromium-redo",
+      operationRunMemberId: "chromium-member",
+      stepId: "chromium",
+      stepName: "Chromium Deposition",
       attemptNumber: 1,
       state: "redo_required",
       occurredAt: "2026-07-16T15:10:00Z",
       startedAt: "2026-07-16T15:10:00Z",
-      submission: { id: "submission-clean-redo", occurredAt: "2026-07-16T15:14:00Z", actor: { id: "reviewer", name: "Reviewer" }, note: null },
+      submission: { id: "submission-chromium-redo", occurredAt: "2026-07-16T15:14:00Z", actor: { id: "reviewer", name: "Reviewer" }, note: "Chromium complete" },
       withdrawals: [],
       decisions: [],
       effectiveDecision: {
-        id: "decision-clean-redo",
+        id: "decision-pre-bake-redo",
         outcome: "redo",
         occurredAt: "2026-07-16T15:15:00Z",
         actor: { id: "reviewer", name: "Reviewer" },
-        note: null,
-        destinationStepId: "clean",
-        destinationStepName: "Cleaning",
+        note: "Repeat Pre-Bake",
+        destinationStepId: "pre-bake",
+        destinationStepName: "Pre-Bake",
         supersedesDecisionId: null,
         isEffective: true
       }
+    }],
+    operationRunVisits: [{
+      id: "operation-member:chromium-member",
+      operationRunId: "chromium-run",
+      operationRunMemberId: "chromium-member",
+      legacyStepExecutionId: "chromium-execution",
+      stepId: "chromium",
+      stepName: "Chromium Deposition",
+      processArea: "Deposition",
+      runKind: "normal",
+      status: "completed",
+      startedAt: "2026-07-16T15:10:00Z",
+      completedAt: "2026-07-16T15:14:00Z",
+      createdAt: "2026-07-16T15:10:00Z",
+      note: "Chromium complete",
+      actor: { id: "reviewer", name: "Reviewer" },
+      parameterRecords: []
+    }, {
+      id: "operation-member:pre-bake-redo-member",
+      operationRunId: "pre-bake-redo-run",
+      operationRunMemberId: "pre-bake-redo-member",
+      legacyStepExecutionId: "pre-bake-redo-execution",
+      stepId: "pre-bake",
+      stepName: "Pre-Bake",
+      processArea: "Lithography",
+      runKind: "redo",
+      status: "redo_required",
+      startedAt: null,
+      completedAt: null,
+      createdAt: "2026-07-16T15:15:00Z",
+      note: "Repeat Pre-Bake",
+      actor: { id: "reviewer", name: "Reviewer" },
+      parameterRecords: []
+    }],
+    revertHistory: [{
+      id: "redo-pre-bake",
+      kind: "redo",
+      fromStepId: "chromium",
+      toStepId: "pre-bake",
+      occurredAt: "2026-07-16T15:15:00Z",
+      reason: "Repeat Pre-Bake"
     }]
   }));
 
-  assert.deepEqual(visits.at(-1)?.historyAction, { kind: "continue", targetStepName: "Cleaning" });
+  assert.deepEqual(visits.map((visit) => visit.stepName), ["Chromium Deposition", "Pre-Bake"]);
+  assert.equal(visits[0]?.state, "completed");
+  assert.equal(visits[0]?.historyAction, null);
+  assert.equal(visits[1]?.state, "current");
+  assert.deepEqual(visits[1]?.historyAction, { kind: "redo", targetStepName: "Pre-Bake" });
 });
 
 test("labels a recorded step revert as an undo without changing its chronological visit", () => {

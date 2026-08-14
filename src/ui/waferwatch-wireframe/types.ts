@@ -263,6 +263,7 @@ export type WaferStatusProcessStepModel = {
 
 export type WaferStatusRevertEvent = {
   id: string;
+  kind?: "redo" | "restore";
   fromStepId: string;
   toStepId: string;
   occurredAt: string;

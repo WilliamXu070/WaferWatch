@@ -20,6 +20,7 @@ export type StepVisitHistoryItem = {
   redoDestinationStepId: string | null;
   redoDestinationStepName: string | null;
   parameterRecords: readonly WaferStatusStepParameterRecord[];
+  isRedoVisit?: boolean;
   isHistoricalCorrection?: boolean;
   correctionReason?: string | null;
   historyAction?: {
@@ -54,6 +55,37 @@ function compareVisitProgression(first: StepVisitHistoryItem, second: StepVisitH
   if (progressionDifference) return progressionDifference;
 
   return compareVisitBeginnings(first, second);
+}
+
+function removeInheritedHandoffDuplicates(
+  visits: readonly NonNullable<WaferStatusTileModel["operationRunVisits"]>[number][],
+  attempts: readonly WaferStatusCheckpointAttemptEntry[]
+) {
+  const attemptedMemberIds = new Set(
+    attempts
+      .map((attempt) => attempt.operationRunMemberId)
+      .filter((memberId): memberId is string => Boolean(memberId))
+  );
+  const inheritedVisits = visits.filter((visit) => Boolean(visit.inheritedFromParent));
+
+  return visits.filter((visit) => {
+    if (
+      visit.inheritedFromParent
+      || visit.status !== "completed"
+      || !visit.startedAt
+      || !visit.completedAt
+      || attemptedMemberIds.has(visit.operationRunMemberId)
+      || timeValue(visit.startedAt) !== timeValue(visit.completedAt)
+    ) {
+      return true;
+    }
+
+    return !inheritedVisits.some((inherited) =>
+      inherited.stepId === visit.stepId
+      && Boolean(inherited.completedAt)
+      && timeValue(inherited.completedAt) === timeValue(visit.completedAt)
+    );
+  });
 }
 
 function assignParameterRecords(visits: StepVisitHistoryItem[]) {
@@ -132,26 +164,33 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
   const attempts = (tile.checkpointHistory ?? []).filter(
     (entry): entry is WaferStatusCheckpointAttemptEntry => entry.kind === "attempt"
   );
-  const canonicalVisits = (tile.operationRunVisits ?? []).filter((visit) =>
-    !(visit.status === "completed" && !visit.startedAt && !visit.completedAt)
+  const canonicalVisits = removeInheritedHandoffDuplicates(
+    (tile.operationRunVisits ?? []).filter((visit) =>
+      !(visit.status === "completed" && !visit.startedAt && !visit.completedAt)
+    ),
+    attempts
   );
   const visits: StepVisitHistoryItem[] = canonicalVisits.length > 0
     ? canonicalVisits.map((visit) => {
       const attempt = attempts.find(
         (candidate) => candidate.operationRunMemberId === visit.operationRunMemberId
       ) ?? null;
-      const isActive = ["pending", "queued", "running", "blocked", "failed", "awaiting_checkpoint"].includes(visit.status);
+      const matchesCurrentIdentity = tile.currentStepExecutionId
+        ? visit.legacyStepExecutionId === tile.currentStepExecutionId
+        : tile.currentStepId
+          ? visit.stepId === tile.currentStepId
+          : true;
+      const isActive = matchesCurrentIdentity
+        && ["pending", "queued", "running", "blocked", "failed", "awaiting_checkpoint", "redo_required"].includes(visit.status);
       return {
         id: visit.id,
         stepId: visit.stepId,
         stepName: visit.stepName,
         processArea: visit.processArea,
         executionId: visit.legacyStepExecutionId,
-        state: attempt?.effectiveDecision?.outcome === "redo" || visit.status === "redo_required"
-          ? "returned"
-          : isActive
-            ? "current"
-            : "completed",
+        state: isActive
+          ? "current"
+          : "completed",
         occurredAt: visit.startedAt ?? visit.createdAt,
         startedAt: visit.startedAt,
         completedAt: visit.completedAt,
@@ -164,6 +203,7 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
           ? attempt.effectiveDecision.destinationStepName
           : null,
         parameterRecords: [...visit.parameterRecords],
+        isRedoVisit: visit.runKind === "redo",
         inheritedFromParent: visit.inheritedFromParent,
         sequence: 0,
         visitNumber: 1
@@ -177,7 +217,7 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
       stepName: attempt.stepName,
       processArea: step?.processArea ?? "Process step",
       executionId: step?.executionId ?? null,
-      state: attempt.effectiveDecision?.outcome === "redo" ? "returned" : "completed",
+      state: "completed",
       occurredAt: attempt.startedAt ?? attempt.occurredAt,
       startedAt: attempt.startedAt,
       completedAt: attempt.submission?.occurredAt ?? null,
@@ -256,6 +296,7 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
 
   const historyActionByVisitId = new Map<string, NonNullable<StepVisitHistoryItem["historyAction"]>>();
   for (const revert of tile.revertHistory ?? []) {
+    if (revert.kind === "redo") continue;
     const sourceVisit = [...effectiveVisits]
       .reverse()
       .find((visit) =>
@@ -268,22 +309,25 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
     }
   }
 
+  const redoDestinationVisitIds = new Set<string>();
+  effectiveVisits.forEach((source, index) => {
+    if (!source.redoDestinationStepId && !source.redoDestinationStepName) return;
+    const destination = effectiveVisits.slice(index + 1).find((candidate) =>
+      source.redoDestinationStepId
+        ? candidate.stepId === source.redoDestinationStepId
+        : candidate.stepName === source.redoDestinationStepName
+    );
+    if (destination) redoDestinationVisitIds.add(destination.id);
+  });
+
   const visitCountByStepId = new Map<string, number>();
   return effectiveVisits.map((visit, index) => {
     const visitNumber = (visitCountByStepId.get(visit.stepId) ?? 0) + 1;
     visitCountByStepId.set(visit.stepId, visitNumber);
-    const precedingRedo = [...effectiveVisits.slice(0, index)]
-      .reverse()
-      .find((candidate) =>
-        candidate.state === "returned" &&
-        candidate.redoDestinationStepName === visit.stepName
-      );
     const historyAction = historyActionByVisitId.get(visit.id) ?? (
-      visit.state === "returned" && visit.redoDestinationStepName
-        ? { kind: "redo" as const, targetStepName: visit.redoDestinationStepName }
-        : visit.state === "current" && precedingRedo
-          ? { kind: "continue" as const, targetStepName: visit.stepName }
-          : null
+      visit.isRedoVisit || redoDestinationVisitIds.has(visit.id)
+        ? { kind: "redo" as const, targetStepName: visit.stepName }
+        : null
     );
     return { ...visit, historyAction, sequence: index + 1, visitNumber };
   });
