@@ -42,8 +42,11 @@ The migration changes only a canonical view filter. Raw checkpoint decisions, co
 - Exact regression: completed Chromium remains normal while the current Pre-Bake redo destination is highlighted.
 - 265 tests, typecheck, lint, and production build pass.
 - `checkpoint:verify`, `history-correction:verify`, `history-recovery:verify`, `operation-runs:verify`, `process-flow-states:verify`, `workspace-projection:verify`, `planning:verify`, `scheduler:verify`, and `migration-chain:verify` pass.
-- Linked Supabase dry-run reports only `202608140001_effective_status_history.sql` pending.
+- Migration `202608140001_effective_status_history.sql` applied successfully to the linked Supabase project.
+- Production deployment `dpl_BgrVyLFb9eDy9RzJN2B2XQacrB8p` was promoted successfully.
+- Authenticated production replay of BETA_8 shows one Dicing visit, retains completed Pre-Bake and Chromium Deposition visits, and attaches `Redo → Spin Coating` to the actual repeated destination visit.
+- `GET https://wafer-watch.vercel.app/api/health` returned HTTP 200 with `{"ok":true}` and healthy Supabase state.
 
 ## Status
 
-Implemented and verified locally; production release pending. GitHub issue creation was unavailable because the configured `gh` credential is invalid.
+Resolved and verified in production. GitHub issue creation was unavailable because the configured `gh` credential is invalid, so this repository-local ticket is the release record.
