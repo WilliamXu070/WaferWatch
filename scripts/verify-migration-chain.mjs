@@ -110,7 +110,10 @@ const id = {
   repairAttemptMutation: "50000000-0000-4000-8000-000000000051",
   repairRouteEvent: "50000000-0000-4000-8000-000000000052",
   repairDecisionReference: "50000000-0000-4000-8000-000000000053",
-  repairBatch: "50000000-0000-4000-8000-000000000054"
+  repairBatch: "50000000-0000-4000-8000-000000000054",
+  legacyAutoRouteOriginal: "50000000-0000-4000-8000-000000000055",
+  legacyAutoRouteCorrection: "50000000-0000-4000-8000-000000000056",
+  legacyAutoDecisionReference: "50000000-0000-4000-8000-000000000057"
 };
 
 await db.exec(`
@@ -733,6 +736,74 @@ assert.equal(repairedLegacyHistory.rows[0].batch_id, id.repairBatch);
 assert.equal(repairedLegacyHistory.rows[0].batch_member_count, 1);
 assert.equal(repairedLegacyHistory.rows[0].effective_route_decision, "approved");
 
+// Older automatic corrections can also carry an approved label even though
+// their destination had already been performed. The follow-up migration
+// supersedes that label and stays rerunnable.
+await db.exec(`
+  insert into public.process_events (
+    id, project_id, wafer_id, step_execution_id, actor_id, event_type,
+    event_at, notes, metadata, client_mutation_id
+  ) values
+    (
+      '${id.legacyAutoRouteOriginal}', '${id.project}', '${id.repeatRouteWafer}',
+      '${id.repeatRouteTargetExecution}', '${id.actor}', 'checkpoint_step_entered',
+      '2026-07-02T10:00:00Z', 'Legacy route', jsonb_build_object(
+        'assignment_id', '${id.repeatRouteAssignment}',
+        'checkpoint_decision_id', '${id.legacyAutoDecisionReference}',
+        'from_step_id', '${id.correctionSource}',
+        'from_step_name', 'Correction source',
+        'target_step_id', '${id.correctionRepeatTarget}',
+        'target_step_name', 'Repeated destination',
+        'movement_kind', 'checkpoint_redo_route',
+        'route_decision', 'redo'
+      ), '${id.legacyAutoRouteOriginal}'
+    ),
+    (
+      '${id.legacyAutoRouteCorrection}', '${id.project}', '${id.repeatRouteWafer}',
+      '${id.repeatRouteTargetExecution}', '${id.actor}', 'checkpoint_step_entered',
+      '2026-07-03T10:00:00Z', 'Legacy automatic correction', jsonb_build_object(
+        'assignment_id', '${id.repeatRouteAssignment}',
+        'checkpoint_decision_id', '${id.legacyAutoDecisionReference}',
+        'from_step_id', '${id.correctionSource}',
+        'from_step_name', 'Correction source',
+        'target_step_id', '${id.correctionRepeatTarget}',
+        'target_step_name', 'Repeated destination',
+        'corrected_event_id', '${id.legacyAutoRouteOriginal}',
+        'movement_kind', 'checkpoint_route_auto_redo_correction',
+        'route_decision', 'approved'
+      ), '${id.legacyAutoRouteCorrection}'
+    );
+`);
+const routeEvidenceAlignmentMigration = await readFile(
+  new URL("../supabase/migrations/202608140004_effective_route_evidence_alignment.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(routeEvidenceAlignmentMigration);
+await db.exec(routeEvidenceAlignmentMigration);
+
+const alignedLegacyAutoRoute = await db.query(`
+  select
+    event.metadata ->> 'route_decision' as route_decision,
+    event.metadata ->> 'corrected_event_id' as corrected_event_id,
+    event.metadata ->> 'history_repair_version' as repair_version,
+    (
+      select count(*)::integer
+      from public.process_events repair
+      where repair.metadata ->> 'checkpoint_decision_id' = '${id.legacyAutoDecisionReference}'
+        and repair.metadata ->> 'history_repair_version' = '202608140004'
+    ) as repair_count
+  from public.process_events event
+  where event.metadata ->> 'checkpoint_decision_id' = '${id.legacyAutoDecisionReference}'
+  order by event.event_at desc, event.id desc
+  limit 1
+`);
+assert.deepEqual(alignedLegacyAutoRoute.rows, [{
+  route_decision: "redo",
+  corrected_event_id: id.legacyAutoRouteCorrection,
+  repair_version: "202608140004",
+  repair_count: 1
+}]);
+
 const result = await db.query(`
   select
     to_regclass('public.process_plans') is not null as plans,
@@ -745,7 +816,7 @@ console.log(JSON.stringify({
   ...result.rows[0],
   operationRuns: "200-member atomic start, repeat, complete, and retry",
   mixedReview: "approved and rejected members split into successor and redo runs; draft unchanged",
-  redoEvidence: "first-time destinations approve, performed destinations redo, and legacy batches remain intact",
+  redoEvidence: "first-time destinations approve, performed destinations redo, legacy automatic labels align, and batches remain intact",
   planning: "independent edits, stale rejection, publish immutability",
   fixture: performanceRows.rows[0],
   performanceMs: {

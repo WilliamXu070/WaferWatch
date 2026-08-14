@@ -61,11 +61,13 @@ Reopened on 2026-08-14 after the production-wide history audit found that route 
 
 ### Diagnosis
 
-The read-only production audit covered all 18 active die assignments, 127 effective operation members, and 93 checkpoint attempts. Three effective route corrections disagree with performed destination evidence:
+The read-only production audit covered all 18 active die assignments, 127 effective operation members, and 93 checkpoint attempts. Three manual route corrections disagree with performed destination evidence:
 
 - A1 Spin Coating to first-time EBL is stored as redo but must be approved.
 - B4 Post-Bake to first-time Pad Formation is stored as redo but must be approved.
 - B10 Cleaning to previously performed Pre-Bake is stored as approved but must be redo.
+
+A post-migration lineage audit also identified five older automatic route corrections whose effective outcome was still approved despite a previously performed destination: A1 Spin Coating, A3 Cleaning, and B2/B7/B10 Cleaning. These visits were already distinct redo runs in the canonical operation history, so a follow-up append-only alignment migration supersedes only the stale route labels.
 
 `correct_checkpoint_route_assignment` classifies corrections with `destination_step.step_order <= checkpoint_step.step_order`. Step order is recipe presentation, not proof that the destination was already performed. The Status model then trusts both the correction outcome and `operation_runs.run_kind`, so one bad classification can highlight both the empty destination wrapper and the later completed member.
 
@@ -86,4 +88,4 @@ The repair is additive and rerunnable. It adds superseding events and changes on
 
 ### Status
 
-Implemented and locally verified. The focused history regressions, 268-test suite, typecheck, lint, production build, 64-migration chain, and all required workflow/database verifiers pass. The linked Supabase dry run selects only migration `202608140003_history_redo_evidence_repair.sql`. Production migration, deployment, and signed-in desktop/mobile replay remain pending. GitHub issue update is unavailable because the configured `gh` credential is invalid; this existing repository-local ticket remains the release record.
+The source repair and migration `202608140003_history_redo_evidence_repair.sql` are implemented, locally verified, committed, pushed, and applied in production. Its post-migration audit confirms A1 retains one effective EBL attempt 1 and its original batch membership while the evidence-free EBL wrapper is preserved but suppressed. Follow-up migration `202608140004_effective_route_evidence_alignment.sql` is in verification for the five older automatic labels. Application deployment and signed-in desktop/mobile replay remain pending. GitHub issue update is unavailable because the configured `gh` credential is invalid; this existing repository-local ticket remains the release record.
