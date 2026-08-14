@@ -783,6 +783,9 @@ await db.exec(routeEvidenceAlignmentMigration);
 
 const alignedLegacyAutoRoute = await db.query(`
   select
+    event.step_execution_id,
+    event.operation_run_id,
+    event.operation_run_member_id,
     event.metadata ->> 'route_decision' as route_decision,
     event.metadata ->> 'corrected_event_id' as corrected_event_id,
     event.metadata ->> 'history_repair_version' as repair_version,
@@ -798,6 +801,9 @@ const alignedLegacyAutoRoute = await db.query(`
   limit 1
 `);
 assert.deepEqual(alignedLegacyAutoRoute.rows, [{
+  step_execution_id: null,
+  operation_run_id: null,
+  operation_run_member_id: null,
   route_decision: "redo",
   corrected_event_id: id.legacyAutoRouteCorrection,
   repair_version: "202608140004",

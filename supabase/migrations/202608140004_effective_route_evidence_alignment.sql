@@ -67,7 +67,9 @@ insert into public.process_events (
 select
   route.project_id,
   route.wafer_id,
-  route.step_execution_id,
+  -- Route labels are historical projection evidence. Do not relink an old
+  -- execution as the assignment's current canonical member.
+  null,
   route.actor_id,
   'checkpoint_step_entered',
   now(),
