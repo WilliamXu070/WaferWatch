@@ -37,7 +37,12 @@ The application also accepts repeated view rows and repeated checkpoint JSON obj
 - `npm run typecheck`, `npm run lint`, and `npm run build`: passed.
 - All required checkpoint, Process Flow, batch, archive, collaboration, researcher, planning, operation-run, workspace-projection, scheduler, migration-chain, history-correction, history-recovery, and dashboard-history verifiers passed.
 - The 63-migration chain passed on 500 assignments and 10,000 historical members; the repeated-decision fixture projected one history row while retaining two checkpoint evidence rows.
-- Production migration, signed-in desktop/iPhone replay, deployment, and health verification remain pending.
+- Production migration `202608140002_canonical_history_cardinality.sql` applied successfully.
+- Post-migration production audit: 127 projected rows for 127 distinct effective members across all 18 active die assignments, with no duplicate member IDs and no invalid current-member pointers.
+- Signed-in desktop replay: B1 shows one Chromium Deposition and one Spin Coating; A1 retains its explicit Spin Coating, EBL, and PL2 redo visits; A2 has no redo markers.
+- Signed-in iPhone replay with a 390x844 viewport override: B1 has one of every displayed step, the horizontal history strip remains swipeable, the document has no horizontal overflow, and the fixed bottom navigation does not overlap the main history surface.
+- Production deployment `dpl_BJjpcv7giAqFECxA5gaMTghvE8Vs` reached READY at `https://wafer-watch.vercel.app`.
+- Production `/api/health`: HTTP 200 with a healthy live Supabase probe.
 
 ## Rollback and risk
 
@@ -45,4 +50,4 @@ The database change replaces only a security-invoker view with the same column c
 
 ## Status
 
-Implementation verified locally. Production release is pending. GitHub issue creation is unavailable because the configured `gh` credential is invalid.
+Resolved in production by commit `fb1944f`. GitHub issue creation was unavailable because the configured `gh` credential is invalid, so this local ticket retains the diagnosis and evidence.
