@@ -454,6 +454,22 @@ test("keeps completed Chromium and marks the current Pre-Bake destination as the
       }
     }],
     operationRunVisits: [{
+      id: "operation-member:pre-bake-original-member",
+      operationRunId: "pre-bake-original-run",
+      operationRunMemberId: "pre-bake-original-member",
+      legacyStepExecutionId: "pre-bake-original-execution",
+      stepId: "pre-bake",
+      stepName: "Pre-Bake",
+      processArea: "Lithography",
+      runKind: "normal",
+      status: "completed",
+      startedAt: "2026-07-16T15:00:00Z",
+      completedAt: "2026-07-16T15:05:00Z",
+      createdAt: "2026-07-16T15:00:00Z",
+      note: "Initial Pre-Bake complete",
+      actor: { id: "reviewer", name: "Reviewer" },
+      parameterRecords: []
+    }, {
       id: "operation-member:chromium-member",
       operationRunId: "chromium-run",
       operationRunMemberId: "chromium-member",
@@ -496,11 +512,179 @@ test("keeps completed Chromium and marks the current Pre-Bake destination as the
     }]
   }));
 
-  assert.deepEqual(visits.map((visit) => visit.stepName), ["Chromium Deposition", "Pre-Bake"]);
+  assert.deepEqual(visits.map((visit) => visit.stepName), ["Pre-Bake", "Chromium Deposition", "Pre-Bake"]);
   assert.equal(visits[0]?.state, "completed");
   assert.equal(visits[0]?.historyAction, null);
-  assert.equal(visits[1]?.state, "current");
-  assert.deepEqual(visits[1]?.historyAction, { kind: "redo", targetStepName: "Pre-Bake" });
+  assert.equal(visits[1]?.state, "completed");
+  assert.equal(visits[1]?.historyAction, null);
+  assert.equal(visits[2]?.state, "current");
+  assert.deepEqual(visits[2]?.historyAction, { kind: "redo", targetStepName: "Pre-Bake" });
+});
+
+test("does not label A1's first performed EBL as redo when corrupted route and run metadata say redo", () => {
+  const visits = buildStepVisitHistory(tile({
+    currentStepId: "pad",
+    processSteps: [{
+      id: "spin",
+      name: "Spin Coating",
+      processArea: "Lithography",
+      executionMode: "main",
+      stepOrder: 100,
+      status: "completed",
+      executionId: "spin-execution",
+      noteAuthorId: null,
+      noteAuthorName: null,
+      runNote: null,
+      startedAt: "2026-07-17T18:00:00Z",
+      completedAt: "2026-07-17T18:30:00Z",
+      createdAt: "2026-07-17T18:00:00Z"
+    }, {
+      id: "ebl",
+      name: "EBL",
+      processArea: "Lithography",
+      executionMode: "main",
+      stepOrder: 40,
+      status: "completed",
+      executionId: "ebl-execution",
+      noteAuthorId: null,
+      noteAuthorName: null,
+      runNote: null,
+      startedAt: "2026-07-17T19:15:00Z",
+      completedAt: "2026-08-14T15:56:00Z",
+      createdAt: "2026-07-17T19:15:00Z"
+    }, {
+      id: "pad",
+      name: "Pad Formation",
+      processArea: "Lithography",
+      executionMode: "main",
+      stepOrder: 50,
+      status: "queued",
+      executionId: "pad-execution",
+      noteAuthorId: null,
+      noteAuthorName: null,
+      runNote: null,
+      startedAt: null,
+      completedAt: null,
+      createdAt: "2026-08-14T15:57:00Z"
+    }],
+    checkpointHistory: [{
+      kind: "attempt",
+      id: "spin-attempt",
+      operationRunMemberId: "spin-member",
+      stepId: "spin",
+      stepName: "Spin Coating",
+      attemptNumber: 1,
+      state: "redo_required",
+      occurredAt: "2026-07-17T18:00:00Z",
+      startedAt: "2026-07-17T18:00:00Z",
+      submission: { id: "spin-submission", occurredAt: "2026-07-17T18:30:00Z", actor: { id: "reviewer", name: "Reviewer" }, note: null },
+      withdrawals: [],
+      decisions: [],
+      effectiveDecision: {
+        id: "corrupted-spin-route",
+        outcome: "redo",
+        occurredAt: "2026-07-17T19:15:00Z",
+        actor: { id: "reviewer", name: "Reviewer" },
+        note: "Incorrect legacy classification",
+        destinationStepId: "ebl",
+        destinationStepName: "EBL",
+        supersedesDecisionId: null,
+        isEffective: true
+      }
+    }, {
+      kind: "attempt",
+      id: "ebl-attempt-one",
+      operationRunMemberId: "ebl-member",
+      stepId: "ebl",
+      stepName: "EBL",
+      attemptNumber: 1,
+      state: "approved",
+      occurredAt: "2026-07-17T19:15:00Z",
+      startedAt: "2026-07-17T19:15:00Z",
+      submission: { id: "ebl-submission-one", occurredAt: "2026-08-14T15:56:00Z", actor: { id: "reviewer", name: "Reviewer" }, note: null },
+      withdrawals: [],
+      decisions: [],
+      effectiveDecision: null
+    }],
+    operationRunVisits: [{
+      id: "operation-member:spin-member",
+      operationRunId: "spin-run",
+      operationRunMemberId: "spin-member",
+      legacyStepExecutionId: "spin-execution",
+      stepId: "spin",
+      stepName: "Spin Coating",
+      processArea: "Lithography",
+      runKind: "normal",
+      status: "completed",
+      startedAt: "2026-07-17T18:00:00Z",
+      completedAt: "2026-07-17T18:30:00Z",
+      createdAt: "2026-07-17T18:00:00Z",
+      note: null,
+      actor: { id: "reviewer", name: "Reviewer" },
+      parameterRecords: []
+    }, {
+      id: "operation-member:ebl-member",
+      operationRunId: "ebl-run",
+      operationRunMemberId: "ebl-member",
+      legacyStepExecutionId: "ebl-execution",
+      stepId: "ebl",
+      stepName: "EBL",
+      processArea: "Lithography",
+      runKind: "redo",
+      status: "completed",
+      startedAt: "2026-07-17T19:15:00Z",
+      completedAt: "2026-08-14T15:56:00Z",
+      createdAt: "2026-07-17T19:15:00Z",
+      note: null,
+      actor: { id: "reviewer", name: "Reviewer" },
+      parameterRecords: []
+    }]
+  }));
+
+  assert.deepEqual(visits.map((visit) => visit.stepName), ["Spin Coating", "EBL"]);
+  assert.equal(visits[1]?.isRedoVisit, false);
+  assert.equal(visits[1]?.historyAction, null);
+});
+
+test("keeps B9's attempt-two Post-Bake highlighted after attempt one was undone", () => {
+  const visits = buildStepVisitHistory(tile({
+    currentStepId: "ebl",
+    checkpointHistory: [{
+      kind: "attempt",
+      id: "post-bake-attempt-two",
+      operationRunMemberId: "post-bake-member",
+      stepId: "post-bake",
+      stepName: "Post-Bake of PL2",
+      attemptNumber: 2,
+      state: "approved",
+      occurredAt: "2026-07-17T15:35:00Z",
+      startedAt: "2026-07-17T15:35:00Z",
+      submission: { id: "post-bake-submission-two", occurredAt: "2026-07-20T14:15:00Z", actor: { id: "reviewer", name: "Reviewer" }, note: null },
+      withdrawals: [],
+      decisions: [],
+      effectiveDecision: null
+    }],
+    operationRunVisits: [{
+      id: "operation-member:post-bake-member",
+      operationRunId: "post-bake-redo-run",
+      operationRunMemberId: "post-bake-member",
+      legacyStepExecutionId: "post-bake-execution",
+      stepId: "post-bake",
+      stepName: "Post-Bake of PL2",
+      processArea: "Lithography",
+      runKind: "redo",
+      status: "completed",
+      startedAt: "2026-07-17T15:35:00Z",
+      completedAt: "2026-07-20T14:15:00Z",
+      createdAt: "2026-07-17T15:35:00Z",
+      note: null,
+      actor: { id: "reviewer", name: "Reviewer" },
+      parameterRecords: []
+    }]
+  }));
+
+  assert.equal(visits[0]?.isRedoVisit, true);
+  assert.deepEqual(visits[0]?.historyAction, { kind: "redo", targetStepName: "Post-Bake of PL2" });
 });
 
 test("labels a recorded step revert as an undo without changing its chronological visit", () => {

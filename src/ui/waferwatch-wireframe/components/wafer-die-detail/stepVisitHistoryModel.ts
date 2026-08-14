@@ -57,6 +57,21 @@ function compareVisitProgression(first: StepVisitHistoryItem, second: StepVisitH
   return compareVisitBeginnings(first, second);
 }
 
+function isConfirmedRepeatedVisit(
+  visits: readonly StepVisitHistoryItem[],
+  index: number,
+  attemptNumberByVisitId: ReadonlyMap<string, number>
+) {
+  const visit = visits[index];
+  if (!visit) return false;
+  if ((attemptNumberByVisitId.get(visit.id) ?? 0) > 1) return true;
+
+  return visits.slice(0, index).some((candidate) =>
+    candidate.stepId === visit.stepId
+    && (Boolean(candidate.completedAt) || attemptNumberByVisitId.has(candidate.id))
+  );
+}
+
 function removeInheritedHandoffDuplicates(
   visits: readonly NonNullable<WaferStatusTileModel["operationRunVisits"]>[number][],
   attempts: readonly WaferStatusCheckpointAttemptEntry[]
@@ -179,6 +194,17 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
       !(visit.status === "completed" && !visit.startedAt && !visit.completedAt)
     ),
     attempts
+  );
+  const canonicalVisitIdByMemberId = new Map(
+    canonicalVisits.map((visit) => [visit.operationRunMemberId, visit.id])
+  );
+  const attemptNumberByVisitId = new Map(
+    attempts.map((attempt) => [
+      attempt.operationRunMemberId
+        ? canonicalVisitIdByMemberId.get(attempt.operationRunMemberId) ?? `attempt:${attempt.id}`
+        : `attempt:${attempt.id}`,
+      attempt.attemptNumber
+    ])
   );
   const visits: StepVisitHistoryItem[] = canonicalVisits.length > 0
     ? canonicalVisits.map((visit) => {
@@ -322,11 +348,14 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
   const redoDestinationVisitIds = new Set<string>();
   effectiveVisits.forEach((source, index) => {
     if (!source.redoDestinationStepId && !source.redoDestinationStepName) return;
-    const destination = effectiveVisits.slice(index + 1).find((candidate) =>
-      source.redoDestinationStepId
+    const destination = effectiveVisits.find((candidate, candidateIndex) => {
+      if (candidateIndex <= index) return false;
+      const matchesDestination = source.redoDestinationStepId
         ? candidate.stepId === source.redoDestinationStepId
-        : candidate.stepName === source.redoDestinationStepName
-    );
+        : candidate.stepName === source.redoDestinationStepName;
+      return matchesDestination
+        && isConfirmedRepeatedVisit(effectiveVisits, candidateIndex, attemptNumberByVisitId);
+    });
     if (destination) redoDestinationVisitIds.add(destination.id);
   });
 
@@ -334,11 +363,13 @@ export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHist
   return effectiveVisits.map((visit, index) => {
     const visitNumber = (visitCountByStepId.get(visit.stepId) ?? 0) + 1;
     visitCountByStepId.set(visit.stepId, visitNumber);
+    const isConfirmedRedoVisit = Boolean(visit.isRedoVisit)
+      && isConfirmedRepeatedVisit(effectiveVisits, index, attemptNumberByVisitId);
     const historyAction = historyActionByVisitId.get(visit.id) ?? (
-      visit.isRedoVisit || redoDestinationVisitIds.has(visit.id)
+      isConfirmedRedoVisit || redoDestinationVisitIds.has(visit.id)
         ? { kind: "redo" as const, targetStepName: visit.stepName }
         : null
     );
-    return { ...visit, historyAction, sequence: index + 1, visitNumber };
+    return { ...visit, isRedoVisit: isConfirmedRedoVisit, historyAction, sequence: index + 1, visitNumber };
   });
 }

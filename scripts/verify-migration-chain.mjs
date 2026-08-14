@@ -74,7 +74,43 @@ const id = {
   updateOne: "50000000-0000-4000-8000-000000000015",
   updateTwo: "50000000-0000-4000-8000-000000000016",
   staleUpdate: "50000000-0000-4000-8000-000000000017",
-  publish: "50000000-0000-4000-8000-000000000018"
+  publish: "50000000-0000-4000-8000-000000000018",
+  correctionSource: "50000000-0000-4000-8000-000000000019",
+  correctionMistaken: "50000000-0000-4000-8000-000000000020",
+  correctionFirstTarget: "50000000-0000-4000-8000-000000000021",
+  correctionRepeatTarget: "50000000-0000-4000-8000-000000000022",
+  firstRouteWafer: "50000000-0000-4000-8000-000000000023",
+  firstRouteAssignment: "50000000-0000-4000-8000-000000000024",
+  firstRouteSourceExecution: "50000000-0000-4000-8000-000000000025",
+  firstRouteMistakenExecution: "50000000-0000-4000-8000-000000000026",
+  firstRouteTargetExecution: "50000000-0000-4000-8000-000000000027",
+  firstRouteSubmit: "50000000-0000-4000-8000-000000000028",
+  firstRouteDecision: "50000000-0000-4000-8000-000000000029",
+  firstRouteMove: "50000000-0000-4000-8000-000000000030",
+  firstRouteCorrection: "50000000-0000-4000-8000-000000000031",
+  repeatRouteWafer: "50000000-0000-4000-8000-000000000032",
+  repeatRouteAssignment: "50000000-0000-4000-8000-000000000033",
+  repeatRouteSourceExecution: "50000000-0000-4000-8000-000000000034",
+  repeatRouteMistakenExecution: "50000000-0000-4000-8000-000000000035",
+  repeatRouteTargetExecution: "50000000-0000-4000-8000-000000000036",
+  repeatRouteSubmit: "50000000-0000-4000-8000-000000000037",
+  repeatRouteDecision: "50000000-0000-4000-8000-000000000038",
+  repeatRouteMove: "50000000-0000-4000-8000-000000000039",
+  repeatRouteCorrection: "50000000-0000-4000-8000-000000000040",
+  repeatPriorRun: "50000000-0000-4000-8000-000000000041",
+  repeatPriorMember: "50000000-0000-4000-8000-000000000042",
+  repairWafer: "50000000-0000-4000-8000-000000000043",
+  repairAssignment: "50000000-0000-4000-8000-000000000044",
+  repairExecution: "50000000-0000-4000-8000-000000000045",
+  repairEmptyRun: "50000000-0000-4000-8000-000000000046",
+  repairEmptyMember: "50000000-0000-4000-8000-000000000047",
+  repairCompletedRun: "50000000-0000-4000-8000-000000000048",
+  repairCompletedMember: "50000000-0000-4000-8000-000000000049",
+  repairAttempt: "50000000-0000-4000-8000-000000000050",
+  repairAttemptMutation: "50000000-0000-4000-8000-000000000051",
+  repairRouteEvent: "50000000-0000-4000-8000-000000000052",
+  repairDecisionReference: "50000000-0000-4000-8000-000000000053",
+  repairBatch: "50000000-0000-4000-8000-000000000054"
 };
 
 await db.exec(`
@@ -455,6 +491,248 @@ assert.deepEqual(mixedReview.rows, [{
   plan_row_version: reviewOperation.rows[0].row_version
 }]);
 
+// A correction destination is a redo only when that destination already has
+// performed evidence. Its numeric process order is deliberately misleading in
+// this fixture so the old comparison would fail both assertions.
+await db.exec(`
+  insert into public.process_steps (
+    id, template_id, stage_id, step_order, stage_step_order,
+    name, slug, process_area, required_reviewer_id
+  )
+  select fixture.id, '${id.template}', existing.stage_id, fixture.step_order, fixture.stage_step_order,
+         fixture.name, fixture.slug, 'History verification', '${id.actor}'
+  from public.process_steps existing
+  cross join (values
+    ('${id.correctionSource}'::uuid, 100, 101, 'Correction source', 'correction-source'),
+    ('${id.correctionMistaken}'::uuid, 200, 102, 'Mistaken destination', 'mistaken-destination'),
+    ('${id.correctionFirstTarget}'::uuid, 40, 103, 'First-time destination', 'first-time-destination'),
+    ('${id.correctionRepeatTarget}'::uuid, 30, 104, 'Repeated destination', 'repeated-destination')
+  ) fixture(id, step_order, stage_step_order, name, slug)
+  where existing.id = '${id.step}';
+
+  insert into public.wafers (id, project_id, wafer_code, status, metadata) values
+    ('${id.firstRouteWafer}', '${id.project}', 'FIRST-ROUTE', 'queued', '{}'),
+    ('${id.repeatRouteWafer}', '${id.project}', 'REPEAT-ROUTE', 'queued', '{}');
+  alter table public.wafer_process_assignments
+    disable trigger wafer_assignments_require_published_template;
+  alter table public.wafer_process_assignments
+    disable trigger wafer_assignments_checkpoint_transition;
+  insert into public.wafer_process_assignments (
+    id, wafer_id, template_id, assigned_by, status, current_step_id
+  ) values
+    ('${id.firstRouteAssignment}', '${id.firstRouteWafer}', '${id.template}', '${id.actor}', 'queued', '${id.correctionSource}'),
+    ('${id.repeatRouteAssignment}', '${id.repeatRouteWafer}', '${id.template}', '${id.actor}', 'queued', '${id.correctionSource}');
+  alter table public.wafer_process_assignments
+    enable trigger wafer_assignments_checkpoint_transition;
+  alter table public.wafer_process_assignments
+    enable trigger wafer_assignments_require_published_template;
+  alter table public.step_executions
+    disable trigger step_executions_checkpoint_transition;
+  insert into public.step_executions (
+    id, assignment_id, wafer_id, process_step_id, status, queue_started_at, started_at, completed_at
+  ) values
+    ('${id.firstRouteSourceExecution}', '${id.firstRouteAssignment}', '${id.firstRouteWafer}', '${id.correctionSource}', 'queued', now(), null, null),
+    ('${id.firstRouteMistakenExecution}', '${id.firstRouteAssignment}', '${id.firstRouteWafer}', '${id.correctionMistaken}', 'pending', null, null, null),
+    ('${id.firstRouteTargetExecution}', '${id.firstRouteAssignment}', '${id.firstRouteWafer}', '${id.correctionFirstTarget}', 'pending', null, null, null),
+    ('${id.repeatRouteSourceExecution}', '${id.repeatRouteAssignment}', '${id.repeatRouteWafer}', '${id.correctionSource}', 'queued', now(), null, null),
+    ('${id.repeatRouteMistakenExecution}', '${id.repeatRouteAssignment}', '${id.repeatRouteWafer}', '${id.correctionMistaken}', 'pending', null, null, null),
+    ('${id.repeatRouteTargetExecution}', '${id.repeatRouteAssignment}', '${id.repeatRouteWafer}', '${id.correctionRepeatTarget}', 'completed', null, '2026-07-01T10:00:00Z', '2026-07-01T10:30:00Z');
+  alter table public.step_executions
+    enable trigger step_executions_checkpoint_transition;
+  insert into public.operation_runs (
+    id, template_id, process_step_id, run_kind, status, started_at, completed_at, created_by
+  ) values (
+    '${id.repeatPriorRun}', '${id.template}', '${id.correctionRepeatTarget}',
+    'normal', 'completed', '2026-07-01T10:00:00Z', '2026-07-01T10:30:00Z', '${id.actor}'
+  );
+  insert into public.operation_run_members (
+    id, operation_run_id, assignment_id, wafer_id, status,
+    started_at, completed_at, history_effective
+  ) values (
+    '${id.repeatPriorMember}', '${id.repeatPriorRun}', '${id.repeatRouteAssignment}',
+    '${id.repeatRouteWafer}', 'completed', '2026-07-01T10:00:00Z',
+    '2026-07-01T10:30:00Z', true
+  );
+  set app.actor_id = '${id.actor}';
+  set app.role = 'authenticated';
+  set role authenticated;
+`);
+
+const firstRouteAttempt = await db.query(`
+  select id from public.submit_step_checkpoint($1, $2, 'first-time correction', '{}'::jsonb)
+`, [id.firstRouteSourceExecution, id.firstRouteSubmit]);
+await db.query(`select public.route_checkpoint_submission($1, $2, $3, $4, 'wrong first destination', '[]'::jsonb)`, [
+  firstRouteAttempt.rows[0].id,
+  id.correctionMistaken,
+  id.firstRouteDecision,
+  id.firstRouteMove
+]);
+await db.query(`select public.correct_checkpoint_route_assignment($1, $2, $3, 'use first-time destination')`, [
+  id.firstRouteAssignment,
+  id.correctionFirstTarget,
+  id.firstRouteCorrection
+]);
+
+const repeatRouteAttempt = await db.query(`
+  select id from public.submit_step_checkpoint($1, $2, 'repeat correction', '{}'::jsonb)
+`, [id.repeatRouteSourceExecution, id.repeatRouteSubmit]);
+await db.query(`select public.route_checkpoint_submission($1, $2, $3, $4, 'wrong repeat destination', '[]'::jsonb)`, [
+  repeatRouteAttempt.rows[0].id,
+  id.correctionMistaken,
+  id.repeatRouteDecision,
+  id.repeatRouteMove
+]);
+await db.query(`select public.correct_checkpoint_route_assignment($1, $2, $3, 'use performed destination')`, [
+  id.repeatRouteAssignment,
+  id.correctionRepeatTarget,
+  id.repeatRouteCorrection
+]);
+await db.exec("reset role");
+
+const correctedRouteEvidence = await db.query(`
+  select
+    first_event.metadata ->> 'route_decision' as first_route_decision,
+    first_execution.status as first_target_status,
+    repeat_event.metadata ->> 'route_decision' as repeat_route_decision,
+    repeat_execution.status as repeat_target_status,
+    prior_member.history_effective as repeat_source_preserved
+  from public.process_events first_event
+  join public.step_executions first_execution on first_execution.id = '${id.firstRouteTargetExecution}'
+  join public.process_events repeat_event on repeat_event.client_mutation_id = '${id.repeatRouteCorrection}'
+  join public.step_executions repeat_execution on repeat_execution.id = '${id.repeatRouteTargetExecution}'
+  join public.operation_run_members prior_member on prior_member.id = '${id.repeatPriorMember}'
+  where first_event.client_mutation_id = '${id.firstRouteCorrection}'
+`);
+assert.deepEqual(correctedRouteEvidence.rows, [{
+  first_route_decision: "approved",
+  first_target_status: "queued",
+  repeat_route_decision: "redo",
+  repeat_target_status: "redo_required",
+  repeat_source_preserved: true
+}]);
+
+// Reapply the additive repair over an A1-shaped legacy fixture. The empty
+// wrapper is suppressed, while attempt 1 and its process batch remain intact.
+await db.exec(`
+  insert into public.wafers (id, project_id, wafer_code, status, metadata)
+  values ('${id.repairWafer}', '${id.project}', 'A1-REPAIR', 'in_progress', '{}');
+  alter table public.wafer_process_assignments
+    disable trigger wafer_assignments_require_published_template;
+  alter table public.wafer_process_assignments
+    disable trigger wafer_assignments_checkpoint_transition;
+  insert into public.wafer_process_assignments (
+    id, wafer_id, template_id, assigned_by, status, current_step_id
+  ) values (
+    '${id.repairAssignment}', '${id.repairWafer}', '${id.template}', '${id.actor}',
+    'in_progress', '${id.correctionFirstTarget}'
+  );
+  alter table public.wafer_process_assignments
+    enable trigger wafer_assignments_checkpoint_transition;
+  alter table public.wafer_process_assignments
+    enable trigger wafer_assignments_require_published_template;
+  alter table public.step_executions
+    disable trigger step_executions_checkpoint_transition;
+  insert into public.step_executions (
+    id, assignment_id, wafer_id, process_step_id, status, queue_started_at, started_at
+  ) values (
+    '${id.repairExecution}', '${id.repairAssignment}', '${id.repairWafer}',
+    '${id.correctionFirstTarget}', 'redo_required', '2026-07-17T19:15:52Z', '2026-07-17T19:15:52Z'
+  );
+  alter table public.step_executions
+    enable trigger step_executions_checkpoint_transition;
+  insert into public.operation_runs (
+    id, template_id, process_step_id, run_kind, status, started_at, completed_at, created_by
+  ) values
+    ('${id.repairEmptyRun}', '${id.template}', '${id.correctionFirstTarget}', 'normal', 'redo_required', '2026-07-17T19:15:52Z', null, '${id.actor}'),
+    ('${id.repairCompletedRun}', '${id.template}', '${id.correctionFirstTarget}', 'redo', 'completed', '2026-07-17T19:15:52Z', '2026-08-14T15:56:26Z', '${id.actor}');
+  insert into public.operation_run_members (
+    id, operation_run_id, assignment_id, wafer_id, status, started_at, completed_at,
+    legacy_step_execution_id, history_effective
+  ) values
+    ('${id.repairEmptyMember}', '${id.repairEmptyRun}', '${id.repairAssignment}', '${id.repairWafer}', 'redo_required', '2026-07-17T19:15:52Z', null, '${id.repairExecution}', true),
+    ('${id.repairCompletedMember}', '${id.repairCompletedRun}', '${id.repairAssignment}', '${id.repairWafer}', 'completed', '2026-07-17T19:15:52Z', '2026-08-14T15:56:26Z', null, true);
+  insert into public.process_batches (
+    id, template_id, process_step_id, created_by, origin, note
+  ) values (
+    '${id.repairBatch}', '${id.template}', '${id.correctionFirstTarget}', '${id.actor}', 'arrival', 'Preserved EBL batch'
+  );
+  insert into public.process_batch_members (
+    batch_id, assignment_id, wafer_id, process_step_id, step_execution_id
+  ) values (
+    '${id.repairBatch}', '${id.repairAssignment}', '${id.repairWafer}', '${id.correctionFirstTarget}', '${id.repairExecution}'
+  );
+  insert into public.process_step_attempts (
+    id, assignment_id, wafer_id, template_id, process_step_id, step_execution_id,
+    attempt_number, submitted_by, submitted_at, started_at_snapshot,
+    submission_notes, evidence_snapshot, operation_run_member_id,
+    submission_group_id, wafer_code_snapshot, template_name_snapshot,
+    template_version_snapshot, process_step_name_snapshot, process_step_order_snapshot,
+    reviewer_id_snapshot, reviewer_name_snapshot, submitted_by_name_snapshot,
+    prior_step_status, client_mutation_id, created_at
+  )
+  select
+    '${id.repairAttempt}', '${id.repairAssignment}', '${id.repairWafer}', '${id.template}',
+    '${id.correctionFirstTarget}', '${id.repairExecution}', 1, submitted_by,
+    '2026-08-14T15:56:12Z', '2026-07-17T19:15:52Z', 'Completed once',
+    evidence_snapshot || jsonb_build_object('_waferwatch_batch_id', '${id.repairBatch}'),
+    '${id.repairCompletedMember}', null,
+    'A1-REPAIR', template_name_snapshot, template_version_snapshot,
+    'First-time destination', 40, reviewer_id_snapshot, reviewer_name_snapshot,
+    submitted_by_name_snapshot, 'running', '${id.repairAttemptMutation}', '2026-08-14T15:56:12Z'
+  from public.process_step_attempts
+  where id = '${firstRouteAttempt.rows[0].id}';
+  insert into public.process_events (
+    id, project_id, wafer_id, step_execution_id, actor_id, event_type,
+    event_at, notes, metadata, client_mutation_id
+  ) values (
+    '${id.repairRouteEvent}', '${id.project}', '${id.repairWafer}', '${id.repairExecution}',
+    '${id.actor}', 'checkpoint_step_entered', '2026-07-17T19:15:52Z',
+    'Legacy false redo', jsonb_build_object(
+      'assignment_id', '${id.repairAssignment}',
+      'checkpoint_decision_id', '${id.repairDecisionReference}',
+      'from_step_id', '${id.correctionSource}',
+      'from_step_name', 'Correction source',
+      'target_step_id', '${id.correctionFirstTarget}',
+      'target_step_name', 'First-time destination',
+      'corrected_event_id', '${id.repairExecution}',
+      'movement_kind', 'checkpoint_route_correction',
+      'route_decision', 'redo'
+    ), '${id.repairRouteEvent}'
+  );
+`);
+const redoEvidenceRepairMigration = await readFile(
+  new URL("../supabase/migrations/202608140003_history_redo_evidence_repair.sql", import.meta.url),
+  "utf8"
+);
+await db.exec(redoEvidenceRepairMigration);
+
+const repairedLegacyHistory = await db.query(`
+  select
+    empty_member.history_effective as empty_member_effective,
+    empty_member.history_suppression_reason as suppression_reason,
+    completed_member.history_effective as completed_member_effective,
+    attempt.attempt_number,
+    attempt.batch_id,
+    (select count(*)::integer from public.process_batch_members batch_member
+      where batch_member.batch_id = '${id.repairBatch}') as batch_member_count,
+    (select repair.metadata ->> 'route_decision'
+      from public.process_events repair
+      where repair.metadata ->> 'checkpoint_decision_id' = '${id.repairDecisionReference}'
+      order by repair.event_at desc, repair.id desc limit 1) as effective_route_decision
+  from public.operation_run_members empty_member
+  join public.operation_run_members completed_member on completed_member.id = '${id.repairCompletedMember}'
+  join public.process_step_attempts attempt on attempt.id = '${id.repairAttempt}'
+  where empty_member.id = '${id.repairEmptyMember}'
+`);
+assert.equal(repairedLegacyHistory.rows.length, 1);
+assert.equal(repairedLegacyHistory.rows[0].empty_member_effective, false);
+assert.match(repairedLegacyHistory.rows[0].suppression_reason, /Superseded/i);
+assert.equal(repairedLegacyHistory.rows[0].completed_member_effective, true);
+assert.equal(repairedLegacyHistory.rows[0].attempt_number, 1);
+assert.equal(repairedLegacyHistory.rows[0].batch_id, id.repairBatch);
+assert.equal(repairedLegacyHistory.rows[0].batch_member_count, 1);
+assert.equal(repairedLegacyHistory.rows[0].effective_route_decision, "approved");
+
 const result = await db.query(`
   select
     to_regclass('public.process_plans') is not null as plans,
@@ -467,6 +745,7 @@ console.log(JSON.stringify({
   ...result.rows[0],
   operationRuns: "200-member atomic start, repeat, complete, and retry",
   mixedReview: "approved and rejected members split into successor and redo runs; draft unchanged",
+  redoEvidence: "first-time destinations approve, performed destinations redo, and legacy batches remain intact",
   planning: "independent edits, stale rejection, publish immutability",
   fixture: performanceRows.rows[0],
   performanceMs: {

@@ -49,4 +49,41 @@ The migration changes only a canonical view filter. Raw checkpoint decisions, co
 
 ## Status
 
-Resolved and verified in production. GitHub issue creation was unavailable because the configured `gh` credential is invalid, so this repository-local ticket is the release record.
+Reopened on 2026-08-14 after the production-wide history audit found that route correction still inferred redo from process order instead of performed destination evidence.
+
+## Reopened diagnosis — 2026-08-14
+
+### Symptom
+
+- A1 shows EBL twice and labels both visits as redo even though its only EBL checkpoint is attempt 1.
+- Other dies can label a first-time corrected destination as redo, or store a repeated destination as approved.
+- Completed source visits, true repeat visits, operation batches, and append-only checkpoint evidence must remain intact.
+
+### Diagnosis
+
+The read-only production audit covered all 18 active die assignments, 127 effective operation members, and 93 checkpoint attempts. Three effective route corrections disagree with performed destination evidence:
+
+- A1 Spin Coating to first-time EBL is stored as redo but must be approved.
+- B4 Post-Bake to first-time Pad Formation is stored as redo but must be approved.
+- B10 Cleaning to previously performed Pre-Bake is stored as approved but must be redo.
+
+`correct_checkpoint_route_assignment` classifies corrections with `destination_step.step_order <= checkpoint_step.step_order`. Step order is recipe presentation, not proof that the destination was already performed. The Status model then trusts both the correction outcome and `operation_runs.run_kind`, so one bad classification can highlight both the empty destination wrapper and the later completed member.
+
+A1 has one effective EBL member with no completion or checkpoint evidence followed by one completed EBL member carrying attempt 1. The empty member is a superseded false-redo route entry. B9's superficially similar single Post-Bake redo is genuine: it carries attempt 2 after attempt 1 was undone, and must remain highlighted.
+
+### Plan
+
+1. Replace step-order inference with canonical prior-performance evidence for the correction destination.
+2. Append effective correction events for the three misclassified production routes; never rewrite checkpoint decisions.
+3. Mark only A1's evidence-free EBL wrapper ineffective using a generic, rerunnable recovery predicate; preserve its raw member, completed EBL attempt, operation run, and batch membership.
+4. Require redo presentation evidence: a prior performed visit of the same step or a later checkpoint attempt number.
+5. Add exact regressions for first-time EBL, repeated Pre-Bake, and B9's attempt-2 redo.
+6. Re-audit all active die histories, run every required workflow/database gate, and replay A1/B4/B10/B9 plus a normal control die on desktop and 390x844.
+
+### Rollback and risk
+
+The repair is additive and rerunnable. It adds superseding events and changes only the effective-history flag of evidence-free placeholders. Raw events, checkpoint attempts and decisions, completed operation members, operation links, batch IDs, and batch membership remain present. The function replacement keeps its public signature and idempotency contract.
+
+### Status
+
+Implemented and locally verified. The focused history regressions, 268-test suite, typecheck, lint, production build, 64-migration chain, and all required workflow/database verifiers pass. The linked Supabase dry run selects only migration `202608140003_history_redo_evidence_repair.sql`. Production migration, deployment, and signed-in desktop/mobile replay remain pending. GitHub issue update is unavailable because the configured `gh` credential is invalid; this existing repository-local ticket remains the release record.
