@@ -88,6 +88,14 @@ function removeInheritedHandoffDuplicates(
   });
 }
 
+function uniqueOperationRunVisits(
+  visits: readonly NonNullable<WaferStatusTileModel["operationRunVisits"]>[number][]
+) {
+  const visitsByMemberId = new Map<string, NonNullable<WaferStatusTileModel["operationRunVisits"]>[number]>();
+  for (const visit of visits) visitsByMemberId.set(visit.operationRunMemberId, visit);
+  return Array.from(visitsByMemberId.values());
+}
+
 function assignParameterRecords(visits: StepVisitHistoryItem[]) {
   const visitsByStepId = new Map<string, StepVisitHistoryItem[]>();
   for (const visit of visits) {
@@ -161,11 +169,13 @@ function mergeHistoryCorrections(tile: WaferStatusTileModel, visits: StepVisitHi
 export function buildStepVisitHistory(tile: WaferStatusTileModel): StepVisitHistoryItem[] {
   const processSteps = tile.processSteps ?? [];
   const stepsById = new Map(processSteps.map((step) => [step.id, step]));
-  const attempts = (tile.checkpointHistory ?? []).filter(
-    (entry): entry is WaferStatusCheckpointAttemptEntry => entry.kind === "attempt"
-  );
+  const attempts = Array.from(new Map(
+    (tile.checkpointHistory ?? [])
+      .filter((entry): entry is WaferStatusCheckpointAttemptEntry => entry.kind === "attempt")
+      .map((attempt) => [attempt.id, attempt])
+  ).values());
   const canonicalVisits = removeInheritedHandoffDuplicates(
-    (tile.operationRunVisits ?? []).filter((visit) =>
+    uniqueOperationRunVisits(tile.operationRunVisits ?? []).filter((visit) =>
       !(visit.status === "completed" && !visit.startedAt && !visit.completedAt)
     ),
     attempts

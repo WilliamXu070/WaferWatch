@@ -340,8 +340,18 @@ function uniqueCorrectionEvents(rows: readonly OperationRunHistoryView[]) {
   );
 }
 
+function uniqueOperationHistoryRows(rows: readonly OperationRunHistoryView[]) {
+  const rowsByMemberId = new Map<string, OperationRunHistoryView>();
+  for (const row of rows) rowsByMemberId.set(row.operation_run_member_id, row);
+  return Array.from(rowsByMemberId.values()).sort((first, second) =>
+    first.created_at.localeCompare(second.created_at)
+      || first.operation_run_member_id.localeCompare(second.operation_run_member_id)
+  );
+}
+
 function buildCanonicalHistory(rows: readonly OperationRunHistoryView[]): CanonicalHistory {
-  const correctionEvents = uniqueCorrectionEvents(rows);
+  const normalizedRows = uniqueOperationHistoryRows(rows);
+  const correctionEvents = uniqueCorrectionEvents(normalizedRows);
   const effectiveCheckpointRoutes = buildEffectiveCheckpointRouteMap(correctionEvents);
   const undoneAttemptIds = new Set<string>();
   const undoneDecisionIds = new Set<string>();
@@ -357,16 +367,16 @@ function buildCanonicalHistory(rows: readonly OperationRunHistoryView[]): Canoni
     if (processEventId) undoneCorrectionIds.add(processEventId);
   }
 
-  const attempts: CheckpointTimelineAttemptSource[] = [];
-  const decisions: CheckpointTimelineDecisionSource[] = [];
-  const withdrawals: CheckpointTimelineWithdrawalSource[] = [];
+  const attemptsById = new Map<string, CheckpointTimelineAttemptSource>();
+  const decisionsById = new Map<string, CheckpointTimelineDecisionSource>();
+  const withdrawalsById = new Map<string, CheckpointTimelineWithdrawalSource>();
   const legacyEntries: CheckpointTimelineLegacySource[] = [];
   const memberByAttemptId = new Map<string, string>();
   const visits: WaferStatusOperationRunVisit[] = [];
-  const runById = new Map(rows.map((row) => [row.operation_run_id, row]));
+  const runById = new Map(normalizedRows.map((row) => [row.operation_run_id, row]));
   const reverts: WaferStatusRevertEvent[] = [];
 
-  for (const row of rows) {
+  for (const row of normalizedRows) {
     const visitId = `operation-member:${row.operation_run_member_id}`;
     const checkpointRows = asRecordArray(row.checkpoint_history);
     const isNeverHappenedPlaceholder = row.member_status === "completed"
@@ -402,28 +412,30 @@ function buildCanonicalHistory(rows: readonly OperationRunHistoryView[]): Canoni
       const submittedAt = stringValue(checkpoint, "submittedAt");
       if (!attemptId || !submittedAt || undoneAttemptIds.has(attemptId)) continue;
       memberByAttemptId.set(attemptId, row.operation_run_member_id);
-      attempts.push({
-        id: attemptId,
-        stepId: row.process_step_id,
-        stepName: stringValue(checkpoint, "stepName") ?? (typeof row.process_step_name === "string" ? row.process_step_name : "Unknown step"),
-        attemptNumber: Math.max(1, numberValue(checkpoint, "attemptNumber") ?? 1),
-        status: "awaiting_checkpoint",
-        createdAt: submittedAt,
-        startedAt: stringValue(checkpoint, "startedAt") ?? (typeof row.started_at === "string" ? row.started_at : null),
-        submittedAt,
-        submittedBy: {
-          id: stringValue(checkpoint, "submittedById"),
-          name: stringValue(checkpoint, "submittedByName")
-        },
-        submissionNote: stringValue(checkpoint, "submissionNote")
-      });
+      if (!attemptsById.has(attemptId)) {
+        attemptsById.set(attemptId, {
+          id: attemptId,
+          stepId: row.process_step_id,
+          stepName: stringValue(checkpoint, "stepName") ?? (typeof row.process_step_name === "string" ? row.process_step_name : "Unknown step"),
+          attemptNumber: Math.max(1, numberValue(checkpoint, "attemptNumber") ?? 1),
+          status: "awaiting_checkpoint",
+          createdAt: submittedAt,
+          startedAt: stringValue(checkpoint, "startedAt") ?? (typeof row.started_at === "string" ? row.started_at : null),
+          submittedAt,
+          submittedBy: {
+            id: stringValue(checkpoint, "submittedById"),
+            name: stringValue(checkpoint, "submittedByName")
+          },
+          submissionNote: stringValue(checkpoint, "submissionNote")
+        });
+      }
       const decisionId = stringValue(checkpoint, "decisionId");
       const decidedAt = stringValue(checkpoint, "decidedAt");
       const decision = stringValue(checkpoint, "decision");
       if (decisionId && decidedAt && decision && !undoneDecisionIds.has(decisionId)) {
         const effectiveRoute = effectiveCheckpointRoutes.get(decisionId) ?? null;
         const effectiveOutcome = effectiveRoute?.outcome ?? (decision === "redo" ? "redo" : "approve");
-        decisions.push({
+        decisionsById.set(decisionId, {
           id: decisionId,
           attemptId,
           outcome: effectiveOutcome,
@@ -445,7 +457,7 @@ function buildCanonicalHistory(rows: readonly OperationRunHistoryView[]): Canoni
       const withdrawalId = stringValue(checkpoint, "withdrawalId");
       const withdrawnAt = stringValue(checkpoint, "withdrawnAt");
       if (withdrawalId && withdrawnAt) {
-        withdrawals.push({
+        withdrawalsById.set(withdrawalId, {
           id: withdrawalId,
           attemptId,
           occurredAt: withdrawnAt,
@@ -495,7 +507,12 @@ function buildCanonicalHistory(rows: readonly OperationRunHistoryView[]): Canoni
     }
   }
 
-  const checkpointHistory = buildCheckpointTimeline({ attempts, decisions, withdrawals, legacyEntries })
+  const checkpointHistory = buildCheckpointTimeline({
+    attempts: Array.from(attemptsById.values()),
+    decisions: Array.from(decisionsById.values()),
+    withdrawals: Array.from(withdrawalsById.values()),
+    legacyEntries
+  })
     .map((entry): WaferStatusCheckpointHistoryEntry => entry.kind === "attempt"
       ? { ...entry, operationRunMemberId: memberByAttemptId.get(entry.id) ?? null }
       : entry);

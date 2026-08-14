@@ -146,6 +146,76 @@ test("keeps repeated visits separate and assigns parameter records to the matchi
   assert.deepEqual(cleaningVisits.map((visit) => visit.parameterRecords.map((record) => record.id)), [["record-1"], ["record-2"]]);
 });
 
+test("shows B1 Spin Coating once when one member and attempt carry two approval decisions", () => {
+  const spinVisit = {
+    id: "operation-member:b1-spin",
+    operationRunId: "run-b1-spin",
+    operationRunMemberId: "b1-spin",
+    legacyStepExecutionId: "execution-b1-spin",
+    stepId: "spin",
+    stepName: "Spin Coating",
+    processArea: "Lithography",
+    runKind: "normal" as const,
+    status: "completed" as const,
+    startedAt: "2026-07-17T14:42:17Z",
+    completedAt: "2026-07-20T13:05:19Z",
+    createdAt: "2026-07-17T14:42:17Z",
+    note: "complete + clean",
+    actor: { id: "user-1", name: "William" },
+    parameterRecords: []
+  };
+  const spinAttempt = {
+    kind: "attempt" as const,
+    id: "attempt-b1-spin",
+    operationRunMemberId: "b1-spin",
+    stepId: "spin",
+    stepName: "Spin Coating",
+    attemptNumber: 1,
+    state: "approved" as const,
+    occurredAt: "2026-07-17T14:42:17Z",
+    startedAt: "2026-07-17T14:42:17Z",
+    submission: {
+      id: "submission-b1-spin",
+      occurredAt: "2026-07-17T15:34:58Z",
+      actor: { id: "user-1", name: "William" },
+      note: "complete + clean"
+    },
+    withdrawals: [],
+    decisions: [{
+      id: "decision-b1-spin-first",
+      outcome: "approve" as const,
+      occurredAt: "2026-07-17T15:35:14Z",
+      actor: { id: "user-1", name: "William" },
+      note: "Moved to Post-Bake.",
+      destinationStepId: null,
+      destinationStepName: null,
+      supersedesDecisionId: null,
+      isEffective: false
+    }, {
+      id: "decision-b1-spin-effective",
+      outcome: "approve" as const,
+      occurredAt: "2026-07-20T13:05:19Z",
+      actor: { id: "user-1", name: "William" },
+      note: "Moved to Post-Bake of PL2.",
+      destinationStepId: null,
+      destinationStepName: null,
+      supersedesDecisionId: null,
+      isEffective: true
+    }],
+    effectiveDecision: null
+  };
+
+  const visits = buildStepVisitHistory(tile({
+    currentStepId: "post-bake",
+    operationRunVisits: [spinVisit, { ...spinVisit }],
+    checkpointHistory: [spinAttempt, { ...spinAttempt }]
+  }));
+
+  assert.deepEqual(visits.map((visit) => visit.stepName), ["Spin Coating"]);
+  assert.equal(visits[0]?.completionNote, "complete + clean");
+  assert.equal(visits[0]?.historyAction, null);
+});
+
 test("orders progression by completion time when repeated visits started in a different order", () => {
   const base = tile();
   const visits = buildStepVisitHistory(tile({

@@ -101,7 +101,8 @@ const id = {
   queuedExecution: "66000000-0000-4000-8000-000000000041",
   queuedRun: "66000000-0000-4000-8000-000000000042",
   queuedMember: "66000000-0000-4000-8000-000000000043",
-  correctedLegacyBatch: "66000000-0000-4000-8000-000000000044"
+  correctedLegacyBatch: "66000000-0000-4000-8000-000000000044",
+  duplicatePolingDecision: "66000000-0000-4000-8000-000000000045"
 };
 
 await db.exec(`
@@ -724,6 +725,80 @@ assert.equal(
   correctedMemberCountBeforeRetry.rows[0].count
 );
 
+// Exact B1 cardinality regression: one immutable attempt may retain multiple
+// decisions after undo/reapproval, but the canonical view must still return
+// one row for its operation member while keeping both evidence records.
+await db.query(`
+  insert into public.checkpoint_decisions (
+    id, attempt_id, assignment_id, wafer_id, template_id, process_step_id,
+    step_execution_id, decision, decided_by, decided_at,
+    wafer_code_snapshot, process_step_name_snapshot, process_step_order_snapshot,
+    decided_by_name_snapshot, decision_notes, client_mutation_id
+  ) values (
+    $1, $2, $3, $4, $5, $6,
+    $7, 'approved', $8, '2026-07-22T19:31:10Z',
+    'A4', 'Poling', 3,
+    'History recovery', 'Approved again after correction', gen_random_uuid()
+  )
+`, [
+  id.duplicatePolingDecision,
+  id.polingAttempt,
+  id.assignment,
+  id.wafer,
+  id.template,
+  id.polingStep,
+  id.polingExecution,
+  id.actor
+]);
+const repeatedDecisionProjection = await db.query(`
+  select
+    count(*)::integer as projected_rows,
+    min(history.latest_review_status) as latest_review_status,
+    min(jsonb_array_length(history.checkpoint_history))::integer as evidence_rows
+  from public.vw_operation_run_history history
+  where history.operation_run_member_id = (
+    select attempt.operation_run_member_id
+    from public.process_step_attempts attempt
+    where attempt.id = '${id.polingAttempt}'
+  )
+`);
+assert.deepEqual(repeatedDecisionProjection.rows[0], {
+  projected_rows: 1,
+  latest_review_status: "approved",
+  evidence_rows: 2
+});
+
+const canonicalViewCardinality = await db.query(`
+  select
+    count(*)::integer as projected_rows,
+    count(distinct history.operation_run_member_id)::integer as distinct_members
+  from public.vw_operation_run_history history
+`);
+assert.equal(
+  canonicalViewCardinality.rows[0].projected_rows,
+  canonicalViewCardinality.rows[0].distinct_members
+);
+await db.exec(`
+  alter table public.wafer_process_assignments
+    disable trigger wafer_assignments_checkpoint_transition;
+  update public.wafer_process_assignments assignment
+  set current_step_id = '${id.polingStep}',
+      current_operation_run_member_id = (
+        select attempt.operation_run_member_id
+        from public.process_step_attempts attempt
+        where attempt.id = '${id.polingAttempt}'
+      )
+  where assignment.id = '${id.assignment}';
+  alter table public.wafer_process_assignments
+    enable trigger wafer_assignments_checkpoint_transition;
+`);
+const currentStateCardinality = await db.query(`
+  select count(*)::integer as projected_rows
+  from public.vw_process_current_state current_state
+  where current_state.assignment_id = '${id.assignment}'
+`);
+assert.equal(currentStateCardinality.rows[0].projected_rows, 1);
+
 console.log(JSON.stringify({
   exactRepro: "A4 merged PL2 repeats, cross-step Poling link, false EBL completion, missing Inspection member, and stale unresolved submission",
   recoveredVisits: visibleMembers.rows.length,
@@ -736,5 +811,8 @@ console.log(JSON.stringify({
   hostileMetadataBoundToWafer: currentAfterHostileEvent.rows[0].current_operation_run_member_id === current.rows[0].member_id,
   correctedRouteMemberStatus: correctedCurrent.rows[0].member_status,
   queuedPeerUntouched: queuedCurrent.rows[0].member_id === id.queuedMember,
-  correctedRouteRepairRerunnable: repairRetry.rows[0].result.repairedAssignments === 0
+  correctedRouteRepairRerunnable: repairRetry.rows[0].result.repairedAssignments === 0,
+  repeatedDecisionProjectedRows: repeatedDecisionProjection.rows[0].projected_rows,
+  canonicalViewCardinality: canonicalViewCardinality.rows[0],
+  currentStateProjectedRows: currentStateCardinality.rows[0].projected_rows
 }, null, 2));

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const sql = await readFile(new URL("../supabase/migrations/202607210007_workspace_read_models.sql", import.meta.url), "utf8");
 const effectiveHistory = await readFile(new URL("../supabase/migrations/202608140001_effective_status_history.sql", import.meta.url), "utf8");
+const canonicalHistory = await readFile(new URL("../supabase/migrations/202608140002_canonical_history_cardinality.sql", import.meta.url), "utf8");
 const bridge = await readFile(new URL("../src/features/collaboration/RealtimeWorkflowBridge.tsx", import.meta.url), "utf8");
 const processFlow = await readFile(new URL("../src/features/process-flows/queries.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../src/features/dashboard/queries.ts", import.meta.url), "utf8");
@@ -30,7 +31,12 @@ assert.match(dashboard, /vw_plan_actual_state/);
 assert.match(wafers, /vw_operation_run_history/);
 assert.match(effectiveHistory, /checkpoint_route_auto_redo_correction/);
 assert.match(effectiveHistory, /checkpoint_route_correction/);
+assert.match(canonicalHistory, /from public\.checkpoint_decisions candidate/);
+assert.match(canonicalHistory, /limit 1\s*\) decision on true/);
+assert.match(canonicalHistory, /where member\.history_effective/);
+assert.match(canonicalHistory, /child_member\.assignment_id = member\.assignment_id/);
 assert.match(wafers, /buildEffectiveCheckpointRouteMap/);
+assert.match(wafers, /uniqueOperationHistoryRows/);
 assert.doesNotMatch(dashboard, /vw_process_batch_history|buildPlannedBatches|step_executions/);
 assert.doesNotMatch(wafers, /from\("step_executions"\)|listOptionalCheckpointRows|pickCurrentStepExecution/);
 
