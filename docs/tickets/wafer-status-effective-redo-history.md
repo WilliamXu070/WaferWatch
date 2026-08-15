@@ -88,4 +88,12 @@ The repair is additive and rerunnable. It adds superseding events and changes on
 
 ### Status
 
-The source repair and migration `202608140003_history_redo_evidence_repair.sql` are implemented, locally verified, committed, pushed, and applied in production. Its post-migration audit confirms A1 retains one effective EBL attempt 1 and its original batch membership while the evidence-free EBL wrapper is preserved but suppressed. Follow-up migration `202608140004_effective_route_evidence_alignment.sql` is in verification for the five older automatic labels. Application deployment and signed-in desktop/mobile replay remain pending. GitHub issue update is unavailable because the configured `gh` credential is invalid; this existing repository-local ticket remains the release record.
+Resolved and verified in production on 2026-08-14.
+
+- Migrations `202608140003_history_redo_evidence_repair.sql` and `202608140004_effective_route_evidence_alignment.sql` are applied. The latter disables only the generic event-to-current-member relinking trigger inside its transaction, so historical route labels remain projection-only; the 65-migration verifier asserts the correction has no execution, run, or member link.
+- The final read-only production audit covers 21 dies and all 18 active assignments, reports 126 effective members and zero route-evidence mismatches, and confirms A1 retains one effective EBL attempt 1 plus its original batch member while the evidence-free wrapper remains preserved but ineffective.
+- Signed-in desktop replay confirms A1, B4, B10, B9, and normal control B1. A1 has one normal EBL; B4's first Pad Formation is normal; B10's repeated Cleaning and Pre-Bake are redo; B9's attempt-2 Post-Bake remains redo; B1 has one Spin Coating and one Chromium Deposition.
+- Signed-in 390x844 replay confirms the A1 and B9 redo cards are reachable by horizontal swipe, the page has no horizontal overflow, and the timeline does not collide with the fixed mobile navigation. No production wafer data was mutated during replay.
+- `npm test` (268 passing), typecheck, lint, production build, the 65-migration chain, and every required workflow/database verifier pass. Deployment `dpl_3EczUwTm6uXi58gKicfYeTqLXLSd` is READY and `/api/health` reports a healthy live Supabase response.
+
+GitHub issue update was unavailable because the configured `gh` credential is invalid; this existing repository-local ticket is the release record.
