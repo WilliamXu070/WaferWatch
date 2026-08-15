@@ -3,6 +3,12 @@
 -- the route occurred. Migration 202608140003 repaired manual corrections; this
 -- follow-up covers the older automatic correction layer without editing it.
 
+-- These rows supersede display evidence only. The generic compatibility trigger
+-- must not relink their inherited historical attempt as the assignment's
+-- current operation member.
+alter table public.process_events
+  disable trigger process_events_link_effective_history;
+
 with ranked_routes as (
   select
     event.*,
@@ -83,5 +89,8 @@ select
   ),
   gen_random_uuid()
 from incorrect_routes route;
+
+alter table public.process_events
+  enable trigger process_events_link_effective_history;
 
 notify pgrst, 'reload schema';

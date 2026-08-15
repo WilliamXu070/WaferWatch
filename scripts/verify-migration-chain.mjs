@@ -740,6 +740,8 @@ assert.equal(repairedLegacyHistory.rows[0].effective_route_decision, "approved")
 // their destination had already been performed. The follow-up migration
 // supersedes that label and stays rerunnable.
 await db.exec(`
+  alter table public.process_events
+    disable trigger process_events_link_effective_history;
   insert into public.process_events (
     id, project_id, wafer_id, step_execution_id, actor_id, event_type,
     event_at, notes, metadata, client_mutation_id
@@ -754,6 +756,7 @@ await db.exec(`
         'from_step_name', 'Correction source',
         'target_step_id', '${id.correctionRepeatTarget}',
         'target_step_name', 'Repeated destination',
+        'attempt_id', '${repeatRouteAttempt.rows[0].id}',
         'movement_kind', 'checkpoint_redo_route',
         'route_decision', 'redo'
       ), '${id.legacyAutoRouteOriginal}'
@@ -769,10 +772,13 @@ await db.exec(`
         'target_step_id', '${id.correctionRepeatTarget}',
         'target_step_name', 'Repeated destination',
         'corrected_event_id', '${id.legacyAutoRouteOriginal}',
+        'attempt_id', '${repeatRouteAttempt.rows[0].id}',
         'movement_kind', 'checkpoint_route_auto_redo_correction',
         'route_decision', 'approved'
       ), '${id.legacyAutoRouteCorrection}'
     );
+  alter table public.process_events
+    enable trigger process_events_link_effective_history;
 `);
 const routeEvidenceAlignmentMigration = await readFile(
   new URL("../supabase/migrations/202608140004_effective_route_evidence_alignment.sql", import.meta.url),
