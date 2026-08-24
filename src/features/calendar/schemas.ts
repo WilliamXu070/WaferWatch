@@ -45,6 +45,7 @@ export const processCalendarEventCreateSchema = z
   });
 
 export const processCalendarEventDeleteSchema = z.object({
+  processTemplateId: uuidSchema,
   eventId: uuidSchema,
   mutationId: uuidSchema,
   expectedRevision: z.number().int().min(1)
@@ -52,6 +53,7 @@ export const processCalendarEventDeleteSchema = z.object({
 
 export const processCalendarEventMoveSchema = z
   .object({
+    processTemplateId: uuidSchema,
     eventId: uuidSchema,
     mutationId: uuidSchema,
     expectedRevision: z.number().int().min(1),

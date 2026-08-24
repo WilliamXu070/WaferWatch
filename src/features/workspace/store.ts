@@ -2,16 +2,27 @@
 
 import { useSyncExternalStore } from "react";
 import type { Json } from "@/types/database";
-import type { ProcessWorkspaceDelta, ProcessWorkspaceSnapshot } from "./types";
+import type {
+  ProcessWorkspaceDelta,
+  ProcessWorkspaceMutationOverlay,
+  ProcessWorkspaceSnapshot
+} from "./types";
 
 type WorkspaceState = {
   snapshot: ProcessWorkspaceSnapshot | null;
+  optimisticSnapshot: ProcessWorkspaceSnapshot | null;
   lastDelta: ProcessWorkspaceDelta | null;
+  overlays: ProcessWorkspaceMutationOverlay[];
 };
 
 const states = new Map<string, WorkspaceState>();
 const listeners = new Map<string, Set<() => void>>();
-const emptyState: WorkspaceState = { snapshot: null, lastDelta: null };
+const emptyState: WorkspaceState = {
+  snapshot: null,
+  optimisticSnapshot: null,
+  lastDelta: null,
+  overlays: []
+};
 
 function emit(templateId: string) {
   for (const listener of listeners.get(templateId) ?? []) listener();
@@ -37,9 +48,75 @@ function mergeRows(current: Json[], changed: Json[], removed: Json | undefined, 
   return Array.from(byId.values());
 }
 
+function mutationIdFromChange(value: Json) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return typeof value.client_mutation_id === "string" ? value.client_mutation_id : null;
+}
+
+function projectOptimisticSnapshot(
+  snapshot: ProcessWorkspaceSnapshot | null,
+  overlays: ProcessWorkspaceMutationOverlay[]
+) {
+  if (!snapshot) return null;
+  return overlays.reduce<ProcessWorkspaceSnapshot>((current, overlay) => {
+    const patch = overlay.patch;
+    const removed = patch.removedEntityIds ?? {};
+    return {
+      ...current,
+      processDefinition: {
+        stages: mergeRows(
+          current.processDefinition.stages,
+          patch.processDefinition?.stages ?? [],
+          removed.processStageIds,
+          "id"
+        ),
+        steps: mergeRows(
+          current.processDefinition.steps,
+          patch.processDefinition?.steps ?? [],
+          removed.processStepIds,
+          "id"
+        ),
+        transitions: mergeRows(
+          current.processDefinition.transitions,
+          patch.processDefinition?.transitions ?? [],
+          removed.processTransitionIds,
+          "id"
+        )
+      },
+      currentState: mergeRows(current.currentState, patch.currentState ?? [], removed.assignmentIds, "assignment_id"),
+      archivedState: mergeRows(current.archivedState, patch.archivedState ?? [], removed.archivedAssignmentIds, "assignment_id"),
+      operationHistory: mergeRows(
+        current.operationHistory,
+        patch.operationHistory ?? [],
+        removed.operationRunMemberIds,
+        "operation_run_member_id"
+      ),
+      plan: mergeRows(current.plan, patch.plan ?? [], removed.plannedOperationIds, "planned_operation_id"),
+      activeBatchRuns: mergeRows(
+        current.activeBatchRuns,
+        patch.activeBatchRuns ?? [],
+        removed.operationRunIds,
+        "operation_run_id"
+      ),
+      calendar: mergeRows(current.calendar, patch.calendar ?? [], removed.calendarEventIds, "id")
+    };
+  }, snapshot);
+}
+
+function setState(templateId: string, state: Omit<WorkspaceState, "optimisticSnapshot">) {
+  states.set(templateId, {
+    ...state,
+    optimisticSnapshot: projectOptimisticSnapshot(state.snapshot, state.overlays)
+  });
+  emit(templateId);
+}
+
 export function setProcessWorkspaceSnapshot(snapshot: ProcessWorkspaceSnapshot) {
-  states.set(snapshot.templateId, { snapshot, lastDelta: null });
-  emit(snapshot.templateId);
+  const current = states.get(snapshot.templateId) ?? emptyState;
+  const overlays = current.overlays.filter((overlay) => (
+    overlay.committedRevision === undefined || overlay.committedRevision > snapshot.revision
+  ));
+  setState(snapshot.templateId, { snapshot, lastDelta: null, overlays });
 }
 
 export function applyProcessWorkspaceDelta(delta: ProcessWorkspaceDelta) {
@@ -49,22 +126,71 @@ export function applyProcessWorkspaceDelta(delta: ProcessWorkspaceDelta) {
   if (delta.revision <= snapshot.revision) return true;
   if (delta.afterRevision !== snapshot.revision) return false;
   const removed = delta.removedEntityIds;
-  states.set(delta.templateId, {
+  const settledMutationIds = new Set(delta.changes.map(mutationIdFromChange).filter(Boolean));
+  const overlays = current.overlays.filter((overlay) => (
+    !settledMutationIds.has(overlay.mutationId)
+    && (overlay.committedRevision === undefined || overlay.committedRevision > delta.revision)
+  ));
+  setState(delta.templateId, {
     snapshot: {
       ...snapshot,
       revision: delta.revision,
       processDefinition: {
-        ...snapshot.processDefinition,
-        stages: mergeRows(snapshot.processDefinition.stages, delta.processDefinition.stages, removed.processStageIds, "id")
+        stages: mergeRows(snapshot.processDefinition.stages, delta.processDefinition.stages, removed.processStageIds, "id"),
+        steps: mergeRows(snapshot.processDefinition.steps, delta.processDefinition.steps, removed.processStepIds, "id"),
+        transitions: mergeRows(
+          snapshot.processDefinition.transitions,
+          delta.processDefinition.transitions,
+          removed.processTransitionIds,
+          "id"
+        )
       },
       currentState: mergeRows(snapshot.currentState, delta.currentState, removed.assignmentIds, "assignment_id"),
+      archivedState: mergeRows(snapshot.archivedState, delta.archivedState, removed.assignmentIds, "assignment_id"),
+      operationHistory: mergeRows(
+        snapshot.operationHistory,
+        delta.operationHistory,
+        removed.operationRunMemberIds,
+        "operation_run_member_id"
+      ),
       plan: mergeRows(snapshot.plan, delta.plan, removed.plannedOperationIds, "planned_operation_id"),
-      activeBatchRuns: mergeRows(snapshot.activeBatchRuns, delta.batchRuns, removed.operationRunIds, "operation_run_id")
+      activeBatchRuns: mergeRows(snapshot.activeBatchRuns, delta.batchRuns, removed.operationRunIds, "operation_run_id"),
+      calendar: mergeRows(snapshot.calendar, delta.calendar, removed.calendarEventIds, "id")
     },
-    lastDelta: delta
+    lastDelta: delta,
+    overlays
   });
-  emit(delta.templateId);
   return true;
+}
+
+export function addProcessWorkspaceOverlay(
+  templateId: string,
+  overlay: ProcessWorkspaceMutationOverlay
+) {
+  const current = states.get(templateId) ?? emptyState;
+  const overlays = [
+    ...current.overlays.filter((candidate) => candidate.mutationId !== overlay.mutationId),
+    overlay
+  ];
+  setState(templateId, { snapshot: current.snapshot, lastDelta: current.lastDelta, overlays });
+}
+
+export function markProcessWorkspaceOverlayCommitted(
+  templateId: string,
+  mutationId: string,
+  committedRevision: number
+) {
+  const current = states.get(templateId) ?? emptyState;
+  const overlays = current.overlays.map((overlay) => (
+    overlay.mutationId === mutationId ? { ...overlay, committedRevision } : overlay
+  ));
+  setState(templateId, { snapshot: current.snapshot, lastDelta: current.lastDelta, overlays });
+}
+
+export function rejectProcessWorkspaceOverlay(templateId: string, mutationId: string) {
+  const current = states.get(templateId) ?? emptyState;
+  const overlays = current.overlays.filter((overlay) => overlay.mutationId !== mutationId);
+  setState(templateId, { snapshot: current.snapshot, lastDelta: current.lastDelta, overlays });
 }
 
 export function getProcessWorkspaceState(templateId: string) {

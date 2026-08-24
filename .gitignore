@@ -10,6 +10,8 @@ coverage
 supabase/.temp
 .playwright-mcp
 playwright/.auth
+.golden-flow
+golden-flows/artifacts
 .DS_Store
 
 .vercel

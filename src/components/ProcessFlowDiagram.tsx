@@ -160,6 +160,7 @@ import type {
 
 type QueuedTransition = {
   id: string;
+  mutationId?: string;
   fromStepId: string;
   toStepId: string;
   edgeType: ProcessStepTransitionType;
@@ -168,6 +169,7 @@ type QueuedTransition = {
 };
 
 type QueuedStepCreate = {
+  mutationId: string;
   canvasX: number;
   canvasY: number;
   fallbackNode: FlowNode;
@@ -1088,6 +1090,7 @@ export function ProcessFlowDiagram({
 
     for (const [localId, transition] of queue) {
       const draftEdgeExists = edgesRef.current.some((edge) => edge.id === localId);
+      const mutationId = transition.mutationId ?? crypto.randomUUID();
 
       if (!draftEdgeExists) {
         continue;
@@ -1096,7 +1099,7 @@ export function ProcessFlowDiagram({
       if (isOptimisticStep(transition.fromStepId) || isOptimisticStep(transition.toStepId)) {
         const attempts = (transition.attempts ?? 0) + 1;
         if (attempts <= TRANSITION_RETRY_LIMIT) {
-          pendingTransitionCreateRef.current.set(localId, { ...transition, attempts });
+          pendingTransitionCreateRef.current.set(localId, { ...transition, mutationId, attempts });
         } else {
           setMoveMessage("Transition save timed out before both steps were persisted.");
           setEdges((current) => normalizeFlowEdges(current.filter((edge) => edge.id !== localId)));
@@ -1106,6 +1109,7 @@ export function ProcessFlowDiagram({
 
       const result = await onCreateTransition({
         templateId: processTemplateId,
+        mutationId,
         fromStepId: transition.fromStepId,
         toStepId: transition.toStepId,
         edgeType: transition.edgeType,
@@ -1115,7 +1119,11 @@ export function ProcessFlowDiagram({
       if (!result.ok) {
         const attempts = (transition.attempts ?? 0) + 1;
         if (attempts <= TRANSITION_RETRY_LIMIT) {
-          pendingTransitionCreateRef.current.set(localId, { ...transition, attempts });
+          pendingTransitionCreateRef.current.set(localId, {
+            ...transition,
+            mutationId,
+            attempts
+          });
           setMoveMessage("Retrying transition save...");
           continue;
         }
@@ -1166,6 +1174,7 @@ export function ProcessFlowDiagram({
 
       const result = await onCreateStep({
         templateId: processTemplateId,
+        mutationId: payload.mutationId,
         name: getLatestNode(temporaryStepId)?.label ?? payload.fallbackNode.label,
         processArea: payload.stepArea,
         nodeType: payload.nodeType,
@@ -1775,6 +1784,7 @@ export function ProcessFlowDiagram({
       void (async () => {
         const result = await onCreateWaferAtProcessStart({
           templateId: processTemplateId,
+          mutationId: crypto.randomUUID(),
           waferCode,
           dieCount: draft.dieCount
         });
@@ -2768,6 +2778,7 @@ export function ProcessFlowDiagram({
     setSelectedNodeIds(new Set([temporaryStepId]));
     setMoveMessage(edgeToSplit ? "Inserted step into transition locally." : "Added step locally.");
     queueStepPersist(temporaryStepId, {
+      mutationId: crypto.randomUUID(),
       canvasX,
       canvasY,
       fallbackNode,

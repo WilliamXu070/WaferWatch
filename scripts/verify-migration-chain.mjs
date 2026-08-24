@@ -61,6 +61,7 @@ const id = {
   project: "50000000-0000-4000-8000-000000000002",
   template: "50000000-0000-4000-8000-000000000003",
   step: "50000000-0000-4000-8000-000000000004",
+  authenticatedStep: "50000000-0000-4000-8000-000000000058",
   startOne: "50000000-0000-4000-8000-000000000005",
   startTwo: "50000000-0000-4000-8000-000000000006",
   complete: "50000000-0000-4000-8000-000000000007",
@@ -149,6 +150,37 @@ await db.exec(`
   set app.role = 'authenticated';
   set role authenticated;
 `);
+
+await db.exec(`
+  insert into public.process_steps (
+    id, template_id, step_order, name, slug, process_area, node_type, canvas_x, canvas_y
+  ) values (
+    '${id.authenticatedStep}', '${id.template}', 2,
+    'Authenticated step', 'authenticated-step', 'Verification', 'procedure', 320, 180
+  );
+`);
+const authenticatedStepStage = await db.query(`
+  select
+    step.id as step_id,
+    step.stage_id,
+    stage.template_id,
+    stage.slug,
+    (select count(*)::integer from public.process_steps candidate
+      where candidate.id = '${id.authenticatedStep}') as step_count,
+    (select count(*)::integer from public.process_stages candidate
+      where candidate.id = step.stage_id) as stage_count
+  from public.process_steps step
+  join public.process_stages stage on stage.id = step.stage_id
+  where step.id = '${id.authenticatedStep}'
+`);
+assert.deepEqual(authenticatedStepStage.rows, [{
+  step_id: id.authenticatedStep,
+  stage_id: authenticatedStepStage.rows[0].stage_id,
+  template_id: id.template,
+  slug: "authenticated-step",
+  step_count: 1,
+  stage_count: 1
+}]);
 
 const startRun = (mutationId) => db.query(`
   select public.start_operation_run(

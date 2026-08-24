@@ -370,6 +370,7 @@ export type UpdateStepCheckpointReviewerAction = (input: {
 
 export type CreateWaferAtProcessStartAction = (input: {
   templateId: string;
+  mutationId: string;
   waferCode: string;
   dieCount: number;
 }) => Promise<ActionResult<CreatedWaferAtProcessStartPayload>>;
@@ -396,6 +397,7 @@ export type RestoreArchivedProcessWaferAction = (input: {
 
 export type CreateProcessFlowStepAction = (input: {
   templateId: string;
+  mutationId: string;
   name: string;
   processArea: string;
   nodeType: ProcessStepNodeType;
@@ -456,6 +458,7 @@ export type ProcessFlowActions = {
 
 export type CreateProcessStepTransitionAction = (input: {
   templateId: string;
+  mutationId: string;
   fromStepId: string;
   toStepId: string;
   edgeType: ProcessStepTransitionType;

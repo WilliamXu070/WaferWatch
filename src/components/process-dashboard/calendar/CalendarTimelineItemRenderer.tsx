@@ -93,6 +93,7 @@ export function renderCalendarTimelineItem({
     <div
       key={key}
       {...itemProps}
+      data-calendar-event-id={item.isDraft ? "draft" : item.id}
       onPointerDown={handleItemPointerDown}
       onPointerUp={handleItemPointerUp}
       onPointerCancel={handleItemPointerCancel}

@@ -39,7 +39,7 @@ import {
   isLegacyDeletedWaferFamily,
   keepExistingWaferFamilyDeleteIds
 } from "@/features/process-flows/waferDeletion";
-import type { Json, ProcessStep, StepParameterRecord, StepStatus } from "@/types/database";
+import type { Json, ProcessStep, StepParameterRecord } from "@/types/database";
 import type {
   WaferStatusStepParameterRecord,
   WaferStatusStepParameterValue
@@ -48,6 +48,7 @@ import {
   clearActiveProcessCookieIfSelected,
   setActiveProcessCookie
 } from "@/features/process-selection/server";
+import { executeWorkflowCommandForCurrentActor } from "@/features/workflow-commands/server";
 
 type ProcessTemplateWriteContext = {
   id: string;
@@ -263,23 +264,6 @@ async function getAvailableStepSlug(templateId: string, name: string, excludeSte
   return `${baseSlug}-${Date.now()}`;
 }
 
-async function getNextStepOrder(templateId: string) {
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("process_steps")
-    .select("step_order")
-    .eq("template_id", templateId)
-    .order("step_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return (data?.step_order ?? 0) + 10;
-}
-
 function revalidateProcessFlow(templateId: string) {
   revalidatePath("/", "layout");
   revalidatePath("/dashboard");
@@ -287,20 +271,6 @@ function revalidateProcessFlow(templateId: string) {
   revalidatePath("/wafer-status");
   revalidatePath("/calendar");
   revalidatePath(`/processes/${templateId}`);
-}
-
-async function rollbackIncompleteWaferCreate(waferId: string) {
-  const adminSupabase = createSupabaseAdminClient();
-  const { error } = await adminSupabase
-    .from("wafers")
-    .delete()
-    .eq("id", waferId);
-
-  return error?.message ?? null;
-}
-
-function appendRollbackError(message: string, rollbackError: string | null) {
-  return rollbackError ? `${message} Cleanup also failed: ${rollbackError}` : message;
 }
 
 async function deleteWaferFamilyRecords({
@@ -379,15 +349,6 @@ async function deleteWaferFamilyRecords({
   return (data ?? []).map((wafer) => wafer.id);
 }
 
-function getMetadataRecord(value: Json): Record<string, Json | undefined> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-
-function deriveWaferFamily(waferCode: string) {
-  const leading = waferCode.trim().toUpperCase().match(/^[A-Z]+/)?.[0];
-  return leading || waferCode.trim().toUpperCase() || "WAFER";
-}
-
 async function getTemplateProjectForWaferCreate(templateId: string) {
   const account = await requireAccount();
   const supabase = await createServerSupabaseClient();
@@ -449,25 +410,8 @@ async function getTemplateProjectForWaferCreate(templateId: string) {
 export async function createWaferAtProcessStart(input: unknown) {
   try {
     const parsed = processFlowWaferCreateSchema.parse(input);
-    const { account, projectId } = await getTemplateProjectForWaferCreate(parsed.templateId);
+    const { projectId } = await getTemplateProjectForWaferCreate(parsed.templateId);
     const supabase = await createServerSupabaseClient();
-
-    const { data: steps, error: stepsError } = await supabase
-      .from("process_steps")
-      .select("*")
-      .eq("template_id", parsed.templateId)
-      .is("archived_at", null)
-      .order("step_order", { ascending: true });
-
-    if (stepsError) {
-      return fail(stepsError.message);
-    }
-
-    const sortedSteps = steps ?? [];
-    const startStep = sortedSteps[0];
-    if (!startStep) {
-      return fail("Create a start step before adding wafers.");
-    }
 
     const { data: existingWafers, error: existingWafersError } = await supabase
       .from("wafers")
@@ -518,94 +462,19 @@ export async function createWaferAtProcessStart(input: unknown) {
         return fail(`The deleted ${waferCode} wafer could not be cleared before recreation.`);
       }
     }
-    const dieLabels = Array.from({ length: parsed.dieCount }, (_, index) => `${waferCode}_${index + 1}`);
-    const now = new Date().toISOString();
-    const { data: wafer, error: waferError } = await supabase
-      .from("wafers")
-      .insert({
-        project_id: projectId,
-        wafer_code: waferCode,
-        status: "queued",
-        material_stack: null,
-        diameter_mm: null,
-        notes: null,
-        metadata: {
-          created_by: account.userId,
-          created_from: "process_flow_add_wafer",
-          wafer_family: deriveWaferFamily(waferCode),
-          wafer_display_mode: "undiced",
-          die_count: parsed.dieCount,
-          die_labels: dieLabels
-        }
-      })
-      .select("*")
-      .single();
-
-    if (waferError) {
-      return fail(waferError.message);
-    }
-
-    const { data: assignment, error: assignmentError } = await supabase
-      .from("wafer_process_assignments")
-      .insert({
-        wafer_id: wafer.id,
-        template_id: parsed.templateId,
-        current_step_id: startStep.id,
-        assigned_by: account.userId,
-        status: "queued",
-        assigned_at: now,
-        started_at: null,
-        completed_at: null
-      })
-      .select("*")
-      .single();
-
-    if (assignmentError) {
-      const rollbackError = await rollbackIncompleteWaferCreate(wafer.id);
-      return fail(appendRollbackError(assignmentError.message, rollbackError));
-    }
-
-    const executionRows = sortedSteps.map((step, index) => ({
-      assignment_id: assignment.id,
-      wafer_id: wafer.id,
-      process_step_id: step.id,
-      status: (index === 0 ? "queued" : "pending") as StepStatus,
-      queue_started_at: index === 0 ? now : null,
-      metadata: {}
-    }));
-    const { data: createdExecutions, error: executionsError } = await supabase
-      .from("step_executions")
-      .insert(executionRows)
-      .select("id, process_step_id, status");
-
-    if (executionsError) {
-      const rollbackError = await rollbackIncompleteWaferCreate(wafer.id);
-      return fail(appendRollbackError(executionsError.message, rollbackError));
-    }
-
-    const stepExecution = createdExecutions?.find((execution) => execution.process_step_id === startStep.id);
-    if (!stepExecution) {
-      const rollbackError = await rollbackIncompleteWaferCreate(wafer.id);
-      return fail(appendRollbackError("The wafer's Beginning execution was not returned after creation.", rollbackError));
-    }
-
-    await supabase.from("process_events").insert({
-      project_id: projectId,
-      wafer_id: wafer.id,
-      actor_id: account.userId,
-      event_type: "wafer_created",
-      notes: "Created from Process Flow.",
-      metadata: {
-        assignment_id: assignment.id,
-        start_step_id: startStep.id,
-        die_count: parsed.dieCount,
-        die_labels: dieLabels,
-        wafer_metadata: getMetadataRecord(wafer.metadata as Json)
+    const result = await executeWorkflowCommandForCurrentActor({
+      kind: "wafer.create",
+      mutationId: parsed.mutationId,
+      templateId: parsed.templateId,
+      payload: {
+        projectId,
+        waferCode,
+        dieCount: parsed.dieCount
       }
     });
-
+    if (!result.ok) return fail(result.message);
     revalidateProcessFlow(parsed.templateId);
-    return ok({ wafer, assignment, stepExecution });
+    return ok(result.data as unknown as import("@/components/process-flow/types").CreatedWaferAtProcessStartPayload);
   } catch (error) {
     return fail(toErrorMessage(error));
   }
@@ -719,27 +588,17 @@ export async function deleteProcessFlowWafer(input: unknown) {
 }
 
 export async function archiveCompletedProcessWafers(input: unknown) {
-  try {
-    await requireAccount();
-    const parsed = processFlowArchiveSchema.parse(input);
-    const supabase = await createServerSupabaseClient();
-    const { data, error } = await supabase.rpc("archive_completed_wafer_assignments", {
-      target_assignment_ids: parsed.items.map((item) => item.assignmentId),
-      mutation_ids: parsed.items.map((item) => item.mutationId)
-    });
-
-    if (error) {
-      return fail(error.message);
-    }
-    if ((data ?? []).length !== parsed.items.length) {
-      return fail("One or more wafers or dies with a completed current step were not archived.");
-    }
-
-    revalidateProcessFlow(parsed.templateId);
-    return ok({ archived: data ?? [] });
-  } catch (error) {
-    return fail(toErrorMessage(error));
-  }
+  const parsed = processFlowArchiveSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "The archive command is invalid.");
+  const result = await executeWorkflowCommandForCurrentActor({
+    kind: "wafer.archive",
+    mutationId: parsed.data.items[0]!.mutationId,
+    templateId: parsed.data.templateId,
+    payload: { items: parsed.data.items }
+  });
+  if (!result.ok) return fail(result.message);
+  revalidateProcessFlow(parsed.data.templateId);
+  return ok(result.data);
 }
 
 export async function restoreArchivedProcessWafer(input: unknown) {
@@ -931,46 +790,24 @@ export async function deleteProcessTemplate(input: unknown) {
 }
 
 export async function createProcessFlowStep(input: unknown) {
-  try {
-    const parsed = processFlowStepCreateSchema.parse(input);
-    await getTemplateForWrite(parsed.templateId);
-
-    const [stepOrder, slug] = await Promise.all([
-      getNextStepOrder(parsed.templateId),
-      getAvailableStepSlug(parsed.templateId, parsed.name)
-    ]);
-
-    const supabase = await createServerSupabaseClient();
-    const { data, error } = await supabase
-      .from("process_steps")
-      .insert({
-        template_id: parsed.templateId,
-        step_order: stepOrder,
-        name: parsed.name,
-        slug,
-        process_area: parsed.processArea,
-        expected_duration_minutes: null,
-        queue_target_minutes: null,
-        required_tool_type: null,
-        requires_recipe: false,
-        instructions: null,
-        parameters_schema: parsed.parametersSchema as Json,
-        node_type: parsed.nodeType,
-        canvas_x: parsed.canvasX,
-        canvas_y: parsed.canvasY
-      })
-      .select("*")
-      .single();
-
-    if (error) {
-      return fail(error.message);
+  const parsed = processFlowStepCreateSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "The step command is invalid.");
+  const result = await executeWorkflowCommandForCurrentActor({
+    kind: "process.step.create",
+    mutationId: parsed.data.mutationId,
+    templateId: parsed.data.templateId,
+    payload: {
+      name: parsed.data.name,
+      processArea: parsed.data.processArea,
+      nodeType: parsed.data.nodeType,
+      canvasX: parsed.data.canvasX,
+      canvasY: parsed.data.canvasY,
+      parametersSchema: parsed.data.parametersSchema
     }
-
-    revalidateProcessFlow(parsed.templateId);
-    return ok(data);
-  } catch (error) {
-    return fail(toErrorMessage(error));
-  }
+  });
+  if (!result.ok) return fail(result.message);
+  revalidateProcessFlow(parsed.data.templateId);
+  return ok(result.data as unknown as ProcessStep);
 }
 
 export async function updateProcessStepPositions(input: unknown) {
@@ -1586,54 +1423,24 @@ export async function saveWaferStatusStepParameterRecord(input: unknown) {
 }
 
 export async function createProcessStepTransition(input: unknown) {
-  try {
-    const parsed = processStepTransitionCreateSchema.parse(input);
-    await getTemplateForWrite(parsed.templateId);
-
-    if (parsed.fromStepId === parsed.toStepId) {
-      return fail("Choose a different target step for this transition.");
+  const parsed = processStepTransitionCreateSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "The transition command is invalid.");
+  const result = await executeWorkflowCommandForCurrentActor({
+    kind: "process.transition.create",
+    mutationId: parsed.data.mutationId,
+    templateId: parsed.data.templateId,
+    payload: {
+      fromStepId: parsed.data.fromStepId,
+      toStepId: parsed.data.toStepId,
+      edgeType: parsed.data.edgeType,
+      label: parsed.data.label ?? null,
+      condition: parsed.data.condition,
+      priority: parsed.data.priority
     }
-
-    const supabase = await createServerSupabaseClient();
-    const { data: steps, error: stepsError } = await supabase
-      .from("process_steps")
-      .select("id, template_id")
-      .in("id", [parsed.fromStepId, parsed.toStepId]);
-
-    if (stepsError) {
-      return fail(stepsError.message);
-    }
-
-    if ((steps ?? []).length !== 2 || steps?.some((step) => step.template_id !== parsed.templateId)) {
-      return fail("Both transition endpoints must belong to this process template.");
-    }
-
-    const { data, error } = await supabase
-      .from("process_step_transitions")
-      .upsert(
-        {
-          template_id: parsed.templateId,
-          from_step_id: parsed.fromStepId,
-          to_step_id: parsed.toStepId,
-          edge_type: parsed.edgeType,
-          label: parsed.label ?? null,
-          condition: parsed.condition as Json,
-          priority: parsed.priority
-        },
-        { onConflict: "template_id,from_step_id,to_step_id,edge_type" }
-      )
-      .select("*")
-      .single();
-
-    if (error) {
-      return fail(error.message);
-    }
-
-    revalidateProcessFlow(parsed.templateId);
-    return ok(data);
-  } catch (error) {
-    return fail(toErrorMessage(error));
-  }
+  });
+  if (!result.ok) return fail(result.message);
+  revalidateProcessFlow(parsed.data.templateId);
+  return ok(result.data as unknown as import("@/types/database").ProcessStepTransition);
 }
 
 export async function deleteProcessStepTransitions(input: unknown) {

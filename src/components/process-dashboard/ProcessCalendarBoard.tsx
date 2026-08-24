@@ -739,6 +739,7 @@ export function ProcessCalendarBoard({
 
     const persistMove = async () => {
       const result = await moveProcessCalendarEvent({
+        processTemplateId,
         eventId: input.eventId,
         mutationId: crypto.randomUUID(),
         expectedRevision: eventToMove.revision,
@@ -792,7 +793,7 @@ export function ProcessCalendarBoard({
           setError(moveError instanceof Error ? moveError.message : "Move failed. Try again.");
         }
     });
-  }, [eventById]);
+  }, [eventById, processTemplateId]);
 
   const clearQueuedItemMove = useCallback(() => {
     if (itemMoveFrameRef.current !== null) {
@@ -1569,6 +1570,7 @@ export function ProcessCalendarBoard({
 
     startTransition(async () => {
       const result = await deleteProcessCalendarEvent({
+        processTemplateId,
         eventId: selectedEvent.id,
         mutationId: crypto.randomUUID(),
         expectedRevision: selectedEvent.revision

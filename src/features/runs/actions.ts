@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { fail, ok } from "@/lib/action-result";
+import { fail, ok, type ActionResult } from "@/lib/action-result";
 import { requireAccount } from "@/lib/auth/session";
 import { toErrorMessage } from "@/lib/errors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -14,76 +14,9 @@ import {
   undoDieProcessHistorySchema
 } from "@/features/runs/schemas";
 import type { ProcessFlowMutationOutcome } from "@/components/process-flow/types";
-import type { Json, ProcessStep } from "@/types/database";
-
-const DIE_COUNT = 8;
-
-function toJsonRecord(value: unknown): Record<string, Json | undefined> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-
-  return value as Record<string, Json | undefined>;
-}
-
-function normalizeProcessText(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
-
-function isDicingLikeStep(step: Pick<ProcessStep, "name" | "slug" | "process_area">) {
-  const text = normalizeProcessText([
-    step.name,
-    step.slug,
-    step.process_area
-  ].join(" "));
-  const compact = text.replace(/\s+/g, "");
-
-  if (/(pre|post|after|before)(dicing|diced|dice|singulation|singulate|sawing|sawcut|cutting)/.test(compact)) {
-    return false;
-  }
-
-  return /(dicing|diced|dice|dicng|diciing|dicin|dicingg|singulation|singulate|sawing|sawcut|cutting)/.test(compact);
-}
-
-function getWaferFamily(waferCode: string, metadata: Json) {
-  const record = toJsonRecord(metadata);
-  const explicitFamily = record.wafer_family;
-  if (typeof explicitFamily === "string" && explicitFamily.trim()) {
-    return explicitFamily.trim().toUpperCase();
-  }
-
-  return waferCode.trim().toUpperCase();
-}
-
-function getDieLabelPrefix(waferCode: string, metadata: Json) {
-  const family = getWaferFamily(waferCode, metadata);
-  const prefix = family.match(/[A-Z]/)?.[0] ?? waferCode.trim().toUpperCase().match(/[A-Z]/)?.[0];
-  return prefix ?? "D";
-}
-
-function getDieLabels(waferCode: string, metadata: Json) {
-  const record = toJsonRecord(metadata);
-  const configuredLabels = Array.isArray(record.die_labels)
-    ? record.die_labels
-        .filter((label): label is string => typeof label === "string" && Boolean(label.trim()))
-        .map((label) => label.trim())
-    : [];
-
-  if (configuredLabels.length > 0) {
-    return [...new Set(configuredLabels)];
-  }
-
-  const configuredCount = record.die_count;
-  if (typeof configuredCount === "number" && Number.isFinite(configuredCount) && configuredCount > 0) {
-    return Array.from(
-      { length: Math.floor(configuredCount) },
-      (_, index) => `${waferCode.trim()}_${index + 1}`
-    );
-  }
-
-  const prefix = getDieLabelPrefix(waferCode, metadata);
-  return Array.from({ length: DIE_COUNT }, (_, index) => `${prefix}${index + 1}`);
-}
+import type { Json } from "@/types/database";
+import { executeWorkflowCommandForCurrentActor } from "@/features/workflow-commands/server";
+import type { WorkflowCommandResult } from "@/features/workflow-commands/types";
 
 function revalidateCheckpointWorkflow() {
   revalidatePath("/", "layout");
@@ -92,143 +25,182 @@ function revalidateCheckpointWorkflow() {
   revalidatePath("/wafer-status");
 }
 
-async function getDicingChildSpecsForCheckpoint({
-  attemptId,
-  supabase
-}: {
-  attemptId: string;
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
-}) {
+function jsonRecord(data: Json | undefined) {
+  return data && typeof data === "object" && !Array.isArray(data)
+    ? data as Record<string, Json | undefined>
+    : {};
+}
+
+async function workflowActionResult<T>(
+  execute: () => Promise<WorkflowCommandResult>,
+  select: (data: Json) => T
+): Promise<ActionResult<T>> {
+  try {
+    const result = await execute();
+    return result.ok ? ok(select(result.data)) : fail(result.message);
+  } catch (error) {
+    return fail(toErrorMessage(error));
+  }
+}
+
+async function resolveProcessFlowMutationTemplateId(
+  mutation: import("@/features/runs/schemas").ProcessFlowMutationInput,
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>
+) {
+  if (mutation.kind === "route") {
+    const { data, error } = await supabase
+      .from("process_step_attempts")
+      .select("template_id")
+      .eq("id", mutation.attemptId)
+      .single();
+    if (error) throw error;
+    return data.template_id;
+  }
+  if (mutation.kind === "move") {
+    const { data, error } = await supabase
+      .from("wafer_process_assignments")
+      .select("template_id")
+      .eq("id", mutation.assignmentId)
+      .single();
+    if (error) throw error;
+    return data.template_id;
+  }
+  const { data: execution, error: executionError } = await supabase
+    .from("step_executions")
+    .select("process_step_id")
+    .eq("id", mutation.stepExecutionId)
+    .single();
+  if (executionError) throw executionError;
+  const { data: step, error: stepError } = await supabase
+    .from("process_steps")
+    .select("template_id")
+    .eq("id", execution.process_step_id)
+    .single();
+  if (stepError) throw stepError;
+  return step.template_id;
+}
+
+async function getRouteCommandKind(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  attemptId: string,
+  targetStepId: string
+): Promise<"wafer.route" | "wafer.redo"> {
   const { data: attempt, error: attemptError } = await supabase
     .from("process_step_attempts")
-    .select("process_step_id, wafer_id")
+    .select("assignment_id")
     .eq("id", attemptId)
     .single();
-
   if (attemptError) throw attemptError;
-
-  const [stepResult, waferResult] = await Promise.all([
-    supabase
-      .from("process_steps")
-      .select("id, name, slug, process_area")
-      .eq("id", attempt.process_step_id)
-      .single(),
-    supabase
-      .from("wafers")
-      .select("id, wafer_code, metadata")
-      .eq("id", attempt.wafer_id)
-      .single()
-  ]);
-
-  if (stepResult.error) throw stepResult.error;
-  if (waferResult.error) throw waferResult.error;
-  if (!isDicingLikeStep(stepResult.data)) return null;
-
-  const dieLabels = getDieLabels(waferResult.data.wafer_code, waferResult.data.metadata as Json);
-  return dieLabels.map((dieLabel) => ({
-    die_label: dieLabel,
-    wafer_code: dieLabel.toUpperCase().startsWith(`${waferResult.data.wafer_code.trim().toUpperCase()}_`)
-      ? dieLabel
-      : `${waferResult.data.wafer_code}-${dieLabel}`
-  }));
-}
-
-function processFlowBatchOutcomes(data: Json): ProcessFlowMutationOutcome[] {
-  if (!data || typeof data !== "object" || Array.isArray(data)) return [];
-  const outcomes = data.outcomes;
-  return Array.isArray(outcomes) ? outcomes as unknown as ProcessFlowMutationOutcome[] : [];
-}
-
-function firstProcessFlowBatchData(data: Json) {
-  return processFlowBatchOutcomes(data)[0]?.data ?? null;
+  const { data: priorVisit, error: priorVisitError } = await supabase
+    .from("vw_operation_run_history")
+    .select("operation_run_member_id")
+    .eq("assignment_id", attempt.assignment_id)
+    .eq("process_step_id", targetStepId)
+    .eq("member_status", "completed")
+    .limit(1)
+    .maybeSingle();
+  if (priorVisitError) throw priorVisitError;
+  return priorVisit ? "wafer.redo" : "wafer.route";
 }
 
 export async function persistProcessFlowMutationsBatch(input: unknown) {
   const startedAt = performance.now();
+  const parsed = processFlowMutationBatchSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "The Process Flow command is invalid.");
   try {
-    const parsed = processFlowMutationBatchSchema.parse(input);
-    const authStartedAt = performance.now();
-    await requireAccount();
-    const authMs = performance.now() - authStartedAt;
     const supabase = await createServerSupabaseClient();
-    const rpcStartedAt = performance.now();
-
-    const mutations = await Promise.all(parsed.mutations.map(async (mutation) => {
-      if (mutation.kind !== "route") return mutation;
-      const dicingChildSpecs = await getDicingChildSpecsForCheckpoint({
-        attemptId: mutation.attemptId,
-        supabase
-      });
-      return {
-        ...mutation,
-        childSpecs: (dicingChildSpecs ?? []).map((spec) => ({
-          ...spec,
-          movement_mutation_id: crypto.randomUUID()
-        }))
-      };
-    }));
-    const { data, error } = await supabase.rpc("execute_process_flow_mutations_batch", {
-      mutations: mutations as unknown as Json
-    });
-    if (error) throw error;
-    const outcomes = processFlowBatchOutcomes(data);
-
+    const first = parsed.data.mutations[0]!;
+    const templateId = await resolveProcessFlowMutationTemplateId(first, supabase);
+    const mutationId = first.kind === "route" ? first.movementMutationId : first.mutationId;
+    const isSingle = parsed.data.mutations.length === 1;
+    const result = isSingle && first.kind === "submit"
+      ? await executeWorkflowCommandForCurrentActor({
+          kind: "wafer.submit",
+          mutationId,
+          templateId,
+          payload: {
+            assignmentId: first.assignmentId,
+            stepExecutionId: first.stepExecutionId,
+            batchId: first.batchId,
+            notes: first.notes ?? null,
+            evidence: first.evidence
+          }
+        })
+      : isSingle && first.kind === "route"
+        ? await executeWorkflowCommandForCurrentActor({
+            kind: await getRouteCommandKind(supabase, first.attemptId, first.targetStepId),
+            mutationId,
+            templateId,
+            payload: {
+              assignmentId: first.assignmentId,
+              batchId: first.batchId,
+              attemptId: first.attemptId,
+              targetStepId: first.targetStepId,
+              decisionMutationId: first.decisionMutationId,
+              note: first.note
+            }
+          })
+        : await executeWorkflowCommandForCurrentActor({
+            kind: "wafer.batch.move",
+            mutationId,
+            templateId,
+            payload: { mutations: parsed.data.mutations }
+          });
     console.info("[ProcessFlowPerf]", JSON.stringify({
       action: "workflow_batch",
-      mutationCount: parsed.mutations.length,
-      authMs: Math.round(authMs),
-      rpcMs: Math.round(performance.now() - rpcStartedAt),
+      mutationCount: parsed.data.mutations.length,
       totalMs: Math.round(performance.now() - startedAt)
     }));
-    return ok(outcomes);
+    if (!result.ok) return fail(result.message);
+    if (!isSingle || first.kind === "move") {
+      return ok(Array.isArray(result.data) ? result.data as unknown as ProcessFlowMutationOutcome[] : []);
+    }
+    return ok([{
+      operationId: mutationId,
+      assignmentId: first.assignmentId,
+      ok: true,
+      data: result.data
+    }]);
   } catch (error) {
     return fail(toErrorMessage(error));
   }
 }
 
 export async function submitStepCheckpoint(input: unknown) {
-  try {
-    await requireAccount();
-    const parsed = submitStepCheckpointSchema.parse(input);
+  const parsed = submitStepCheckpointSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "The checkpoint command is invalid.");
+  return workflowActionResult(async () => {
     const supabase = await createServerSupabaseClient();
-    const { data, error } = await supabase.rpc("execute_process_flow_mutations_batch", {
-      mutations: [{
-        kind: "submit",
-        stepExecutionId: parsed.stepExecutionId,
-        mutationId: parsed.mutationId,
-        batchId: parsed.batchId,
-        notes: parsed.notes ?? null,
-        evidence: parsed.evidence
-      }] as Json
+    const mutation = { kind: "submit" as const, assignmentId: crypto.randomUUID(), ...parsed.data };
+    const templateId = await resolveProcessFlowMutationTemplateId(mutation, supabase);
+    return executeWorkflowCommandForCurrentActor({
+      kind: "wafer.submit",
+      mutationId: parsed.data.mutationId,
+      templateId,
+      payload: {
+        stepExecutionId: parsed.data.stepExecutionId,
+        batchId: parsed.data.batchId,
+        notes: parsed.data.notes ?? null,
+        evidence: parsed.data.evidence
+      }
     });
-
-    if (error) {
-      return fail(toErrorMessage(error));
-    }
-
-    return ok(firstProcessFlowBatchData(data));
-  } catch (error) {
-    return fail(toErrorMessage(error));
-  }
+  }, (data) => data);
 }
 
 export async function moveApprovedCheckpointWafer(input: unknown) {
-  try {
-    await requireAccount();
-    const parsed = moveApprovedCheckpointSchema.parse(input);
+  const parsed = moveApprovedCheckpointSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "The movement command is invalid.");
+  return workflowActionResult(async () => {
     const supabase = await createServerSupabaseClient();
-    const { data, error } = await supabase.rpc("execute_process_flow_mutations_batch", {
-      mutations: [{ kind: "move", ...parsed }] as Json
+    const mutation = { kind: "move" as const, ...parsed.data };
+    const templateId = await resolveProcessFlowMutationTemplateId(mutation, supabase);
+    return executeWorkflowCommandForCurrentActor({
+      kind: "wafer.batch.move",
+      mutationId: parsed.data.mutationId,
+      templateId,
+      payload: { mutations: [mutation] }
     });
-
-    if (error) {
-      return fail(toErrorMessage(error));
-    }
-
-    return ok(firstProcessFlowBatchData(data));
-  } catch (error) {
-    return fail(toErrorMessage(error));
-  }
+  }, (data) => Array.isArray(data) ? (jsonRecord(data[0]).data ?? null) : null);
 }
 
 export async function undoDieProcessHistoryState(input: unknown) {
@@ -288,28 +260,24 @@ export async function correctWaferProcessHistory(input: unknown) {
 }
 
 export async function routeCheckpointSubmission(input: unknown) {
-  try {
-    await requireAccount();
-    const parsed = routeCheckpointSubmissionSchema.parse(input);
+  const parsed = routeCheckpointSubmissionSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "The routing command is invalid.");
+  return workflowActionResult(async () => {
     const supabase = await createServerSupabaseClient();
-    const dicingChildSpecs = await getDicingChildSpecsForCheckpoint({
-      attemptId: parsed.attemptId,
-      supabase
+    const mutation = { kind: "route" as const, assignmentId: crypto.randomUUID(), ...parsed.data };
+    const templateId = await resolveProcessFlowMutationTemplateId(mutation, supabase);
+    const kind = await getRouteCommandKind(supabase, parsed.data.attemptId, parsed.data.targetStepId);
+    return executeWorkflowCommandForCurrentActor({
+      kind,
+      mutationId: parsed.data.movementMutationId,
+      templateId,
+      payload: {
+        batchId: parsed.data.batchId,
+        attemptId: parsed.data.attemptId,
+        targetStepId: parsed.data.targetStepId,
+        decisionMutationId: parsed.data.decisionMutationId,
+        note: parsed.data.note
+      }
     });
-    const childSpecs = (dicingChildSpecs ?? []).map((spec) => ({
-      ...spec,
-      movement_mutation_id: crypto.randomUUID()
-    }));
-    const { data, error } = await supabase.rpc("execute_process_flow_mutations_batch", {
-      mutations: [{ kind: "route", ...parsed, childSpecs }] as Json
-    });
-
-    if (error) {
-      return fail(toErrorMessage(error));
-    }
-
-    return ok(firstProcessFlowBatchData(data));
-  } catch (error) {
-    return fail(toErrorMessage(error));
-  }
+  }, (data) => data);
 }

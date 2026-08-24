@@ -1178,6 +1178,55 @@ type RuntimeFunctions = Omit<
       expected_version?: number | null;
     }
   >;
+  create_process_step_command: {
+    Args: {
+      target_template_id: string;
+      target_name: string;
+      target_process_area: string;
+      target_node_type: string;
+      target_canvas_x: number;
+      target_canvas_y: number;
+      target_parameters_schema: Json;
+      expected_workspace_revision?: number | null;
+      mutation_id: string;
+    };
+    Returns: Json;
+  };
+  create_process_transition_command: {
+    Args: {
+      target_template_id: string;
+      source_step_id: string;
+      destination_step_id: string;
+      target_edge_type: string;
+      target_label?: string | null;
+      target_condition: Json;
+      target_priority: number;
+      expected_workspace_revision?: number | null;
+      mutation_id: string;
+    };
+    Returns: Json;
+  };
+  create_process_wafer_command: {
+    Args: {
+      target_template_id: string;
+      target_project_id: string;
+      target_wafer_code: string;
+      target_die_count: number;
+      expected_workspace_revision?: number | null;
+      mutation_id: string;
+    };
+    Returns: Json;
+  };
+  archive_process_assignments_command: {
+    Args: {
+      target_template_id: string;
+      target_assignment_ids: string[];
+      item_mutation_ids: string[];
+      expected_workspace_revision?: number | null;
+      mutation_id: string;
+    };
+    Returns: Json;
+  };
 };
 
 type RuntimeViews = Omit<GeneratedViews, "vw_process_current_state"> & {

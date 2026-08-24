@@ -69,6 +69,7 @@ export const processTemplateDeleteSchema = z.object({
 
 export const processFlowWaferCreateSchema = z.object({
   templateId: uuidSchema,
+  mutationId: uuidSchema,
   waferCode: z.string().trim().min(1).max(80).regex(
     WAFER_CODE_PATTERN,
     WAFER_CODE_ERROR
@@ -106,6 +107,7 @@ export const processFlowArchiveRestoreSchema = z.object({
 
 export const processFlowStepCreateSchema = z.object({
   templateId: uuidSchema,
+  mutationId: uuidSchema,
   name: z.string().trim().min(2).max(180).default("Untitled"),
   processArea: z.string().trim().min(2).max(120).default("Process step"),
   nodeType: processStepNodeTypeSchema.default("procedure"),
@@ -261,6 +263,7 @@ export const processStepCheckpointReviewerSchema = z.object({
 
 export const processStepTransitionCreateSchema = z.object({
   templateId: uuidSchema,
+  mutationId: uuidSchema,
   fromStepId: uuidSchema,
   toStepId: uuidSchema,
   edgeType: processStepTransitionTypeSchema.default("flow"),

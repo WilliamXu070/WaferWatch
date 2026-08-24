@@ -36,6 +36,7 @@ test("rejects duplicate and cross-step atomic parameter batch entries", () => {
 test("creates steps with a validated parameter template and a safe empty default", () => {
   const common = {
     templateId: "10000000-0000-4000-8000-000000000001",
+    mutationId: "10000000-0000-4000-8000-000000000007",
     name: "Post bake",
     processArea: "Lithography",
     nodeType: "procedure" as const,

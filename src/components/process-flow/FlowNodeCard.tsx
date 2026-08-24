@@ -113,6 +113,7 @@ export function FlowNodeCard({
   const renderWaferChip = (wafer: WaferPin, index: number) => (
     <WaferChip
       key={wafer.assignmentId}
+      assignmentId={wafer.assignmentId}
       label={getWaferChipLabel(wafer)}
       x={(index % NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_X}
       y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
@@ -309,6 +310,7 @@ export function WaferDragPreview({ waferDrag }: { waferDrag: WaferDrag }) {
 }
 
 function WaferChip({
+  assignmentId,
   label,
   x,
   y = 0,
@@ -324,6 +326,7 @@ function WaferChip({
   onPointerEnter,
   onDoubleClick
 }: {
+  assignmentId?: string;
   label: string;
   x: number;
   y?: number;
@@ -359,6 +362,8 @@ function WaferChip({
         .filter(Boolean)
         .join(" ")}
       data-sync-state={syncState}
+      data-assignment-id={assignmentId}
+      data-wafer-label={label}
       data-testid={syncState ? `process-flow-chip-${label}` : undefined}
       pointerEvents={pointerEvents}
       transform={`translate(${x} ${y})`}

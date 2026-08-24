@@ -27,6 +27,7 @@ test("returns the server-compatible validation message for invalid custom names"
 test("validates custom wafer name and die count", () => {
   const parsed = processFlowWaferCreateSchema.parse({
     templateId: "11111111-1111-4111-8111-111111111103",
+    mutationId: "11111111-1111-4111-8111-111111111104",
     waferCode: "SIGMA",
     dieCount: 12
   });
@@ -35,6 +36,7 @@ test("validates custom wafer name and die count", () => {
   assert.equal(parsed.dieCount, 12);
   assert.throws(() => processFlowWaferCreateSchema.parse({
     templateId: "11111111-1111-4111-8111-111111111103",
+    mutationId: "11111111-1111-4111-8111-111111111105",
     waferCode: "bad/name",
     dieCount: 12
   }));

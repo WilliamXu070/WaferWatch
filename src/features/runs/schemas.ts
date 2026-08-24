@@ -97,6 +97,8 @@ export const processFlowMutationSchema = z.discriminatedUnion("kind", [
   processFlowRouteMutationSchema
 ]);
 
+export type ProcessFlowMutationInput = z.infer<typeof processFlowMutationSchema>;
+
 export const processFlowMutationBatchSchema = z.object({
   mutations: z.array(processFlowMutationSchema).min(1).max(256)
 }).superRefine((value, context) => {

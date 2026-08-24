@@ -37,6 +37,10 @@
     "analysis:import": "node --env-file=.env.local scripts/import-poling-analysis.mjs",
     "analysis-persistence:verify": "node scripts/verify-analysis-persistence.mjs",
     "migration-chain:verify": "node scripts/verify-migration-chain.mjs",
+    "workflow-commands:verify": "node scripts/verify-workflow-commands.mjs",
+    "workflow:verify:fast": "npm test && npm run typecheck && npm run lint && npm run build && npm run migration-chain:verify && npm run workflow-commands:verify",
+    "golden:fixture": "node --env-file=.env.local golden-flows/fixture-cli.mjs",
+    "golden:ui": "node --env-file=.env.local node_modules/@playwright/test/cli.js test --config=golden-flows/playwright.config.ts",
     "process:seed": "node --env-file=.env.local scripts/current-process-flow.mjs seed",
     "process:verify": "node --env-file=.env.local scripts/current-process-flow.mjs verify",
     "process:clear-wafers": "node --env-file=.env.local scripts/current-process-flow.mjs clear-wafers",
@@ -61,6 +65,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",
     "@eslint/eslintrc": "^3.3.5",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.19.21",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

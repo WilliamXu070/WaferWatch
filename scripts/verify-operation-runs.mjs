@@ -5,6 +5,7 @@ const foundation = await readFile(new URL("../supabase/migrations/202607210003_p
 const commands = await readFile(new URL("../supabase/migrations/202607210005_operation_run_commands.sql", import.meta.url), "utf8");
 const bridge = await readFile(new URL("../supabase/migrations/202607210006_compatibility_operation_bridge.sql", import.meta.url), "utf8");
 const actions = await readFile(new URL("../src/features/runs/actions.ts", import.meta.url), "utf8");
+const commandGateway = await readFile(new URL("../src/features/workflow-commands/server.ts", import.meta.url), "utf8");
 
 for (const table of [
   "operation_runs",
@@ -29,7 +30,11 @@ assert.match(commands, /operation_run_member_id, submission_group_id/);
 assert.match(commands, /'redo', 'queued'/);
 assert.match(commands, /link_kind\)[\s\S]*'split'/);
 assert.match(bridge, /execute_process_flow_mutations_batch/);
-assert.match(actions, /execute_process_flow_mutations_batch/);
+assert.match(actions, /executeWorkflowCommandForCurrentActor/);
+assert.match(actions, /getRouteCommandKind/);
+assert.match(actions, /"wafer\.redo"/);
+assert.match(commandGateway, /execute_process_flow_mutations_batch/);
+assert.match(commandGateway, /"wafer\.batch\.move": waferBatchMoveHandler/);
 assert.doesNotMatch(actions, /DASHBOARD_BATCH_EVIDENCE_KEY|withDashboardBatchEvidence|recordPlannedBatchMember|batchIdForStepExecution/);
 assert.doesNotMatch(actions, /WORKER_COUNT|Promise\.all\(workers/);
 

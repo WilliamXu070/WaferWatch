@@ -11,6 +11,7 @@ import {
   processCalendarEventUpdateSchema
 } from "@/features/calendar/schemas";
 import type { ProcessCalendarEventView, ProcessCalendarLocation } from "@/features/calendar/queries";
+import { executeWorkflowCommandForCurrentActor } from "@/features/workflow-commands/server";
 import type { Json } from "@/types/database";
 
 const MISSING_CALENDAR_TABLES_MESSAGE =
@@ -75,51 +76,46 @@ function staleResultMessage(data: Json) {
 }
 
 export async function createProcessCalendarEvent(input: unknown) {
-  try {
-    await requireAccount();
-    const parsed = processCalendarEventCreateSchema.parse(input);
-    const supabase = await createServerSupabaseClient();
-    const { data, error } = await supabase.rpc("create_calendar_schedule_item", {
-      target_template_id: parsed.processTemplateId,
-      target_wafer_id: parsed.waferId ?? null,
-      target_location: parsed.location,
-      starts_at: parsed.startsAt,
-      ends_at: parsed.endsAt,
-      target_step_id: parsed.processStepId ?? null,
-      manual_action: parsed.manualAction ?? null,
-      description: parsed.description ?? null,
-      person_ids: Array.from(new Set(parsed.personIds)),
-      mutation_id: parsed.mutationId
-    });
-    if (error) return fail(error.message);
-    const event = scheduleItemFromRpc(data);
-    return event ? ok(event) : fail("The new schedule item could not be projected.");
-  } catch (error) {
-    return fail(isMissingCalendarTableError(error) ? MISSING_CALENDAR_TABLES_MESSAGE : toErrorMessage(error));
-  }
+  const parsed = processCalendarEventCreateSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "The calendar command is invalid.");
+  const result = await executeWorkflowCommandForCurrentActor({
+    kind: "calendar.create",
+    mutationId: parsed.data.mutationId,
+    templateId: parsed.data.processTemplateId,
+    payload: {
+      waferId: parsed.data.waferId ?? null,
+      location: parsed.data.location,
+      startsAt: parsed.data.startsAt,
+      endsAt: parsed.data.endsAt,
+      processStepId: parsed.data.processStepId ?? null,
+      manualAction: parsed.data.manualAction ?? null,
+      description: parsed.data.description ?? null,
+      personIds: parsed.data.personIds
+    }
+  });
+  if (!result.ok) return fail(result.message);
+  const event = scheduleItemFromRpc({ item: result.data });
+  return event ? ok(event) : fail("The new schedule item could not be projected.");
 }
 
 export async function moveProcessCalendarEvent(input: unknown) {
-  try {
-    await requireAccount();
-    const parsed = processCalendarEventMoveSchema.parse(input);
-    const supabase = await createServerSupabaseClient();
-    const { data, error } = await supabase.rpc("move_calendar_schedule_item", {
-      target_item_id: parsed.eventId,
-      expected_revision: parsed.expectedRevision,
-      target_location: parsed.location,
-      starts_at: parsed.startsAt,
-      ends_at: parsed.endsAt,
-      mutation_id: parsed.mutationId
-    });
-    if (error) return fail(error.message);
-    const staleMessage = staleResultMessage(data);
-    if (staleMessage) return fail(staleMessage);
-    const event = scheduleItemFromRpc(data);
-    return event ? ok(event) : fail("The moved schedule item could not be projected.");
-  } catch (error) {
-    return fail(isMissingCalendarTableError(error) ? MISSING_CALENDAR_TABLES_MESSAGE : toErrorMessage(error));
-  }
+  const parsed = processCalendarEventMoveSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "The calendar command is invalid.");
+  const result = await executeWorkflowCommandForCurrentActor({
+    kind: "calendar.move",
+    mutationId: parsed.data.mutationId,
+    templateId: parsed.data.processTemplateId,
+    payload: {
+      eventId: parsed.data.eventId,
+      expectedRevision: parsed.data.expectedRevision,
+      location: parsed.data.location,
+      startsAt: parsed.data.startsAt,
+      endsAt: parsed.data.endsAt
+    }
+  });
+  if (!result.ok) return fail(result.message);
+  const event = scheduleItemFromRpc({ item: result.data });
+  return event ? ok(event) : fail("The moved schedule item could not be projected.");
 }
 
 export async function updateProcessCalendarEvent(input: unknown) {
@@ -148,20 +144,16 @@ export async function updateProcessCalendarEvent(input: unknown) {
 }
 
 export async function deleteProcessCalendarEvent(input: unknown) {
-  try {
-    await requireAccount();
-    const parsed = processCalendarEventDeleteSchema.parse(input);
-    const supabase = await createServerSupabaseClient();
-    const { data, error } = await supabase.rpc("delete_calendar_schedule_item", {
-      target_item_id: parsed.eventId,
-      expected_revision: parsed.expectedRevision,
-      mutation_id: parsed.mutationId
-    });
-    if (error) return fail(error.message);
-    const staleMessage = staleResultMessage(data);
-    if (staleMessage) return fail(staleMessage);
-    return ok({ id: parsed.eventId });
-  } catch (error) {
-    return fail(isMissingCalendarTableError(error) ? MISSING_CALENDAR_TABLES_MESSAGE : toErrorMessage(error));
-  }
+  const parsed = processCalendarEventDeleteSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "The calendar command is invalid.");
+  const result = await executeWorkflowCommandForCurrentActor({
+    kind: "calendar.delete",
+    mutationId: parsed.data.mutationId,
+    templateId: parsed.data.processTemplateId,
+    payload: {
+      eventId: parsed.data.eventId,
+      expectedRevision: parsed.data.expectedRevision
+    }
+  });
+  return result.ok ? ok({ id: parsed.data.eventId }) : fail(result.message);
 }
