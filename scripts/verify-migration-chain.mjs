@@ -120,7 +120,13 @@ const id = {
 await db.exec(`
   insert into auth.users (id, email, raw_user_meta_data)
   values ('${id.actor}', 'migration-check@example.com', '{"display_name":"Migration check"}');
-  update public.profiles set role = 'admin' where id = '${id.actor}';
+`);
+const newProfile = await db.query(`
+  select role from public.profiles where id = '${id.actor}'
+`);
+assert.deepEqual(newProfile.rows, [{ role: "admin" }]);
+
+await db.exec(`
   insert into public.projects (id, slug, name, owner_id)
   values ('${id.project}', 'migration-check', 'Migration check', '${id.actor}');
   insert into public.process_templates (id, owner_project_id, name, version, created_by)
