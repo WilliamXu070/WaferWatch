@@ -354,7 +354,7 @@ async function getTemplateProjectForWaferCreate(templateId: string) {
   const supabase = await createServerSupabaseClient();
   const { data: template, error: templateError } = await supabase
     .from("process_templates")
-    .select("id, owner_project_id, lifecycle_status")
+    .select("id, owner_project_id, is_active")
     .eq("id", templateId)
     .single();
 
@@ -362,8 +362,8 @@ async function getTemplateProjectForWaferCreate(templateId: string) {
     throw templateError;
   }
 
-  if (template.lifecycle_status !== "published") {
-    throw new Error("Only published process versions can receive wafers.");
+  if (!template.is_active) {
+    throw new Error("Only active processes can receive wafers.");
   }
 
   if (template.owner_project_id) {

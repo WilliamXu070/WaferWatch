@@ -336,7 +336,7 @@ export class GoldenFixtureRun {
     this.scenarios.calendarDelete = await this.calendarEventReady("calendar-delete", { withEvent: true });
     this.scenarios.stepCreate = await this.editableDraft("step-create");
     this.scenarios.transitionCreate = await this.editableDraft("transition-create", { connected: false });
-    this.scenarios.waferCreate = await this.createBase("wafer-create");
+    this.scenarios.waferCreate = await this.editableDraft("wafer-create");
     this.scenarios.fullMove = await this.waferAtBeginning();
     this.scenarios.batchMove = await this.batchReady();
     this.scenarios.redo = await this.redoReady();

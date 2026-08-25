@@ -60,11 +60,17 @@ const id = {
   waferMutation: "91000000-0000-4000-8000-000000000012",
   failedWaferMutation: "91000000-0000-4000-8000-000000000013",
   archiveMutation: "91000000-0000-4000-8000-000000000014",
+  unauthorizedWaferMutation: "91000000-0000-4000-8000-000000000015",
   calendarCreateMutation: "91000000-0000-4000-8000-000000000016",
   calendarMoveMutation: "91000000-0000-4000-8000-000000000017",
   calendarDeleteMutation: "91000000-0000-4000-8000-000000000018",
   calendarUnauthorizedMutation: "91000000-0000-4000-8000-000000000019",
-  calendarForcedMutation: "91000000-0000-4000-8000-000000000020"
+  calendarForcedMutation: "91000000-0000-4000-8000-000000000020",
+  inactiveWaferMutation: "91000000-0000-4000-8000-000000000021",
+  publishedTemplate: "91000000-0000-4000-8000-000000000022",
+  publishedBaseStep: "91000000-0000-4000-8000-000000000023",
+  publishedStepMutation: "91000000-0000-4000-8000-000000000024",
+  publishedTransitionMutation: "91000000-0000-4000-8000-000000000025"
 };
 
 await db.exec(`
@@ -77,12 +83,21 @@ await db.exec(`
   values ('${id.project}', 'workflow-command-verifier', 'Workflow command verifier', '${id.actor}');
   insert into public.process_templates (id, owner_project_id, name, version, created_by, lifecycle_status)
   values ('${id.template}', '${id.project}', 'Workflow command verifier', '1.0', '${id.actor}', 'draft');
+  insert into public.process_templates (id, owner_project_id, name, version, created_by, lifecycle_status)
+  values ('${id.publishedTemplate}', '${id.project}', 'Published command verifier', '1.0', '${id.actor}', 'published');
   insert into public.process_steps (
     id, template_id, step_order, name, slug, process_area, node_type, canvas_x, canvas_y,
     required_reviewer_id
   ) values (
     '${id.startStep}', '${id.template}', 10, 'Beginning', 'beginning', 'Start', 'start', 120, 120,
     '${id.actor}'
+  );
+  insert into public.process_steps (
+    id, template_id, step_order, name, slug, process_area, node_type, canvas_x, canvas_y,
+    required_reviewer_id
+  ) values (
+    '${id.publishedBaseStep}', '${id.publishedTemplate}', 10,
+    'Published beginning', 'published-beginning', 'Start', 'start', 120, 120, '${id.actor}'
   );
   set app.actor_id = '${id.actor}';
   set app.role = 'authenticated';
@@ -152,6 +167,24 @@ const transitionCount = await db.query(`
 `);
 assert.equal(transitionCount.rows[0].count, 1);
 
+await db.exec(`set app.actor_id = '${id.actor}'; set role authenticated;`);
+const publishedStep = await db.query(`
+  select public.create_process_step_command(
+    '${id.publishedTemplate}', 'Published active step', 'Verification', 'procedure', 320, 120,
+    '{"version":1,"fields":[]}'::jsonb, 0, '${id.publishedStepMutation}'
+  ) as result
+`);
+assert.equal(publishedStep.rows[0].result.workflowRevision, 1);
+const publishedStepId = publishedStep.rows[0].result.item.id;
+const publishedTransition = await db.query(`
+  select public.create_process_transition_command(
+    '${id.publishedTemplate}', '${id.publishedBaseStep}', '${publishedStepId}',
+    'flow', null, '{}'::jsonb, 10, 1, '${id.publishedTransitionMutation}'
+  ) as result
+`);
+assert.equal(publishedTransition.rows[0].result.workflowRevision, 2);
+await db.exec("reset role");
+
 await db.exec(`set app.actor_id = '${id.outsider}'; set role authenticated;`);
 await assert.rejects(
   db.query(`
@@ -201,10 +234,12 @@ assert.deepEqual(failedStepState.rows, [{ steps: 0, stages: 0, revisions: 0 }]);
 await db.exec(`
   drop trigger process_steps_force_command_failure on public.process_steps;
   update public.process_steps set required_reviewer_id = '${id.actor}' where template_id = '${id.template}';
-  set app.actor_id = '${id.actor}';
-  set role authenticated;
 `);
-await db.query(`select public.publish_process_template_version('${id.template}')`);
+const activeDraft = await db.query(`
+  select lifecycle_status, is_active from public.process_templates where id = '${id.template}'
+`);
+assert.deepEqual(activeDraft.rows, [{ lifecycle_status: "draft", is_active: true }]);
+await db.exec(`set app.actor_id = '${id.actor}'; set role authenticated;`);
 
 const createWafer = () => db.query(`
   select public.create_process_wafer_command(
@@ -238,6 +273,41 @@ assert.deepEqual({
   events: waferAtomicState.rows[0].events,
   revisions: waferAtomicState.rows[0].revisions
 }, { runs: 1, members: 1, events: 1, revisions: 1 });
+
+await db.exec(`set app.actor_id = '${id.outsider}'; set role authenticated;`);
+await assert.rejects(
+  db.query(`
+    select public.create_process_wafer_command(
+      '${id.template}', '${id.project}', 'FORBIDDEN', 2, 3, '${id.unauthorizedWaferMutation}'
+    )
+  `),
+  /cannot create a wafer/i
+);
+await db.exec(`
+  reset role;
+  update public.process_templates set is_active = false where id = '${id.template}';
+  set app.actor_id = '${id.actor}';
+  set role authenticated;
+`);
+await assert.rejects(
+  db.query(`
+    select public.create_process_wafer_command(
+      '${id.template}', '${id.project}', 'INACTIVE', 2, 3, '${id.inactiveWaferMutation}'
+    )
+  `),
+  /only active processes can receive wafers/i
+);
+await db.exec(`
+  reset role;
+  update public.process_templates set is_active = true where id = '${id.template}';
+`);
+const rejectedWaferState = await db.query(`
+  select
+    (select count(*)::integer from public.wafers where wafer_code in ('FORBIDDEN', 'INACTIVE')) as wafers,
+    (select count(*)::integer from public.workflow_change_log
+      where client_mutation_id in ('${id.unauthorizedWaferMutation}', '${id.inactiveWaferMutation}')) as revisions
+`);
+assert.deepEqual(rejectedWaferState.rows, [{ wafers: 0, revisions: 0 }]);
 
 await db.exec(`
   reset role;
@@ -361,9 +431,9 @@ assert.equal((await db.query(`select count(*)::integer as count from public.proc
 console.log(JSON.stringify({
   migrations: migrations.length,
   authenticatedStageInsert: "passed",
-  stepCreate: "atomic, idempotent, stale-safe, unauthorized-safe, rollback-safe",
-  transitionCreate: "one persisted edge and one revision",
-  waferCreate: "wafer, assignment, executions, run/member, evidence, one revision",
+  stepCreate: "active draft and published accepted; idempotent, stale, unauthorized, rollback safe",
+  transitionCreate: "active draft and published accepted with one persisted edge and revision",
+  waferCreate: "active draft accepted atomically; unauthorized and inactive rejected",
   archive: "active removal, archive projection, append-only history, one revision",
   calendar: "create, move, delete, duplicate, stale, and unauthorized contracts"
 }, null, 2));
