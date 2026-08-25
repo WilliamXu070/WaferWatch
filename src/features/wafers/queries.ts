@@ -7,6 +7,7 @@ import type {
   FabricationStatus,
   Json,
   OperationRunHistoryView,
+  ProcessStep,
   ProcessCurrentStateView,
   StepStatus
 } from "@/types/database";
@@ -218,28 +219,19 @@ function textSurfaceKey(projectId: string, scopeKey: string, fieldKey: string) {
   });
 }
 
-function parseStatusSteps(snapshot: Json): StatusStep[] {
-  const root = asRecord(snapshot);
-  const definition = asRecord(root?.processDefinition);
-  const stages = asRecordArray(definition?.stages);
-  const steps: StatusStep[] = [];
-  for (const stage of stages) {
-    for (const row of asRecordArray(stage.steps)) {
-      const id = stringValue(row, "id");
-      const name = stringValue(row, "name");
-      if (!id || !name) continue;
-      steps.push({
-        id,
-        name,
-        process_area: stringValue(row, "process_area") ?? "Process step",
-        execution_mode: stringValue(row, "execution_mode") === "anytime" ? "anytime" : "main",
-        step_order: numberValue(row, "step_order") ?? steps.length + 1,
-        stage_step_order: numberValue(row, "stage_step_order") ?? 1,
-        parameters_schema: jsonValue(row, "parameters_schema")
-      });
-    }
-  }
-  return steps;
+function parseStatusSteps(rows: readonly Pick<
+  ProcessStep,
+  "id" | "name" | "process_area" | "execution_mode" | "step_order" | "stage_step_order" | "parameters_schema"
+>[]): StatusStep[] {
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    process_area: row.process_area,
+    execution_mode: row.execution_mode,
+    step_order: row.step_order,
+    stage_step_order: row.stage_step_order,
+    parameters_schema: row.parameters_schema
+  }));
 }
 
 function parameterValues(record: UnknownRecord): WaferStatusStepParameterValue[] {
@@ -623,8 +615,15 @@ export function getEmptyWaferStatusModel(): WaferStatusModel {
 export async function getWaferStatusModel(processTemplateId?: string): Promise<WaferStatusModel> {
   if (!processTemplateId) return getEmptyWaferStatusModel();
   const supabase = await createServerSupabaseClient();
-  const [snapshotResult, currentResult, historyResult] = await Promise.all([
-    supabase.rpc("get_process_workspace_snapshot", { target_template_id: processTemplateId }),
+  const [stepsResult, currentResult, historyResult] = await Promise.all([
+    supabase
+      .from("process_steps")
+      .select("id, name, process_area, execution_mode, step_order, stage_step_order, parameters_schema")
+      .eq("template_id", processTemplateId)
+      .is("archived_at", null)
+      .order("step_order", { ascending: true })
+      .order("stage_step_order", { ascending: true })
+      .order("id", { ascending: true }),
     supabase
       .from("vw_process_current_state")
       .select("*")
@@ -637,13 +636,16 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
       .order("created_at", { ascending: true })
       .limit(MAX_STATUS_HISTORY_ROWS)
   ]);
-  const firstError = [snapshotResult.error, currentResult.error, historyResult.error].find(Boolean);
+  const firstError = [stepsResult.error, currentResult.error, historyResult.error].find(Boolean);
   if (firstError) throw firstError;
 
   const allStateRows = (currentResult.data ?? []) as ProcessCurrentStateView[];
   const visibleRows = allStateRows.filter((row) => !row.archived_at && !isDicedParent(row.wafer_metadata));
   if (visibleRows.length === 0) return getEmptyWaferStatusModel();
-  const processSteps = parseStatusSteps(snapshotResult.data as Json);
+  const processSteps = parseStatusSteps((stepsResult.data ?? []) as Pick<
+    ProcessStep,
+    "id" | "name" | "process_area" | "execution_mode" | "step_order" | "stage_step_order" | "parameters_schema"
+  >[]);
   const stepById = new Map(processSteps.map((step) => [step.id, step]));
   const stateByWaferId = new Map(allStateRows.map((row) => [row.wafer_id, row]));
   const historyRows = (historyResult.data ?? []) as OperationRunHistoryView[];

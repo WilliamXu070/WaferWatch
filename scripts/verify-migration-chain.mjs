@@ -56,6 +56,23 @@ for (const file of files) {
   }
 }
 
+const projectionIndexes = await db.query(`
+  select indexname
+  from pg_indexes
+  where schemaname = 'public'
+    and indexname in (
+      'operation_run_members_effective_run_assignment_wafer_idx',
+      'operation_run_links_child_created_idx',
+      'operation_run_links_parent_created_idx'
+    )
+  order by indexname
+`);
+assert.deepEqual(projectionIndexes.rows, [
+  { indexname: 'operation_run_links_child_created_idx' },
+  { indexname: 'operation_run_links_parent_created_idx' },
+  { indexname: 'operation_run_members_effective_run_assignment_wafer_idx' }
+]);
+
 const id = {
   actor: "50000000-0000-4000-8000-000000000001",
   project: "50000000-0000-4000-8000-000000000002",

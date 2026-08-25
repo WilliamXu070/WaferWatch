@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   getWorkflowRefreshDebounceMs,
@@ -28,7 +28,9 @@ export function RealtimeWorkflowBridge({
   enabled?: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const processTemplateId = activeProcessId;
+  const loadsWorkspaceSnapshot = pathname !== "/wafer-status";
   const refreshTimerRef = useRef<number | null>(null);
   const revisionRef = useRef(0);
 
@@ -85,6 +87,10 @@ export function RealtimeWorkflowBridge({
 
     const scheduleDelta = (payload: unknown) => {
       if (!isWorkflowRevisionBroadcastPayload(payload) || payload.processTemplateId !== processTemplateId) return;
+      if (!loadsWorkspaceSnapshot) {
+        router.refresh();
+        return;
+      }
       deltaQueue = deltaQueue
         .then(() => applyCommittedRevisions(payload.revision))
         .catch(() => loadSnapshot());
@@ -95,7 +101,9 @@ export function RealtimeWorkflowBridge({
       ...(processTemplateId ? [getWorkflowProcessTopic(processTemplateId)] : [])
     ];
 
-    void loadSnapshot().catch(() => undefined);
+    if (loadsWorkspaceSnapshot) {
+      void loadSnapshot().catch(() => undefined);
+    }
     void supabase.realtime.setAuth().then(() => {
       if (!active) return;
       for (const topic of topics) {
@@ -126,7 +134,7 @@ export function RealtimeWorkflowBridge({
         void supabase.removeChannel(channel);
       }
     };
-  }, [enabled, processTemplateId, router]);
+  }, [enabled, loadsWorkspaceSnapshot, processTemplateId, router]);
 
   return null;
 }

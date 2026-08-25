@@ -83,5 +83,7 @@ test("realtime receives server selection and unsubscribes when that prop changes
   const bridgeSource = await source("../collaboration/RealtimeWorkflowBridge.tsx");
   assert.match(bridgeSource, /activeProcessId: string \| null/);
   assert.match(bridgeSource, /supabase\.removeChannel\(channel\)/);
-  assert.match(bridgeSource, /\[enabled, processTemplateId, router\]/);
+  assert.match(bridgeSource, /pathname !== "\/wafer-status"/);
+  assert.match(bridgeSource, /if \(loadsWorkspaceSnapshot\) \{[\s\S]{0,120}void loadSnapshot/);
+  assert.match(bridgeSource, /\[enabled, loadsWorkspaceSnapshot, processTemplateId, router\]/);
 });
