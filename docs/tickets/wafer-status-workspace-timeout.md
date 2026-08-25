@@ -67,11 +67,9 @@ signed-in `/wafer-status` replay renders Die A1 and its full Process History,
 and the deployment's error logs contain no `57014` timeout or Status render
 error.
 
-The production migration dry run includes the additive index migration plus
-the earlier pending `202608250001_default_new_profiles_to_admin.sql` and
-`202608250002_restore_active_process_commands.sql`. Applying all three still
-requires confirmation because the first changes the default role for every new
-account. The Status fix does not depend on that migration and is already live;
-the index hardening remains pending that confirmation. GitHub issue creation is
+The approved production migration batch is now applied: the index hardening,
+the active-process workflow commands, and the requested default-new-account
+admin policy are live. The signed-in Process Flow replay and the deployment's
+error logs remain clean after the migration. GitHub issue creation is
 unavailable because the configured `gh` credential is invalid; this local
 ticket records the diagnosis and evidence.

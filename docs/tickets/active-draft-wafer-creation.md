@@ -35,4 +35,12 @@ Completed locally:
 
 ## Status
 
-Implemented and locally verified. Production migration, deployment, and signed-in UI replay remain pending.
+Resolved in production. Migrations `202608250001` through `202608250003`
+were applied, including `202608250002_restore_active_process_commands.sql`,
+which restores active-process step, transition, and wafer commands. The
+production Process Flow replay loads the active Saeed process with its Add
+wafer control enabled and no server/browser errors. The exact create-step and
+create-wafer mutation was not replayed against a lab process solely for
+verification; the same active-draft command path passed the deterministic
+authenticated, idempotency, authorization, inactive-template, and rollback
+checks before release.
