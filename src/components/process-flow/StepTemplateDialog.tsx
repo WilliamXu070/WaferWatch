@@ -134,13 +134,21 @@ function getFocusableElements(container: HTMLElement) {
 
 function defaultValueControl(
   field: StepParameterDefinition,
+  fieldId: string,
   disabled: boolean,
   onChange: (value: string | null) => void
 ) {
   const label = field.label || "Parameter";
   if (field.type === "boolean") {
     return (
-      <select aria-label={`${label} default value`} disabled={disabled} value={field.defaultValue ?? ""} onChange={(event) => onChange(event.currentTarget.value || null)}>
+      <select
+        aria-label={`${label} default value`}
+        disabled={disabled}
+        id={`step-template-default-${fieldId}`}
+        name={`stepTemplateDefaultValue${fieldId}`}
+        value={field.defaultValue ?? ""}
+        onChange={(event) => onChange(event.currentTarget.value || null)}
+      >
         <option value="">No default</option>
         <option value="true">Yes</option>
         <option value="false">No</option>
@@ -153,6 +161,8 @@ function defaultValueControl(
       disabled={disabled}
       inputMode={field.type === "number" ? "decimal" : undefined}
       maxLength={4000}
+      id={`step-template-default-${fieldId}`}
+      name={`stepTemplateDefaultValue${fieldId}`}
       onChange={(event) => onChange(event.currentTarget.value || null)}
       placeholder="No default"
       type={field.type === "number" ? "number" : "text"}
@@ -349,15 +359,26 @@ export function StepTemplateDialog({
                       updateFields(fields.map((candidate) => candidate.id === field.id ? { ...candidate, [key]: value } : candidate));
                     };
                     return (
-                      <tr key={field.id}>
+                    <tr key={field.id}>
                         <th scope="row">{index + 1}</th>
                         <td data-mobile-label="Parameter">
-                          <input aria-label={`Parameter ${index + 1} name`} disabled={!canMutate} maxLength={160} onChange={(event) => update("label", event.currentTarget.value)} placeholder="Exposure time" value={field.label} />
+                          <input
+                            aria-label={`Parameter ${index + 1} name`}
+                            disabled={!canMutate}
+                            id={`step-template-parameter-${field.id}-name`}
+                            maxLength={160}
+                            name={`stepTemplateParameters${field.id}Name`}
+                            onChange={(event) => update("label", event.currentTarget.value)}
+                            placeholder="Exposure time"
+                            value={field.label}
+                          />
                         </td>
                         <td data-mobile-label="Type">
                           <select
                             aria-label={`${field.label || `Parameter ${index + 1}`} type`}
                             disabled={!canMutate}
+                            id={`step-template-parameter-${field.id}-type`}
+                            name={`stepTemplateParameters${field.id}Type`}
                             onChange={(event) => {
                               const type = event.currentTarget.value as StepParameterDefinition["type"];
                               const nextDefault = type === "boolean" && !["true", "false"].includes(field.defaultValue ?? "")
@@ -373,15 +394,41 @@ export function StepTemplateDialog({
                             {field.type === "select" ? <option value="select">Select (legacy)</option> : null}
                           </select>
                         </td>
-                        <td data-mobile-label="Default">{defaultValueControl(field, !canMutate, (value) => update("defaultValue", value))}</td>
+                        <td data-mobile-label="Default">{defaultValueControl(field, field.id, !canMutate, (value) => update("defaultValue", value))}</td>
                         <td data-mobile-label="Unit">
-                          <input aria-label={`${field.label || `Parameter ${index + 1}`} unit`} disabled={!canMutate} maxLength={40} onChange={(event) => update("unit", event.currentTarget.value)} placeholder="nm" value={field.unit} />
+                          <input
+                            aria-label={`${field.label || `Parameter ${index + 1}`} unit`}
+                            disabled={!canMutate}
+                            id={`step-template-parameter-${field.id}-unit`}
+                            maxLength={40}
+                            name={`stepTemplateParameters${field.id}Unit`}
+                            onChange={(event) => update("unit", event.currentTarget.value)}
+                            placeholder="nm"
+                            value={field.unit}
+                          />
                         </td>
                         <td data-mobile-label="Required" className="step-template-table__required">
-                          <input aria-label={`${field.label || `Parameter ${index + 1}`} required`} checked={field.required} disabled={!canMutate} onChange={(event) => update("required", event.currentTarget.checked)} type="checkbox" />
+                          <input
+                            aria-label={`${field.label || `Parameter ${index + 1}`} required`}
+                            checked={field.required}
+                            disabled={!canMutate}
+                            id={`step-template-parameter-${field.id}-required`}
+                            name={`stepTemplateParameters${field.id}Required`}
+                            onChange={(event) => update("required", event.currentTarget.checked)}
+                            type="checkbox"
+                          />
                         </td>
                         <td data-mobile-label="Guidance">
-                          <input aria-label={`${field.label || `Parameter ${index + 1}`} operator guidance`} disabled={!canMutate} maxLength={4000} onChange={(event) => update("description", event.currentTarget.value)} placeholder="What should be recorded" value={field.description} />
+                          <input
+                            aria-label={`${field.label || `Parameter ${index + 1}`} operator guidance`}
+                            disabled={!canMutate}
+                            id={`step-template-parameter-${field.id}-description`}
+                            maxLength={4000}
+                            name={`stepTemplateParameters${field.id}Description`}
+                            onChange={(event) => update("description", event.currentTarget.value)}
+                            placeholder="What should be recorded"
+                            value={field.description}
+                          />
                         </td>
                         <td className="step-template-table__actions">
                           {draft.canEdit ? (

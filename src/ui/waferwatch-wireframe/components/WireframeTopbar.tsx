@@ -22,6 +22,8 @@ export function WireframeTopbar({
         </span>
         <input
           type="text"
+          id="waferwatch-search"
+          name="waferwatchSearch"
           readOnly
           placeholder="Search wafers, steps, die notes..."
           aria-label="Search"

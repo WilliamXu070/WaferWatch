@@ -307,6 +307,8 @@ export function ProcessFlowCanvas({
           <label className="flow-role-menu-reviewer">
             <span>Checkpoint reviewer</span>
             <select
+              id={`role-menu-reviewer-${roleMenuNode.id}`}
+              name={`checkpointReviewer${roleMenuNode.id}`}
               value={roleMenuNode.requiredReviewerId ?? ""}
               onChange={(event) => onUpdateReviewer?.(roleMenuNode.id, event.currentTarget.value || null)}
             >

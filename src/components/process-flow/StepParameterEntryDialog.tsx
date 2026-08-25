@@ -251,15 +251,24 @@ function parseValue(type: StepParameterDefinition["type"], raw: string): StepPar
 function ParameterValueInput({
   definition,
   value,
+  inputId,
   onChange
 }: {
   definition: Pick<StepParameterDefinition, "type" | "label">;
+  inputId: string;
   value: string;
   onChange: (value: string) => void;
 }) {
   if (definition.type === "boolean") {
     return (
-      <select className={inputClassName} aria-label={`${definition.label} value`} value={value} onChange={(event) => onChange(event.currentTarget.value)}>
+      <select
+        className={inputClassName}
+        aria-label={`${definition.label} value`}
+        id={`${inputId}-value`}
+        name={`${inputId}-value`}
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      >
         <option value="">Not recorded</option>
         <option value="true">Yes</option>
         <option value="false">No</option>
@@ -271,6 +280,8 @@ function ParameterValueInput({
     <input
       className={inputClassName}
       aria-label={`${definition.label} value`}
+      id={`${inputId}-value`}
+      name={`${inputId}-value`}
       type={definition.type === "number" ? "number" : "text"}
       inputMode={definition.type === "number" ? "decimal" : undefined}
       value={value}
@@ -481,6 +492,7 @@ export function StepParameterEntryDialog({
                       <td className="border-r border-[#e5e5df] p-0" data-mobile-label="Value">
                         <ParameterValueInput
                           definition={definition}
+                          inputId={`global-${definition.key}`}
                           value={globalValues[definition.key] ?? ""}
                           onChange={(value) => setGlobalValues((current) => ({ ...current, [definition.key]: value }))}
                         />
@@ -498,6 +510,8 @@ export function StepParameterEntryDialog({
                           <input
                             className={inputClassName}
                             aria-label={`Additional parameter ${index + 1} label`}
+                            id={`step-parameter-local-${parameter.id}-label`}
+                            name={`additionalParameters${parameter.id}Label`}
                             placeholder="Parameter name"
                             value={parameter.label}
                             onChange={(event) => {
@@ -513,6 +527,8 @@ export function StepParameterEntryDialog({
                           <input
                             className={inputClassName}
                             aria-label={`${parameter.label || `Parameter ${index + 1}`} value`}
+                            id={`step-parameter-local-${parameter.id}-value`}
+                            name={`additionalParameters${parameter.id}Value`}
                             placeholder="Enter value"
                             value={parameter.valueText}
                             onChange={(event) => {
@@ -530,6 +546,8 @@ export function StepParameterEntryDialog({
                           <input
                             className={inputClassName}
                             aria-label={`${parameter.label || `Parameter ${index + 1}`} notes`}
+                            id={`step-parameter-local-${parameter.id}-notes`}
+                            name={`additionalParameters${parameter.id}Notes`}
                             placeholder="Add a note"
                             value={parameter.notes}
                             onChange={(event) => {
@@ -589,10 +607,12 @@ export function StepParameterEntryDialog({
             </div>
           </section>
 
-          <label className="grid gap-1.5 text-[12px] font-semibold text-[#5f5f58]">
+            <label className="grid gap-1.5 text-[12px] font-semibold text-[#5f5f58]">
             Additional notes <span className="font-normal text-[#92928a]">Optional</span>
             <textarea
               className="min-h-20 resize-y rounded-lg border border-[#dcdcd5] bg-white px-3 py-2.5 text-[14px] font-normal text-[#171714] outline-none focus:border-[#171714]"
+              id="step-parameter-notes"
+              name="stepParameterNotes"
               maxLength={4000}
               placeholder={total > 1 ? "Add context for all moved items" : "Add any context for this wafer or die"}
               value={additionalNotes}

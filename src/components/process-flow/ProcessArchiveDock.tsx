@@ -87,14 +87,16 @@ export function ProcessArchiveDock({
                     </span>
                   </button>
                   <div className="flow-archive-item__mobile-restore">
-                    <label>
-                      <span>Restore to</span>
-                      <select
-                        disabled={!canEdit || isBusy}
-                        onChange={(event) => setRestoreStepByWafer((current) => ({
-                          ...current,
-                          [item.waferId]: event.currentTarget.value
-                        }))}
+                      <label>
+                        <span>Restore to</span>
+                        <select
+                          id={`restore-to-${item.waferId}`}
+                          name={`restoreStep${item.waferId}`}
+                          disabled={!canEdit || isBusy}
+                          onChange={(event) => setRestoreStepByWafer((current) => ({
+                            ...current,
+                            [item.waferId]: event.currentTarget.value
+                          }))}
                         value={selectedStepId}
                       >
                         {steps.map((step) => <option key={step.id} value={step.id}>{step.label} · Beginning</option>)}

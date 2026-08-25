@@ -243,6 +243,8 @@ export function FlowNodeCard({
           <div className="flow-node-title-input-frame">
             <input
               ref={editingInputRef}
+              id={`process-flow-node-${node.id}-label`}
+              name={`processFlowNode${node.id}Label`}
               type="text"
               className="flow-node-title-input"
               value={editingNodeLabel}
