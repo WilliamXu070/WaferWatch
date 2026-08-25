@@ -1087,6 +1087,7 @@ export function ProcessFlowDiagram({
 
     const queue = new Map(pendingTransitionCreateRef.current);
     pendingTransitionCreateRef.current.clear();
+    let savedTransitionCount = 0;
 
     for (const [localId, transition] of queue) {
       const draftEdgeExists = edgesRef.current.some((edge) => edge.id === localId);
@@ -1114,7 +1115,10 @@ export function ProcessFlowDiagram({
         toStepId: transition.toStepId,
         edgeType: transition.edgeType,
         priority: transition.priority
-      });
+      }).catch((error): { ok: false; error: string } => ({
+        ok: false,
+        error: error instanceof Error ? error.message : "The transition could not be saved."
+      }));
 
       if (!result.ok) {
         const attempts = (transition.attempts ?? 0) + 1;
@@ -1148,10 +1152,13 @@ export function ProcessFlowDiagram({
           )
         )
       );
+      savedTransitionCount += 1;
     }
 
     if (pendingTransitionCreateRef.current.size > 0) {
       scheduleTransitionFlush(TRANSITION_RETRY_DELAY_MS);
+    } else if (savedTransitionCount > 0) {
+      setMoveMessage(savedTransitionCount === 1 ? "Transition saved." : `${savedTransitionCount} transitions saved.`);
     }
   }, [isOptimisticStep, onCreateTransition, processTemplateId, scheduleTransitionFlush]);
 
