@@ -164,6 +164,10 @@ const collaborationMigration = await readFile(
   new URL("../supabase/migrations/202607130001_collaboration_foundation.sql", import.meta.url),
   "utf8"
 );
+const positionConflictMigration = await readFile(
+  new URL("../supabase/migrations/202608260003_position_conflict_http_409.sql", import.meta.url),
+  "utf8"
+);
 const broadcastMigration = await readFile(
   new URL("../supabase/migrations/202607150008_scoped_workflow_broadcast.sql", import.meta.url),
   "utf8"
@@ -178,6 +182,7 @@ assert.doesNotMatch(
   "Hosted Supabase owns realtime.messages; migrations must rely on its default RLS state."
 );
 await db.exec(collaborationMigration);
+await db.exec(positionConflictMigration);
 await db.exec(broadcastMigration);
 await db.exec(idempotencyMigration);
 
@@ -286,7 +291,11 @@ await assert.rejects(
       { stepId: ids.source, canvasX: 50, canvasY: 50, expectedCanvasX: 10, expectedCanvasY: 10 }
     ])]
   ),
-  /moved by another collaborator/
+  (error) => {
+    assert.equal(error.code, "PT409");
+    assert.match(error.message, /moved by another collaborator/);
+    return true;
+  }
 );
 const unchangedTarget = await db.query(`select canvas_x, canvas_y from public.process_steps where id = $1`, [ids.targetA]);
 assert.deepEqual(unchangedTarget.rows[0], { canvas_x: 20, canvas_y: 10 });
