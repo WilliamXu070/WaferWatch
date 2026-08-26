@@ -38,7 +38,8 @@ export function RealtimeWorkflowBridge({
   const processTemplateId = hotLoadingMode === "on"
     ? workspaceSession.activeProcessId
     : activeProcessId;
-  const appliesOrderedWorkspace = hotLoadingMode === "on" || pathname !== "/wafer-status";
+  const appliesOrderedWorkspace = hotLoadingMode !== "off"
+    && (hotLoadingMode === "on" || pathname !== "/wafer-status");
   const refreshTimerRef = useRef<number | null>(null);
   const revisionRef = useRef(0);
   const hiddenAtRef = useRef<number | null>(null);

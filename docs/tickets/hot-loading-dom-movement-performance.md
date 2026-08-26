@@ -29,6 +29,11 @@ drops the delta and the client relies on a later broadcast fetch. Status also us
 a full router refresh on revisions after its prior full-snapshot path exceeded the
 authenticated statement timeout.
 
+Production replay confirmed this causal path: compatibility routes rendered, then
+the unused bridge snapshot produced PostgreSQL `57014` timeouts. `off` mode now
+skips that snapshot entirely, `shadow` retains it only for parity measurement, and
+`on` starts from the bounded bootstrap.
+
 ## Plan
 
 1. Add a bounded additive hot-bootstrap RPC and a three-process in-memory session

@@ -89,7 +89,7 @@ test("realtime rekeys by server selection and preserves ordered hot workspace re
   const bridgeSource = await source("../collaboration/RealtimeWorkflowBridge.tsx");
   assert.match(bridgeSource, /activeProcessId: string \| null/);
   assert.match(bridgeSource, /supabase\.removeChannel\(channel\)/);
-  assert.match(bridgeSource, /hotLoadingMode === "on" \|\| pathname !== "\/wafer-status"/);
+  assert.match(bridgeSource, /hotLoadingMode !== "off"[\s\S]{0,80}hotLoadingMode === "on" \|\| pathname !== "\/wafer-status"/);
   assert.match(bridgeSource, /existingRevision === undefined[\s\S]{0,100}loadHotBootstrap/);
   assert.match(bridgeSource, /applyProcessWorkspaceDelta\(delta\)/);
   assert.match(bridgeSource, /dispatchEvent\(new CustomEvent\(WORKFLOW_REALTIME_EVENT[\s\S]{0,160}hotLoadingMode === "on"\) return;/);
