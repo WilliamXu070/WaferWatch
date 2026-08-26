@@ -49,27 +49,33 @@ test("mobile keeps five reachable clean-route controls above its fixed bottom ed
   assert.match(globalStyles, /\.wireframe-mobile-bottom-nav__item \{[\s\S]*?min-height: 52px/);
 });
 
-test("selection refreshes clean route cache before redirecting", async () => {
-  const actionSource = await source("./actions.ts");
+test("selection returns the server-authoritative process before client navigation", async () => {
+  const [actionSource, sidebarSource] = await Promise.all([
+    source("./actions.ts"),
+    source("../../ui/waferwatch-wireframe/components/WireframeSidebar.tsx")
+  ]);
   const cookieIndex = actionSource.indexOf("setActiveProcessCookie(data.id)");
-  const refreshIndex = actionSource.indexOf("refresh()", cookieIndex);
-  const redirectIndex = actionSource.indexOf("redirect(selection.destination)", refreshIndex);
+  const returnIndex = actionSource.indexOf("return {", cookieIndex);
 
   assert.ok(cookieIndex >= 0);
-  assert.ok(refreshIndex > cookieIndex);
-  assert.ok(redirectIndex > refreshIndex);
+  assert.ok(returnIndex > cookieIndex);
+  assert.doesNotMatch(actionSource, /refresh\(\)|redirect\(/);
+  assert.match(sidebarSource, /switchActiveProcess\([\s\S]{0,80}result\.process/);
+  assert.match(sidebarSource, /router\.push\(result\.destination\)/);
 });
 
 test("creation, active deletion, and sign-out maintain cookie lifecycle", async () => {
-  const [processActions, accountActions] = await Promise.all([
+  const [processActions, accountActions, mobileSource] = await Promise.all([
     source("../process-flows/actions.ts"),
-    source("../accounts/actions.ts")
+    source("../accounts/actions.ts"),
+    source("../../ui/waferwatch-wireframe/components/WireframeMobileChrome.tsx")
   ]);
 
   assert.match(processActions, /lifecycle_status: "draft"/);
   assert.match(processActions, /setActiveProcessCookie\(data\.id\)/);
   assert.match(processActions, /clearActiveProcessCookieIfSelected\(parsed\.templateId\)/);
   assert.match(accountActions, /clearActiveProcessCookie\(\)[\s\S]{0,120}supabase\.auth\.signOut\(\)/);
+  assert.match(mobileSource, /switchActiveProcess\(res\.data\.id/);
 });
 
 test("proxy transfers refreshed authentication cookies onto compatibility redirects", async () => {
@@ -79,11 +85,13 @@ test("proxy transfers refreshed authentication cookies onto compatibility redire
   assert.match(proxySource, /NextResponse\.redirect\(destination, 307\)/);
 });
 
-test("realtime receives server selection and unsubscribes when that prop changes", async () => {
+test("realtime rekeys by server selection and preserves ordered hot workspace recovery", async () => {
   const bridgeSource = await source("../collaboration/RealtimeWorkflowBridge.tsx");
   assert.match(bridgeSource, /activeProcessId: string \| null/);
   assert.match(bridgeSource, /supabase\.removeChannel\(channel\)/);
-  assert.match(bridgeSource, /pathname !== "\/wafer-status"/);
-  assert.match(bridgeSource, /if \(loadsWorkspaceSnapshot\) \{[\s\S]{0,120}void loadSnapshot/);
-  assert.match(bridgeSource, /\[enabled, loadsWorkspaceSnapshot, processTemplateId, router\]/);
+  assert.match(bridgeSource, /hotLoadingMode === "on" \|\| pathname !== "\/wafer-status"/);
+  assert.match(bridgeSource, /existingRevision === undefined[\s\S]{0,100}loadHotBootstrap/);
+  assert.match(bridgeSource, /applyProcessWorkspaceDelta\(delta\)/);
+  assert.match(bridgeSource, /dispatchEvent\(new CustomEvent\(WORKFLOW_REALTIME_EVENT[\s\S]{0,160}hotLoadingMode === "on"\) return;/);
+  assert.match(bridgeSource, /\[appliesOrderedWorkspace, enabled, hotLoadingMode, processTemplateId, router\]/);
 });

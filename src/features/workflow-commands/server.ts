@@ -11,6 +11,8 @@ import type {
   WorkflowCommandKind,
   WorkflowCommandResult
 } from "./types";
+import { withServerPerformanceSpan } from "@/features/performance/server";
+import { getWorkspaceHotLoadingMode } from "@/features/workspace/mode";
 
 type CommandContext = {
   actorId: string;
@@ -260,11 +262,28 @@ async function waferBatchMoveHandler(
       .map((spec) => ({ ...spec, movement_mutation_id: crypto.randomUUID() }));
     return { ...mutation, childSpecs };
   }));
-  const { data, error } = await supabase.rpc("execute_process_flow_mutations_batch", {
-    mutations: mutations as Json
-  });
+  const useV2 = getWorkspaceHotLoadingMode() === "on";
+  const { data, error } = await withServerPerformanceSpan("process_flow_mutation_rpc", {
+    templateId: command.templateId,
+    mutationId: command.mutationId,
+    mutationCount: mutations.length,
+    version: useV2 ? "v2" : "compatibility"
+  }, async () => useV2
+    ? supabase.rpc("execute_process_flow_mutations_batch_v2", {
+        requested_template_id: command.templateId,
+        expected_workspace_revision: command.expectedWorkspaceRevision ?? null,
+        command_mutation_id: command.mutationId,
+        mutations: mutations as Json
+      })
+    : supabase.rpc("execute_process_flow_mutations_batch", {
+        mutations: mutations as Json
+      })
+  );
   if (error) throw error;
   const response = asRecord(data);
+  if (useV2 && (response.templateId !== command.templateId || response.mutationId !== command.mutationId)) {
+    throw new WorkflowCommandRejection("unavailable", "The committed batch identity did not match the requested process.");
+  }
   return commandResponse(data, Array.isArray(response.outcomes) ? response.outcomes : []);
 }
 
@@ -319,10 +338,14 @@ async function executeParsedWorkflowCommand(
       context: CommandContext
     ) => Promise<RawCommandSuccess>;
     const outcome = await handler(command, context);
-    const { data: deltaData, error: deltaError } = await context.supabase.rpc("get_process_workspace_delta", {
-      target_template_id: command.templateId,
-      after_revision: Math.max(0, outcome.revision - 1)
-    });
+    const { data: deltaData, error: deltaError } = await withServerPerformanceSpan(
+      "committed_delta_rpc",
+      { templateId: command.templateId, mutationId: command.mutationId, revision: outcome.revision },
+      async () => context.supabase.rpc("get_process_workspace_delta", {
+        target_template_id: command.templateId,
+        after_revision: Math.max(0, outcome.revision - 1)
+      })
+    );
     if (deltaError) throw deltaError;
     const delta = parseWorkspaceDelta(deltaData);
     if (delta.hasGap || delta.revision < outcome.revision) {

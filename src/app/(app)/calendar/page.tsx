@@ -8,6 +8,8 @@ import { resolveActiveProcess } from "@/features/process-selection/server";
 import { orderProcessStepsByOccurrence } from "@/features/process-flows/step-order";
 import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getWorkspaceHotLoadingMode } from "@/features/workspace/mode";
+import { HotCalendarView } from "@/ui/waferwatch-wireframe/components/HotCalendarView";
 
 export const metadata = {
   title: "Calendar · WaferWatch"
@@ -154,6 +156,15 @@ async function loadBackendCalendar(processId: string | null): Promise<CalendarLo
 
 export default async function WireframeCalendarPage() {
   const activeProcess = await resolveActiveProcess();
+  if (activeProcess && getWorkspaceHotLoadingMode() === "on") {
+    const account = await getCurrentAccount();
+    if (account) {
+      const canEdit = activeProcess.owner_project_id
+        ? await canEditProject(activeProcess.owner_project_id, account)
+        : canManageProcessLibrary(account.profile.role);
+      return <HotCalendarView processId={activeProcess.id} canEdit={canEdit} />;
+    }
+  }
   const calendarResult = await loadBackendCalendar(activeProcess?.id ?? null).catch((error: unknown) => ({
     status: "unavailable" as const,
     message: error instanceof Error ? error.message : "Calendar backend could not be loaded."

@@ -1,11 +1,15 @@
 import {
   getEmptyWaferStatusModel,
+  getWaferStatusOverviewModel,
   getWaferStatusModel
 } from "@/features/wafers/queries";
 import { canEditProject, getCurrentAccount } from "@/lib/auth/session";
 import { WaferStatusView } from "@/ui/waferwatch-wireframe/components/WaferStatusView";
 import type { DieDetailTab } from "@/ui/waferwatch-wireframe/components/wafer-die-detail/waferDieDetailData";
 import { resolveActiveProcess } from "@/features/process-selection/server";
+import { getWorkspaceHotLoadingMode } from "@/features/workspace/mode";
+import { LiveWaferStatusView } from "@/ui/waferwatch-wireframe/components/LiveWaferStatusView";
+import { withServerPerformanceSpan } from "@/features/performance/server";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +69,11 @@ export default async function WireframeWaferStatusPage({
     );
   }
 
-  const model = await getWaferStatusModel(activeProcessId);
+  const hotLoadingMode = getWorkspaceHotLoadingMode();
+  const model = hotLoadingMode === "on"
+    ? await withServerPerformanceSpan("status.overview", { processId: activeProcessId }, () =>
+      getWaferStatusOverviewModel(activeProcessId))
+    : await getWaferStatusModel(activeProcessId);
   const projectIds = Array.from(
     new Set(
       model.families
@@ -78,19 +86,20 @@ export default async function WireframeWaferStatusPage({
       (projectIds.length > 0 && (await Promise.all(projectIds.map((projectId) => canEditProject(projectId, account)))).every(Boolean))
     : false;
 
-  return (
-    <WaferStatusView
-      key={[activeProcessId, requestedWaferId ?? "overview", requestedDieLabel ?? "", requestedTab].join(":")}
-      model={model}
-      canEdit={canEdit}
-      currentUser={account ? {
-        id: account.userId,
-        displayName: account.profile.display_name?.trim() || account.email?.trim() || "WaferWatch user"
-      } : null}
-      processId={activeProcessId}
-      initialWaferId={requestedWaferId}
-      initialDieLabel={requestedDieLabel}
-      initialDetailTab={requestedTab}
-    />
+  const viewKey = [activeProcessId, requestedWaferId ?? "overview", requestedDieLabel ?? "", requestedTab].join(":");
+  const viewProps = {
+    canEdit,
+    currentUser: account ? {
+      id: account.userId,
+      displayName: account.profile.display_name?.trim() || account.email?.trim() || "WaferWatch user"
+    } : null,
+    initialWaferId: requestedWaferId,
+    initialDieLabel: requestedDieLabel,
+    initialDetailTab: requestedTab
+  };
+  return hotLoadingMode === "on" ? (
+    <LiveWaferStatusView key={viewKey} {...viewProps} initialModel={model} processId={activeProcessId} />
+  ) : (
+    <WaferStatusView key={viewKey} {...viewProps} model={model} processId={activeProcessId} />
   );
 }

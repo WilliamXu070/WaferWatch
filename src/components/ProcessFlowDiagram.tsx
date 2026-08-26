@@ -38,6 +38,10 @@ import { WaferWatchPortal } from "@/ui/waferwatch-wireframe/components/WaferWatc
 import { readDeletedWaferIds } from "@/features/process-flows/waferDeletion";
 import { WORKFLOW_DELTA_EVENT } from "@/features/collaboration/realtime";
 import type { ProcessWorkspaceDelta } from "@/features/workspace/types";
+import {
+  applyProcessWorkspaceDelta,
+  getProcessWorkspaceState
+} from "@/features/workspace/store";
 import { ProcessFlowCanvas } from "./process-flow/ProcessFlowCanvas";
 import { ProcessFlowMutationStatus } from "./process-flow/ProcessFlowMutationStatus";
 import { ProcessArchiveDock } from "./process-flow/ProcessArchiveDock";
@@ -365,17 +369,22 @@ function legacyStepStatusFromWorkspace(value: Json | undefined) {
   return null;
 }
 
+function markProcessFlowPerformance(name: string) {
+  if (document.body.dataset.perfTestMode === "1") performance.mark(`waferwatch:${name}`);
+}
+
 export function ProcessFlowDiagram({
   steps,
   transitions = [],
   processTemplateId,
-  suggestedWaferCode,
-  archiveItems = [],
+  suggestedWaferCode: initialSuggestedWaferCode,
+  archiveItems: initialArchiveItems = [],
   actions,
-  reviewerOptions = [],
+  reviewerOptions: initialReviewerOptions = [],
   currentUserId,
   currentUserName,
-  canEdit = true
+  canEdit = true,
+  directDeltaReconciliation = false
 }: {
   steps: DiagramStep[];
   transitions?: DiagramTransition[];
@@ -384,6 +393,7 @@ export function ProcessFlowDiagram({
   archiveItems?: ProcessArchiveItem[];
   actions?: ProcessFlowActions;
   canEdit?: boolean;
+  directDeltaReconciliation?: boolean;
   reviewerOptions?: CheckpointReviewerOption[];
   currentUserId?: string;
   currentUserName?: string;
@@ -426,6 +436,14 @@ export function ProcessFlowDiagram({
   const [waferDrag, setWaferDrag] = useState<WaferDrag | null>(null);
   const [waferDropTarget, setWaferDropTarget] = useState<{ nodeId: string; kind: "submit" | "move" } | null>(null);
   const [optimisticArchiveItems, setOptimisticArchiveItems] = useState<ProcessArchiveItem[]>([]);
+  const [loadedArchiveItems, setLoadedArchiveItems] = useState<ProcessArchiveItem[]>(initialArchiveItems);
+  const [loadedReviewerOptions, setLoadedReviewerOptions] = useState<CheckpointReviewerOption[]>(initialReviewerOptions);
+  const [loadedSuggestedWaferCode, setLoadedSuggestedWaferCode] = useState(initialSuggestedWaferCode);
+  const loadedSupportScopesRef = useRef(new Set<string>([
+    ...(initialArchiveItems.length ? ["archive"] : []),
+    ...(initialReviewerOptions.length ? ["reviewers"] : []),
+    ...(initialSuggestedWaferCode ? ["wafer-name"] : [])
+  ]));
   const [hiddenArchiveWaferIds, setHiddenArchiveWaferIds] = useState<Set<string>>(new Set());
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [isArchiveDropActive, setIsArchiveDropActive] = useState(false);
@@ -744,13 +762,44 @@ export function ProcessFlowDiagram({
   }, [currentUserId, displayNodes, nodeById, onMoveApprovedWafer, onRouteCheckpoint, onSubmitCheckpoint]);
   const archiveItemsState = useMemo(() => {
     const byWaferId = new Map<string, ProcessArchiveItem>();
-    for (const item of [...archiveItems, ...optimisticArchiveItems]) {
+    for (const item of [...loadedArchiveItems, ...optimisticArchiveItems]) {
       if (!hiddenArchiveWaferIds.has(item.waferId)) {
         byWaferId.set(item.waferId, item);
       }
     }
     return Array.from(byWaferId.values()).sort((a, b) => b.archivedAt.localeCompare(a.archivedAt));
-  }, [archiveItems, hiddenArchiveWaferIds, optimisticArchiveItems]);
+  }, [hiddenArchiveWaferIds, loadedArchiveItems, optimisticArchiveItems]);
+
+  useEffect(() => {
+    if (!processTemplateId) return;
+    const scope = isArchiveOpen
+      ? "archive"
+      : stepTemplateDraft
+        ? "reviewers"
+        : waferCreateDraft
+          ? "wafer-name"
+          : null;
+    if (!scope || loadedSupportScopesRef.current.has(scope)) return;
+    loadedSupportScopesRef.current.add(scope);
+    const controller = new AbortController();
+    void fetch(`/api/processes/${processTemplateId}/flow-support?scope=${scope}`, {
+      cache: "no-store",
+      signal: controller.signal
+    }).then(async (response) => {
+      if (!response.ok) throw new Error("Process Flow support data is unavailable.");
+      const payload = await response.json() as {
+        archiveItems?: ProcessArchiveItem[];
+        reviewerOptions?: CheckpointReviewerOption[];
+        suggestedWaferCode?: string;
+      };
+      if (payload.archiveItems) setLoadedArchiveItems(payload.archiveItems);
+      if (payload.reviewerOptions) setLoadedReviewerOptions(payload.reviewerOptions);
+      if (payload.suggestedWaferCode) setLoadedSuggestedWaferCode(payload.suggestedWaferCode);
+    }).catch(() => {
+      loadedSupportScopesRef.current.delete(scope);
+    });
+    return () => controller.abort();
+  }, [isArchiveOpen, processTemplateId, stepTemplateDraft, waferCreateDraft]);
   const nodesRef = useRef<FlowNode[]>([]);
   const edgesRef = useRef<FlowEdge[]>([]);
 
@@ -1506,12 +1555,12 @@ export function ProcessFlowDiagram({
           }));
         }
         setArchiveMessage(`${item.dieLabel ?? item.waferCode} restored to ${target.label} · Beginning.`);
-        router.refresh();
+        if (!directDeltaReconciliation) router.refresh();
       }).catch((error: unknown) => {
         setArchiveMessage(error instanceof Error ? error.message : "The archive restore failed.");
       });
     });
-  }, [canEdit, isWaferMutationPending, nodeById, onRestoreArchivedWafer, processTemplateId, router]);
+  }, [canEdit, directDeltaReconciliation, isWaferMutationPending, nodeById, onRestoreArchivedWafer, processTemplateId, router]);
 
   const beginArchiveRestoreDrag = useCallback((
     event: PointerEvent<HTMLButtonElement>,
@@ -1734,7 +1783,7 @@ export function ProcessFlowDiagram({
     const existingWaferCodes = displayNodes.flatMap((node) => node.wafers.map((wafer) => wafer.waferCode));
     setWaferCreateError(null);
     setWaferCreateDraft({
-      waferCode: suggestedWaferCode ?? getNextGreekWaferCode(existingWaferCodes),
+      waferCode: loadedSuggestedWaferCode ?? getNextGreekWaferCode(existingWaferCodes),
       dieCount: 1
     });
   }, [
@@ -1743,7 +1792,7 @@ export function ProcessFlowDiagram({
     isWaferMutationPending,
     onCreateWaferAtProcessStart,
     processTemplateId,
-    suggestedWaferCode
+    loadedSuggestedWaferCode
   ]);
 
   const submitWaferCreate = useCallback(() => {
@@ -3382,7 +3431,7 @@ export function ProcessFlowDiagram({
         setArchiveDockReceived(true);
         window.setTimeout(() => setArchiveDockReceived(false), 360);
         setArchiveMessage(`${drag.waferLabel} archived. Completed history was preserved.`);
-        router.refresh();
+        if (!directDeltaReconciliation) router.refresh();
       }).catch((error: unknown) => {
         setArchiveMessage(error instanceof Error ? error.message : "The archive operation failed.");
       });
@@ -3652,6 +3701,8 @@ export function ProcessFlowDiagram({
       ? "redo_required" as const
       : "queued" as const;
 
+    markProcessFlowPerformance("drag-release");
+
     if (move.kind === "move" && onSaveStepParameters && targetNode) {
       setPendingStepParameterEntries((current) => mergePendingStepParameterEntries(
         current,
@@ -3688,11 +3739,19 @@ export function ProcessFlowDiagram({
       assignmentId: wafer.assignmentId,
       label: wafer.waferLabel,
       mutationId: wafer.mutationId,
-      state: "saving_move" as const
+      state: "optimistic" as const,
+      movementCommitted: false
     })));
 
     startMoveTransition(() => {
       void (async () => {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            markProcessFlowPerformance("optimistic-chip-painted");
+            mutationQueue.setState(Array.from(moveAssignmentIds), "saving_move");
+            resolve();
+          });
+        });
         const mutationRequests = move.wafers.map((waferMove): ProcessFlowMutationRequest => {
           const movingWafer = movingWafersByAssignmentId.get(waferMove.assignmentId) ?? null;
           const shouldRoute = Boolean(movingWafer && canReviewerRouteCheckpoint({
@@ -3743,14 +3802,32 @@ export function ProcessFlowDiagram({
 
         const coreResults = onPersistMutationsBatch
           ? await (async () => {
-              const batchResult = await onPersistMutationsBatch({ mutations: mutationRequests });
+              if (!processTemplateId) {
+                return move.wafers.map((waferMove) => ({
+                  waferMove,
+                  result: { ok: false as const, error: "The active process identity is unavailable." }
+                }));
+              }
+              const expectedRevision = getProcessWorkspaceState(processTemplateId).snapshot?.revision;
+              const batchResult = await onPersistMutationsBatch({
+                templateId: processTemplateId,
+                expectedRevision,
+                mutations: mutationRequests
+              });
+              markProcessFlowPerformance("command-acknowledged");
               if (!batchResult.ok) {
                 return move.wafers.map((waferMove) => ({
                   waferMove,
                   result: { ok: false as const, error: batchResult.error }
                 }));
               }
-              const outcomesById = new Map(batchResult.data.map((outcome) => [outcome.operationId, outcome]));
+              if (directDeltaReconciliation) {
+                applyProcessWorkspaceDelta(batchResult.data.delta);
+                window.dispatchEvent(new CustomEvent(WORKFLOW_DELTA_EVENT, { detail: batchResult.data.delta }));
+                markProcessFlowPerformance("delta-applied");
+                requestAnimationFrame(() => markProcessFlowPerformance("move-committed"));
+              }
+              const outcomesById = new Map(batchResult.data.outcomes.map((outcome) => [outcome.operationId, outcome]));
               return move.wafers.map((waferMove) => {
                 const outcome = outcomesById.get(waferMove.mutationId);
                 return {
@@ -3931,7 +4008,7 @@ export function ProcessFlowDiagram({
 
   const updateCheckpointReviewer = (nodeId: string, reviewerId: string | null) => {
     if (!onUpdateStepReviewer || isGraphPending) return;
-    const reviewerName = reviewerOptions.find((reviewer) => reviewer.id === reviewerId)?.name ?? null;
+    const reviewerName = loadedReviewerOptions.find((reviewer) => reviewer.id === reviewerId)?.name ?? null;
     setNodes((current) => current.map((node) => node.id === nodeId
       ? { ...node, requiredReviewerId: reviewerId, requiredReviewerName: reviewerName }
       : node));
@@ -4232,7 +4309,7 @@ export function ProcessFlowDiagram({
         }
 
         setMoveMessage(`Undid ${selectedWafer.label} to its previous process state.`);
-        router.refresh();
+        if (!directDeltaReconciliation) router.refresh();
       }).catch((error: unknown) => {
         setMoveMessage(error instanceof Error ? error.message : "The die history could not be undone.");
       });
@@ -4240,6 +4317,7 @@ export function ProcessFlowDiagram({
   }, [
     canUndoSelectedDieHistory,
     confirmDiscardSelectionParameters,
+    directDeltaReconciliation,
     isWaferMutationPending,
     onUndoDieProcessHistory,
     router,
@@ -4412,15 +4490,14 @@ export function ProcessFlowDiagram({
           currentUserName={currentUserName}
           onPersistAttachment={persistWaferStepNoteAttachments}
           onPersistAttachmentBatch={persistWaferStepNoteAttachmentsBatch}
-          onSaveStarted={(entries) => mutationQueue.setState(
-            entries.map((entry) => entry.assignmentId),
-            "saving_parameters"
-          )}
-          onSaveFailed={(entries, error) => mutationQueue.setState(
-            entries.map((entry) => entry.assignmentId),
-            "failed",
-            error
-          )}
+          onSaveStarted={(entries) => {
+            markProcessFlowPerformance("parameter-batch-started");
+            mutationQueue.setState(entries.map((entry) => entry.assignmentId), "saving_parameters");
+          }}
+          onSaveFailed={(entries, error) => {
+            markProcessFlowPerformance("parameter-batch-failed");
+            mutationQueue.setState(entries.map((entry) => entry.assignmentId), "failed", error);
+          }}
           onAttachmentState={(entries, state, detail, retry) => {
             if (state === "failed" && retry) {
               mutationQueue.upsert(entries.map((entry) => ({
@@ -4436,6 +4513,7 @@ export function ProcessFlowDiagram({
             mutationQueue.setState(entries.map((entry) => entry.assignmentId), state, detail);
           }}
           onComplete={(message, hasBackgroundAttachments) => {
+            markProcessFlowPerformance("parameter-batch-completed");
             const completedMutationIds = new Set(
               activeParameterDraft.entries.map((entry) => entry.movementMutationId)
             );
@@ -4683,6 +4761,8 @@ export function ProcessFlowDiagram({
         selectedEdgeId={selectedEdgeId}
         selectedWaferAssignmentIds={selectedWaferAssignmentIds}
         syncStateByAssignmentId={mutationQueue.syncStateByAssignmentId}
+        mutationIdByAssignmentId={mutationQueue.mutationIdByAssignmentId}
+        movementCommittedByAssignmentId={mutationQueue.movementCommittedByAssignmentId}
         nodeDrag={nodeDrag}
         selectionRect={getSelectionRect()}
         editingNodeId={editingNodeId}
@@ -4732,7 +4812,7 @@ export function ProcessFlowDiagram({
         onOpenWaferDetails={openWaferDetails}
         onOpenStepParameters={openStepParameters}
         onDeleteNodes={(nodeIds) => deleteNodes(nodeIds)}
-        reviewerOptions={reviewerOptions}
+        reviewerOptions={loadedReviewerOptions}
         onUpdateReviewer={onUpdateStepReviewer ? updateCheckpointReviewer : undefined}
         onUpdateExecutionMode={onUpdateStepExecutionMode ? updateStepExecutionMode : undefined}
         onEdgeClick={(edgeId) => {

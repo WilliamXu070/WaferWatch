@@ -8,6 +8,7 @@ import {
   useState,
   useTransition,
   type ChangeEvent,
+  type CSSProperties,
   type Dispatch,
   type SetStateAction
 } from "react";
@@ -28,6 +29,7 @@ import {
 import type { Json, StepParameterRecord } from "@/types/database";
 import { WaferWatchPortal } from "@/ui/waferwatch-wireframe/components/WaferWatchPortal";
 import type { SaveStepParameterRecordAction, SaveStepParameterRecordsBatchAction } from "./types";
+import { useVisualViewportBottomInset } from "./useVisualViewportBottomInset";
 
 export type PendingStepParameterEntry = {
   assignmentId: string;
@@ -325,6 +327,7 @@ export function StepParameterEntryDialog({
     retry?: () => void
   ) => void;
 }) {
+  const keyboardInset = useVisualViewportBottomInset();
   const entry = entries[0];
   const total = entries.length;
   const definitions = useMemo(() => readStepParameterDefinitions(entry.parametersSchema), [entry.parametersSchema]);
@@ -429,7 +432,12 @@ export function StepParameterEntryDialog({
 
   return (
     <WaferWatchPortal>
-      <div className={`process-flow-parameter-panel-host ${isCollapsed ? "process-flow-parameter-panel-host--collapsed" : ""}`} data-testid="process-flow-parameter-panel" role="presentation">
+      <div
+        className={`process-flow-parameter-panel-host ${isCollapsed ? "process-flow-parameter-panel-host--collapsed" : ""}`}
+        data-testid="process-flow-parameter-panel"
+        role="presentation"
+        style={{ "--process-flow-parameter-keyboard-inset": `${keyboardInset}px` } as CSSProperties}
+      >
         {isCollapsed ? (
           <button className="process-flow-parameter-pending-bar" data-testid="process-flow-parameter-pending-bar" onClick={() => setIsCollapsed(false)} type="button">
             <span>Parameters pending</span>

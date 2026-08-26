@@ -4,6 +4,7 @@ import { requireAccount, assertProjectAccess } from "@/lib/auth/session";
 import { toErrorMessage } from "@/lib/errors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getProcessCalendarSchedule } from "@/features/calendar/queries";
+import { withServerPerformanceSpan } from "@/features/performance/server";
 
 const querySchema = z.object({
   from: z.string().datetime(),
@@ -38,7 +39,13 @@ export async function GET(
       await assertProjectAccess(templateResult.data.owner_project_id, "read");
     }
 
-    const schedule = await getProcessCalendarSchedule(processId, parsed.from, parsed.to);
+    const includePeople = request.nextUrl.searchParams.get("includePeople") !== "0";
+    const schedule = await withServerPerformanceSpan("calendar.week", {
+      processId,
+      from: parsed.from,
+      to: parsed.to,
+      includePeople
+    }, () => getProcessCalendarSchedule(processId, parsed.from, parsed.to, includePeople));
 
     return NextResponse.json(schedule);
   } catch (error) {

@@ -25,6 +25,8 @@ import {
   wireframeBrand
 } from "../nav";
 import { shouldFullyPrefetchProcessRoute } from "./processRoutePrefetch";
+import { useWorkspaceSession } from "@/features/workspace/WorkspaceSessionProvider";
+import { useProcessWorkspace } from "@/features/workspace/store";
 
 const iconByKey = {
   grid: GridIcon,
@@ -82,7 +84,20 @@ export function WireframeMobileChrome({
 }) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
-  const currentProcess = shell.currentProcess;
+  const workspaceSession = useWorkspaceSession();
+  const hotWorkspace = useProcessWorkspace(workspaceSession.activeProcessId ?? undefined);
+  const selectedProcess = shell.processes.find((process) => process.id === workspaceSession.activeProcessId);
+  const currentProcess = workspaceSession.mode === "on"
+    ? selectedProcess
+      ? {
+          ...selectedProcess,
+          activeDieCount: hotWorkspace.hotBootstrap?.statusSummary.assignmentCount ?? selectedProcess.activeDieCount
+        }
+      : workspaceSession.activeProcessSummary ? {
+          ...workspaceSession.activeProcessSummary,
+          activeDieCount: hotWorkspace.hotBootstrap?.statusSummary.assignmentCount ?? 0
+        } : null
+    : shell.currentProcess;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isCreatingProcess, setIsCreatingProcess] = useState(false);
   const [createNameDraft, setCreateNameDraft] = useState("");
@@ -126,12 +141,18 @@ export function WireframeMobileChrome({
         name: nextName,
         version: "1.0",
         isActive: true
-      }).then((res) => {
+      }).then(async (res) => {
         createInFlightRef.current = false;
         if (!res.ok) return;
         setIsCreatingProcess(false);
         setCreateNameDraft("");
         setDrawerOpen(false);
+        await workspaceSession.switchActiveProcess(res.data.id, {
+          id: res.data.id,
+          name: res.data.name,
+          version: res.data.version,
+          ownerProjectId: null
+        });
         router.push("/process-flow");
       }).catch(() => {
         createInFlightRef.current = false;
@@ -309,7 +330,7 @@ export function WireframeMobileChrome({
                   Me
                 </div>
                 {onSignOut ? (
-                  <form action={onSignOut}>
+                  <form action={onSignOut} onSubmit={workspaceSession.clearSession}>
                     <button
                       type="submit"
                       className="min-h-[46px] w-full rounded-xl border border-[#e7e7e2] bg-white px-3 text-[14px] font-semibold text-[#44443f]"

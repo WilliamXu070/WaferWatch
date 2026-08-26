@@ -100,6 +100,8 @@ export const processFlowMutationSchema = z.discriminatedUnion("kind", [
 export type ProcessFlowMutationInput = z.infer<typeof processFlowMutationSchema>;
 
 export const processFlowMutationBatchSchema = z.object({
+  templateId: uuidSchema,
+  expectedRevision: z.number().int().nonnegative().optional(),
   mutations: z.array(processFlowMutationSchema).min(1).max(256)
 }).superRefine((value, context) => {
   const operationIds = value.mutations.map((mutation) =>
@@ -109,6 +111,14 @@ export const processFlowMutationBatchSchema = z.object({
     context.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Each Process Flow mutation must have a unique operation id.",
+      path: ["mutations"]
+    });
+  }
+  const batchIds = new Set(value.mutations.map((mutation) => mutation.batchId));
+  if (batchIds.size !== 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "One Process Flow command must use one batch id.",
       path: ["mutations"]
     });
   }

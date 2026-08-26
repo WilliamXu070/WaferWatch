@@ -18,6 +18,7 @@ export type GoldenWafer = {
 };
 
 export type GoldenScenario = {
+  name: string;
   projectId: string;
   templateId: string;
   stageIds: string[];
@@ -49,6 +50,18 @@ export type GoldenManifest = {
     mobileCalendarCreate: GoldenCalendarScenario;
     mobileStepCreate: GoldenScenario;
   };
+  performanceScenarios?: {
+    cold: GoldenScenario;
+    batches: {
+      1: GoldenScenario[];
+      8: GoldenScenario[];
+      25: GoldenScenario[];
+    };
+    stale: GoldenScenario;
+    idempotent: GoldenScenario;
+    recovery: GoldenScenario;
+    revisionGap: GoldenScenario;
+  } | null;
 };
 
 export const manifestPath: string;

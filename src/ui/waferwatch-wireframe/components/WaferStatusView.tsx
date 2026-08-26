@@ -172,6 +172,7 @@ export function WaferStatusView({
   initialWaferId,
   initialDieLabel,
   initialDetailTab = "overview",
+  onHistoryRequested,
   emptyTitle = "No wafers available",
   emptyDescription = "Authenticated Supabase data loaded, but this project state has no wafers visible to the current session."
 }: {
@@ -182,6 +183,7 @@ export function WaferStatusView({
   initialWaferId?: string;
   initialDieLabel?: string;
   initialDetailTab?: DieDetailTab;
+  onHistoryRequested?: (tile: WaferStatusTileModel) => void;
   emptyTitle?: string;
   emptyDescription?: string;
 }) {
@@ -217,6 +219,10 @@ export function WaferStatusView({
   const activeDetailIndex = activeDetailTile
     ? detailTiles.findIndex((tile) => tile.id === activeDetailTile.id)
     : -1;
+
+  useEffect(() => {
+    if (activeDetailTab === "history" && activeDetailTile) onHistoryRequested?.(activeDetailTile);
+  }, [activeDetailTab, activeDetailTile, onHistoryRequested]);
 
   useEffect(() => {
     if (initialWaferId) return;

@@ -612,10 +612,18 @@ export function getEmptyWaferStatusModel(): WaferStatusModel {
   return { metrics: buildMetrics([]), families: [] };
 }
 
-export async function getWaferStatusModel(processTemplateId?: string): Promise<WaferStatusModel> {
+type WaferStatusQueryOptions = {
+  includeHistory?: boolean;
+  historyAssignmentId?: string;
+};
+
+export async function getWaferStatusModel(
+  processTemplateId?: string,
+  options: WaferStatusQueryOptions = {}
+): Promise<WaferStatusModel> {
   if (!processTemplateId) return getEmptyWaferStatusModel();
   const supabase = await createServerSupabaseClient();
-  const [stepsResult, currentResult, historyResult] = await Promise.all([
+  const [stepsResult, currentResult] = await Promise.all([
     supabase
       .from("process_steps")
       .select("id, name, process_area, execution_mode, step_order, stage_step_order, parameters_schema")
@@ -629,14 +637,8 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
       .select("*")
       .eq("template_id", processTemplateId)
       .order("assigned_at", { ascending: false }),
-    supabase
-      .from("vw_operation_run_history")
-      .select("*")
-      .eq("template_id", processTemplateId)
-      .order("created_at", { ascending: true })
-      .limit(MAX_STATUS_HISTORY_ROWS)
   ]);
-  const firstError = [stepsResult.error, currentResult.error, historyResult.error].find(Boolean);
+  const firstError = [stepsResult.error, currentResult.error].find(Boolean);
   if (firstError) throw firstError;
 
   const allStateRows = (currentResult.data ?? []) as ProcessCurrentStateView[];
@@ -648,7 +650,31 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
   >[]);
   const stepById = new Map(processSteps.map((step) => [step.id, step]));
   const stateByWaferId = new Map(allStateRows.map((row) => [row.wafer_id, row]));
-  const historyRows = (historyResult.data ?? []) as OperationRunHistoryView[];
+  let historyRows: OperationRunHistoryView[] = [];
+  if (options.includeHistory !== false) {
+    let historyAssignmentIds: string[] | null = null;
+    if (options.historyAssignmentId) {
+      const selectedRow = allStateRows.find((row) => row.assignment_id === options.historyAssignmentId);
+      if (!selectedRow) throw new Error("The requested wafer assignment is unavailable.");
+      const parentAssignmentId = selectedRow.parent_wafer_id
+        ? allStateRows.find((row) => row.wafer_id === selectedRow.parent_wafer_id)?.assignment_id ?? null
+        : null;
+      historyAssignmentIds = Array.from(new Set([
+        selectedRow.assignment_id,
+        ...(parentAssignmentId ? [parentAssignmentId] : [])
+      ]));
+    }
+    let historyQuery = supabase
+      .from("vw_operation_run_history")
+      .select("*")
+      .eq("template_id", processTemplateId)
+      .order("created_at", { ascending: true })
+      .limit(MAX_STATUS_HISTORY_ROWS);
+    if (historyAssignmentIds) historyQuery = historyQuery.in("assignment_id", historyAssignmentIds);
+    const historyResult = await historyQuery;
+    if (historyResult.error) throw historyResult.error;
+    historyRows = (historyResult.data ?? []) as OperationRunHistoryView[];
+  }
   const historyRowsByAssignment = new Map<string, OperationRunHistoryView[]>();
   for (const row of historyRows) {
     historyRowsByAssignment.set(row.assignment_id, [...(historyRowsByAssignment.get(row.assignment_id) ?? []), row]);
@@ -806,6 +832,25 @@ export async function getWaferStatusModel(processTemplateId?: string): Promise<W
       tiles: family.tiles.map((tile) => ({ ...tile, isSelected: tile.id === selected?.id }))
     }))
   };
+}
+
+export function getWaferStatusOverviewModel(processTemplateId?: string) {
+  return getWaferStatusModel(processTemplateId, { includeHistory: false });
+}
+
+export async function getWaferStatusHistoryTile(
+  processTemplateId: string,
+  assignmentId: string,
+  dieLabel?: string
+) {
+  const model = await getWaferStatusModel(processTemplateId, {
+    includeHistory: true,
+    historyAssignmentId: assignmentId
+  });
+  return model.families
+    .flatMap((family) => family.tiles)
+    .find((tile) => tile.assignmentId === assignmentId && (!dieLabel || tile.dieLabel === dieLabel))
+    ?? null;
 }
 
 export async function getWaferTimeline(waferId: string) {

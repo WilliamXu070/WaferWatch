@@ -33,6 +33,8 @@ import { canEditProject, canManageProcessLibrary, getCurrentAccount } from "@/li
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { resolveActiveProcess } from "@/features/process-selection/server";
 import { ProcessFlowView } from "@/ui/waferwatch-wireframe/components/ProcessFlowView";
+import { HotProcessFlowView } from "@/ui/waferwatch-wireframe/components/HotProcessFlowView";
+import { getWorkspaceHotLoadingMode } from "@/features/workspace/mode";
 import type { FlowStatModel } from "@/ui/waferwatch-wireframe/types";
 import type { Json, ProcessStepExecutionMode, ProcessStepNodeType, ProcessStepTransitionType, StepStatus } from "@/types/database";
 
@@ -244,6 +246,43 @@ export default async function ProcessFlowWireframePage() {
   const account = await getCurrentAccount();
   const activeProcess = await resolveActiveProcess(account);
   const activeProcessId = activeProcess?.id ?? null;
+  const hotLoadingMode = getWorkspaceHotLoadingMode();
+
+  if (account && activeProcess && hotLoadingMode === "on") {
+    const canEdit = activeProcess.owner_project_id
+      ? await canEditProject(activeProcess.owner_project_id, account)
+      : canManageProcessLibrary(account.profile.role);
+    return (
+      <HotProcessFlowView
+        processId={activeProcess.id}
+        currentUserId={account.userId}
+        currentUserName={account.profile.display_name ?? account.email ?? "WaferWatch user"}
+        canEdit={canEdit}
+        actions={canEdit ? {
+          createStep: createProcessFlowStep,
+          createWafer: createWaferAtProcessStart,
+          updatePositions: updateProcessStepPositions,
+          updateName: updateProcessStepName,
+          updateStepTemplate: updateProcessStepParameters,
+          updateExecutionMode: updateProcessStepExecutionMode,
+          createTransition: createProcessStepTransition,
+          deleteSteps: deleteProcessSteps,
+          deleteTransitions: deleteProcessStepTransitions,
+          deleteWafer: deleteProcessFlowWafer,
+          archiveWafers: archiveCompletedProcessWafers,
+          restoreWafer: restoreArchivedProcessWafer,
+          submitCheckpoint: submitStepCheckpoint,
+          routeCheckpoint: routeCheckpointSubmission,
+          moveApprovedWafer: moveApprovedCheckpointWafer,
+          persistMutationsBatch: persistProcessFlowMutationsBatch,
+          undoHistory: undoDieProcessHistoryState,
+          saveParameters: saveStepParameterRecord,
+          saveParameterRecordsBatch: saveStepParameterRecordsBatch,
+          updateReviewer: updateProcessStepCheckpointReviewer
+        } : undefined}
+      />
+    );
+  }
   const dashboardData = await loadProcessFlowData(activeProcessId, account);
   const [canEdit, suggestedWaferCode, reviewerOptions, archiveItems] = await Promise.all([
     getCanEditProcessFlow(dashboardData, account),

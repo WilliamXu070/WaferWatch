@@ -84,7 +84,8 @@ export async function listProcessPeople(): Promise<ProcessCalendarPersonOption[]
 export async function getProcessCalendarSchedule(
   processTemplateId: string,
   fromIso: string,
-  toIso: string
+  toIso: string,
+  includePeople = true
 ): Promise<{
   events: ProcessCalendarEventView[];
   people: ProcessCalendarPersonOption[];
@@ -98,7 +99,7 @@ export async function getProcessCalendarSchedule(
       .lt("starts_at", toIso)
       .gt("ends_at", fromIso)
       .order("starts_at", { ascending: true }),
-    listProcessPeople()
+    includePeople ? listProcessPeople() : Promise.resolve([])
   ]);
 
   if (eventsResult.error) {

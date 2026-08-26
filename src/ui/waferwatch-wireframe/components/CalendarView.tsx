@@ -7,6 +7,8 @@ import type {
   CalendarEventModel,
   CalendarPersonModel
 } from "../types";
+import { setProcessWorkspaceCalendarWeek } from "@/features/workspace/store";
+import type { Json } from "@/types/database";
 
 const WEEK_DAYS = 7;
 const CALENDAR_TITLE = "Calendar";
@@ -38,8 +40,14 @@ type CalendarViewProps = {
           }[];
           people: readonly CalendarPersonModel[];
           initialEvents: readonly CalendarEventModel[];
+          cachedWeeks?: readonly {
+            startDate: string;
+            events: readonly CalendarEventModel[];
+          }[];
           initialStartDate: string;
           canEdit: boolean;
+          workspaceBacked?: boolean;
+          workspaceRevision?: number;
         };
       }
     | { status: "unauthenticated" }
@@ -133,7 +141,13 @@ export function CalendarView({ result }: CalendarViewProps) {
   const [visibleStartDate, setVisibleStartDate] = useState(() =>
     calendarData?.initialStartDate ?? toIsoDate(new Date())
   );
-  const [windowsByKey, setWindowsByKey] = useState<Record<string, CalendarWindow>>({});
+  const [windowsByKey, setWindowsByKey] = useState<Record<string, CalendarWindow>>(() =>
+    calendarData ? Object.fromEntries((calendarData.cachedWeeks ?? []).map((week) => [
+      getWindowCacheKey(calendarData.process.id, week.startDate),
+      { events: week.events, people: calendarData.people }
+    ])) : {}
+  );
+  const [preloadDirection, setPreloadDirection] = useState<-1 | 0 | 1>(0);
   const resolvedSteps = useMemo(() => (calendarData ? [...calendarData.steps] : []), [calendarData]);
   const resolvedWafers = useMemo(() => (calendarData ? [...calendarData.wafers] : []), [calendarData]);
   const windowKey = calendarData
@@ -145,10 +159,16 @@ export function CalendarView({ result }: CalendarViewProps) {
   const serverWindow = calendarData
     ? { events: calendarData.initialEvents, people: calendarData.people }
     : null;
+  const workspaceWindowsByKey = useMemo(() => calendarData
+    ? Object.fromEntries((calendarData.cachedWeeks ?? []).map((week) => [
+        getWindowCacheKey(calendarData.process.id, week.startDate),
+        { events: week.events, people: calendarData.people }
+      ]))
+    : {}, [calendarData]);
   const activeWindow = windowKey && windowKey === serverWindowKey
     ? serverWindow
     : windowKey
-      ? windowsByKey[windowKey] ?? null
+      ? workspaceWindowsByKey[windowKey] ?? windowsByKey[windowKey] ?? null
       : null;
   const resolvedPeople = useMemo(
     () => (activeWindow ? [...activeWindow.people] : calendarData ? [...calendarData.people] : []),
@@ -164,7 +184,10 @@ export function CalendarView({ result }: CalendarViewProps) {
 
     const controller = new AbortController();
     const range = getWeekRequestRange(visibleStartDate);
-    const query = new URLSearchParams(range);
+    const query = new URLSearchParams({
+      ...range,
+      ...(calendarData.workspaceBacked ? { includePeople: "0" } : {})
+    });
 
     void fetch(`/api/processes/${calendarData.process.id}/calendar?${query.toString()}`, {
       signal: controller.signal,
@@ -173,7 +196,17 @@ export function CalendarView({ result }: CalendarViewProps) {
       if (!response.ok) return;
       const schedule = await response.json() as CalendarWindow;
       if (controller.signal.aborted) return;
-      setWindowsByKey((current) => ({ ...current, [windowKey]: schedule }));
+      setWindowsByKey((current) => Object.fromEntries([
+        ...Object.entries(current).filter(([key]) => key !== windowKey).slice(-7),
+        [windowKey, schedule]
+      ]));
+      if (calendarData.workspaceBacked) {
+        setProcessWorkspaceCalendarWeek(calendarData.process.id, {
+          from: range.from,
+          to: range.to,
+          rows: [...schedule.events] as unknown as Json[]
+        });
+      }
     }).catch(() => {
       // Keep the calendar interactive; a future visit to this week can retry.
     });
@@ -181,11 +214,47 @@ export function CalendarView({ result }: CalendarViewProps) {
     return () => controller.abort();
   }, [activeWindow, calendarData, visibleStartDate, windowKey]);
 
+  useEffect(() => {
+    if (!calendarData?.workspaceBacked || !activeWindow || preloadDirection === 0) return;
+    const adjacentStartDate = addDateDays(visibleStartDate, preloadDirection * WEEK_DAYS);
+    const adjacentKey = getWindowCacheKey(calendarData.process.id, adjacentStartDate);
+    if (workspaceWindowsByKey[adjacentKey] || windowsByKey[adjacentKey]) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const range = getWeekRequestRange(adjacentStartDate);
+      const query = new URLSearchParams({ ...range, includePeople: "0" });
+      void fetch(`/api/processes/${calendarData.process.id}/calendar?${query}`, {
+        signal: controller.signal,
+        credentials: "same-origin"
+      }).then(async (response) => {
+        if (!response.ok) return;
+        const schedule = await response.json() as CalendarWindow;
+        if (controller.signal.aborted) return;
+        setWindowsByKey((current) => Object.fromEntries([
+          ...Object.entries(current).filter(([key]) => key !== adjacentKey).slice(-7),
+          [adjacentKey, schedule]
+        ]));
+        setProcessWorkspaceCalendarWeek(calendarData.process.id, {
+          from: range.from,
+          to: range.to,
+          rows: [...schedule.events] as unknown as Json[]
+        });
+      }).catch(() => undefined);
+    }, 150);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeWindow, calendarData, preloadDirection, visibleStartDate, windowsByKey, workspaceWindowsByKey]);
+
   const disabledState = isBackendReady ? null : getDisabledStateCopy(result);
   const rangeLabel = calendarData ? formatRangeLabel(visibleStartDate) : "Backend schedule";
 
   return (
-    <div className="wireframe-calendar-view flex flex-col gap-5 p-2 md:p-6">
+    <div
+      className="wireframe-calendar-view flex flex-col gap-5 p-2 md:p-6"
+      data-workspace-revision={calendarData?.workspaceRevision}
+    >
       <section className="wireframe-calendar-card rounded-2xl border border-[#e5e5db] bg-white md:rounded-3xl">
         <header className="wireframe-calendar-card__header">
           <div>
@@ -203,7 +272,10 @@ export function CalendarView({ result }: CalendarViewProps) {
                 type="button"
                 aria-label="Previous week"
                 disabled={!calendarData}
-                onClick={() => setVisibleStartDate((current) => addDateDays(current, -7))}
+                onClick={() => {
+                  setPreloadDirection(-1);
+                  setVisibleStartDate((current) => addDateDays(current, -7));
+                }}
               >
                 <ChevronLeftIcon />
               </button>
@@ -212,7 +284,10 @@ export function CalendarView({ result }: CalendarViewProps) {
                 type="button"
                 aria-label="Next week"
                 disabled={!calendarData}
-                onClick={() => setVisibleStartDate((current) => addDateDays(current, 7))}
+                onClick={() => {
+                  setPreloadDirection(1);
+                  setVisibleStartDate((current) => addDateDays(current, 7));
+                }}
               >
                 <ChevronRightIcon />
               </button>
@@ -222,7 +297,10 @@ export function CalendarView({ result }: CalendarViewProps) {
               type="button"
               className="wireframe-calendar-card__today"
               disabled={!calendarData}
-              onClick={() => setVisibleStartDate(toIsoDate(new Date()))}
+              onClick={() => {
+                setPreloadDirection(0);
+                setVisibleStartDate(toIsoDate(new Date()));
+              }}
             >
               Today
             </button>
@@ -243,6 +321,7 @@ export function CalendarView({ result }: CalendarViewProps) {
                 initialEvents={resolvedEvents}
                 initialVisibleStartDate={visibleStartDate}
                 canEdit={calendarData.canEdit}
+                workspaceBacked={calendarData.workspaceBacked}
               />
             </>
           ) : (

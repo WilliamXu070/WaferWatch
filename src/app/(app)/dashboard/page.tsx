@@ -6,6 +6,8 @@ import {
 import { getCurrentAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { resolveActiveProcess } from "@/features/process-selection/server";
+import { getWorkspaceHotLoadingMode } from "@/features/workspace/mode";
+import { HotDashboardView } from "@/ui/waferwatch-wireframe/components/HotDashboardView";
 
 export const metadata = {
   title: "Dashboard · WaferWatch"
@@ -26,8 +28,11 @@ export default async function DashboardPage() {
     );
   }
 
-  const supabase = await createServerSupabaseClient();
   const activeProcess = await resolveActiveProcess(account);
+  if (activeProcess && getWorkspaceHotLoadingMode() === "on") {
+    return <HotDashboardView processId={activeProcess.id} />;
+  }
+  const supabase = await createServerSupabaseClient();
   const dashboard = await getWireframeDashboardModel(supabase, activeProcess?.id ?? null);
 
   return <DashboardView dashboard={dashboard} />;

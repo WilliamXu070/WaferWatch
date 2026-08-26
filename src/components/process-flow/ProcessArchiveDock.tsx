@@ -126,6 +126,7 @@ export function ProcessArchiveDock({
 
       <button
         ref={dockRef}
+        data-testid="process-archive-dock"
         aria-expanded={isOpen}
         aria-label={`Open archive, ${countLabel}`}
         className={[

@@ -144,14 +144,17 @@ export function ProcessCalendarBoard({
   days,
   steps: initialSteps,
   wafers: initialWafers = [],
-  people,
+  people: initialPeople,
   initialEvents,
   initialVisibleStartDate = calendarStartDate,
-  canEdit = true
+  canEdit = true,
+  workspaceBacked = false
 }: ProcessCalendarBoardProps) {
   const [events, setEvents] = useState(initialEvents);
   const [liveSteps, setLiveSteps] = useState<ProcessStepOption[]>(() => [...initialSteps]);
   const [liveWafers, setLiveWafers] = useState<ProcessCalendarWaferOption[]>(() => [...initialWafers]);
+  const [livePeople, setLivePeople] = useState<ProcessCalendarPersonOption[]>(() => [...initialPeople]);
+  const [peopleLoaded, setPeopleLoaded] = useState(initialPeople.length > 0);
   const [draft, setDraft] = useState<DraftEvent | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [previewEventId, setPreviewEventId] = useState<string | null>(null);
@@ -298,14 +301,16 @@ export function ProcessCalendarBoard({
   }, [processTemplateId]);
 
   useEffect(() => {
+    if (workspaceBacked && (initialSteps.length > 0 || initialWafers.length > 0)) return;
     const refreshTimer = window.setTimeout(() => {
       void refreshCalendarOptions();
     }, 0);
 
     return () => window.clearTimeout(refreshTimer);
-  }, [refreshCalendarOptions]);
+  }, [initialSteps.length, initialWafers.length, refreshCalendarOptions, workspaceBacked]);
 
   useEffect(() => {
+    if (workspaceBacked) return;
     const refreshOnFocus = () => {
       void refreshCalendarOptions();
     };
@@ -317,7 +322,24 @@ export function ProcessCalendarBoard({
       window.removeEventListener("focus", refreshOnFocus);
       document.removeEventListener("visibilitychange", refreshOnFocus);
     };
-  }, [refreshCalendarOptions]);
+  }, [refreshCalendarOptions, workspaceBacked]);
+
+  useEffect(() => {
+    if (!workspaceBacked || peopleLoaded || (!draft && !selectedEventId && !isFilterPanelExpanded)) return;
+    const controller = new AbortController();
+    void fetch(`/api/processes/${processTemplateId}/calendar/people`, {
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: controller.signal
+    }).then(async (response) => {
+      if (!response.ok) return;
+      const payload = await response.json() as ProcessCalendarPersonOption[];
+      if (controller.signal.aborted) return;
+      setLivePeople(Array.isArray(payload) ? payload : []);
+      setPeopleLoaded(true);
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [draft, isFilterPanelExpanded, peopleLoaded, processTemplateId, selectedEventId, workspaceBacked]);
 
   const startDate = useMemo(() => new Date(`${calendarStartDate}T00:00:00`), [calendarStartDate]);
   const timelineStart = useMemo(() => buildDateAtMinute(startDate, START_MINUTE).getTime(), [startDate]);
@@ -438,7 +460,7 @@ export function ProcessCalendarBoard({
   );
 
   const stepsById = useMemo(() => new Map(liveSteps.map((step) => [step.id, step.name])), [liveSteps]);
-  const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
+  const peopleById = useMemo(() => new Map(livePeople.map((person) => [person.id, person])), [livePeople]);
   const eventById = useMemo(() => new Map(events.map((event) => [event.id, event])), [events]);
   const stageFilterOptions = useMemo(
     () => [
@@ -612,7 +634,7 @@ export function ProcessCalendarBoard({
     return conflicts;
   }, [draft, events]);
 
-  const filteredPeople = people
+  const filteredPeople = livePeople
     .filter((person) => !selectedPersonIds.includes(person.id))
     .filter((person) => person.display_name.toLowerCase().includes(personQuery.trim().toLowerCase()))
     .map((person) => ({
@@ -629,9 +651,9 @@ export function ProcessCalendarBoard({
     setSelectedWaferId("");
     setManualAction("");
     setDescription("");
-    setSelectedPersonIds(people[0]?.id ? [people[0].id] : []);
+    setSelectedPersonIds(livePeople[0]?.id ? [livePeople[0].id] : []);
     setPersonQuery("");
-  }, [liveSteps, people]);
+  }, [livePeople, liveSteps]);
 
   const openDraft = useCallback((nextDraft: DraftEvent) => {
     if (!canEdit) {
@@ -1886,7 +1908,7 @@ export function ProcessCalendarBoard({
         aria-label="Calendar event details"
       >
         <CalendarFilterPanel
-          people={people}
+          people={livePeople}
           filterPersonIds={filterPersonIds}
           filterStageIds={filterStageIds}
           isExpanded={isFilterPanelExpanded}

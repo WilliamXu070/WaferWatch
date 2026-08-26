@@ -1,5 +1,7 @@
 import type { Json } from "@/types/database";
 
+export type WorkspaceHotLoadingMode = "off" | "shadow" | "on";
+
 export type ProcessWorkspaceSnapshot = {
   templateId: string;
   revision: number;
@@ -13,6 +15,30 @@ export type ProcessWorkspaceSnapshot = {
   operationHistory: Json[];
   plan: Json[];
   activeBatchRuns: Json[];
+  calendar: Json[];
+};
+
+export type ProcessHotBootstrap = {
+  templateId: string;
+  revision: number;
+  generatedAt: string;
+  calendarRange: {
+    from: string;
+    to: string;
+  };
+  processSummary: {
+    id: string;
+    name: string;
+    version: string;
+    ownerProjectId: string | null;
+  };
+  statusSummary: {
+    assignmentCount: number;
+    waferCount: number;
+    awaitingReviewCount: number;
+  };
+  processDefinition: ProcessWorkspaceSnapshot["processDefinition"];
+  currentState: Json[];
   calendar: Json[];
 };
 
@@ -63,6 +89,45 @@ function asRecord(value: Json): Record<string, Json | undefined> {
 
 function asArray(value: Json | undefined) {
   return Array.isArray(value) ? value : [];
+}
+
+function asNumber(value: Json | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+export function parseHotBootstrap(value: Json): ProcessHotBootstrap {
+  const record = asRecord(value);
+  const definition = asRecord(record.processDefinition ?? null);
+  const summary = asRecord(record.processSummary ?? null);
+  const status = asRecord(record.statusSummary ?? null);
+  const calendarRange = asRecord(record.calendarRange ?? null);
+  return {
+    templateId: typeof record.templateId === "string" ? record.templateId : "",
+    revision: asNumber(record.revision),
+    generatedAt: typeof record.generatedAt === "string" ? record.generatedAt : "",
+    calendarRange: {
+      from: typeof calendarRange.from === "string" ? calendarRange.from : "",
+      to: typeof calendarRange.to === "string" ? calendarRange.to : ""
+    },
+    processSummary: {
+      id: typeof summary.id === "string" ? summary.id : "",
+      name: typeof summary.name === "string" ? summary.name : "",
+      version: typeof summary.version === "string" ? summary.version : "",
+      ownerProjectId: typeof summary.ownerProjectId === "string" ? summary.ownerProjectId : null
+    },
+    statusSummary: {
+      assignmentCount: asNumber(status.assignmentCount),
+      waferCount: asNumber(status.waferCount),
+      awaitingReviewCount: asNumber(status.awaitingReviewCount)
+    },
+    processDefinition: {
+      stages: asArray(definition.stages),
+      steps: asArray(definition.steps),
+      transitions: asArray(definition.transitions)
+    },
+    currentState: asArray(record.currentState),
+    calendar: asArray(record.calendar)
+  };
 }
 
 export function parseWorkspaceSnapshot(value: Json): ProcessWorkspaceSnapshot {

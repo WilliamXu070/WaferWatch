@@ -27,6 +27,8 @@ type FlowNodeCardProps = {
   isSelected: boolean;
   selectedWaferAssignmentIds: ReadonlySet<string>;
   syncStateByAssignmentId?: ReadonlyMap<string, ProcessFlowSyncState>;
+  mutationIdByAssignmentId?: ReadonlyMap<string, string>;
+  movementCommittedByAssignmentId?: ReadonlyMap<string, boolean>;
   isEditing: boolean;
   editingNodeLabel: string;
   editingInputRef: RefObject<HTMLInputElement | null>;
@@ -53,6 +55,8 @@ export function FlowNodeCard({
   isSelected,
   selectedWaferAssignmentIds,
   syncStateByAssignmentId = new Map(),
+  mutationIdByAssignmentId = new Map(),
+  movementCommittedByAssignmentId = new Map(),
   isEditing,
   editingNodeLabel,
   editingInputRef,
@@ -119,6 +123,9 @@ export function FlowNodeCard({
       y={Math.floor(index / NODE_CHIP_COLUMNS) * WAFER_CHIP_GAP_Y}
       isSelected={selectedWaferAssignmentIds.has(wafer.assignmentId)}
       syncState={syncStateByAssignmentId.get(wafer.assignmentId)}
+      mutationId={mutationIdByAssignmentId.get(wafer.assignmentId)}
+      movementCommitted={movementCommittedByAssignmentId.get(wafer.assignmentId)}
+      stepId={node.id}
       hasHistoryCorrection={(wafer.historyCorrectionCount ?? 0) > 0}
       status={wafer.currentStepStatus}
       title={`${getWaferChipLabel(wafer)} · ${getCheckpointStateLabel(wafer.currentStepStatus)}${
@@ -176,6 +183,8 @@ export function FlowNodeCard({
     <g
       ref={nodeCardRef}
       data-node-id={node.id}
+      data-step-id={node.id}
+      data-step-name={node.label}
       tabIndex={-1}
       className={`flow-node flow-node--${node.role} ${active ? "flow-node--active" : ""} ${isConnecting ? "flow-node--connecting" : ""} ${
         isDragging ? "flow-node--dragging" : ""
@@ -322,6 +331,9 @@ function WaferChip({
   isSelected = false,
   status,
   syncState,
+  mutationId,
+  movementCommitted = false,
+  stepId,
   hasHistoryCorrection = false,
   title,
   onPointerDown,
@@ -338,12 +350,35 @@ function WaferChip({
   isSelected?: boolean;
   status?: string | null;
   syncState?: ProcessFlowSyncState;
+  mutationId?: string;
+  movementCommitted?: boolean;
+  stepId?: string;
   hasHistoryCorrection?: boolean;
   title?: string;
   onPointerDown?: (event: PointerEvent<SVGGElement>) => void;
   onPointerEnter?: (event: PointerEvent<SVGGElement>) => void;
   onDoubleClick?: (event: MouseEvent<SVGGElement>) => void;
 }) {
+  const moveState = movementCommitted
+    ? "committed"
+    : syncState === "optimistic"
+      ? "optimistic"
+      : syncState === "saving_move"
+        ? "saving"
+        : syncState === "failed"
+          ? "failed"
+          : syncState
+            ? "committed"
+            : "idle";
+  const followupState = syncState === "failed" && movementCommitted
+    ? "failed"
+    : syncState === "awaiting_parameters"
+    ? "parameters-required"
+    : syncState === "saving_parameters"
+      ? "parameters-saving"
+      : syncState === "uploading_files"
+        ? "attachments-saving"
+        : "none";
   const textScaleWidth = Math.max(24, WAFER_CHIP_WIDTH - 8);
   const fontSize =
     label.length <= 3 ? 12 :
@@ -365,6 +400,10 @@ function WaferChip({
         .join(" ")}
       data-sync-state={syncState}
       data-assignment-id={assignmentId}
+      data-step-id={stepId}
+      data-mutation-id={mutationId}
+      data-move-state={moveState}
+      data-followup-state={followupState}
       data-wafer-label={label}
       data-testid={syncState ? `process-flow-chip-${label}` : undefined}
       pointerEvents={pointerEvents}

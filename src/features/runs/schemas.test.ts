@@ -4,6 +4,7 @@ import { correctWaferProcessHistorySchema, processFlowMutationBatchSchema, submi
 
 const id = {
   batch: "10000000-0000-4000-8000-000000000001",
+  template: "10000000-0000-4000-8000-000000000008",
   assignmentOne: "10000000-0000-4000-8000-000000000002",
   assignmentTwo: "10000000-0000-4000-8000-000000000003",
   executionOne: "10000000-0000-4000-8000-000000000004",
@@ -31,6 +32,8 @@ test("requires an explicit batch id for checkpoint submissions", () => {
 
 test("keeps one batch identity across every selected sample submission", () => {
   const parsed = processFlowMutationBatchSchema.parse({
+    templateId: id.template,
+    expectedRevision: 12,
     mutations: [
       {
         kind: "submit",
@@ -57,10 +60,14 @@ test("keeps one batch identity across every selected sample submission", () => {
     id.batch,
     id.batch
   ]);
+  assert.equal(parsed.templateId, id.template);
+  assert.equal(parsed.expectedRevision, 12);
 });
 
 test("rejects duplicate mutation ids before a workflow batch reaches the server", () => {
   assert.throws(() => processFlowMutationBatchSchema.parse({
+    templateId: id.template,
+    expectedRevision: 12,
     mutations: [id.assignmentOne, id.assignmentTwo].map((assignmentId) => ({
       kind: "submit",
       assignmentId,

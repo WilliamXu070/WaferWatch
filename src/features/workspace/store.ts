@@ -3,26 +3,63 @@
 import { useSyncExternalStore } from "react";
 import type { Json } from "@/types/database";
 import type {
+  ProcessHotBootstrap,
   ProcessWorkspaceDelta,
   ProcessWorkspaceMutationOverlay,
   ProcessWorkspaceSnapshot
 } from "./types";
 
-type WorkspaceState = {
+export type WorkspaceCalendarWeek = {
+  from: string;
+  to: string;
+  rows: Json[];
+};
+
+export type WorkspaceState = {
+  hotBootstrap: ProcessHotBootstrap | null;
+  calendarWeeks: WorkspaceCalendarWeek[];
   snapshot: ProcessWorkspaceSnapshot | null;
   optimisticSnapshot: ProcessWorkspaceSnapshot | null;
   lastDelta: ProcessWorkspaceDelta | null;
   overlays: ProcessWorkspaceMutationOverlay[];
+  normalizedAssignments: {
+    assignmentsById: Readonly<Record<string, Json>>;
+    assignmentIdsByStepId: Readonly<Record<string, readonly string[]>>;
+  };
 };
 
 const states = new Map<string, WorkspaceState>();
 const listeners = new Map<string, Set<() => void>>();
+const lru: string[] = [];
+const MAX_HOT_PROCESSES = 3;
+const MAX_CALENDAR_WEEKS = 8;
 const emptyState: WorkspaceState = {
+  hotBootstrap: null,
+  calendarWeeks: [],
   snapshot: null,
   optimisticSnapshot: null,
   lastDelta: null,
-  overlays: []
+  overlays: [],
+  normalizedAssignments: {
+    assignmentsById: {},
+    assignmentIdsByStepId: {}
+  }
 };
+
+function touch(templateId: string) {
+  const existing = lru.indexOf(templateId);
+  if (existing >= 0) lru.splice(existing, 1);
+  lru.push(templateId);
+}
+
+function pruneHotProcesses() {
+  while (lru.length > MAX_HOT_PROCESSES) {
+    const evicted = lru.shift();
+    if (!evicted) return;
+    states.delete(evicted);
+    emit(evicted);
+  }
+}
 
 function emit(templateId: string) {
   for (const listener of listeners.get(templateId) ?? []) listener();
@@ -103,12 +140,98 @@ function projectOptimisticSnapshot(
   }, snapshot);
 }
 
-function setState(templateId: string, state: Omit<WorkspaceState, "optimisticSnapshot">) {
+function setState(templateId: string, update: Partial<Omit<WorkspaceState, "optimisticSnapshot">>) {
+  const current = states.get(templateId) ?? emptyState;
+  const state = { ...current, ...update };
+  const normalizedAssignments = state.snapshot !== current.snapshot
+    ? normalizeAssignments(state.snapshot?.currentState ?? [])
+    : state.normalizedAssignments;
   states.set(templateId, {
     ...state,
+    normalizedAssignments,
     optimisticSnapshot: projectOptimisticSnapshot(state.snapshot, state.overlays)
   });
+  touch(templateId);
+  pruneHotProcesses();
   emit(templateId);
+}
+
+function statusSummary(currentState: Json[]) {
+  const waferIds = new Set<string>();
+  let awaitingReviewCount = 0;
+  for (const value of currentState) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    if (typeof value.wafer_id === "string") waferIds.add(value.wafer_id);
+    if (value.latest_review_status === "awaiting_review") awaitingReviewCount += 1;
+  }
+  return {
+    assignmentCount: currentState.length,
+    waferCount: waferIds.size,
+    awaitingReviewCount
+  };
+}
+
+function normalizeAssignments(currentState: Json[]): WorkspaceState["normalizedAssignments"] {
+  const assignmentsById: Record<string, Json> = {};
+  const assignmentIdsByStepId: Record<string, string[]> = {};
+  for (const value of currentState) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const assignmentId = typeof value.assignment_id === "string" ? value.assignment_id : null;
+    if (!assignmentId) continue;
+    assignmentsById[assignmentId] = value;
+    const stepId = typeof value.current_step_id === "string" ? value.current_step_id : null;
+    if (stepId) (assignmentIdsByStepId[stepId] ??= []).push(assignmentId);
+  }
+  return { assignmentsById, assignmentIdsByStepId };
+}
+
+function bootstrapSnapshot(bootstrap: ProcessHotBootstrap): ProcessWorkspaceSnapshot {
+  return {
+    templateId: bootstrap.templateId,
+    revision: bootstrap.revision,
+    processDefinition: bootstrap.processDefinition,
+    currentState: bootstrap.currentState,
+    archivedState: [],
+    operationHistory: [],
+    plan: [],
+    activeBatchRuns: [],
+    calendar: bootstrap.calendar
+  };
+}
+
+export function setProcessWorkspaceHotBootstrap(bootstrap: ProcessHotBootstrap) {
+  const current = states.get(bootstrap.templateId) ?? emptyState;
+  const overlays = current.overlays.filter((overlay) => (
+    overlay.committedRevision === undefined || overlay.committedRevision > bootstrap.revision
+  ));
+  const calendarWeek = {
+    from: bootstrap.calendarRange.from,
+    to: bootstrap.calendarRange.to,
+    rows: bootstrap.calendar
+  };
+  const calendarWeeks = [
+    ...current.calendarWeeks.filter((week) => week.from !== calendarWeek.from),
+    calendarWeek
+  ].slice(-MAX_CALENDAR_WEEKS);
+  setState(bootstrap.templateId, {
+    hotBootstrap: bootstrap,
+    calendarWeeks,
+    snapshot: bootstrapSnapshot(bootstrap),
+    lastDelta: null,
+    overlays
+  });
+}
+
+export function setProcessWorkspaceCalendarWeek(
+  templateId: string,
+  week: WorkspaceCalendarWeek
+) {
+  const current = states.get(templateId) ?? emptyState;
+  const calendarWeeks = [
+    ...current.calendarWeeks.filter((candidate) => candidate.from !== week.from),
+    week
+  ].slice(-MAX_CALENDAR_WEEKS);
+  setState(templateId, { calendarWeeks });
 }
 
 export function setProcessWorkspaceSnapshot(snapshot: ProcessWorkspaceSnapshot) {
@@ -131,8 +254,7 @@ export function applyProcessWorkspaceDelta(delta: ProcessWorkspaceDelta) {
     !settledMutationIds.has(overlay.mutationId)
     && (overlay.committedRevision === undefined || overlay.committedRevision > delta.revision)
   ));
-  setState(delta.templateId, {
-    snapshot: {
+  const nextSnapshot = {
       ...snapshot,
       revision: delta.revision,
       processDefinition: {
@@ -156,7 +278,33 @@ export function applyProcessWorkspaceDelta(delta: ProcessWorkspaceDelta) {
       plan: mergeRows(snapshot.plan, delta.plan, removed.plannedOperationIds, "planned_operation_id"),
       activeBatchRuns: mergeRows(snapshot.activeBatchRuns, delta.batchRuns, removed.operationRunIds, "operation_run_id"),
       calendar: mergeRows(snapshot.calendar, delta.calendar, removed.calendarEventIds, "id")
-    },
+    };
+  const hotBootstrap = current.hotBootstrap ? {
+    ...current.hotBootstrap,
+    revision: delta.revision,
+    processDefinition: nextSnapshot.processDefinition,
+    currentState: nextSnapshot.currentState,
+    calendar: nextSnapshot.calendar,
+    statusSummary: statusSummary(nextSnapshot.currentState)
+  } : null;
+  const calendarWeeks = current.calendarWeeks.map((week) => ({
+    ...week,
+    rows: mergeRows(
+      week.rows,
+      delta.calendar.filter((row) => {
+        if (!row || typeof row !== "object" || Array.isArray(row)) return false;
+        const startsAt = typeof row.starts_at === "string" ? row.starts_at : "";
+        const endsAt = typeof row.ends_at === "string" ? row.ends_at : "";
+        return endsAt >= week.from && startsAt < week.to;
+      }),
+      removed.calendarEventIds,
+      "id"
+    )
+  }));
+  setState(delta.templateId, {
+    hotBootstrap,
+    calendarWeeks,
+    snapshot: nextSnapshot,
     lastDelta: delta,
     overlays
   });
@@ -194,7 +342,15 @@ export function rejectProcessWorkspaceOverlay(templateId: string, mutationId: st
 }
 
 export function getProcessWorkspaceState(templateId: string) {
+  if (states.has(templateId)) touch(templateId);
   return states.get(templateId) ?? emptyState;
+}
+
+export function clearProcessWorkspaceSessions() {
+  const templateIds = [...states.keys()];
+  states.clear();
+  lru.length = 0;
+  for (const templateId of templateIds) emit(templateId);
 }
 
 export function subscribeProcessWorkspace(templateId: string, listener: () => void) {

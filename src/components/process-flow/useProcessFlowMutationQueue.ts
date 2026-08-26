@@ -8,11 +8,13 @@ export type ProcessFlowMutationQueueItem = {
   label: string;
   mutationId: string;
   state: ProcessFlowSyncState;
+  movementCommitted?: boolean;
   detail?: string;
   retry?: () => void;
 };
 
 const LOCKED_STATES = new Set<ProcessFlowSyncState>([
+  "optimistic",
   "saving_move",
   "awaiting_parameters",
   "saving_parameters"
@@ -29,7 +31,15 @@ export function useProcessFlowMutationQueue() {
   const upsert = useCallback((nextItems: readonly ProcessFlowMutationQueueItem[]) => {
     setItems((current) => {
       const byAssignmentId = new Map(current.map((item) => [item.assignmentId, item]));
-      nextItems.forEach((item) => byAssignmentId.set(item.assignmentId, item));
+      nextItems.forEach((item) => {
+        const previous = byAssignmentId.get(item.assignmentId);
+        byAssignmentId.set(item.assignmentId, {
+          ...previous,
+          ...item,
+          movementCommitted: item.movementCommitted ?? previous?.movementCommitted ?? false,
+          retry: item.retry
+        });
+      });
       return Array.from(byAssignmentId.values());
     });
   }, []);
@@ -40,8 +50,15 @@ export function useProcessFlowMutationQueue() {
     detail?: string
   ) => {
     const assignmentIdSet = new Set(assignmentIds);
+    const commitsMovement = ["awaiting_parameters", "saving_parameters", "uploading_files", "synced"].includes(state);
     setItems((current) => current.map((item) => assignmentIdSet.has(item.assignmentId)
-      ? { ...item, state, detail, retry: state === "failed" ? item.retry : undefined }
+      ? {
+          ...item,
+          state,
+          detail,
+          movementCommitted: commitsMovement ? true : item.movementCommitted,
+          retry: state === "failed" ? item.retry : undefined
+        }
       : item));
 
     if (state === "synced") {
@@ -71,6 +88,12 @@ export function useProcessFlowMutationQueue() {
   const syncStateByAssignmentId = useMemo(() => new Map(
     items.map((item) => [item.assignmentId, item.state])
   ), [items]);
+  const mutationIdByAssignmentId = useMemo(() => new Map(
+    items.map((item) => [item.assignmentId, item.mutationId])
+  ), [items]);
+  const movementCommittedByAssignmentId = useMemo(() => new Map(
+    items.map((item) => [item.assignmentId, item.movementCommitted === true])
+  ), [items]);
 
   useEffect(() => {
     if (!items.some((item) => item.state === "uploading_files")) return;
@@ -93,6 +116,8 @@ export function useProcessFlowMutationQueue() {
     setState,
     dismiss,
     lockedAssignmentIds,
-    syncStateByAssignmentId
+    syncStateByAssignmentId,
+    mutationIdByAssignmentId,
+    movementCommittedByAssignmentId
   };
 }

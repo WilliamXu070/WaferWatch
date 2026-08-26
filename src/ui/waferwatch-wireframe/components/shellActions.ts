@@ -1,5 +1,6 @@
 import type { ActionResult } from "@/lib/action-result";
 import type { ActiveProcessDestination } from "@/features/process-selection/selection";
+import type { ProcessHotBootstrap } from "@/features/workspace/types";
 
 export type UpdateProcessNameAction = (input: {
   templateId: string;
@@ -21,4 +22,7 @@ export type DeleteProcessAction = (input: {
 export type SelectProcessAction = (input: {
   processId: string;
   destination: ActiveProcessDestination;
-}) => Promise<void>;
+}) => Promise<{
+  process: ProcessHotBootstrap["processSummary"];
+  destination: ActiveProcessDestination;
+}>;

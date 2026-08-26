@@ -13,7 +13,7 @@ import {
   submitStepCheckpointSchema,
   undoDieProcessHistorySchema
 } from "@/features/runs/schemas";
-import type { ProcessFlowMutationOutcome } from "@/components/process-flow/types";
+import type { ProcessFlowBatchCommit, ProcessFlowMutationOutcome } from "@/components/process-flow/types";
 import type { Json } from "@/types/database";
 import { executeWorkflowCommandForCurrentActor } from "@/features/workflow-commands/server";
 import type { WorkflowCommandResult } from "@/features/workflow-commands/types";
@@ -108,59 +108,37 @@ export async function persistProcessFlowMutationsBatch(input: unknown) {
   const parsed = processFlowMutationBatchSchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "The Process Flow command is invalid.");
   try {
-    const supabase = await createServerSupabaseClient();
     const first = parsed.data.mutations[0]!;
-    const templateId = await resolveProcessFlowMutationTemplateId(first, supabase);
+    const templateId = parsed.data.templateId;
     const mutationId = first.kind === "route" ? first.movementMutationId : first.mutationId;
-    const isSingle = parsed.data.mutations.length === 1;
-    const result = isSingle && first.kind === "submit"
-      ? await executeWorkflowCommandForCurrentActor({
-          kind: "wafer.submit",
-          mutationId,
-          templateId,
-          payload: {
-            assignmentId: first.assignmentId,
-            stepExecutionId: first.stepExecutionId,
-            batchId: first.batchId,
-            notes: first.notes ?? null,
-            evidence: first.evidence
-          }
-        })
-      : isSingle && first.kind === "route"
-        ? await executeWorkflowCommandForCurrentActor({
-            kind: await getRouteCommandKind(supabase, first.attemptId, first.targetStepId),
-            mutationId,
-            templateId,
-            payload: {
-              assignmentId: first.assignmentId,
-              batchId: first.batchId,
-              attemptId: first.attemptId,
-              targetStepId: first.targetStepId,
-              decisionMutationId: first.decisionMutationId,
-              note: first.note
-            }
-          })
-        : await executeWorkflowCommandForCurrentActor({
-            kind: "wafer.batch.move",
-            mutationId,
-            templateId,
-            payload: { mutations: parsed.data.mutations }
-          });
-    console.info("[ProcessFlowPerf]", JSON.stringify({
-      action: "workflow_batch",
-      mutationCount: parsed.data.mutations.length,
-      totalMs: Math.round(performance.now() - startedAt)
-    }));
-    if (!result.ok) return fail(result.message);
-    if (!isSingle || first.kind === "move") {
-      return ok(Array.isArray(result.data) ? result.data as unknown as ProcessFlowMutationOutcome[] : []);
+    const result = await executeWorkflowCommandForCurrentActor({
+      kind: "wafer.batch.move",
+      mutationId,
+      templateId,
+      expectedWorkspaceRevision: parsed.data.expectedRevision,
+      payload: { mutations: parsed.data.mutations }
+    });
+    if (process.env.PERF_TEST_MODE === "1") {
+      console.info("[ProcessFlowPerf]", JSON.stringify({
+        action: "workflow_batch",
+        mutationCount: parsed.data.mutations.length,
+        totalMs: Math.round(performance.now() - startedAt)
+      }));
     }
-    return ok([{
-      operationId: mutationId,
-      assignmentId: first.assignmentId,
-      ok: true,
-      data: result.data
-    }]);
+    if (!result.ok) return fail(result.message);
+    const outcomes = Array.isArray(result.data)
+      ? result.data as unknown as ProcessFlowMutationOutcome[]
+      : [];
+    if (result.templateId !== templateId || result.delta.templateId !== templateId || result.delta.revision !== result.revision) {
+      return fail("The committed Process Flow delta did not match the requested process.");
+    }
+    return ok({
+      mutationId,
+      templateId,
+      revision: result.revision,
+      outcomes,
+      delta: result.delta
+    } satisfies ProcessFlowBatchCommit);
   } catch (error) {
     return fail(toErrorMessage(error));
   }

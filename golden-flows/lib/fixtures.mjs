@@ -20,6 +20,7 @@ export class GoldenFixtureRun {
     this.runId = randomUUID();
     this.runTag = `gf-${this.runId.slice(0, 8)}`;
     this.scenarios = {};
+    this.performanceScenarios = null;
     this.projectIds = [];
     this.personIds = [];
     this.sharedPersonId = null;
@@ -343,6 +344,28 @@ export class GoldenFixtureRun {
     this.scenarios.archive = await this.archiveReady();
     this.scenarios.mobileCalendarCreate = await this.calendarEventReady("mobile-calendar-create", { withEvent: false });
     this.scenarios.mobileStepCreate = await this.editableDraft("mobile-step-create");
+    if (process.env.GOLDEN_PERFORMANCE === "1") {
+      const warmups = Number(process.env.PERF_WARMUP_REPETITIONS ?? 3);
+      const measured = Number(process.env.PERF_MEASURED_REPETITIONS ?? 5);
+      const repetitions = warmups + measured;
+      if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 30) {
+        throw new Error("Performance repetitions must be an integer between 1 and 30.");
+      }
+      const batches = { 1: [], 8: [], 25: [] };
+      for (const size of [1, 8, 25]) {
+        for (let index = 0; index < repetitions; index += 1) {
+          batches[size].push(await this.batchReady(`perf-${size}-${index + 1}`, size));
+        }
+      }
+      this.performanceScenarios = {
+        cold: await this.waferAtBeginning("performance-cold"),
+        batches,
+        stale: await this.batchReady("performance-stale", 1),
+        idempotent: await this.batchReady("performance-idempotent", 1),
+        recovery: await this.batchReady("performance-recovery", 1),
+        revisionGap: await this.batchReady("performance-revision-gap", 1)
+      };
+    }
     return this.manifest();
   }
 
@@ -357,14 +380,22 @@ export class GoldenFixtureRun {
       reviewerUserId: this.environment.reviewer.userId,
       projectIds: this.projectIds,
       personIds: this.personIds,
-      scenarios: this.scenarios
+      scenarios: this.scenarios,
+      performanceScenarios: this.performanceScenarios
     };
   }
 }
 
 export async function teardownGoldenRun(manifest, environment = loadGoldenEnvironment()) {
   const { admin } = createGoldenClients(environment);
-  const templateIds = Object.values(manifest.scenarios).map((scenario) => scenario.templateId);
+  const performance = manifest.performanceScenarios;
+  const allScenarios = [
+    ...Object.values(manifest.scenarios),
+    ...(performance?.cold ? [performance.cold] : []),
+    ...Object.values(performance?.batches ?? {}).flat(),
+    ...[performance?.stale, performance?.idempotent, performance?.recovery, performance?.revisionGap].filter(Boolean)
+  ];
+  const templateIds = allScenarios.map((scenario) => scenario.templateId);
   const projectIds = manifest.projectIds;
   const remove = async (table, column, ids) => {
     if (!ids?.length) return;
@@ -382,9 +413,9 @@ export async function teardownGoldenRun(manifest, environment = loadGoldenEnviro
   await remove("operation_run_links", "child_run_id", runIds);
   await remove("operation_run_members", "operation_run_id", runIds);
   await remove("operation_runs", "template_id", templateIds);
-  await remove("process_calendar_event_people", "event_id", Object.values(manifest.scenarios).map((scenario) => scenario.eventId).filter(Boolean));
+  await remove("process_calendar_event_people", "event_id", allScenarios.map((scenario) => scenario.eventId).filter(Boolean));
   await remove("process_calendar_events", "process_template_id", templateIds);
-  await remove("step_executions", "process_step_id", Object.values(manifest.scenarios).flatMap((scenario) => scenario.stepIds));
+  await remove("step_executions", "process_step_id", allScenarios.flatMap((scenario) => scenario.stepIds));
   await remove("wafer_process_assignments", "template_id", templateIds);
   await remove("wafers", "project_id", projectIds);
   await remove("process_step_transitions", "template_id", templateIds);

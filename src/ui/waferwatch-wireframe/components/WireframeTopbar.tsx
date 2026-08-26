@@ -6,6 +6,7 @@ import {
 } from "../icons";
 import type { WireframeShellDto } from "@/features/wireframe/types";
 import { TeamMessages } from "./TeamMessages";
+import { useWorkspaceSession } from "@/features/workspace/WorkspaceSessionProvider";
 
 export function WireframeTopbar({
   currentUser,
@@ -14,6 +15,7 @@ export function WireframeTopbar({
   currentUser: WireframeShellDto["currentUser"];
   onSignOut?: () => void | Promise<void>;
 }) {
+  const workspaceSession = useWorkspaceSession();
   return (
     <header className="wireframe-topbar hidden items-center gap-4 border-b border-[#eeeeea] bg-white px-8 py-5 md:flex">
       <div className="relative flex-1">
@@ -46,7 +48,7 @@ export function WireframeTopbar({
           </button>
         </div>
         {onSignOut ? (
-          <form action={onSignOut}>
+          <form action={onSignOut} onSubmit={workspaceSession.clearSession}>
             <button
               type="submit"
               className="flex h-11 items-center rounded-xl border border-[#e4e4df] bg-white px-4 text-sm font-semibold text-[#44443f] transition-colors hover:bg-[#fafafa]"

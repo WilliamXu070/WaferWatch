@@ -19,7 +19,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body
+        data-perf-test-mode={process.env.PERF_TEST_MODE === "1" ? "1" : undefined}
+        data-focus-recovery-ms={process.env.PERF_TEST_MODE === "1" ? "1000" : undefined}
+      >
+        {children}
+      </body>
     </html>
   );
 }

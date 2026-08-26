@@ -1122,6 +1122,8 @@ type RuntimeFunctions = Omit<
   | "create_plan_replan_request"
   | "create_planned_batch"
   | "create_planned_operation"
+  | "execute_process_flow_mutations_batch_v2"
+  | "get_process_hot_bootstrap"
   | "save_operation_parameter_records_batch"
   | "start_operation_run"
   | "update_calendar_schedule_item"
@@ -1157,6 +1159,23 @@ type RuntimeFunctions = Omit<
     GeneratedFunctions["create_planned_operation"],
     NullableArgs<GeneratedFunctions["create_planned_operation"]["Args"], "target_batch_id">
   >;
+  get_process_hot_bootstrap: {
+    Args: {
+      target_template_id: string;
+      range_start: string;
+      range_end: string;
+    };
+    Returns: Json;
+  };
+  execute_process_flow_mutations_batch_v2: {
+    Args: {
+      requested_template_id: string;
+      expected_workspace_revision: number | null;
+      command_mutation_id: string;
+      mutations: Json;
+    };
+    Returns: Json;
+  };
   save_operation_parameter_records_batch: WithArgs<
     GeneratedFunctions["save_operation_parameter_records_batch"],
     Omit<GeneratedFunctions["save_operation_parameter_records_batch"]["Args"], "notes"> & { notes?: string | null }

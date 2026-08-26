@@ -106,4 +106,5 @@ export type ProcessCalendarBoardProps = {
   initialEvents: ProcessCalendarEventView[];
   initialVisibleStartDate?: string;
   canEdit?: boolean;
+  workspaceBacked?: boolean;
 };

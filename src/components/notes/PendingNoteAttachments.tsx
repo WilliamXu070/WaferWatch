@@ -103,7 +103,9 @@ export function PendingNoteAttachments({
           <input
             accept={NOTE_ATTACHMENT_IMAGE_ACCEPT}
             capture="environment"
+            id="note-attachment-camera"
             className="sr-only"
+            name="noteAttachmentCamera"
             disabled={disabled || files.length >= MAX_NOTE_ATTACHMENTS}
             onChange={(event) => {
               const selectedFiles = Array.from(event.currentTarget.files ?? []);
@@ -119,6 +121,8 @@ export function PendingNoteAttachments({
           <input
             accept={NOTE_ATTACHMENT_IMAGE_ACCEPT}
             className="sr-only"
+            id="note-attachment-photo-library"
+            name="noteAttachmentPhotoLibrary"
             disabled={disabled || files.length >= MAX_NOTE_ATTACHMENTS}
             multiple
             onChange={(event) => {
@@ -136,6 +140,8 @@ export function PendingNoteAttachments({
           <input
             accept={NOTE_ATTACHMENT_ACCEPT}
             className="sr-only"
+            id="note-attachment-files"
+            name="noteAttachmentFiles"
             disabled={disabled || files.length >= MAX_NOTE_ATTACHMENTS}
             multiple
             onChange={(event) => {

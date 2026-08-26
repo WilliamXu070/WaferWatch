@@ -421,6 +421,8 @@ await db.query(`
 
 const snapshotSamples = [];
 const deltaSamples = [];
+const hotBootstrapSamples = [];
+let hotBootstrapPayload = null;
 for (let sample = 0; sample < 20; sample += 1) {
   let startedAt = performance.now();
   await db.query(`select public.get_process_workspace_snapshot('${id.template}') as snapshot`);
@@ -428,10 +430,26 @@ for (let sample = 0; sample < 20; sample += 1) {
   startedAt = performance.now();
   await db.query(`select public.get_process_workspace_delta('${id.template}', ${deltaAfterRevision}) as delta`);
   deltaSamples.push(performance.now() - startedAt);
+  startedAt = performance.now();
+  const bootstrapResult = await db.query(`
+    select public.get_process_hot_bootstrap(
+      '${id.template}',
+      date_trunc('week', now()),
+      date_trunc('week', now()) + interval '7 days'
+    ) as bootstrap
+  `);
+  hotBootstrapSamples.push(performance.now() - startedAt);
+  hotBootstrapPayload = bootstrapResult.rows[0].bootstrap;
 }
-console.log(`Snapshot/delta samples complete (${p95(snapshotSamples).toFixed(2)}/${p95(deltaSamples).toFixed(2)} ms p95).`);
+assert.equal(hotBootstrapPayload.templateId, id.template);
+assert.equal(hotBootstrapPayload.processSummary.id, id.template);
+assert.equal(hotBootstrapPayload.currentState.length, 500);
+assert.ok(Array.isArray(hotBootstrapPayload.processDefinition.steps));
+assert.ok(Array.isArray(hotBootstrapPayload.calendar));
+console.log(`Snapshot/delta/hot-bootstrap samples complete (${p95(snapshotSamples).toFixed(2)}/${p95(deltaSamples).toFixed(2)}/${p95(hotBootstrapSamples).toFixed(2)} ms p95).`);
 assert.ok(p95(snapshotSamples) <= 750, `Workspace snapshot p95 exceeded 750 ms: ${p95(snapshotSamples)}`);
 assert.ok(p95(deltaSamples) <= 200, `Workspace delta p95 exceeded 200 ms: ${p95(deltaSamples)}`);
+assert.ok(p95(hotBootstrapSamples) <= 750, `Hot bootstrap p95 exceeded 750 ms: ${p95(hotBootstrapSamples)}`);
 assert.ok(p95(mutationSamples) <= 1500, `Atomic 200-member run p95 exceeded 1500 ms: ${p95(mutationSamples)}`);
 const explain = await db.query(`
   explain (analyze, format json)
@@ -876,7 +894,9 @@ const result = await db.query(`
     to_regclass('public.process_plans') is not null as plans,
     to_regclass('public.operation_runs') is not null as runs,
     to_regclass('public.vw_process_current_state') is not null as current_state,
-    to_regprocedure('public.get_process_workspace_delta(uuid,bigint)') is not null as delta_rpc
+    to_regprocedure('public.get_process_workspace_delta(uuid,bigint)') is not null as delta_rpc,
+    to_regprocedure('public.get_process_hot_bootstrap(uuid,timestamptz,timestamptz)') is not null as hot_bootstrap_rpc,
+    to_regprocedure('public.execute_process_flow_mutations_batch_v2(uuid,bigint,uuid,jsonb)') is not null as batch_v2_rpc
 `);
 console.log(JSON.stringify({
   migrations: files.length,
@@ -890,6 +910,7 @@ console.log(JSON.stringify({
     atomicRunP95: Number(p95(mutationSamples).toFixed(2)),
     snapshotP95: Number(p95(snapshotSamples).toFixed(2)),
     deltaP95: Number(p95(deltaSamples).toFixed(2)),
+    hotBootstrapP95: Number(p95(hotBootstrapSamples).toFixed(2)),
     historyExplainAnalyze: true
   }
 }, null, 2));

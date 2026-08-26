@@ -30,6 +30,9 @@ import {
 } from "../nav";
 import { toggleExpandedProcessId } from "./processAccordion";
 import { shouldFullyPrefetchProcessRoute } from "./processRoutePrefetch";
+import { useWorkspaceSession } from "@/features/workspace/WorkspaceSessionProvider";
+import { useProcessWorkspace } from "@/features/workspace/store";
+import { LazyTeamDirectory } from "./LazyTeamDirectory";
 
 const iconByKey = {
   grid: GridIcon,
@@ -88,14 +91,23 @@ export function WireframeSidebar({
   onSelectProcess?: SelectProcessAction;
 }) {
   const router = useRouter();
+  const workspaceSession = useWorkspaceSession();
   const pathname = usePathname() ?? "";
   const processes = shell.processes.length
     ? shell.processes
     : shell.currentProcess
       ? [shell.currentProcess]
       : [];
-  const currentProcess = shell.currentProcess ?? processes[0] ?? null;
-  const activeProcessId = currentProcess?.id ?? null;
+  const shellProcess = shell.currentProcess ?? processes[0] ?? null;
+  const activeProcessId = workspaceSession.mode === "on"
+    ? workspaceSession.activeProcessId
+    : shellProcess?.id ?? null;
+  const hotWorkspace = useProcessWorkspace(activeProcessId ?? undefined);
+  const currentProcess = processes.find((process) => process.id === activeProcessId)
+    ?? (workspaceSession.activeProcessSummary ? {
+      ...workspaceSession.activeProcessSummary,
+      activeDieCount: hotWorkspace.hotBootstrap?.statusSummary.assignmentCount ?? 0
+    } : shellProcess);
   const mainNav = mainNavItems;
   const processNav = processNavItems;
 
@@ -196,11 +208,17 @@ export function WireframeSidebar({
         name: nextName,
         version: "1.0",
         isActive: true
-      }).then((res) => {
+      }).then(async (res) => {
         createInFlightRef.current = false;
         if (!res.ok) return;
         setIsCreatingProcess(false);
         setCreateNameDraft("");
+        await workspaceSession.switchActiveProcess(res.data.id, {
+          id: res.data.id,
+          name: res.data.name,
+          version: res.data.version,
+          ownerProjectId: null
+        });
         router.push("/process-flow");
       }).catch(() => {
         createInFlightRef.current = false;
@@ -226,7 +244,8 @@ export function WireframeSidebar({
           setEditingProcessId(null);
         }
         if (activeProcessId === process.id) {
-          router.push("/dashboard");
+          workspaceSession.clearSession();
+          window.location.assign("/dashboard");
         } else {
           router.refresh();
         }
@@ -253,8 +272,12 @@ export function WireframeSidebar({
         </p>
         {mainNav.map((item) => {
           const badge =
-            item.key === "calendar" && shell.calendarEventCount > 0
-              ? shell.calendarEventCount
+            item.key === "calendar" && (workspaceSession.mode === "on"
+              ? hotWorkspace.snapshot?.calendar.length ?? 0
+              : shell.calendarEventCount) > 0
+              ? workspaceSession.mode === "on"
+                ? hotWorkspace.snapshot?.calendar.length
+                : shell.calendarEventCount
               : item.badge;
 
           return (
@@ -318,7 +341,9 @@ export function WireframeSidebar({
                         </button>
                       )}
                       <span className="min-w-[22px] rounded-full bg-[#f3f4f6] px-1.5 py-0.5 text-center text-[11px] font-semibold text-[#55534a]">
-                        {process.activeDieCount}
+                        {workspaceSession.mode === "on" && process.id === activeProcessId
+                          ? hotWorkspace.hotBootstrap?.statusSummary.assignmentCount ?? process.activeDieCount
+                          : process.activeDieCount}
                       </span>
                       {onDeleteProcess ? (
                         <button
@@ -378,11 +403,35 @@ export function WireframeSidebar({
                               className={className}
                               onClick={() => {
                                 if (!onSelectProcess) return;
+                                if (document.body.dataset.perfTestMode === "1") {
+                                  performance.mark("waferwatch:process-selection-start");
+                                }
                                 startSelect(() => {
-                                  void onSelectProcess({
-                                    processId: process.id,
-                                    destination: item.href
-                                  });
+                                  void (async () => {
+                                    const result = await onSelectProcess({
+                                      processId: process.id,
+                                      destination: item.href
+                                    });
+                                    const bootstrap = workspaceSession.switchActiveProcess(
+                                      result.process.id,
+                                      result.process
+                                    );
+                                    if (document.body.dataset.perfTestMode === "1") {
+                                      requestAnimationFrame(() => {
+                                        performance.mark("waferwatch:process-label-ready");
+                                      });
+                                    }
+                                    await bootstrap;
+                                    if (document.body.dataset.perfTestMode === "1") {
+                                      performance.mark("waferwatch:process-bootstrap-ready");
+                                      performance.mark("waferwatch:route-navigation-start");
+                                    }
+                                    if (pathname === result.destination) {
+                                      router.refresh();
+                                    } else {
+                                      router.push(result.destination);
+                                    }
+                                  })();
                                 });
                               }}
                             >
@@ -450,23 +499,7 @@ export function WireframeSidebar({
         <p className="px-3 pb-2 text-[11px] font-semibold tracking-[0.06em] text-[#98968a]">
           Team
         </p>
-        {shell.teamMembers.length > 0 ? (
-          <ul className="flex flex-col gap-1">
-            {shell.teamMembers.map((member) => (
-              <li key={member.id} className="flex items-center gap-3 px-3 py-1.5">
-                <span className="grid h-8 w-8 place-items-center rounded-full border border-[#e5e7eb] bg-[#f8fafc] text-[11px] font-semibold text-[#55534a]">
-                  {member.initials}
-                </span>
-                <span className="leading-tight">
-                  <span className="block text-[13px] font-semibold text-[#151512]">{member.name}</span>
-                  <span className="block text-[11px] text-[#98968a]">{member.role}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="px-3 text-[13px] font-medium text-[#6b6a5f]">No active team members</p>
-        )}
+        <LazyTeamDirectory />
       </div>
 
       <div className="mt-auto border-t border-[#eef0f3] pt-4">

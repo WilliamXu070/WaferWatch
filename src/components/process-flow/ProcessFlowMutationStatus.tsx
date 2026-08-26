@@ -6,6 +6,7 @@ import type { ProcessFlowMutationQueueItem } from "./useProcessFlowMutationQueue
 function getStatusCopy(item: ProcessFlowMutationQueueItem) {
   if (item.detail) return item.detail;
   switch (item.state) {
+    case "optimistic": return `Moving ${item.label} locally…`;
     case "saving_move": return `Moving ${item.label}…`;
     case "awaiting_parameters": return `${item.label} moved · parameters needed`;
     case "saving_parameters": return `Saving parameters for ${item.label}…`;
@@ -38,6 +39,8 @@ export function ProcessFlowMutationStatus({
           <div
             className={`process-flow-sync-message process-flow-sync-message--${item.state}`}
             data-sync-state={item.state}
+            data-mutation-id={item.mutationId}
+            data-assignment-id={item.assignmentId}
             data-testid={`process-flow-sync-${item.assignmentId}`}
             key={item.assignmentId}
             role={item.state === "failed" ? "alert" : "status"}

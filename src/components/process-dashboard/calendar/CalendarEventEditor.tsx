@@ -81,6 +81,8 @@ function EventFields({
       <label className="field">
         <span>Step / action</span>
         <select
+          id="calendar-event-action-mode"
+          name="calendarEventActionMode"
           value={
             actionMode === "step"
               ? selectedStepId
@@ -116,6 +118,8 @@ function EventFields({
         <label className="field">
           <span>New action</span>
           <input
+            id="calendar-event-manual-action"
+            name="calendarEventManualAction"
             value={manualAction}
             disabled={!canEdit}
             onChange={(event) => onManualActionChange(event.target.value)}
@@ -127,6 +131,8 @@ function EventFields({
       <label className="field">
         <span>Wafer / die</span>
         <select
+          id="calendar-event-wafer"
+          name="calendarEventWafer"
           value={selectedWaferId}
           disabled={!canEdit}
           onChange={(event) => onSelectedWaferIdChange(event.target.value)}
@@ -151,6 +157,8 @@ function EventFields({
             ))}
           </div>
           <input
+            id="calendar-event-people-query"
+            name="calendarEventPeopleQuery"
             value={personQuery}
             disabled={!canEdit}
             onChange={(event) => onPersonQueryChange(event.target.value)}
@@ -186,6 +194,8 @@ function EventFields({
       <label className="field">
         <span>Additional information</span>
         <textarea
+          id="calendar-event-description"
+          name="calendarEventDescription"
           value={description}
           disabled={!canEdit}
           onChange={(event) => onDescriptionChange(event.target.value)}

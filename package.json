@@ -41,6 +41,7 @@
     "workflow:verify:fast": "npm test && npm run typecheck && npm run lint && npm run build && npm run migration-chain:verify && npm run workflow-commands:verify",
     "golden:fixture": "node --env-file=.env.local golden-flows/fixture-cli.mjs",
     "golden:ui": "node --env-file=.env.local node_modules/@playwright/test/cli.js test --config=golden-flows/playwright.config.ts",
+    "golden:perf": "GOLDEN_PERFORMANCE=1 PERF_TEST_MODE=1 WORKSPACE_HOT_LOADING_V2=on node --env-file=.env.local node_modules/@playwright/test/cli.js test --config=golden-flows/performance.config.ts",
     "process:seed": "node --env-file=.env.local scripts/current-process-flow.mjs seed",
     "process:verify": "node --env-file=.env.local scripts/current-process-flow.mjs verify",
     "process:clear-wafers": "node --env-file=.env.local scripts/current-process-flow.mjs clear-wafers",

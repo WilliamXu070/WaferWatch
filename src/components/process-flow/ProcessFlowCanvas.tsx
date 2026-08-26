@@ -36,6 +36,8 @@ type ProcessFlowCanvasProps = {
   selectedEdgeId: string | null;
   selectedWaferAssignmentIds: ReadonlySet<string>;
   syncStateByAssignmentId: ReadonlyMap<string, ProcessFlowSyncState>;
+  mutationIdByAssignmentId: ReadonlyMap<string, string>;
+  movementCommittedByAssignmentId: ReadonlyMap<string, boolean>;
   connectionNodeId: string | null;
   roleMenu: RoleMenu | null;
   roleMenuNode: FlowNode | null;
@@ -98,6 +100,8 @@ export function ProcessFlowCanvas({
   selectedEdgeId,
   selectedWaferAssignmentIds,
   syncStateByAssignmentId,
+  mutationIdByAssignmentId,
+  movementCommittedByAssignmentId,
   connectionNodeId,
   roleMenu,
   roleMenuNode,
@@ -160,6 +164,7 @@ export function ProcessFlowCanvas({
     >
       <svg
         ref={svgRef}
+        data-testid="process-flow-canvas"
         className="flow-map-canvas flow-map-canvas--editable"
         width={scaledWidth}
         height={scaledHeight}
@@ -275,6 +280,8 @@ export function ProcessFlowCanvas({
             isSelected={selectedNodeIds.has(node.id)}
             selectedWaferAssignmentIds={selectedWaferAssignmentIds}
             syncStateByAssignmentId={syncStateByAssignmentId}
+            mutationIdByAssignmentId={mutationIdByAssignmentId}
+            movementCommittedByAssignmentId={movementCommittedByAssignmentId}
             isEditing={editingNodeId === node.id}
             editingNodeLabel={editingNodeLabel}
             editingInputRef={editingInputRef}

@@ -9,6 +9,7 @@ import type {
   Wafer,
   WaferProcessAssignment
 } from "@/types/database";
+import type { ProcessWorkspaceDelta } from "@/features/workspace/types";
 
 export type WaferPin = {
   assignmentId: string;
@@ -344,11 +345,22 @@ export type ProcessFlowMutationOutcome = {
   error?: string;
 };
 
+export type ProcessFlowBatchCommit = {
+  mutationId: string;
+  templateId: string;
+  revision: number;
+  outcomes: ProcessFlowMutationOutcome[];
+  delta: ProcessWorkspaceDelta;
+};
+
 export type PersistProcessFlowMutationsBatchAction = (input: {
+  templateId: string;
+  expectedRevision?: number;
   mutations: ProcessFlowMutationRequest[];
-}) => Promise<ActionResult<ProcessFlowMutationOutcome[]>>;
+}) => Promise<ActionResult<ProcessFlowBatchCommit>>;
 
 export type ProcessFlowSyncState =
+  | "optimistic"
   | "saving_move"
   | "awaiting_parameters"
   | "saving_parameters"

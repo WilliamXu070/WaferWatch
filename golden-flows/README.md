@@ -27,6 +27,18 @@ GOLDEN_REVIEWER_STORAGE_STATE=/absolute/path/reviewer.json
 
 Run the app against staging, then execute `npm run golden:ui`. Failures retain a Playwright trace, screenshot, video, command/revision log, and normalized before/after workspace snapshots under `golden-flows/artifacts`.
 
+## Hot-loading performance suite
+
+Apply the current additive migrations to the disposable staging project, then start the app itself with performance instrumentation and V2 enabled:
+
+```bash
+PERF_TEST_MODE=1 WORKSPACE_HOT_LOADING_V2=on npm run dev
+```
+
+In another terminal, run `npm run golden:perf`. The command adds `GOLDEN_PERFORMANCE=1`, creates run-owned fixtures for cold navigation and 1-, 8-, and 25-die movement, and uses one real-Chrome worker. Pull-request defaults are three warmups plus five measured repetitions; set `PERF_MEASURED_REPETITIONS=20` for the nightly staging report. JSON and HTML reports are written below `golden-flows/artifacts/performance`, while screenshots, video, and traces are retained only for failures.
+
+`PERF_TEST_MODE=1` must be present in the app server environment, not only the Playwright process, so browser marks and correlated server spans are emitted. The suite refuses non-staging Supabase projects and tears down all owned fixtures.
+
 The suite owns these flows:
 
 1. Calendar create, move, and delete.
@@ -37,5 +49,7 @@ The suite owns these flows:
 6. Redo with distinct append-only history.
 7. Archive with active removal and preserved history.
 8. A non-mutating 390x844 reachability and overflow replay for the Calendar editor and Process Flow step dialog.
+
+The performance suite additionally covers cold Calendar and Process Flow, warm route reuse, atomic movement and parameter batches at 1/8/25 items, stale rollback, duplicate idempotency, cross-session convergence, reload persistence, and focus-time delta recovery.
 
 Backend command invariants run without staging through `npm run workflow-commands:verify`. The combined local blocking gate is `npm run workflow:verify:fast`.

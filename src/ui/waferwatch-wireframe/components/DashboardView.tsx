@@ -59,11 +59,13 @@ function DashboardEmptyState({
 export function DashboardView({
   dashboard,
   emptyTitle = "No wafer assignments",
-  emptyDescription = "Authenticated Supabase data loaded, but no wafer assignments are visible to the current session."
+  emptyDescription = "Authenticated Supabase data loaded, but no wafer assignments are visible to the current session.",
+  workspaceRevision
 }: {
   dashboard: DashboardModel;
   emptyTitle?: string;
   emptyDescription?: string;
+  workspaceRevision?: number;
 }) {
   const hasDashboardData =
     dashboard.plannedBatches.length > 0 ||
@@ -72,7 +74,7 @@ export function DashboardView({
     dashboard.stats.some((stat) => stat.value !== "0");
 
   return (
-    <div className="dashboard-view flex flex-col">
+    <div className="dashboard-view flex flex-col" data-workspace-revision={workspaceRevision}>
       <section className="dashboard-overview-band bg-[#f2f2e8] px-4 pb-5 pt-4 md:px-8 md:pb-8">
         <div className="dashboard-overview-row">
           <div className="dashboard-overview-item dashboard-overview-item--activity">

@@ -4585,14 +4585,15 @@ textarea {
     z-index: 180;
     top: auto;
     right: 0;
-    bottom: 0;
+    bottom: calc(76px + env(safe-area-inset-bottom) + var(--process-flow-parameter-keyboard-inset, 0px));
     left: 0;
     width: 100%;
+    max-height: calc(100svh - 76px - env(safe-area-inset-bottom) - var(--process-flow-parameter-keyboard-inset, 0px));
     align-items: end;
   }
 
   .process-flow-parameter-panel-host .process-flow-parameter-dialog {
-    max-height: min(92svh, 820px);
+    max-height: min(92svh, 820px, calc(100svh - 76px - env(safe-area-inset-bottom) - var(--process-flow-parameter-keyboard-inset, 0px)));
     border-right: 0;
     border-bottom: 0;
     border-left: 0;

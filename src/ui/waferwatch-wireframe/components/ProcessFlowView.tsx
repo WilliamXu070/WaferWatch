@@ -71,6 +71,8 @@ type ProcessFlowViewProps = {
   currentUserId?: string;
   currentUserName?: string;
   actions?: ProcessFlowActions;
+  workspaceRevision?: number;
+  directDeltaReconciliation?: boolean;
 };
 
 export function ProcessFlowView({
@@ -88,10 +90,15 @@ export function ProcessFlowView({
   archiveItems,
   currentUserId,
   currentUserName,
-  actions
+  actions,
+  workspaceRevision,
+  directDeltaReconciliation = false
 }: ProcessFlowViewProps) {
   return (
-    <div className="process-flow-view flex h-full min-h-0 flex-col gap-2 p-2 md:gap-3 md:p-4">
+    <div
+      className="process-flow-view flex h-full min-h-0 flex-col gap-2 p-2 md:gap-3 md:p-4"
+      data-workspace-revision={workspaceRevision}
+    >
       <section className="process-flow-workspace min-h-0 flex-1 rounded-2xl border border-[#e5e5db] bg-[#fafaf4] p-1.5 md:rounded-3xl md:p-2">
         <div className="wireframe-flow-surface flex h-full min-h-0 flex-col overflow-hidden rounded-[14px] bg-white md:rounded-2xl">
           <div className="process-flow-heading flex shrink-0 flex-col gap-0.5 border-b border-[#eeeee4] px-3 py-2.5 md:px-4 md:py-3">
@@ -128,6 +135,7 @@ export function ProcessFlowView({
             currentUserName={currentUserName}
             canEdit={canEdit}
             actions={actions}
+            directDeltaReconciliation={directDeltaReconciliation}
           />
         </div>
       </section>

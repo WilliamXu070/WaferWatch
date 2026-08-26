@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ProcessWorkspaceDelta, ProcessWorkspaceSnapshot } from "./types";
+import type { ProcessHotBootstrap, ProcessWorkspaceDelta, ProcessWorkspaceSnapshot } from "./types";
 import {
   addProcessWorkspaceOverlay,
   applyProcessWorkspaceDelta,
+  clearProcessWorkspaceSessions,
   getProcessWorkspaceState,
   markProcessWorkspaceOverlayCommitted,
   rejectProcessWorkspaceOverlay,
+  setProcessWorkspaceHotBootstrap,
   setProcessWorkspaceSnapshot
 } from "./store";
 
@@ -43,6 +45,44 @@ function delta(overrides: Partial<ProcessWorkspaceDelta> = {}): ProcessWorkspace
     ...overrides
   };
 }
+
+function hotBootstrap(id: string, revision = 4): ProcessHotBootstrap {
+  return {
+    templateId: id,
+    revision,
+    generatedAt: "2026-08-26T12:00:00.000Z",
+    calendarRange: {
+      from: "2026-08-24T00:00:00.000Z",
+      to: "2026-08-31T00:00:00.000Z"
+    },
+    processSummary: { id, name: id, version: "1", ownerProjectId: null },
+    statusSummary: { assignmentCount: 1, waferCount: 1, awaitingReviewCount: 0 },
+    processDefinition: { stages: [], steps: [], transitions: [] },
+    currentState: [{ assignment_id: "assignment-1", wafer_id: "wafer-1", current_step_id: "step-1" }],
+    calendar: []
+  };
+}
+
+test("seeds the ordered workspace store from a bounded hot bootstrap", () => {
+  clearProcessWorkspaceSessions();
+  setProcessWorkspaceHotBootstrap(hotBootstrap(templateId));
+  const state = getProcessWorkspaceState(templateId);
+  assert.equal(state.snapshot?.revision, 4);
+  assert.equal(state.hotBootstrap?.processSummary.name, templateId);
+  assert.equal(state.calendarWeeks.length, 1);
+  assert.deepEqual(Object.keys(state.normalizedAssignments.assignmentsById), ["assignment-1"]);
+  assert.deepEqual(state.normalizedAssignments.assignmentIdsByStepId["step-1"], ["assignment-1"]);
+});
+
+test("retains only the three most recently used process workspaces", () => {
+  clearProcessWorkspaceSessions();
+  for (const id of ["process-a", "process-b", "process-c", "process-d"]) {
+    setProcessWorkspaceHotBootstrap(hotBootstrap(id));
+  }
+  assert.equal(getProcessWorkspaceState("process-a").snapshot, null);
+  assert.equal(getProcessWorkspaceState("process-b").snapshot?.templateId, "process-b");
+  assert.equal(getProcessWorkspaceState("process-d").snapshot?.templateId, "process-d");
+});
 
 test("applies one ordered delta and ignores a duplicated delivery", () => {
   setProcessWorkspaceSnapshot(snapshot);

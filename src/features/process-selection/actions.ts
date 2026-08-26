@@ -1,7 +1,5 @@
 "use server";
 
-import { refresh } from "next/cache";
-import { redirect } from "next/navigation";
 import { AppError } from "@/lib/errors";
 import { requireAccount } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -18,7 +16,7 @@ export async function selectActiveProcess(input: unknown) {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("process_templates")
-    .select("id")
+    .select("id, name, version, owner_project_id")
     .eq("id", selection.processId)
     .eq("is_active", true)
     .maybeSingle();
@@ -27,6 +25,13 @@ export async function selectActiveProcess(input: unknown) {
   if (!data) throw new AppError("That process is unavailable.", 404);
 
   await setActiveProcessCookie(data.id);
-  refresh();
-  redirect(selection.destination);
+  return {
+    process: {
+      id: data.id,
+      name: data.name,
+      version: data.version,
+      ownerProjectId: data.owner_project_id
+    },
+    destination: selection.destination
+  };
 }

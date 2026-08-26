@@ -6,13 +6,13 @@ import {
   resolveActiveProcess,
   type ActiveProcessSelection
 } from "@/features/process-selection/server";
-import type { FabricationStatus } from "@/types/database";
 import type { WireframeShellDto } from "./types";
 import {
   mapProfileToTeamIdentity,
   mapProfilesToTeamMembers,
   type TeamDirectoryProfile
 } from "./teamDirectory";
+import type { FabricationStatus } from "@/types/database";
 
 const ACTIVE_ASSIGNMENT_STATUSES: readonly FabricationStatus[] = [
   "planned",
@@ -23,7 +23,8 @@ const ACTIVE_ASSIGNMENT_STATUSES: readonly FabricationStatus[] = [
 
 export async function getWireframeShellModel(
   knownAccount?: AccountContext | null,
-  knownActiveProcess?: ActiveProcessSelection | null
+  knownActiveProcess?: ActiveProcessSelection | null,
+  options: { includeAggregateCounts?: boolean } = {}
 ): Promise<WireframeShellDto> {
   const account = knownAccount ?? await getCurrentAccount();
 
@@ -57,7 +58,8 @@ export async function getWireframeShellModel(
     ? [activeProcess, ...newestActiveTemplates.slice(0, 23)]
     : newestActiveTemplates;
   const templateIds = activeTemplates.map((template) => template.id);
-  const [assignmentsResult, calendarResult] = await Promise.all([
+  const includeAggregateCounts = options.includeAggregateCounts !== false;
+  const [assignmentsResult, calendarResult] = includeAggregateCounts ? await Promise.all([
     templateIds.length
       ? supabase
           .from("wafer_process_assignments")
@@ -73,17 +75,9 @@ export async function getWireframeShellModel(
           .select("id", { count: "exact", head: true })
           .eq("process_template_id", activeProcess.id)
       : Promise.resolve({ count: 0, error: null })
-  ]);
-
-  if (assignmentsResult.error) {
-    throw assignmentsResult.error;
-  }
-
-  if (calendarResult.error) {
-    throw calendarResult.error;
-  }
-
-  const teamMembers = await getActiveProfileTeamMembers();
+  ]) : [{ data: [], error: null }, { count: 0, error: null }];
+  if (assignmentsResult.error) throw assignmentsResult.error;
+  if (calendarResult.error) throw calendarResult.error;
   const activeDieCountByTemplate = new Map<string, number>();
   for (const assignment of assignmentsResult.data ?? []) {
     activeDieCountByTemplate.set(
@@ -110,11 +104,11 @@ export async function getWireframeShellModel(
       : null,
     processes,
     calendarEventCount: calendarResult.count ?? 0,
-    teamMembers
+    teamMembers: []
   };
 }
 
-async function getActiveProfileTeamMembers(): Promise<WireframeShellDto["teamMembers"]> {
+export async function getActiveProfileTeamMembers(): Promise<WireframeShellDto["teamMembers"]> {
   // The caller has already authenticated the request; return only the limited directory DTO below.
   const supabase = createSupabaseAdminClient();
   const profilesResult = await supabase
