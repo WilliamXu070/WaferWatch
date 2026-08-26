@@ -51,10 +51,18 @@ retry sessions.
 - Collaboration, checkpoint, Process Flow state, batch lifecycle, archive,
   researcher access, planning, operation-run, workspace-projection, scheduler,
   migration-chain, and workflow-command verifiers — passed.
-- Production migration and recovery evidence — pending.
+- Production migration `202608260003` was applied directly and recorded in the
+  migration ledger without applying pending staging migrations `202608260001`
+  or `202608260002`.
+- The deployed function contains `PT409`, contains no `40001`, and had zero
+  active position-RPC retry sessions.
+- `pg_stat_database.xact_rollback` remained exactly `112146947` across two
+  samples ten seconds apart.
+- Supabase database CPU recovered from roughly 96–100% to 11.42%.
+- Production `/api/health` returned HTTP 200 with Supabase state `healthy`.
 
 ## Status
 
-Locally verified; production mitigation pending. GitHub issue creation is blocked because the
-configured `gh` credential is invalid, so this file is the authoritative incident
-ticket.
+Resolved and verified in production. GitHub issue creation was blocked because
+the configured `gh` credential is invalid, so this file is the authoritative
+incident ticket.
