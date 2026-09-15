@@ -5,8 +5,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { fail } from "@/lib/action-result";
-import { PASSWORD_RECOVERY_COOKIE } from "@/lib/auth/password-recovery";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { PASSWORD_RECOVERY_COOKIE, PASSWORD_RECOVERY_MAX_AGE_SECONDS, safeAuthRedirectPath } from "@/lib/auth/password-recovery";
+import { confirmationErrorPath } from "@/lib/auth/confirmation";
+import { createEmailSupabaseClient, createServerSupabaseClient } from "@/lib/supabase/server";
 import { formString } from "@/lib/validation";
 import { getAppUrl } from "@/lib/app-url";
 import { clearActiveProcessCookie } from "@/features/process-selection/server";
@@ -37,6 +38,57 @@ function isHtmlParseError(error: unknown) {
   );
 }
 
+function authFailureMessage(error: { message: string; status?: number }) {
+  if ((error.status && error.status >= 500) || ["{}", "fetch failed"].includes(error.message) || isHtmlParseError(error)) {
+    return "Authentication is temporarily unavailable. Please try again shortly.";
+  }
+  return error.message;
+}
+
+// The default Supabase mailer cannot use custom token-hash templates. Its
+// implicit email links return tokens in a browser fragment; validate them with
+// Supabase before writing the server-rendered application's session cookies.
+export async function completeEmailSession(input: {
+  accessToken: string;
+  refreshToken: string;
+  type: string | null;
+  next: string;
+}): Promise<string> {
+  const parsed = z.object({
+    accessToken: z.string().min(1).max(16384),
+    refreshToken: z.string().min(1).max(4096),
+    type: z.string().nullable(),
+    next: z.string()
+  }).safeParse(input);
+  if (!parsed.success) return confirmationErrorPath("confirmation_missing");
+
+  try {
+    const supabase = await createServerSupabaseClient();
+    const { data, error } = await supabase.auth.setSession({
+      access_token: parsed.data.accessToken,
+      refresh_token: parsed.data.refreshToken
+    });
+    if (error || !data.user || !data.session) return confirmationErrorPath(error?.code);
+
+    const next = safeAuthRedirectPath(parsed.data.next);
+    if (parsed.data.type === "recovery" && next === "/reset-password") {
+      const cookieStore = await cookies();
+      cookieStore.set(PASSWORD_RECOVERY_COOKIE, "1", {
+        httpOnly: true,
+        maxAge: PASSWORD_RECOVERY_MAX_AGE_SECONDS,
+        path: "/",
+        sameSite: "lax",
+        secure: getAppUrl().startsWith("https:")
+      });
+    }
+    await clearActiveProcessCookie();
+    revalidatePath("/", "layout");
+    return next;
+  } catch {
+    return confirmationErrorPath("confirmation_unavailable");
+  }
+}
+
 export async function signInWithPassword(formData: FormData) {
   const parsed = authSchema.parse({
     email: formString(formData, "email"),
@@ -61,6 +113,7 @@ export async function signInWithPassword(formData: FormData) {
 export type AuthFormState = {
   message: string | null;
   error: string | null;
+  needsConfirmation?: boolean;
 };
 
 export async function signInFormAction(
@@ -92,7 +145,8 @@ export async function signInFormAction(
 
     return {
       message: null,
-      error: error.message
+      error: authFailureMessage(error),
+      needsConfirmation: error.code === "email_not_confirmed"
     };
   }
 
@@ -121,7 +175,7 @@ export async function signUpFormAction(
     };
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = createEmailSupabaseClient();
   const emailRedirectTo = `${getAppUrl()}/auth/confirm?next=/dashboard`;
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
@@ -137,19 +191,24 @@ export async function signUpFormAction(
   if (error) {
     return {
       message: null,
-      error: error.message
+      error: authFailureMessage(error),
+      needsConfirmation: error.code === "email_not_confirmed"
     };
   }
 
   revalidatePath("/", "layout");
 
   if (data.session) {
+    const sessionClient = await createServerSupabaseClient();
+    const { error: sessionError } = await sessionClient.auth.setSession(data.session);
+    if (sessionError) return { message: null, error: authFailureMessage(sessionError) };
     redirect("/dashboard");
   }
 
   return {
-    message: "Account created. Confirm your email, then sign in.",
-    error: null
+    message: "Check your email and open the confirmation link to finish signing up.",
+    error: null,
+    needsConfirmation: true
   };
 }
 
@@ -168,7 +227,7 @@ export async function resendConfirmationFormAction(
     };
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = createEmailSupabaseClient();
   const { error } = await supabase.auth.resend({
     type: "signup",
     email: parsed.data.email,
@@ -180,7 +239,8 @@ export async function resendConfirmationFormAction(
   if (error) {
     return {
       message: null,
-      error: error.message
+      error: authFailureMessage(error),
+      needsConfirmation: error.code === "email_not_confirmed"
     };
   }
 
@@ -205,7 +265,7 @@ export async function requestPasswordResetFormAction(
     };
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = createEmailSupabaseClient();
   const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo: `${getAppUrl()}/auth/confirm?next=/reset-password`
   });
@@ -213,7 +273,8 @@ export async function requestPasswordResetFormAction(
   if (error) {
     return {
       message: null,
-      error: error.message
+      error: authFailureMessage(error),
+      needsConfirmation: error.code === "email_not_confirmed"
     };
   }
 
@@ -255,7 +316,8 @@ export async function updatePasswordFormAction(
   if (error) {
     return {
       message: null,
-      error: error.message
+      error: error.message,
+      needsConfirmation: error.code === "email_not_confirmed"
     };
   }
 

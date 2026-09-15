@@ -9,7 +9,27 @@ Enable email/password auth in Supabase Auth. Add the local and deployed app URLs
 - `https://your-vercel-domain.vercel.app/**`
 - `https://*-your-vercel-team.vercel.app/**` for preview deployments
 
-Set the Supabase Site URL to the deployed production URL when you are ready for production. The app sends new sign-up confirmation emails to `/auth/confirm?next=/`, so old email links created before this route existed may need to be resent.
+Set the Supabase Site URL to the deployed production URL. The built-in `.ConfirmationURL` email templates work with the app's implicit email flow: `/auth/confirm` forwards browser-only fragments to `/auth/finish`, which validates the tokens with Supabase and creates server session cookies. This works when email opens in a different browser or on another device.
+
+For projects with custom SMTP, direct token-hash links are also supported. In **Authentication → Email templates**, these can be configured as:
+
+Confirmation:
+
+```html
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/dashboard">Confirm email address</a>
+```
+
+Password recovery:
+
+```html
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password">Reset password</a>
+```
+
+Do not change email requests back to PKCE while using `.ConfirmationURL`: its code exchange requires a cookie from the browser that started signup. Existing PKCE links remain supported in the originating browser; otherwise users can sign in or request a new confirmation email. Keep `NEXT_PUBLIC_APP_URL` and Supabase Site URL aligned to the canonical production origin.
+
+Keep email confirmation enabled. The built-in Supabase mail service currently allows only organization-authorized recipients and has a low sending limit; configure a verified custom SMTP sender before opening registration to general users. Never disable confirmation to work around delivery restrictions.
+
+If `/api/health` reports a network/DNS failure, check whether the Supabase project is paused before changing credentials or callback code. Resume the existing project and verify `ACTIVE_HEALTHY` plus HTTP 200 from the production health endpoint.
 
 The migration installs an `auth.users` trigger that creates `public.profiles` rows automatically.
 

@@ -25,6 +25,8 @@ export default async function LoginPage({
   const query = new URLSearchParams();
 
   if (params.error) query.set("error", params.error);
+  if (params.error_code) query.set("error_code", params.error_code);
+  if (params.error_description) query.set("error_description", params.error_description);
   if (params.message) query.set("message", params.message);
 
   redirect(query.toString() ? `/?${query.toString()}` : "/");

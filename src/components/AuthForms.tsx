@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useFormStatus } from "react-dom";
 import {
   requestPasswordResetFormAction,
   resendConfirmationFormAction,
@@ -16,9 +17,10 @@ const initialState: AuthFormState = {
 };
 
 function SubmitButton({ label }: { label: string }) {
+  const { pending } = useFormStatus();
   return (
-    <button className={authFormStyles.submit} type="submit">
-      {label}
+    <button className={authFormStyles.submit} type="submit" disabled={pending}>
+      {pending ? "Please wait…" : label}
     </button>
   );
 }
@@ -123,7 +125,7 @@ export function AuthForms({ showExpiredConfirmation = false }: { showExpiredConf
         <SubmitButton label={mode === "signin" ? "Sign in" : "Create account"} />
       </form>
 
-      {showExpiredConfirmation ? (
+      {showExpiredConfirmation || activeState.needsConfirmation ? (
         <form action={resendAction} className={authFormStyles.resendForm}>
           <div>
             <p className={authFormStyles.resendTitle}>Need a new confirmation link?</p>

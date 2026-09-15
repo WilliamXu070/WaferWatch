@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { confirmationErrorMessage } from "@/lib/auth/confirmation";
+import { AuthFragmentRecovery } from "@/components/AuthFragmentRecovery";
 import { AuthForms } from "@/components/AuthForms";
 import { confirmationRedirectPath } from "@/lib/auth/confirmation-redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -11,11 +13,7 @@ function authErrorMessage(params: {
   error_code?: string;
   error_description?: string;
 }) {
-  if (params.error_code === "otp_expired") {
-    return "This confirmation link has expired or was already used. Request a new one below.";
-  }
-
-  return params.error_description ?? params.error ?? null;
+  return confirmationErrorMessage(params.error_code) ?? params.error_description ?? params.error ?? null;
 }
 
 export default async function HomePage({
@@ -47,7 +45,7 @@ export default async function HomePage({
   }
 
   const authError = authErrorMessage(params);
-  const showExpiredConfirmation = params.error_code === "otp_expired";
+  const showExpiredConfirmation = Boolean(params.error_code || params.error);
 
   return (
     <main className={authPageStyles.shell}>
@@ -69,6 +67,7 @@ export default async function HomePage({
             </p>
           ) : null}
 
+          <AuthFragmentRecovery />
           <AuthForms showExpiredConfirmation={showExpiredConfirmation} />
         </section>
       </div>

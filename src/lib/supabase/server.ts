@@ -6,6 +6,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { CookieOptions } from "@supabase/ssr";
 import type { Database } from "@/types/database";
 import { getSupabaseAdminEnv, getSupabaseServerEnv } from "@/lib/env";
+import { createEmailAuthClient } from "./email";
 
 export async function createServerSupabaseClient() {
   const cookieStore = await cookies();
@@ -28,6 +29,11 @@ export async function createServerSupabaseClient() {
       }
     }
   });
+}
+
+export function createEmailSupabaseClient() {
+  const env = getSupabaseServerEnv();
+  return createEmailAuthClient(env.url, env.publishableKey);
 }
 
 let adminClient: ReturnType<typeof createSupabaseClient<Database>> | null = null;
