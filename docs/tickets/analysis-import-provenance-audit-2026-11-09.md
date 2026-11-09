@@ -1,24 +1,24 @@
-# Analysis import provenance and missing-image diagnosis
+# Image-backed analysis and workbook reconciliation
 
-Status: diagnosis complete; proposed changes not implemented.
+Issue: https://github.com/WilliamXu070/WaferWatch/issues/74
 
-Symptom: many blank-image selections and overlapping/repeated points on production /analysis.
-Expected: traceable experimental observations, images and repetitions; current source data.
+## Symptom and diagnosis
 
-Confirmed: one August12 immutable import,270 rows exactly matching source catalog;206/206 production images return200 and match hashes.64 rows are intentionally workbook-only,45 from TFA4.270 rows occupy115 coordinates; some rows are multiple images for the same parameter tuple. New October28 shared workbook is not imported and includes rounds/geometry/TFA2 information absent from the live snapshot. Source conflicts remain in75 rows.
+Production showed270 records, including64 workbook-only rows with no microscopy.206 actual images loaded and matched hashes. Image-keyed records represented repeated photos as separate points; the August12 import did not use the October28 shared workbook. No restore-induced database corruption was found.
 
-Detailed evidence and ordered correction/verification plan: [/Users/williamxu/Library/CloudStorage/OneDrive-UniversityofToronto/Employment/output/analysis-diagnosis-2026-11-09/DIAGNOSIS.md](</Users/williamxu/Library/CloudStorage/OneDrive-UniversityofToronto/Employment/output/analysis-diagnosis-2026-11-09/DIAGNOSIS.md>).
+## Approved scope and implementation
 
-No code or database mutation; unrelated primary-checkout modifications preserved. Do not close as fixed until source reconciliation, approved scientific mappings, replacement immutable import and exact live reproduction checks are complete.
+Show image-backed experiments, group photos, use latest workbook only for exact unambiguous provenance, and show conflicts before changing them. groupImageBackedExperiments now produces198 points with206 photos. Gallery selection preserves individual image/source metadata. Workbook reconciliation matched132 image records;74 ambiguous or previously-reconciled image mappings retain previous values and provenance. All270 scientific assignments are unchanged; no original import rows were deleted.
 
-## Approved implementation scope — November9
+Held groups:52 TFA6 labels/geometry,12 TFB1 die-column offsets,9 TFA1 labels/columns,1 TFA7 R2C8 voltage. Their review table was shown to William; assignment changes remain unapproved.
 
-User requested latest workbook, image-backed default, photo grouping, with conflicting mappings shown before any assignment change.
+## Verification and release
 
-Plan:
-1. Reconcile each image-backed record against the latest shared workbook; produce an old/new per-record conflict sheet. Hold conflicted scientific fields unchanged pending user review. Preserve old immutable import and all original records.
-2. Add deterministic image-backed experiment grouping in polingData.ts with image membership preserved and no coordinate-based merging. Add gallery controls/source caption in PolingAnalysisMap.tsx; all plotted selections must have an image.
-3. Generate a reviewed immutable catalog using latest-workbook provenance only for exact unambiguous matches; held records retain existing provenance and values. Do not introduce image-less experiments.
-4. Meaningful regression tests: no data-only graph records, multi-photo gallery, separate pulse settings/runs, nonmutation of input records; workbook matching and held fields unchanged.
-5. Verify test/typecheck/lint/build against clean HEAD plus only intended changes, preserving dirty primary checkout. Commit/push intended files, publish fresh production artifact, verify alias/deployment identity and live image-only/grouped selection.
-6. Source mapping approval remains a separate pending step; never call held conflicts corrected. Rollback: previous deployment and immutable import retained.
+- Clean HEAD plus intended changes:300 tests, typecheck, lint, build and analysis-persistence verifier pass. Five source-reconciliation regression cases pass.
+- Commit006d4cd451fb4973a3a6c4f4583e1464eaf61053 deployed as dpl_8RBUrnECfGqXj9tiuaAjrfxjni3Q; production domain aliases verified.
+- New immutable import4484196e-2e89-48d6-91a3-0ddf25ebc691 is ready; prior import retained. Production comparison confirms0 scientific field changes and132 updated workbook references.
+- Signed-in production reload:198 graph points,0 data-only points. TFA6 R3C9 has5 photos, Next changes image and slide caption while preserving experiment. Desktop and390x844 replay have no horizontal overflow; no console errors. /api/health returns200; fresh-deployment error scan empty.
+
+## Status
+
+Safe implementation released. Conflicting mapping reassignment is deliberately held for William's review. Rollback evidence: prior deployment dpl_77p1SJsYSNKT4XzEFNYrzQJTjfnC and immutable import8e6d9dc4-a345-455f-817b-55ad72c548d3 are retained. Unrelated primary-checkout work was not released.
