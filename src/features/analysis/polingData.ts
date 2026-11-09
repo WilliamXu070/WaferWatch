@@ -58,6 +58,37 @@ export type PolingPointPosition = {
   pulses: number;
 };
 
+export type PolingExperiment = PolingRecord & {
+  photos: readonly PolingRecord[];
+};
+
+/** Keep image-less workbook entries off the map, and retain every distinct photo. */
+export function groupImageBackedExperiments(records: readonly PolingRecord[]): PolingExperiment[] {
+  const groups = new Map<string, PolingExperiment>();
+  for (const record of records) {
+    if (!record.imagePath) continue;
+    // Parameter provenance distinguishes repeated runs with otherwise identical settings.
+    const source = record.parameterSource;
+    const key = JSON.stringify([
+      record.specimenReference, record.dieLabel, record.voltage, record.pulses,
+      record.pulseWidthMs, record.postPulseVoltage ?? null, record.postPulseWidthMs ?? null,
+      source?.fileName ?? record.sourceFile ?? null,
+      source?.sourceKey ?? source?.slide ?? null,
+      record.workbookProvenance?.round ?? null
+    ]);
+    const existing = groups.get(key);
+    if (existing) {
+      const duplicate = existing.photos.some((photo) =>
+        record.imageSha256 ? photo.imageSha256 === record.imageSha256 : photo.imagePath === record.imagePath
+      );
+      if (!duplicate) existing.photos = [...existing.photos, record];
+    } else {
+      groups.set(key, { ...record, photos: [record] });
+    }
+  }
+  return [...groups.values()];
+}
+
 export const POLING_SERIES_PALETTE = [
   "#006d77",
   "#9a4e00",

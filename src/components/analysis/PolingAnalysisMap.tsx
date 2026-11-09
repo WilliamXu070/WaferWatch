@@ -32,6 +32,7 @@ import {
   getPolingPulseWidths,
   getPolingSeriesColors,
   getPolingSpecimens,
+  groupImageBackedExperiments,
   type AnalysisDataSource,
   type PolingPointPosition,
   type PolingRecord
@@ -170,9 +171,10 @@ function unavailableMessage(dataSource?: AnalysisDataSource) {
 }
 
 export function PolingAnalysisMap({
-  records = [],
+  records: sourceRecords = [],
   dataSource
 }: PolingAnalysisMapProps) {
+  const records = useMemo(() => groupImageBackedExperiments(sourceRecords), [sourceRecords]);
   const svgRef = useRef<SVGSVGElement>(null);
   const chartFrameRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -200,6 +202,7 @@ export function PolingAnalysisMap({
   );
   const [pulseWidth, setPulseWidth] = useState<number | "all">("all");
   const [selectedId, setSelectedId] = useState(records[0]?.id ?? "");
+  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [domain, setDomain] = useState<PolingDomain>(() => fullDomain);
   const [mode, setMode] = useState<DrawMode>("navigate");
   const [isDragging, setIsDragging] = useState(false);
@@ -225,6 +228,9 @@ export function PolingAnalysisMap({
   );
   const selectedRecord =
     visibleRecords.find((record) => record.id === selectedId) ?? visibleRecords[0] ?? null;
+  const selectedPhoto = selectedRecord?.photos.find((photo) => photo.id === selectedPhotoId)
+    ?? selectedRecord?.photos[0] ?? null;
+  const selectedPhotoIndex = selectedRecord?.photos.findIndex((photo) => photo.id === selectedPhoto?.id) ?? 0;
   const renderedRecords = useMemo(() => {
     if (!selectedRecord) return visibleRecords;
     return [
@@ -240,8 +246,8 @@ export function PolingAnalysisMap({
     }
     return counts;
   }, [visibleRecords]);
-  const selectedRecordRef = useRef(selectedRecord);
-  const selectedImagePath = selectedRecord?.imagePath ?? null;
+  const selectedRecordRef = useRef(selectedPhoto);
+  const selectedImagePath = selectedPhoto?.imagePath ?? null;
   const imageFailed = selectedImagePath !== null && failedImagePath === selectedImagePath;
   const imageLoading = Boolean(
     selectedImagePath &&
@@ -250,8 +256,8 @@ export function PolingAnalysisMap({
   );
 
   useEffect(() => {
-    selectedRecordRef.current = selectedRecord;
-  }, [selectedRecord]);
+    selectedRecordRef.current = selectedPhoto;
+  }, [selectedPhoto]);
 
   useEffect(() => {
     const chartFrame = chartFrameRef.current;
@@ -609,11 +615,11 @@ export function PolingAnalysisMap({
   };
 
   const drawings = activeDrawing ? [...annotations, activeDrawing] : annotations;
-  const selectedFlags = selectedRecord
+  const selectedFlags = selectedPhoto
     ? [
-        ...(selectedRecord.flags ?? []),
-        ...(selectedRecord.flag && !selectedRecord.flags?.includes(selectedRecord.flag)
-          ? [selectedRecord.flag]
+        ...(selectedPhoto.flags ?? []),
+        ...(selectedPhoto.flag && !selectedPhoto.flags?.includes(selectedPhoto.flag)
+          ? [selectedPhoto.flag]
           : [])
       ].filter((flag) => !HIDDEN_POLING_FLAG_MESSAGES.has(flag))
     : [];
@@ -627,13 +633,12 @@ export function PolingAnalysisMap({
           <p className={styles.eyebrow}>Experiment analysis</p>
           <h1>Poling parameter map</h1>
           <p className={styles.intro}>
-            Inspect microscopy and workbook results on one source-voltage scale. Pulse-width
-            variants remain filterable without changing the representation.
+            Explore microscopy-backed experiments. Select an experiment to inspect its photos.
           </p>
         </div>
-        <div className={styles.recordCount} aria-label={`${visibleRecords.length} visible conditions`}>
+        <div className={styles.recordCount} aria-label={`${visibleRecords.length} visible experiments`}>
           <strong>{visibleRecords.length}</strong>
-          <span>visible conditions</span>
+          <span>visible experiments</span>
           {sourceLabel ? <small>{sourceLabel}</small> : null}
         </div>
       </header>
@@ -927,7 +932,6 @@ export function PolingAnalysisMap({
                 <div>
                   <p>
                     {selectedRecord.specimenReference} · {selectedRecord.dieLabel}
-                    {selectedRecord.slide ? ` · Slide ${selectedRecord.slide}` : ""}
                   </p>
                   <h2>
                     {selectedRecord.voltage} source value, {selectedRecord.pulses} pulse
@@ -940,6 +944,23 @@ export function PolingAnalysisMap({
                   {selectedRecord.pulseWidthMs} ms
                 </span>
               </div>
+
+              {selectedPhoto ? (
+                <div className={styles.photoNavigation}>
+                  <p>{selectedPhoto.sourceFile}{selectedPhoto.slide ? ` · Slide ${selectedPhoto.slide}` : ""}</p>
+                  {selectedRecord.photos.length > 1 ? (
+                    <div role="group" aria-label="Experiment photos">
+                      <button type="button" aria-label="Previous photo"
+                        disabled={selectedPhotoIndex === 0}
+                        onClick={() => setSelectedPhotoId(selectedRecord.photos[selectedPhotoIndex - 1].id)}>←</button>
+                      <span aria-live="polite">Photo {selectedPhotoIndex + 1} of {selectedRecord.photos.length}</span>
+                      <button type="button" aria-label="Next photo"
+                        disabled={selectedPhotoIndex === selectedRecord.photos.length - 1}
+                        onClick={() => setSelectedPhotoId(selectedRecord.photos[selectedPhotoIndex + 1].id)}>→</button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               {selectedImagePath ? (
                 <div className={styles.imageStage}>
@@ -995,13 +1016,13 @@ export function PolingAnalysisMap({
                           alt=""
                           aria-hidden="true"
                           onLoad={() => {
-                            if (selectedRecordRef.current?.id === selectedRecord.id) {
-                              setDisplayedRecord(selectedRecord);
+                            if (selectedRecordRef.current?.id === selectedPhoto?.id) {
+                              setDisplayedRecord(selectedPhoto);
                               setFailedImagePath(null);
                             }
                           }}
                           onError={() => {
-                            if (selectedRecordRef.current?.id === selectedRecord.id) {
+                            if (selectedRecordRef.current?.id === selectedPhoto?.id) {
                               setFailedImagePath(selectedImagePath);
                             }
                           }}

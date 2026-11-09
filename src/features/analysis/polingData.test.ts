@@ -9,10 +9,53 @@ import {
   getPolingPointTitle,
   getPolingSeriesColors,
   getPolingSpecimens,
+  groupImageBackedExperiments,
   type PolingRecord
 } from "./polingData";
 
 const POLING_RECORDS = catalog.records as readonly PolingRecord[];
+
+test("microscopy map excludes workbook-only points and groups every distinct photo", () => {
+  const before = JSON.stringify(POLING_RECORDS);
+  const experiments = groupImageBackedExperiments(POLING_RECORDS);
+  assert.equal(experiments.length, 198);
+  assert.equal(experiments.flatMap((experiment) => experiment.photos).length, 206);
+  assert.ok(experiments.every((experiment) => experiment.imagePath));
+  assert.ok(experiments.every((experiment) => experiment.specimenReference !== "TFA4.1M1R1"));
+  const example = experiments.find((experiment) =>
+    experiment.specimenReference === "TFA6.1M1R1" && experiment.dieLabel === "R3C9"
+  );
+  assert.equal(example?.photos.length, 5);
+  assert.equal(new Set(example?.photos.map((photo) => photo.imagePath)).size, 5);
+  assert.equal(JSON.stringify(POLING_RECORDS), before);
+});
+
+test("photo grouping keeps separate samples, parameters and source runs distinct", () => {
+  const record: PolingRecord = {
+    id: "first", specimenReference: "TFA1", dieLabel: "R1C1", voltage: 500,
+    pulses: 10, pulseWidthMs: 10, imagePath: "/one.jpg",
+    parameterSource: { fileName: "source.xlsx", sourceKey: "round-one" }
+  };
+  const experiments = groupImageBackedExperiments([
+    record,
+    { ...record, id: "second-photo", imagePath: "/two.jpg" },
+    { ...record, id: "round-two", imagePath: "/three.jpg", parameterSource: { fileName: "source.xlsx", sourceKey: "round-two" } },
+    { ...record, id: "different-width", imagePath: "/four.jpg", pulseWidthMs: 100 },
+    { ...record, id: "different-sample", imagePath: "/five.jpg", specimenReference: "TFA2" },
+    { ...record, id: "duplicate-photo", imagePath: "/one.jpg" },
+    { ...record, id: "no-image", imagePath: null }
+  ]);
+  assert.equal(experiments.length, 4);
+  assert.deepEqual(experiments[0].photos.map((photo) => photo.id), ["first", "second-photo"]);
+});
+
+test("latest workbook provenance is applied only to reviewed exact matches", () => {
+  const refreshed = POLING_RECORDS.filter((record) => record.parameterSource?.fileName === "x-cut poling summary.xlsx");
+  assert.equal(refreshed.length, 132);
+  assert.ok(refreshed.every((record) => record.confidence === "direct"));
+  assert.ok(POLING_RECORDS.filter((record) => record.confidence !== "direct")
+    .every((record) => record.parameterSource?.fileName !== "x-cut poling summary.xlsx"));
+});
 
 test("poling catalog preserves the complete normalized import", () => {
   const imageRecords = POLING_RECORDS.filter((record) => record.imagePath);
